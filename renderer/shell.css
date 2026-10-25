@@ -1,0 +1,165 @@
+/* =====================================================================
+   窗口外壳（macOS / Windows）+ Cowork 模式 + Code 新会话页
+   ===================================================================== */
+body[data-os="win"] .mac-only, body[data-os="mac"] .win-only { display: none !important; }
+
+/* ---------- Windows 窗口控件 ---------- */
+body[data-os="win"] .chrome { height: 44px; padding-left: 12px; gap: 4px; }
+body[data-os="win"] .sb-chrome-space { height: 50px; }
+.winctl { position: absolute; top: 0; right: 0; z-index: 36; display: flex; }
+.winctl button { width: 50px; height: 40px; display: grid; place-items: center; color: var(--tx-2); }
+.winctl button:hover { background: var(--hov); color: var(--tx); }
+.winctl button.x:hover { background: #c42b1c; color: #fff; }
+body[data-os="win"] .ch, body[data-os="win"] #chatMain .topbar { height: 44px; padding-right: 160px; }
+body[data-os="win"] .code-main.rc-open .ch { padding-right: 12px; }
+body[data-os="win"] .right-col { padding-top: 44px; }
+#appMenu { min-width: 240px; }
+#appMenu .menu-item { display: flex; }
+#appMenu .kbd { margin-left: auto; font: 11.5px var(--mono); color: var(--tx-3); }
+
+/* ---------- 侧边栏 ---------- */
+.sidebar { width: 340px; }
+.seg { padding: 3px; border-radius: 9px; margin-bottom: 14px; }
+.seg button { height: 32px; font-size: 15px; gap: 8px; }
+body[data-mode="chat"] .seg [data-mode="chat"],
+body[data-mode="code"] .seg [data-mode="code"] { background: rgba(255, 255, 255, 0.11); box-shadow: none; }
+:root:not([data-theme="dark"]) body[data-mode="chat"] .seg [data-mode="chat"],
+:root:not([data-theme="dark"]) body[data-mode="code"] .seg [data-mode="code"] { background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.cn-item { height: 33px; font-size: 15px; color: var(--tx); }
+.cn-item .cn-ico { color: var(--tx-2); }
+body:has(#codeWelcome:not([hidden])) #newSession,
+body:has(#welcome:not([hidden])) #newChat { background: var(--sel); }
+.cn-groups { padding-top: 4px; }
+.cn-group { margin-bottom: 20px; }
+.cn-gh { font-size: 14px; padding-left: 12px; }
+.cn-gh .ic-btn { width: 26px; height: 26px; }
+.cn-s { height: 37px; padding: 0 12px; font-size: 15px; color: var(--tx); gap: 8px; }
+.cn-showmore { display: block; width: 100%; text-align: left; height: 34px; padding: 0 12px; border-radius: 7px; font-size: 14.5px; color: var(--tx-3); }
+.cn-showmore:hover { background: var(--hov); color: var(--tx); }
+
+.tk-head { display: flex; align-items: center; gap: 2px; height: 32px; padding: 0 4px 0 8px; margin-top: 16px; font-size: 14px; color: var(--tx-3); }
+.tk-head span { flex: 1; }
+#chatNav .sb-section { margin-top: 2px; }
+#chatNav .recents li { height: 34px; padding: 0 8px; gap: 10px; font-size: 15px; color: var(--tx); }
+#chatNav .recents li.active { background: var(--sel); }
+.tk-ic { width: 16px; height: 16px; display: grid; place-items: center; flex-shrink: 0; color: var(--tx-3); }
+.tk-ic:not(.warn)::before { content: ""; width: 5px; height: 5px; border-radius: 50%; border: 1px solid var(--tx-3); }
+.tk-ic.warn { color: #e5a03a; }
+
+.sb-bottom { border-top: 0.5px solid var(--line); margin: 6px -10px 0; padding: 8px 10px 0; }
+.sb-bottom-row { display: flex; align-items: center; gap: 4px; }
+.sb-bottom-row .user-chip { flex: 1; width: auto; }
+.user-chip .chev { margin-left: 4px; color: var(--tx-3); }
+body[data-mode="chat"] .code-only { display: none; }
+.user-chip { justify-content: flex-start; }
+.user-chip .user-name { margin-right: auto; }
+
+/* ---------- Cowork 欢迎页 ---------- */
+#chatMain .welcome { padding-bottom: 6vh; }
+#chatMain .greeting { font-size: clamp(36px, 4.2vw, 52px); color: var(--tx); gap: 14px; margin-bottom: 38px; letter-spacing: -1px; }
+#chatMain .greeting .spark { width: 46px; height: 46px; }
+#chatMain .composer-slot { max-width: 840px; }
+
+#composer.composer { background: none; box-shadow: none; padding: 0; border-radius: 0; cursor: auto; }
+#composer .cw-box {
+  position: relative; z-index: 1;
+  background: var(--card-2); border: 1px solid var(--line-2); border-radius: 18px;
+  padding: 18px 18px 12px 22px; cursor: text;
+  box-shadow: 0 4px 24px rgba(0,0,0,.12);
+}
+:root:not([data-theme="dark"]) #composer .cw-box { background: #fff; }
+#composer textarea { font-size: 16.5px; color: var(--tx); }
+#composer textarea::placeholder { color: var(--tx-3); }
+#composer .composer-row { margin-top: 26px; }
+#composer .tool-btn { border: 0; width: 34px; height: 34px; color: var(--tx); margin-left: -8px; }
+#composer .model-btn { font-size: 16px; color: var(--tx); gap: 8px; height: 34px; }
+#composer .model-btn .eff { color: var(--tx-3); }
+#composer .send-btn { width: 40px; height: 38px; border-radius: 10px; margin-left: 6px; }
+#composer .send-btn:disabled { background: var(--hov); color: var(--tx-3); opacity: 1; }
+#composer .model-menu { background: var(--card); border: 0.5px solid var(--line-2); }
+.cw-tray {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: -20px; padding: 28px 20px 8px 22px;
+  border: 1px solid var(--line-2); border-top: 0; border-radius: 0 0 18px 18px;
+}
+.tray-btn { display: flex; align-items: center; gap: 9px; height: 34px; padding: 0 8px; margin-left: -8px; border-radius: 8px; font-size: 15.5px; color: var(--tx); }
+.tray-btn:hover { background: var(--hov); }
+.tray-btn svg:last-child { color: var(--tx-3); }
+#threadSlot .cw-tray { display: none; }
+#threadSlot .cw-box { padding: 12px 14px 10px 18px; }
+#threadSlot .composer-row { margin-top: 10px; }
+
+.ideas { width: 100%; max-width: 790px; margin-top: 54px; display: flex; flex-direction: column; gap: 4px; }
+.ideas-h { font-size: 14px; color: var(--tx-3); margin-bottom: 12px; }
+.chip.idea {
+  display: flex; align-items: center; gap: 22px; height: 56px; padding: 0 4px;
+  border: 0; background: none; border-radius: 10px; font-size: 17px; color: var(--tx);
+}
+.chip.idea:hover { background: var(--hov); border: 0; color: var(--tx); }
+.idea-ic { width: 32px; height: 32px; display: grid; place-items: center; color: var(--tx-2); }
+
+/* Cowork 会话页用同一套颜色 */
+#chatMain .thread .messages > *, #chatMain .thread-composer .composer-slot { max-width: 760px; }
+#chatMain .user-bubble { background: var(--card-2); }
+#chatMain .ai-body { color: var(--tx); }
+
+/* ---------- Code 头部 ---------- */
+.ch-new { flex: 1; font-size: 15px; color: var(--tx-3); padding-left: 6px; }
+.ch:not(.is-new) .ch-new, .ch.is-new .ch-title, .ch.is-new .sess-only { display: none; }
+.ch.is-new { justify-content: flex-end; }
+.ch .ic-btn { width: 34px; height: 34px; color: var(--tx-2); }
+
+/* ---------- Code 新会话页 ---------- */
+.code-welcome { flex-direction: column; align-items: stretch; justify-content: stretch; padding: 0; overflow: hidden; }
+.cw-mid { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 20px; overflow-y: auto; }
+.proj-card { width: min(400px, 100%); background: var(--card); border: 1px solid var(--line-2); border-radius: 12px; padding: 6px; }
+.proj-row { display: flex; align-items: center; gap: 12px; width: 100%; height: 42px; padding: 0 12px; border-radius: 8px; font-size: 15.5px; color: var(--tx); text-align: left; }
+.proj-row:hover { background: var(--hov); }
+.proj-row svg { color: var(--tx-2); flex-shrink: 0; }
+.proj-row .ck { margin-left: auto; color: var(--tx); }
+.proj-sep { height: 1px; background: var(--line-2); margin: 6px -6px; }
+.proj-env { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; font-size: 15.5px; color: var(--tx); border-radius: 8px; }
+.proj-env:hover { background: var(--hov); }
+.proj-env svg { color: var(--tx-3); }
+.import-card { width: min(400px, 100%); height: 50px; display: flex; align-items: center; gap: 12px; padding: 0 16px; border: 1px solid var(--line-2); border-radius: 12px; font-size: 15.5px; color: var(--tx); }
+.import-card:hover { background: var(--hov); }
+.import-card:disabled { color: var(--tx-3); cursor: default; background: none; }
+.import-card svg { color: var(--tx-2); }
+#repoMenu { min-width: 240px; }
+
+.code-welcome .code-bottom { padding: 0 28px 10px; }
+.code-welcome .code-bottom .composer-slot { max-width: 960px; }
+
+/* ---------- Code 输入框 ---------- */
+.cx-box { align-items: center; min-height: 54px; padding: 8px 10px 8px 10px; border-radius: 14px; border-color: var(--line-2); }
+.cx-box textarea { font-size: 16px; padding: 4px 0; }
+.cx-plus { width: 32px; height: 32px; color: var(--tx-2); }
+.clawd { position: absolute; right: 22px; top: -27px; z-index: 2; pointer-events: none; }
+.clawd.busy { animation: bob .5s steps(2) infinite; }
+.clawd .eyes { animation: blink 4s infinite; transform-origin: center; }
+@keyframes bob { 50% { transform: translateY(-3px); } }
+@keyframes blink { 0%, 94%, 100% { opacity: 1; } 96% { opacity: 0; } }
+.pr-bar:not([hidden]) ~ .cx-box .clawd { display: none; }
+.cx-foot { height: 40px; padding: 4px 0 0 14px; gap: 6px; }
+.foot-btn { display: flex; align-items: center; gap: 8px; height: 30px; font-size: 15px; color: var(--tx); }
+.foot-btn svg { color: var(--tx-2); }
+.foot-btn.eff { color: var(--tx-3); margin-left: -10px; }
+.ctx-ring { color: var(--tx-2); width: 30px; height: 30px; }
+
+@media (max-width: 768px) {
+  .winctl { display: none; }
+  body[data-os="win"] .ch, body[data-os="win"] #chatMain .topbar { padding-right: 8px; }
+  body[data-os="win"] .right-col { padding-top: 8px; }
+  .sidebar { width: 300px; }
+  .chip.idea { font-size: 15px; height: 48px; gap: 14px; }
+  .clawd { right: 12px; }
+}
+
+/* 细节修正 */
+#chatMain .welcome { justify-content: flex-start; padding-top: 22vh; }
+#permBtn[data-m="auto"] { color: var(--tx); }
+body[data-mode="code"] .user-chip .user-name { margin-right: 0; }
+.code-main.rc-open .right-col { width: min(50vw, 780px); }
+.e-sug { max-width: 100%; }
+.sug-chip { max-width: 100%; white-space: nowrap; overflow: hidden; }
+.sug-chip .k { flex-shrink: 0; }

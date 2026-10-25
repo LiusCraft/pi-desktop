@@ -1,0 +1,113 @@
+/* =====================================================================
+   Pi Desktop: native window chrome and desktop-only widgets
+   ===================================================================== */
+
+/* Native title bar: the OS draws traffic lights / window controls. */
+body[data-native] .traffic,
+body[data-native] .winctl,
+body[data-native] #appMenuBtn,
+body[data-native] #navBack,
+body[data-native] #navFwd { display: none !important; }
+body[data-native][data-os="mac"] .chrome { padding-left: 86px; }
+body[data-native][data-os="win"] .ch,
+body[data-native][data-os="win"] #chatMain .topbar { padding-right: 150px; }
+body[data-native][data-os="win"] .code-main.rc-open .ch { padding-right: 12px; }
+body[data-native][data-os="win"] .right-col { padding-top: 46px; }
+
+/* Window dragging */
+.chrome, .sb-chrome-space, .ch, #chatMain .topbar { -webkit-app-region: drag; }
+.chrome button, .ch button, .ch .pop, .ch .tag, #chatMain .topbar button, .ch-title .pop * { -webkit-app-region: no-drag; }
+
+/* Notes & errors */
+.e-note { white-space: pre-wrap; }
+.e-note.err { color: var(--red); font-family: var(--mono); font-size: 12px; }
+.dim-s { color: var(--tx-3); font-size: 12.5px; }
+.e-perm .p-desc { font-size: 13px; color: var(--tx-2); margin-bottom: 10px; }
+.ask-in { width: 100%; margin-bottom: 10px; resize: vertical; background: var(--pane); color: var(--tx); border: 0.5px solid var(--line-2); border-radius: 8px; padding: 8px 10px; font: 14px var(--ui); }
+
+/* Terminal input */
+#bottomBody:has(.term-b) { display: flex; flex-direction: column; }
+.term-b { flex: 1; min-height: 0; overflow: auto; }
+.term-in { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-top: 0.5px solid var(--line); background: var(--win); font: 12.5px var(--mono); color: #d97757; }
+.term-in input { flex: 1; border: 0; outline: 0; background: none; color: var(--tx); font: inherit; }
+
+/* Preview */
+.pv-form { flex: 1; min-width: 0; }
+.pv-form input { width: 100%; height: 28px; border-radius: 7px; border: 0.5px solid var(--line-2); background: var(--pane); color: var(--tx); font: 12.5px var(--mono); padding: 0 10px; outline: 0; }
+.pv-iframe { width: 100%; height: 100%; border: 0; background: #fff; display: block; }
+
+/* Modal */
+.modal-wrap { position: fixed; inset: 0; z-index: 220; background: rgba(0, 0, 0, 0.4); display: flex; align-items: flex-start; justify-content: center; padding-top: 16vh; }
+.modal-wrap[hidden] { display: none; }
+.modal { width: min(460px, 92vw); background: var(--card); border: 0.5px solid var(--line-2); border-radius: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4); padding: 18px; }
+.modal-title { font-size: 15px; font-weight: 600; color: var(--tx); margin-bottom: 12px; }
+.modal-body { display: flex; flex-direction: column; gap: 10px; max-height: 50vh; overflow-y: auto; }
+.modal-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.m-in { width: 100%; height: 34px; padding: 0 10px; border-radius: 8px; border: 0.5px solid var(--line-2); background: var(--pane); color: var(--tx); font: 14px var(--ui); outline: 0; }
+.m-in:focus { border-color: var(--tx-3); }
+.m-row { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--tx-2); }
+.m-note { margin: 0; font-size: 12.5px; color: var(--tx-3); line-height: 1.6; }
+.m-note code { font-family: var(--mono); font-size: 12px; }
+.modal .proj-row { border: 0.5px solid var(--line); }
+
+#importBtn[hidden] { display: none; }
+
+/* Header: let the project/branch tag shrink before the title and never push the actions */
+.ch-title { min-width: 0; overflow: hidden; }
+.ch-name-btn { flex: 0 1 auto; min-width: 48px; }
+.ch-title .tag { flex: 0 10 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ch-actions { flex-shrink: 0; }
+@container (max-width: 640px) { .ch-title .tag { display: none; } }
+
+/* =====================================================================
+   Cowork on pi: an open task uses the shared session view (#codeMain)
+   ===================================================================== */
+body[data-mode="chat"][data-view="thread"] #chatMain { display: none; }
+body[data-mode="chat"][data-view="thread"] #codeMain { display: flex; }
+body[data-mode="chat"] .code-act, body[data-mode="chat"] #prBar { display: none !important; }
+body[data-mode="code"] .cowork-act { display: none !important; }
+#welcome[hidden] { display: none; }
+
+/* Tasks list */
+#recents .tk-ic .si { width: 14px; height: 14px; }
+#recents .tk-ic:has(.si)::before, #recents .tk-ic.warn::before { display: none; }
+#recents .tk-empty { color: var(--tx-3); font-size: 13.5px; padding: 6px 10px; cursor: default; }
+#recents .tk-empty:hover { background: none; }
+
+/* Cowork composer: folder menu + model menu */
+#folderMenu { min-width: 280px; top: calc(100% + 6px); }
+#folderMenu .proj-row { height: 36px; font-size: 14px; }
+#modelMenu { min-width: 260px; max-height: 60vh; overflow-y: auto; }
+#modelMenu .pop-label { font-size: 11.5px; color: var(--tx-3); padding: 6px 10px 4px; }
+.eff-row { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 8px 6px; }
+.eff-chip { height: 26px; padding: 0 9px; border-radius: 7px; border: 0.5px solid var(--line-2); font-size: 12.5px; color: var(--tx-2); }
+.eff-chip:hover { background: var(--hov); color: var(--tx); }
+.eff-chip.on { background: var(--sel); color: var(--tx); border-color: transparent; }
+
+/* Cowork right panel */
+.cw-panel .card-b { padding: 4px 0 10px; }
+.cwp-sec { padding: 10px 14px 6px; border-bottom: 0.5px solid var(--line); }
+.cwp-sec:last-child { border-bottom: 0; }
+.cwp-h { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; font-weight: 500; color: var(--tx-3); margin-bottom: 8px; }
+.cwp-h span { font-family: var(--mono); font-weight: 400; }
+.cwp-bar { height: 4px; border-radius: 4px; background: var(--hov); margin-bottom: 10px; overflow: hidden; }
+.cwp-bar i { display: block; height: 100%; background: #d97757; border-radius: 4px; transition: width .3s; }
+.cwp-empty { font-size: 13px; color: var(--tx-3); padding: 2px 0 8px; }
+.cwp-file, .cwp-ctx { display: flex; align-items: center; gap: 10px; padding: 7px 8px; margin: 0 -8px; border-radius: 8px; cursor: pointer; color: var(--tx-2); }
+.cwp-file:hover, .cwp-ctx[data-folder]:hover { background: var(--hov); }
+.cwp-ctx:not([data-folder]) { cursor: default; }
+.fmeta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.fmeta b { font-weight: 500; font-size: 13.5px; color: var(--tx); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.fmeta small { font-size: 12px; color: var(--tx-3); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cwp-file .ic-btn { opacity: 0; }
+.cwp-file:hover .ic-btn { opacity: 1; }
+
+/* Markdown extras (tables, quotes, rules) */
+.md-table { overflow-x: auto; margin: 4px 0 12px; }
+.md-table table { border-collapse: collapse; font-size: 13.5px; min-width: 60%; }
+.md-table th, .md-table td { border: 0.5px solid var(--line-2); padding: 6px 10px; text-align: left; vertical-align: top; }
+.md-table th { background: var(--hov); font-weight: 600; }
+.e-text blockquote, .ai-body blockquote { margin: 6px 0 12px; padding: 2px 0 2px 12px; border-left: 3px solid var(--line-2); color: var(--tx-2); }
+.e-text hr { border: 0; border-top: 0.5px solid var(--line-2); margin: 14px 0; }
+.e-text a[target] { color: var(--link); }
+.e-text h3.h1, .e-text h3.h2 { font-size: 17px; }

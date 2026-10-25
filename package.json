@@ -1,0 +1,42 @@
+{
+  "name": "pi-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Claude-desktop style Code UI on top of the pi coding agent (RPC mode)",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "demo": "electron . --demo",
+    "test": "node --test --test-reporter=spec test/*.test.js",
+    "dist": "electron-builder",
+    "test:ui": "node test/ui-smoke.js && node test/ui-cowork.js"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^1.4.0"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "dev.pi-desktop.app",
+    "productName": "Pi Desktop",
+    "files": [
+      "electron/**",
+      "renderer/**",
+      "extensions/**",
+      "demo/**",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    },
+    "asar": false
+  }
+}

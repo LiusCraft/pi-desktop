@@ -1,0 +1,10 @@
+{
+  "name": "todo-app",
+  "version": "0.3.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "test": "node --test --test-reporter=spec tests/date.test.js"
+  }
+}
