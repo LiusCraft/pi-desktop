@@ -1002,6 +1002,7 @@
       projectPath: cowork ? state.coworkFolder || null : state.project,
       worktree: !cowork && state.worktree,
       title: firstPrompt.replace(/@\S+/g, '').trim().slice(0, 60) || 'New session',
+      autoName: true,
       model: state.model,
       thinking: state.effort,
       mode: state.mode,

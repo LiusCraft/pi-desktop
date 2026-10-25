@@ -7,6 +7,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { PiRpc, EXTENSIONS_DIR } = require('./pi-rpc');
 const git = require('./git');
+const naming = require('./naming');
 
 const NAMES = ['trusting-maxwell', 'eager-lovelace', 'quiet-hopper', 'brave-turing', 'calm-knuth', 'swift-ritchie', 'bold-curie', 'keen-dijkstra'];
 const PI_SESSIONS = path.join(os.homedir(), '.pi', 'agent', 'sessions');
@@ -22,6 +23,7 @@ class SessionHub extends EventEmitter {
     this.status = new Map(); // sessionId -> 'idle' | 'running'
     this.metas = store.get('sessions', []);
     this.probe = null;
+    this.namers = new Set(); // throwaway naming processes, killed on quit
     this.extensions = [path.join(EXTENSIONS_DIR, 'desktop-kit', 'index.ts'), path.join(EXTENSIONS_DIR, 'demo-model.ts')];
   }
 
@@ -73,11 +75,25 @@ class SessionHub extends EventEmitter {
     this.probe = null;
   }
 
+  // A title passed by the caller is a user choice, unless the caller marks it as
+  // a placeholder (`autoName: true`) standing in until the model names the session.
+  titleState(title, autoName, fallback) {
+    const custom = typeof title === 'string' && title.trim();
+    const auto = autoName === true || !custom;
+    return {
+      title: custom || fallback,
+      autoName: auto,
+      titleLocked: Boolean(custom) && autoName !== true,
+      autoNamed: false,
+      nameAttempted: false,
+    };
+  }
+
   // ------------------------------------------------------------ lifecycle
-  async create({ kind = 'code', projectPath, worktree = true, title, model, thinking, mode, outputStyle }) {
+  async create({ kind = 'code', projectPath, worktree = true, title, autoName, model, thinking, mode, outputStyle }) {
     const id = crypto.randomUUID();
     const slug = `${NAMES[Math.floor(Math.random() * NAMES.length)]}-${id.slice(0, 6)}`;
-    if (kind === 'cowork') return this.createCowork({ id, slug, projectPath, title, model, thinking, mode, outputStyle });
+    if (kind === 'cowork') return this.createCowork({ id, slug, projectPath, title, autoName, model, thinking, mode, outputStyle });
     const root = await git.repoRoot(projectPath);
     const base = root ? await git.head(root) : null;
     let cwd = projectPath;
@@ -89,7 +105,8 @@ class SessionHub extends EventEmitter {
       await git.addWorktree(root, cwd, branch, base);
     }
     const meta = {
-      id, kind: 'code', title: title || 'New session', projectPath, cwd, branch, baseBranch, baseCommit: base,
+      id, kind: 'code', ...this.titleState(title, autoName, 'New session'),
+      projectPath, cwd, branch, baseBranch, baseCommit: base,
       worktree: cwd !== projectPath, model, thinking, mode: mode || 'auto', outputStyle: outputStyle || 'default',
       sessionFile: null, createdAt: Date.now(), updatedAt: Date.now(), pr: null,
     };
@@ -99,7 +116,7 @@ class SessionHub extends EventEmitter {
   }
 
   // Cowork tasks run directly in the chosen folder (or a fresh scratch workspace); no worktree, no diff base.
-  async createCowork({ id, slug, projectPath, title, model, thinking, mode, outputStyle }) {
+  async createCowork({ id, slug, projectPath, title, autoName, model, thinking, mode, outputStyle }) {
     let cwd = projectPath;
     if (!cwd) {
       const day = new Date().toISOString().slice(0, 10);
@@ -107,7 +124,8 @@ class SessionHub extends EventEmitter {
       fs.mkdirSync(cwd, { recursive: true });
     }
     const meta = {
-      id, kind: 'cowork', title: title || 'New task', projectPath: cwd, cwd, scratch: !projectPath,
+      id, kind: 'cowork', ...this.titleState(title, autoName, 'New task'),
+      projectPath: cwd, cwd, scratch: !projectPath,
       branch: null, baseBranch: null, baseCommit: null, worktree: false, model, thinking, mode: mode || 'auto',
       outputStyle: outputStyle || 'default',
       sessionFile: null, createdAt: Date.now(), updatedAt: Date.now(), pr: null,
@@ -184,9 +202,81 @@ class SessionHub extends EventEmitter {
     const m = this.meta(id);
     m.updatedAt = Date.now();
     this.save();
+    this.maybeNameFromPrompt(id, message);
     if (behavior === 'followUp') return pi.send({ type: 'follow_up', message }).catch(() => pi.send({ type: 'prompt', message }));
     const busy = this.status.get(id) === 'running';
     return pi.send({ type: 'prompt', message, ...(busy && !message.startsWith('/') ? { streamingBehavior: behavior || 'steer' } : {}) });
+  }
+
+  // First real user message: show it as the title immediately, then let a cheap
+  // side model produce a better one. Both happen at most once per session.
+  maybeNameFromPrompt(id, message) {
+    const m = this.meta(id);
+    const text = typeof message === 'string' ? message.trim() : '';
+    if (!m.autoName || m.titleLocked || m.nameAttempted || !text || text.startsWith('/')) return;
+    const placeholder = naming.titleFromPrompt(text);
+    if (!placeholder) return;
+    m.nameAttempted = true;
+    this.save();
+    this.setTitle(id, placeholder);
+    this.nameSession(id, text).catch(() => {});
+  }
+
+  // Name generation runs in its own `pi --print` process: it never touches the
+  // session's context or blocks the session's first turn.
+  async nameSession(id, prompt) {
+    const m = this.meta(id);
+    if (!m.autoName || m.titleLocked || m.autoNamed) return;
+    let models = [];
+    let current = m.model || null;
+    try {
+      const pi = this.procs.get(id);
+      if (pi?.running) {
+        const [state, available] = await Promise.all([pi.ready, pi.send({ type: 'get_available_models' })]);
+        if (state?.model) current = `${state.model.provider}/${state.model.id}`;
+        models = available?.models || [];
+      } else {
+        const r = await this.models();
+        models = r.models || [];
+        current = current || r.defaultModel;
+      }
+    } catch {
+      return; // keep the prompt as the title
+    }
+    const model = naming.pickNamingModel(models, current);
+    if (!model) return; // demo/offline: there is no real model to ask
+    const raw = await naming.generateName({
+      prompt,
+      model,
+      cwd: m.cwd,
+      env: this.getEnv(),
+      register: (child) => {
+        this.namers.add(child);
+        child.once('close', () => this.namers.delete(child));
+      },
+    });
+    const title = naming.cleanTitle(raw);
+    const now = this.meta(id);
+    // A rename that landed while the model was thinking wins.
+    if (!title || now.titleLocked || !now.autoName || now.autoNamed || now.archived) return;
+    now.autoNamed = true;
+    this.save();
+    this.setTitle(id, title);
+  }
+
+  // Persist a title and tell the renderer even when pi is not running.
+  setTitle(id, title) {
+    const m = this.meta(id);
+    if (!title || m.title === title) return;
+    m.title = title;
+    this.save();
+    const pi = this.procs.get(id);
+    if (pi?.running) pi.send({ type: 'set_session_name', name: title }).catch(() => this.emitTitle(id, title));
+    else this.emitTitle(id, title);
+  }
+
+  emitTitle(id, name) {
+    this.emit('event', { sessionId: id, event: { type: 'session_info_changed', name } });
   }
 
   async rpc(id, command) {
@@ -217,9 +307,12 @@ class SessionHub extends EventEmitter {
 
   async update(id, patch) {
     const m = this.meta(id);
-    Object.assign(m, patch);
+    const next = { ...patch };
+    // A title set by the user is final: stop the placeholder/auto-naming path.
+    if (next.title) Object.assign(next, { titleLocked: true, autoName: false });
+    Object.assign(m, next);
     this.save();
-    if (patch.title && this.procs.get(id)?.running) await this.procs.get(id).send({ type: 'set_session_name', name: patch.title }).catch(() => {});
+    if (next.title && this.procs.get(id)?.running) await this.procs.get(id).send({ type: 'set_session_name', name: next.title }).catch(() => {});
     return m;
   }
 
@@ -281,6 +374,8 @@ class SessionHub extends EventEmitter {
   }
 
   async stopAll() {
+    for (const child of this.namers) { try { child.kill(); } catch {} }
+    this.namers.clear();
     await Promise.all([...this.procs.values()].map((p) => p.stop()));
     await this.probe?.stop();
   }

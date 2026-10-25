@@ -93,6 +93,31 @@ describe('SessionHub', { timeout: 120000 }, () => {
     assert.ok(fs.existsSync(path.join(folder, 'inbox/已归档/04-行业周刊.txt')));
   });
 
+  it('uses the first prompt as the title until the model names the session', async () => {
+    const m = await hub.create({ projectPath: project, worktree: false, model: 'demo/demo-coder' });
+    assert.equal(m.title, 'New session');
+    assert.equal(m.autoName, true);
+    const done = waitSettled(hub, m.id);
+    await hub.prompt(m.id, '@src/utils/date.js 写一首关于秋天的诗');
+    assert.equal(hub.meta(m.id).title, '写一首关于秋天的诗');
+    assert.equal(hub.meta(m.id).nameAttempted, true);
+    await done;
+    // The offline demo model cannot name sessions, so the placeholder stays.
+    assert.equal(hub.meta(m.id).title, '写一首关于秋天的诗');
+  });
+
+  it('manual rename wins and disables auto naming', async () => {
+    const m = await hub.create({ projectPath: project, worktree: false, model: 'demo/demo-coder' });
+    await hub.update(m.id, { title: 'My own title' });
+    const done = waitSettled(hub, m.id);
+    await hub.prompt(m.id, '写一首关于秋天的诗');
+    const meta = hub.meta(m.id);
+    assert.equal(meta.title, 'My own title');
+    assert.equal(meta.autoName, false);
+    assert.equal(meta.titleLocked, true);
+    await done;
+  });
+
   it('resumes history after a restart', async () => {
     await hub.stopAll();
     hub = new SessionHub({ store: new Store(userData), userData, getEnv });
