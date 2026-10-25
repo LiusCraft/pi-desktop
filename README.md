@@ -112,13 +112,65 @@ npm i -D playwright && xvfb-run -a npm run test:ui   # 启动真实 Electron 窗
 - `test/hub.test.js`：worktree 隔离（主工作区不被改动）、git diff、重启后从会话文件恢复；Cowork 的临时工作区、直接在选定文件夹中工作、权限确认经由 hub 转发。
 - 两个测试文件都同时在 Node 22 和 Electron 自带的 Node 24 上跑通过。
 
-## 打包
+## 打包与发布（macOS）
+
+只维护 macOS。构建走 `Makefile`（CI 调的是同一批 npm 脚本），需要 macOS + Xcode 命令行工具（`xcode-select --install`，`codesign` / `iconutil` / `sips` / `hdiutil` 都在里面）和 Node 22.19+。
 
 ```bash
-npm run dist
+make help              # 列出所有目标
+make install           # npm ci
+make app               # 只出 .app（当前架构），几十秒，改完就能双击跑
+make run               # 同上，然后 open 打开
+make dmg               # 当前架构的 dmg
+make dist              # arm64 + x64 各一个 dmg
+make icon              # 重新生成 build/icon.png + icon.icns
+make clean             # 删 dist/
 ```
 
-pi 作为独立的 Node 子进程运行，需要直接从文件系统读取自身和扩展的依赖，所以关闭了 asar（`"asar": false`）。
+产物：`dist/mac-arm64/Pi Desktop.app`（x64 是 `dist/mac/`）、`dist/Pi-Desktop-<版本>-<架构>.dmg`。dmg 里就一个 app 加一个 `/Applications` 快捷方式。
+
+### 签名与公证
+
+默认是**未签名**构建，本地能用；下载分发会弹 Gatekeeper。要正式发布就配好下面这套，配置一存在，`make dmg` 和 CI 都自动变成「Developer ID 签名 → 公证 → staple」，不需要改命令：
+
+| 变量 | 含义 |
+|---|---|
+| `CSC_LINK` | 导出的 `.p12`（Developer ID Application），路径或 base64 |
+| `CSC_KEY_PASSWORD` | `.p12` 的密码 |
+| `APPLE_ID` | Apple ID |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App 专用密码（appleid.apple.com 生成） |
+| `APPLE_TEAM_ID` | Team ID |
+
+也可以改用 App Store Connect API Key：`APPLE_API_KEY`（.p8 路径）+ `APPLE_API_KEY_ID` + `APPLE_API_ISSUER`，或钥匙串里的 `APPLE_KEYCHAIN_PROFILE`（`xcrun notarytool store-credentials`）。
+
+`scripts/after-sign.cjs` 是 electron-builder 的 `afterSign` 钩子：拿到 Developer ID 签名就公证 + staple，没有就做一次 ad-hoc 签名（Apple Silicon 上完全没有签名的 arm64 app 根本起不来，所以 ad-hoc 不是可选步骤）。
+
+### 发布一个版本
+
+```bash
+make release VERSION=0.2.0     # npm version + 打 tag + push
+```
+
+推上去的 `v0.2.0` tag 触发 `.github/workflows/release.yml`：arm64 和 x64 两个 dmg 在 `macos-14` 上交叉构建（没有按架构编译的原生模块，只有 Electron 的 zip 不同），然后 `gh release create/upload` 挂到同名 Release，附 `SHA256SUMS.txt`。签名靠仓库 secret：`MAC_CERT_P12`、`MAC_CERT_PASSWORD`、`APPLE_ID`、`APPLE_PASSWORD`、`APPLE_TEAM_ID`；不填也能跑通，只是产物未签名。
+
+不想走 tag 的话，本地直接 `GH_TOKEN=… make publish` 也能上传。
+
+`.github/workflows/build.yml` 是 PR 上的打包冒烟测试：跑 `--dir` 打包，然后断言 `Resources/app/node_modules/@earendil-works/pi-coding-agent` 和两个扩展真的进了包。
+
+### 未签名产物怎么打开
+
+首次打开会被拦（「无法打开，因为 Apple 无法验证」）：右键 → 打开，或者
+
+```bash
+xattr -cr /Applications/Pi\ Desktop.app   # 只在你自己确认过来源的情况下
+```
+
+### 两处刻意的选择
+
+- **`asar: false`**：pi 是独立的 Node 子进程，要直接从文件系统读自己的 `dist/` 和 TS 扩展；`app.asar` 会把它们藏起来。代价是 app 目录里有一万多文件（约 390 MB）。
+- **不做 universal 单包**：`@earendil-works/pi-tui` 自带 `darwin-arm64` / `darwin-x64` 两份预编译 `.node`，合并成 universal 要额外配 `@electron/universal` 的 `x64ArchFiles`，体积还翻倍。arm64 / x64 各一个 dmg 更省事。
+
+图标是 `scripts/make-icon.mjs` 用纯 Node（SDF 画形状 + 手写 PNG 编码，无依赖）生成的，改完跑 `make icon` 会一起更新 `.png` 和 `.icns`。
 
 ## 已知限制 / 下一步
 
@@ -128,4 +180,5 @@ pi 作为独立的 Node 子进程运行，需要直接从文件系统读取自�
 - pi 的 `find` 工具依赖 `fd`，pi 会自动下载；在离线环境下这一项会失败（`grep` 用系统里的 `rg`）。
 - **PR / CI 状态**依赖 `gh` CLI 已登录。
 - **预览**面板只允许 `localhost` 地址。
-- 目前只在 Linux（xvfb）下实际运行过窗口。macOS 用 `hiddenInset` 红绿灯，Windows 用 `titleBarOverlay` 原生窗口按钮，这两者还需要在真机上确认。
+- 目前只在 macOS（打包版，Apple Silicon）和 Linux（xvfb）上实际跑过窗口。macOS 用 `hiddenInset` 红绿灯，Windows 用 `titleBarOverlay` 原生窗口按钮，Windows 那套还需要在真机上确认。
+- 没有自动更新：升级靠重新下载 dmg。要接 `electron-updater` 得再产一个 `zip` target（dmg 不能做增量更新），并加一个设置项。

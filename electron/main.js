@@ -4,6 +4,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { Store, KEY_ENV, envForKeys } = require('./store');
 const { SessionHub } = require('./sessions');
+const { childEnv } = require('./env');
 const git = require('./git');
 
 app.setName('Pi Desktop');
@@ -69,7 +70,7 @@ function ensureDemoProject() {
     const src = path.join(__dirname, '..', 'demo', 'todo-app').replace('app.asar', 'app.asar.unpacked');
     fs.cpSync(src, dest, { recursive: true });
     try {
-      const g = (...a) => execFileSync('git', a, { cwd: dest, stdio: 'ignore' });
+      const g = (...a) => execFileSync('git', a, { cwd: dest, env: childEnv(), stdio: 'ignore' });
       g('init', '-q', '-b', 'main');
       g('add', '-A');
       g('-c', 'user.name=Pi Desktop', '-c', 'user.email=demo@pi.desktop', 'commit', '-qm', 'Initial commit');
