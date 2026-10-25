@@ -11,8 +11,6 @@ body[data-native] #navFwd { display: none !important; }
 body[data-native][data-os="mac"] .chrome { padding-left: 86px; }
 body[data-native][data-os="win"] .ch,
 body[data-native][data-os="win"] #chatMain .topbar { padding-right: 150px; }
-body[data-native][data-os="win"] .code-main.rc-open .ch { padding-right: 12px; }
-body[data-native][data-os="win"] .right-col { padding-top: 46px; }
 
 /* Window dragging */
 .chrome, .sb-chrome-space, .ch, #chatMain .topbar { -webkit-app-region: drag; }
@@ -26,15 +24,28 @@ body[data-native][data-os="win"] .right-col { padding-top: 46px; }
 .ask-in { width: 100%; margin-bottom: 10px; resize: vertical; background: var(--pane); color: var(--tx); border: 0.5px solid var(--line-2); border-radius: 8px; padding: 8px 10px; font: 14px var(--ui); }
 
 /* Terminal input */
-#bottomBody:has(.term-b) { display: flex; flex-direction: column; }
+#terminalBody { display: flex; flex-direction: column; overflow: hidden; }
 .term-b { flex: 1; min-height: 0; overflow: auto; }
 .term-in { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-top: 0.5px solid var(--line); background: var(--win); font: 12.5px var(--mono); color: #d97757; }
-.term-in input { flex: 1; border: 0; outline: 0; background: none; color: var(--tx); font: inherit; }
+.term-in input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--tx); font: inherit; }
 
 /* Preview */
 .pv-form { flex: 1; min-width: 0; }
 .pv-form input { width: 100%; height: 28px; border-radius: 7px; border: 0.5px solid var(--line-2); background: var(--pane); color: var(--tx); font: 12.5px var(--mono); padding: 0 10px; outline: 0; }
 .pv-iframe { width: 100%; height: 100%; border: 0; background: #fff; display: block; }
+#previewBody { overflow: hidden; }
+.files-filter { padding: 4px 10px 8px; }
+.files-filter input { width: 100%; min-width: 0; padding: 6px 9px; border: 1px solid var(--line-2); border-radius: 7px; outline: 0; color: var(--tx); background: var(--card-2); font: 13px var(--ui); }
+.files-filter input:focus-visible { border-color: var(--blue); }
+.file-tree { padding: 0 6px 8px; }
+.file-tree-row { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; height: 30px; padding: 0 8px 0 calc(8px + var(--depth, 0) * 16px); border-radius: 6px; text-align: left; color: var(--tx-2); font-size: 13px; }
+.file-tree-row:hover, .file-tree-row:focus-visible { background: var(--hov); color: var(--tx); }
+.file-tree-row svg { flex-shrink: 0; }
+.file-tree-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-tree-row[aria-expanded="true"] .cv { transform: rotate(90deg); }
+.dock-column > .row-resize { display: block; }
+.dock-column .pane-resize[aria-orientation="horizontal"] { width: 100%; }
+@container (max-width: 320px) { #diffCard [data-t="search"], #diffCard [data-t="more"], #diffCard [data-t="pop"] { display: none; } }
 
 /* Modal */
 .modal-wrap { position: fixed; inset: 0; z-index: 220; background: rgba(0, 0, 0, 0.4); display: flex; align-items: flex-start; justify-content: center; padding-top: 16vh; }
@@ -63,7 +74,7 @@ body[data-native][data-os="win"] .right-col { padding-top: 46px; }
    Cowork on pi: an open task uses the shared session view (#codeMain)
    ===================================================================== */
 body[data-mode="chat"][data-view="thread"] #chatMain { display: none; }
-body[data-mode="chat"][data-view="thread"] #codeMain { display: flex; }
+body[data-mode="chat"][data-view="thread"] #codeMain { display: grid; }
 body[data-mode="chat"] .code-act, body[data-mode="chat"] #prBar { display: none !important; }
 body[data-mode="code"] .cowork-act { display: none !important; }
 #welcome[hidden] { display: none; }
@@ -77,7 +88,7 @@ body[data-mode="code"] .cowork-act { display: none !important; }
 /* Cowork composer: folder menu + model menu */
 #folderMenu { min-width: 280px; top: calc(100% + 6px); }
 #folderMenu .proj-row { height: 36px; font-size: 14px; }
-#modelMenu { min-width: 260px; max-height: 60vh; overflow-y: auto; }
+#modelMenu { min-width: 260px; }
 #modelMenu .pop-label { font-size: 11.5px; color: var(--tx-3); padding: 6px 10px 4px; }
 .eff-row { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 8px 6px; }
 .eff-chip { height: 26px; padding: 0 9px; border-radius: 7px; border: 0.5px solid var(--line-2); font-size: 12.5px; color: var(--tx-2); }

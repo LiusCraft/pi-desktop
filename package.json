@@ -9,7 +9,10 @@
     "demo": "electron . --demo",
     "test": "node --test --test-reporter=spec test/*.test.js",
     "dist": "electron-builder",
-    "test:ui": "node test/ui-smoke.js && node test/ui-cowork.js"
+    "test:ui": "node test/ui-model-menu.js && node test/ui-rendering.js && node test/ui-workspace.js && node test/ui-smoke.js && node test/ui-cowork.js",
+    "test:ui:model-menu": "node test/ui-model-menu.js",
+    "test:ui:rendering": "node test/ui-rendering.js",
+    "test:ui:workspace": "node test/ui-workspace.js"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^1.4.0"

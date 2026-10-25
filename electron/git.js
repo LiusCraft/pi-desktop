@@ -82,7 +82,9 @@ async function listFiles(cwd, limit = 3000) {
 
 // PR state for the current branch via the GitHub CLI; null when gh or a PR is unavailable.
 async function prStatus(cwd) {
-  const out = await run('gh', ['pr', 'view', '--json', 'number,url,state,statusCheckRollup,comments,reviews'], cwd, { allowFail: true });
+  let out = await run('gh', ['pr', 'view', '--json', 'number,url,state,isDraft,statusCheckRollup,comments,reviews'], cwd, { allowFail: true });
+  // Some tokens can read the PR but not CI/reviews. Still expose its identity/state.
+  if (!out) out = await run('gh', ['pr', 'view', '--json', 'number,url,state,isDraft'], cwd, { allowFail: true });
   if (!out) return null;
   try {
     const pr = JSON.parse(out);
@@ -98,6 +100,7 @@ async function prStatus(cwd) {
       num: pr.number,
       url: pr.url,
       state: String(pr.state).toLowerCase(),
+      draft: !!pr.isDraft,
       ci,
       checks,
       comments: (pr.comments || []).length + (pr.reviews || []).filter((r) => r.body).length,

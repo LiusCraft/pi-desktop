@@ -224,7 +224,7 @@ class SessionHub extends EventEmitter {
     const m = this.meta(id);
     const pr = await git.prStatus(m.cwd);
     if (pr) {
-      m.pr = { num: pr.num, url: pr.url, state: pr.state };
+      m.pr = { num: pr.num, url: pr.url, state: pr.state, draft: pr.draft };
       this.save();
     }
     return pr;

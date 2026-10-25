@@ -230,7 +230,6 @@
 
   <!-- ============ Code 主区域 ============ -->
   <main class="main code-main" id="codeMain">
-    <div class="code-center">
       <header class="ch">
         <button class="ic-btn mobile-only open-sb" title="Menu">
           <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 6h14M3 10h14M3 14h14"/></svg>
@@ -253,6 +252,7 @@
           <button class="ic-btn code-act" id="termBtn" title="Terminal  Ctrl+`"><svg viewBox="0 0 20 20" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6l4 4-4 4M10 15h6"/></svg></button>
           <button class="ic-btn sess-only code-act" id="diffBtn" title="Diff  Ctrl+D"><svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3.5" y="3.5" width="13" height="13" rx="2.5"/><path d="M10 6.5v5M7.5 9h5M7.5 13.5h5"/></svg></button>
           <button class="ic-btn code-act" id="previewBtn" title="Preview"><svg viewBox="0 0 20 20" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c2 2 3 4.4 3 7s-1 5-3 7c-2-2-3-4.4-3-7s1-5 3-7z"/></svg></button>
+          <button class="ic-btn code-act" id="filesBtn" title="Files"><svg viewBox="0 0 20 20" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 6a2 2 0 0 1 2-2h3.2l1.6 1.8h6.2a2 2 0 0 1 2 2V14a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2z"/></svg></button>
           <button class="ic-btn cowork-act" id="panelBtn" title="Progress"><svg viewBox="0 0 20 20" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="3.5" width="15" height="13" rx="2.5"/><path d="M12.5 3.5v13"/></svg></button>
           <div class="pop-wrap">
             <button class="ic-btn" id="openInBtn" title="Open in…"><svg viewBox="0 0 20 20" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 6a2 2 0 0 1 2-2h3.2l1.6 1.8h6.2a2 2 0 0 1 2 2V14a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2z"/></svg></button>
@@ -268,6 +268,7 @@
         </div>
       </header>
 
+    <div class="code-center">
       <!-- 新会话：项目选择 -->
       <section class="code-welcome" id="codeWelcome">
         <div class="cw-mid">
@@ -362,8 +363,10 @@
       </div>
     </div>
 
-    <!-- 右侧：浮动卡片 -->
+    <!-- 工具工作区：两列可独立调整宽度，每列内可调整卡片高度 -->
+    <div id="workspaceResize" class="pane-resize" hidden></div>
     <div class="right-col" id="rightCol">
+      <div class="dock-column" id="dockPrimary">
       <section class="card" id="diffCard" hidden>
         <header class="card-h">
           <div class="pop-wrap">
@@ -383,10 +386,28 @@
         <div class="card-b diff-body" id="diffBody"></div>
       </section>
 
+      <section class="card" id="previewCard" hidden>
+        <header class="card-h" id="previewHead"></header>
+        <div class="card-b" id="previewBody"></div>
+      </section>
+
       <section class="card" id="bottomCard" hidden>
         <header class="card-h" id="bottomHead"></header>
         <div class="card-b" id="bottomBody"></div>
       </section>
+      </div>
+      <div id="columnsResize" class="pane-resize" hidden></div>
+      <div class="dock-column" id="dockSecondary">
+        <section class="card" id="filesCard" hidden>
+          <header class="card-h" id="filesHead"></header>
+          <div class="files-filter"><input id="filesFilter" placeholder="Filter files" aria-label="Filter files" spellcheck="false"></div>
+          <div class="card-b file-tree" id="filesBody"></div>
+        </section>
+        <section class="card" id="terminalCard" hidden>
+          <header class="card-h" id="terminalHead"></header>
+          <div class="card-b" id="terminalBody"></div>
+        </section>
+      </div>
     </div>
   </main>
 
@@ -416,6 +437,7 @@
 
 <div class="toast" id="toast"></div>
 <script src="app.js"></script>
+<script src="workspace.js"></script>
 <script src="code.js"></script>
 <script src="shell.js"></script>
 </body>

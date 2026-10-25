@@ -87,8 +87,8 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1440,
     height: 920,
-    minWidth: 900,
-    minHeight: 600,
+    minWidth: 720,
+    minHeight: 480,
     title: 'Pi Desktop',
     backgroundColor: dark ? '#1f1f1e' : '#f7f6f2',
     titleBarStyle: 'hidden',

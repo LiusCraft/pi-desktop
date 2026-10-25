@@ -44,15 +44,37 @@
   /* ---------------- Markdown ---------------- */
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const inline = (s) => {
-    // Pull out code spans first so their content is not formatted.
-    const codes = [];
-    let t = esc(s).replace(/`([^`]+)`/g, (_, c) => String.fromCharCode(0xE000 + codes.push(`<code>${c}</code>`) - 1));
-    t = t
-      .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
-      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    // Protect code and URLs before formatting emphasis, including underscores in URLs.
+    const slots = [];
+    const hold = (html) => `\uE000${slots.push(html) - 1}\uE001`;
+    const restore = (text) => text.replace(/\uE000(\d+)\uE001/g, (_, i) => slots[i] ?? '');
+    const emphasis = (text) => text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       .replace(/(^|[^*\w])\*([^*\n]+)\*/g, '$1<em>$2</em>');
-    return t.replace(/[-]/g, (ch) => codes[ch.charCodeAt(0) - 0xE000]);
+    const link = (url, label = url) => hold(`<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`);
+    let t = esc(s).replace(/`([^`]+)`/g, (_, c) => hold(`<code>${c}</code>`));
+    t = t.replace(/\[([^\]]+)\]\((https?:\/\/(?:[^\s()]|\([^\s()]*\))+)\)/g,
+      (_, label, url) => link(url, restore(emphasis(label))));
+    t = t.replace(/&lt;(https?:\/\/(?:(?!&(?:lt|gt|quot);)[^\s<>])+)&gt;/g, (_, url) => link(url));
+    t = t.replace(/https?:\/\/(?:(?!&(?:lt|gt|quot);)[^\s<>\uE000\uE001])+/g, (match) => {
+      let url = match.replace(/[.,!?;:，。！？；：、*]+$/u, '');
+      while (/[)\]}]$/.test(url)) {
+        const end = url.at(-1), start = { ')': '(', ']': '[', '}': '{' }[end];
+        if (url.split(end).length <= url.split(start).length) break;
+        url = url.slice(0, -1);
+      }
+      return link(url) + match.slice(url.length);
+    });
+    return restore(emphasis(t));
   };
+
+  // Use the native browser bridge in every content view, including streamed messages.
+  document.addEventListener('click', (e) => {
+    const link = e.target.closest('a[href]');
+    const url = link?.getAttribute('href');
+    if (!/^https?:\/\//i.test(url || '') || !window.piDesktop) return;
+    e.preventDefault();
+    window.piDesktop.invoke('app:openExternal', url).catch(() => toast('无法打开链接'));
+  });
 
   function highlight(code, lang) {
     let s = esc(code);

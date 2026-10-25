@@ -19,6 +19,7 @@
     get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
   };
+  const workspace = window.createWorkspace(codeMain, store);
   const fail = (err) => toast(String(err?.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
 
   /* ================= 图标 ================= */
@@ -186,15 +187,26 @@
     rt = {
       meta, events: [], loaded: false, running: meta.status === 'running', statusText: '', t0: 0, tokens: 0,
       ctxPct: null, cur: null, tools: new Map(), todosEv: null, pendingUser: [], perm: null, unread: false,
-      changes: [], pr: meta.pr || null, prHidden: false, diffOpen: false, bottom: null,
+      changes: [], pr: meta.pr || null, prHidden: false, diffOpen: false, previewOpen: false, filesOpen: false, terminalOpen: false, bottom: null,
       openGaps: new Set(), collapsed: new Set(), term: [], commands: [], files: null, model: null, levels: [],
-      outputs: [], panelOpen: innerWidth > 1180,
+      outputs: [], panelOpen: innerWidth > 1180, fileDirs: new Set(), fileFilter: '',
     };
     state.rts.set(meta.id, rt);
     return rt;
   }
 
   /* ================= 事件渲染 ================= */
+  function questionTitle(title) {
+    // RPC question tools fold optional previews into a multi-line dialog title.
+    const [question, ...previews] = String(title || '').split(/\n\n(?=--- \d+\. [^\n]+ preview ---\n)/);
+    return `<div class="p-t p-question">${esc(question)}</div>` + previews.map((preview) => {
+      const line = preview.indexOf('\n');
+      return `<details class="ask-preview"><summary>${esc(preview.slice(0, line).replace(/^--- | ---$/g, ''))}</summary><pre class="mbox">${esc(preview.slice(line + 1))}</pre></details>`;
+    }).join('');
+  }
+  function resolvedPrompt(label, subject, denied = false) {
+    return `<span class="p-res-icon">${denied ? '✕' : '✓'}</span><span class="p-res-text" title="${esc(`${label} ${subject || ''}`)}">${esc(label)}${subject ? ` <span class="mono">${esc(subject)}</span>` : ''}</span>`;
+  }
   function linkify(root) {
     // Paths may contain non-ASCII names (e.g. 收件箱整理.md:1).
     const re = /((?:[\p{L}\p{N}_.-]+\/)*[\p{L}\p{N}_.-]+\.(?:[a-z]{1,5})):(\d+)/gu;
@@ -243,7 +255,7 @@
       case 'grep': return `Searched for ${b(t.q)}`;
       case 'glob': return `Found ${b(t.q)}`;
       case 'ls': return `Listed ${b(t.q || '.')}`;
-      case 'bash': return `${run ? 'Running' : 'Ran'} ${b(t.cmd.length > 80 ? t.cmd.slice(0, 80) + '…' : t.cmd)}`;
+      case 'bash': return `${run ? 'Running' : 'Ran'} ${b(t.cmd)}`;
       case 'agent': return `Agent · ${b(t.desc)}${t.summary ? ` <span class="dim-s">${esc(t.summary)}</span>` : ''}`;
       default: return `${run ? 'Using' : 'Used'} ${b(t.name)}`;
     }
@@ -279,14 +291,16 @@
         const ch = ev.tools.filter((t) => t.add != null);
         const tt = { add: ch.reduce((a, t) => a + t.add, 0), del: ch.reduce((a, t) => a + t.del, 0) };
         el.className = 'e-group' + (ev.open ? ' open' : '');
-        el.innerHTML = `<button class="g-sum">${running ? `<span class="shimmer">${toolLabel(running).replace(/<[^>]+>/g, '')}…</span>` : esc(groupSummary(ev))}
+        el.innerHTML = `<button class="g-sum"><span class="g-label${running ? ' shimmer' : ''}">${running ? `${toolLabel(running)}…` : esc(groupSummary(ev))}</span>
             ${ch.length && !running ? `<span class="plus">+${tt.add}</span><span class="minus">−${tt.del}</span>` : ''}${I.cv}</button>
           <div class="g-list">${ev.tools.map((t, i) => `<div class="g-row ${t.status}${t.open ? ' open' : ''}" data-i="${i}">
             <button class="g-rh"><span class="lbl${t.status === 'running' ? ' shimmer' : ''}">${toolLabel(t)}</span>${I.cv}</button>
             ${t.detail && !['edit', 'write', 'agent'].includes(t.kind) ? `<div class="g-det">${t.detail}</div>` : ''}</div>`).join('')}</div>`;
         el.querySelector('.g-sum').onclick = () => { ev.open = !ev.open; ev.userToggled = true; el.classList.toggle('open', ev.open); };
+        el.querySelector('.g-sum').title = el.querySelector('.g-label').textContent;
         el.querySelectorAll('.g-row').forEach((row) => {
           const t = ev.tools[+row.dataset.i];
+          row.querySelector('.g-rh').title = row.querySelector('.lbl').textContent;
           row.querySelector('.g-rh').onclick = () => {
             if (t.kind === 'edit' || t.kind === 'write') return openFileRef(t.path);
             if (t.kind === 'agent') return openBottom(rt, { type: 'agent', tool: t });
@@ -303,7 +317,7 @@
       case 'perm': {
         if (ev.resolved) {
           el.className = 'e-perm res';
-          el.innerHTML = `${ev.resolved === 'Deny' || ev.resolved === 'cancelled' ? '✕' : '✓'} ${esc({ Allow: 'Allowed', 'Always allow': 'Always allowed', Deny: 'Denied', cancelled: 'Cancelled' }[ev.resolved] || ev.resolved)} <span class="mono">${esc(ev.subject)}</span>`;
+          el.innerHTML = resolvedPrompt({ Allow: 'Allowed', 'Always allow': 'Always allowed', Deny: 'Denied', cancelled: 'Cancelled' }[ev.resolved] || ev.resolved, ev.subject, ev.resolved === 'Deny' || ev.resolved === 'cancelled');
           break;
         }
         el.className = 'e-perm';
@@ -317,7 +331,7 @@
         el.innerHTML = `<div class="p-t">${esc(ev.title)}</div>${preview}
           <div class="p-acts">
             <button class="p-btn primary" data-v="Allow">Allow <kbd>1</kbd></button>
-            <button class="p-btn" data-v="Always allow">${always} <kbd>2</kbd></button>
+            <button class="p-btn" data-v="Always allow" title="${esc(t.kind === 'bash' ? `Always allow ${t.cmd.split(/\s+/).slice(0, 2).join(' ')}` : 'Allow all edits this session')}"><span class="p-btn-label">${always}</span><kbd>2</kbd></button>
             <button class="p-btn" data-v="Deny">Deny <kbd>3</kbd></button>
           </div>`;
         el.querySelectorAll('[data-v]').forEach((b) => (b.onclick = () => answerUi(rt, ev, { value: b.dataset.v }, b.dataset.v)));
@@ -325,14 +339,17 @@
       }
       case 'ask': {
         // Generic extension dialog (select / confirm / input / editor).
-        el.className = 'e-perm' + (ev.resolved ? ' res' : '');
-        if (ev.resolved) { el.innerHTML = `✓ ${esc(ev.title)} <span class="mono">${esc(ev.resolved)}</span>`; break; }
+        el.className = 'e-perm e-ask' + (ev.resolved ? ' res' : '');
+        if (ev.resolved) { el.innerHTML = resolvedPrompt(ev.title.split('\n')[0], ev.resolved, ev.resolved === 'cancelled'); break; }
         const r = ev.req;
         let body = '';
-        if (r.method === 'select') body = `<div class="p-acts">${r.options.map((o, i) => `<button class="p-btn${i === 0 ? ' primary' : ''}" data-v="${esc(o)}">${esc(o)}</button>`).join('')}<button class="p-btn" data-c>Cancel</button></div>`;
+        if (r.method === 'select') body = `<div class="p-options">${r.options.map((o, i) => {
+          const split = o.indexOf(' — ');
+          return `<button class="p-btn p-option${i === 0 ? ' primary' : ''}" data-v="${esc(o)}"><span>${esc(split < 0 ? o : o.slice(0, split))}</span>${split < 0 ? '' : `<small>${esc(o.slice(split + 3))}</small>`}</button>`;
+        }).join('')}</div><div class="p-acts"><button class="p-btn" data-c>Cancel</button></div>`;
         else if (r.method === 'confirm') body = `<div class="p-desc">${esc(r.message || '')}</div><div class="p-acts"><button class="p-btn primary" data-yes>Yes</button><button class="p-btn" data-no>No</button></div>`;
         else body = `<textarea class="ask-in" rows="${r.method === 'editor' ? 6 : 1}" placeholder="${esc(r.placeholder || '')}">${esc(r.prefill || '')}</textarea><div class="p-acts"><button class="p-btn primary" data-ok>OK</button><button class="p-btn" data-c>Cancel</button></div>`;
-        el.innerHTML = `<div class="p-t">${esc(r.title)}</div>${body}`;
+        el.innerHTML = questionTitle(r.title) + body;
         el.querySelectorAll('[data-v]').forEach((b) => (b.onclick = () => answerUi(rt, ev, { value: b.dataset.v }, b.dataset.v)));
         el.querySelector('[data-yes]')?.addEventListener('click', () => answerUi(rt, ev, { confirmed: true }, 'Yes'));
         el.querySelector('[data-no]')?.addEventListener('click', () => answerUi(rt, ev, { confirmed: false }, 'No'));
@@ -467,7 +484,11 @@
     g.tools.push(t);
     rt.tools.set(toolCallId, { tool: t, group: g });
     update(rt, g);
-    if (!replay) setStatusText(rt, toolLabel(t).replace(/<[^>]+>/g, '') + '…');
+    if (!replay) {
+      const label = document.createElement('span');
+      label.innerHTML = toolLabel(t);
+      setStatusText(rt, label.textContent + '…');
+    }
   }
 
   function editStats(details) {
@@ -520,7 +541,19 @@
     } else t.detail = `<pre class="mbox">${esc(text.slice(0, 8000))}</pre>`;
     if (t.kind === 'bash' && !replay) {
       rt.term.push({ cmd: t.cmd, out: text });
-      if (rt.bottom?.type === 'term') renderBottom(rt);
+      if (rt.terminalOpen) renderTerminal(rt);
+      if (!isError && /\bgh\s+pr\s+(?:create|merge|close|reopen|ready|edit)\b/i.test(t.cmd)) {
+        // gh can take a moment to expose a just-created PR through `pr view`.
+        const created = /\bgh\s+pr\s+create\b/i.test(t.cmd) && text.match(/https?:\/\/[^\s<>"'`]+\/pull\/(\d+)/i);
+        if (created) {
+          rt.pr = { num: +created[1], url: created[0], state: 'open', draft: /(?:^|\s)--draft\b/.test(t.cmd), ci: 'none', checks: [], comments: 0 };
+          rt.meta.pr = { num: rt.pr.num, url: rt.pr.url, state: rt.pr.state, draft: rt.pr.draft };
+          call('sessions:update', rt.meta.id, { pr: rt.meta.pr }).catch(() => {});
+          if (isCur(rt)) renderPrBar();
+          renderSessions();
+        }
+        pollPr(rt, 3);
+      }
     }
     update(rt, entry.group);
   }
@@ -665,7 +698,8 @@
     }
     refreshStats(rt);
     scheduleChanges(rt);
-    if (rt.pr) pollPr(rt);
+    // A session without a PR may have created its first one during this turn.
+    pollPr(rt);
     refreshChrome();
   }
 
@@ -784,20 +818,31 @@
     } catch {}
   }
   const prTimers = new Map();
-  async function pollPr(rt) {
+  async function pollPr(rt, retries = 0) {
     clearTimeout(prTimers.get(rt.meta.id));
-    if (isCowork(rt)) return;
+    if (isCowork(rt) || rt.meta.archived) return;
+    rt.prRetries = Math.max(rt.prRetries || 0, retries);
+    const request = rt.prRequest = (rt.prRequest || 0) + 1;
     try {
       const pr = await call('sessions:pr', rt.meta.id);
+      if (request !== rt.prRequest || rt.meta.archived) return;
       if (pr) {
+        rt.prRetries = 0;
         const prevCi = rt.pr?.ci;
         rt.pr = pr;
-        if (prevCi === 'pending' && pr.ci !== 'pending') toast(`PR #${pr.num} · CI ${pr.ci === 'pass' ? 'passed' : 'failed'}`);
+        rt.meta.pr = { num: pr.num, url: pr.url, state: pr.state, draft: pr.draft };
+        if (prevCi === 'pending' && ['pass', 'fail'].includes(pr.ci)) toast(`PR #${pr.num} · CI ${pr.ci === 'pass' ? 'passed' : 'failed'}`);
         if (isCur(rt)) renderPrBar();
         renderSessions();
         if (pr.state === 'open') prTimers.set(rt.meta.id, setTimeout(() => pollPr(rt), pr.ci === 'pending' ? 15000 : 60000));
+        return;
       }
     } catch {}
+    if (request === rt.prRequest && !rt.meta.archived && (rt.prRetries || rt.pr?.state === 'open')) {
+      const retry = rt.prRetries > 0;
+      if (retry) rt.prRetries--;
+      prTimers.set(rt.meta.id, setTimeout(() => pollPr(rt), retry ? 1500 : 60000));
+    }
   }
 
   /* ================= 发送 ================= */
@@ -906,6 +951,7 @@
     $('#codeWelcomeSlot').appendChild(codeComposer);
     $('.ch').classList.add('is-new');
     codeMain.classList.remove('rc-open');
+    workspace.reset();
     showMode(state.mode);
     renderModelButtons();
     renderSessions(); renderPrBar(); renderProjects(); updateSendBtn(); refreshImportable();
@@ -929,7 +975,7 @@
     refreshChrome();
     app.classList.remove('mobile-open');
     codeInput.focus();
-    if (rt.loaded && !fresh) return;
+    if (rt.loaded && !fresh) { pollPr(rt); return; }
     try {
       const r = await call('sessions:open', id);
       rt.meta = r.meta;
@@ -1146,6 +1192,7 @@
       `<button class="menu-item opt${l === effort ? ' active' : ''}" data-v="${l}"><b>${LEVEL_LABEL[l] || l}</b></button>`).join('');
     $('#effortMenu').querySelectorAll('.opt').forEach((o) => (o.onclick = () => { closePops(); chooseEffort(o.dataset.v); }));
     renderCoworkModel(byProvider, model, levels, effort);
+    document.querySelectorAll('#codeModelMenu.open, #modelMenu.open').forEach((menu) => fitModelMenu(menu, true));
   }
   async function chooseModel(id) {
     const rt = curRt();
@@ -1204,7 +1251,7 @@
     const add = ch.reduce((a, f) => a + f.add, 0), del = ch.reduce((a, f) => a + f.del, 0);
     const stat = `<span class="chip-s"><span class="plus">+${add}</span><span class="minus">−${del}</span></span>`;
     if (!rt.pr) {
-      bar.innerHTML = `<span class="pr-ic draft">${I.branch}</span><span class="pr-repo">${esc(projName(rt.meta.projectPath))}</span><span class="pr-br">${esc(rt.meta.branch)}</span>${stat}
+      bar.innerHTML = `<span class="pr-ic draft">${I.branch}</span><span class="pr-repo" title="${esc(rt.meta.projectPath)}">${esc(projName(rt.meta.projectPath))}</span><span class="pr-br" title="${esc(rt.meta.branch)}">${esc(rt.meta.branch)}</span>${stat}
         <button class="pr-create" ${rt.running ? 'disabled style="opacity:.5"' : ''}>Create PR</button>`;
       bar.querySelector('.pr-create').onclick = () => {
         if (rt.running) return;
@@ -1214,14 +1261,17 @@
       return;
     }
     const pr = rt.pr;
-    bar.innerHTML = `<span class="pr-ic">${pr.state === 'merged' ? I.merged : I.pr}</span><span class="pr-num">#${pr.num}</span><span class="pr-repo">${esc(projName(rt.meta.projectPath))}</span><span class="pr-br">${esc(rt.meta.branch)}</span>${stat}
+    const status = pr.state === 'merged' ? 'merged' : pr.state === 'closed' ? 'closed' : pr.draft ? 'draft' : 'open';
+    const statusLabel = { open: 'Open', draft: 'Draft', closed: 'Closed', merged: 'Merged' }[status];
+    bar.innerHTML = `<button class="pr-link" data-a="open" title="${esc(pr.url)}"><span class="pr-ic ${status}">${pr.state === 'merged' ? I.merged : I.pr}</span><span class="pr-num">#${pr.num}</span></button><span class="pr-repo" title="${esc(rt.meta.projectPath)} · ${esc(rt.meta.branch)}">${esc(projName(rt.meta.projectPath))}</span><span class="pr-spacer"></span>${stat}
       ${pr.comments ? `<button class="chip-s" data-a="cm" title="Review comments">${I.comment}${pr.comments}</button>` : ''}
+      <button class="pr-state ${status}" data-a="open" title="${statusLabel} · ${esc(pr.url)}">${statusLabel}</button>
       ${pr.checks?.length ? `<div class="pop-wrap"><button class="chip-s ui" data-a="ci"><span class="dot ${pr.ci}"></span>CI ${I.cvd}</button>
         <div class="pop pop-up pop-right ci-pop" id="ciPop"><div class="pop-label">Checks · ${pr.ci === 'pending' ? 'running' : pr.ci === 'pass' ? 'all passed' : 'failing'}</div>
         ${pr.checks.map((c) => `<div class="ci-row"><span class="dot ${c.st}"></span>${esc(c.n)}</div>`).join('')}
         <div class="menu-sep"></div>
         <button class="menu-item" data-a="watch">盯着 CI，失败就自动修</button>
-        <button class="menu-item" data-a="open">Open on GitHub</button></div></div>` : `<button class="chip-s ui" data-a="open">Open</button>`}
+        <button class="menu-item" data-a="open">Open on GitHub</button></div></div>` : ''}
       <button class="ic-btn sm" data-a="x" title="Hide">${I.close}</button>`;
     bar.querySelector('[data-a=ci]')?.addEventListener('click', (e) => { e.stopPropagation(); openPop('#ciPop'); });
     bar.querySelector('[data-a=x]').onclick = () => { rt.prHidden = true; renderPrBar(); };
@@ -1244,21 +1294,42 @@
       codeMain.classList.toggle('rc-open', rt.panelOpen || !!rt.bottom);
       $('#panelBtn').classList.toggle('on', rt.panelOpen);
       $('#diffCard').hidden = true;
+      $('#previewCard').hidden = true;
+      $('#filesCard').hidden = true;
+      $('#terminalCard').hidden = true;
       coworkCard.hidden = !rt.panelOpen;
       if (rt.panelOpen) renderCoworkPanel(rt);
       renderBottom(rt);
+      workspace.sync();
       return;
     }
     coworkCard.hidden = true;
-    const open = !!rt && (rt.diffOpen || !!rt.bottom);
+    const open = !!rt && (rt.diffOpen || rt.previewOpen || rt.filesOpen || rt.terminalOpen || !!rt.bottom);
     codeMain.classList.toggle('rc-open', open);
+    codeMain.classList.remove('rc-wide');
     $('#diffBtn').classList.toggle('on', !!rt?.diffOpen);
-    $('#termBtn').classList.toggle('on', rt?.bottom?.type === 'term');
-    $('#previewBtn').classList.toggle('on', rt?.bottom?.type === 'preview');
-    if (!rt) return;
+    $('#termBtn').classList.toggle('on', !!rt?.terminalOpen);
+    $('#previewBtn').classList.toggle('on', !!rt?.previewOpen);
+    $('#filesBtn').classList.toggle('on', !!rt?.filesOpen);
+    if (!rt) {
+      $('#diffCard').hidden = true;
+      $('#previewCard').hidden = true;
+      $('#filesCard').hidden = true;
+      $('#terminalCard').hidden = true;
+      renderBottom(null);
+      workspace.sync();
+      return;
+    }
     $('#diffCard').hidden = !rt.diffOpen;
     if (rt.diffOpen) renderDiff(rt);
+    $('#previewCard').hidden = !rt.previewOpen;
+    if (rt.previewOpen) renderPreview(rt);
+    $('#filesCard').hidden = !rt.filesOpen;
+    if (rt.filesOpen) renderFiles(rt);
+    $('#terminalCard').hidden = !rt.terminalOpen;
+    if (rt.terminalOpen) renderTerminal(rt);
     renderBottom(rt);
+    workspace.sync();
   }
   function renderDiff(rt) {
     $('#diffBase').textContent = rt.meta.baseBranch || 'base';
@@ -1316,23 +1387,26 @@
     const b = e.target.closest('[data-t]'); if (!b) return;
     const rt = curRt();
     ({
-      search: () => toast('Ctrl/⌘ F 在页面中搜索'),
+      search: () => {
+        rt.filesOpen = true; rt.fileFilter = '';
+        if (!rt.files) call('sessions:files', rt.meta.id).then((files) => { rt.files = files; if (isCur(rt)) renderRight(); }).catch(fail);
+        renderRight(); $('#filesFilter').focus();
+      },
       more: () => { rt.openGaps.clear(); rt.collapsed.clear(); loadChanges(rt); toast('Refreshed'); },
       pop: () => call('sessions:openIn', rt.meta.id, 'vscode'),
-      expand: () => codeMain.classList.toggle('rc-wide'),
-      close: () => { rt.diffOpen = false; codeMain.classList.remove('rc-wide'); renderRight(); },
+      expand: () => workspace.expand($('#diffCard')),
+      close: () => { rt.diffOpen = false; workspace.reset(); renderRight(); },
     })[b.dataset.t]();
   });
   $('#fileListBtn').onclick = (e) => { e.stopPropagation(); openPop('#fileListMenu'); };
 
   function openBottom(rt, b, force) {
-    const same = !force && rt.bottom && rt.bottom.type === b.type && (b.type === 'term' || b.type === 'preview');
-    rt.bottom = same ? null : b;
+    rt.bottom = b;
     renderRight();
   }
   function renderBottom(rt) {
     const card = $('#bottomCard'), head = $('#bottomHead'), body = $('#bottomBody');
-    const b = rt.bottom;
+    const b = rt?.bottom;
     card.hidden = !b;
     if (!b) return;
     const close = `<button class="ic-btn sm" data-x title="Close">${I.close}</button>`;
@@ -1350,41 +1424,6 @@
       body.innerHTML = `<div class="bc-pad"><div class="bc-prompt">${esc(t.prompt || '')}</div>
         ${t.status === 'running' ? `<div class="bc-meta"><span class="shimmer">${esc(t.summary || 'Working…')}</span></div>` : `<div class="bc-meta">${esc(t.summary || '')}</div><div class="e-text" style="margin:0">${renderMarkdown(t.md || '')}</div>`}</div>`;
       linkify(body);
-    } else if (b.type === 'term') {
-      head.innerHTML = `<span class="ttl">Terminal <span class="mono" style="color:var(--tx-3)">${esc(rt.meta.cwd)}</span></span><div class="card-tools">${close}</div>`;
-      body.innerHTML = `<div class="term-b">${rt.term.length ? rt.term.map((t) => `<span class="cmd">${esc(t.cmd)}</span>\n${colorOut(t.out)}\n`).join('\n') : '<span class="dim">Claude 运行的命令会显示在这里。也可以在下面输入命令，输出会加入对话上下文。</span>'}</div>
-        <form class="term-in"><span>❯</span><input placeholder="Run a command in ${esc(projName(rt.meta.cwd))}" spellcheck="false"></form>`;
-      body.scrollTop = body.scrollHeight;
-      const form = body.querySelector('form');
-      form.onsubmit = async (e) => {
-        e.preventDefault();
-        const input = form.querySelector('input');
-        const cmd = input.value.trim();
-        if (!cmd) return;
-        input.value = '';
-        const entry = { cmd, out: '…' };
-        rt.term.push(entry);
-        renderBottom(rt);
-        try {
-          const r = await rpc(rt, { type: 'bash', command: cmd });
-          entry.out = r.output + (r.exitCode ? `\nCommand exited with code ${r.exitCode}` : '');
-        } catch (err) { entry.out = String(err.message || err); }
-        renderBottom(rt);
-        scheduleChanges(rt);
-        body.querySelector('input')?.focus();
-      };
-    } else if (b.type === 'preview') {
-      const url = b.url || store.get('pd_preview', 'http://localhost:5173');
-      head.innerHTML = `<form class="pv-form"><input value="${esc(url)}" spellcheck="false"></form><div class="card-tools"><button class="ic-btn sm" data-r title="Reload">${I.reload}</button>${expand}${close}</div>`;
-      body.innerHTML = `<iframe class="pv-iframe" src="${esc(url)}" sandbox="allow-scripts allow-forms allow-same-origin"></iframe>`;
-      head.querySelector('form').onsubmit = (e) => {
-        e.preventDefault();
-        let u = head.querySelector('input').value.trim();
-        if (!/^https?:\/\//.test(u)) u = 'http://' + u;
-        if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(u)) return toast('预览只支持 localhost');
-        b.url = u; store.set('pd_preview', u); renderBottom(rt);
-      };
-      head.querySelector('[data-r]').onclick = () => renderBottom(rt);
     } else if (b.type === 'file') {
       head.innerHTML = `<span class="ttl"><span class="mono">${esc(b.path)}</span></span><div class="card-tools">${close}</div>`;
       body.innerHTML = `<div style="padding:8px">${b.text == null ? '<div class="diff-empty">Binary or large file</div>' : codeLines(b.text, b.path, b.line)}</div>`;
@@ -1392,10 +1431,101 @@
       if (hl) body.scrollTop = hl.offsetTop - 80;
     }
     head.querySelector('[data-x]').onclick = () => { rt.bottom = null; renderRight(); };
-    head.querySelector('[data-e]')?.addEventListener('click', () => codeMain.classList.toggle('rc-wide'));
+    head.querySelector('[data-e]')?.addEventListener('click', () => workspace.expand(card));
   }
-  $('#termBtn').onclick = () => { const rt = curRt(); if (!rt) return toast('先开始一个会话'); openBottom(rt, { type: 'term' }); };
-  $('#previewBtn').onclick = () => { const rt = curRt(); if (!rt) return toast('先开始一个会话'); openBottom(rt, { type: 'preview' }); };
+  $('#termBtn').onclick = () => { const rt = curRt(); if (!rt) return toast('先开始一个会话'); rt.terminalOpen = !rt.terminalOpen; renderRight(); };
+  $('#previewBtn').onclick = () => { const rt = curRt(); if (!rt) return toast('先开始一个会话'); rt.previewOpen = !rt.previewOpen; renderRight(); };
+  $('#filesBtn').onclick = () => { const rt = curRt(); if (!rt) return toast('先开始一个会话'); rt.filesOpen = !rt.filesOpen; if (rt.filesOpen && !rt.files) call('sessions:files', rt.meta.id).then((files) => { rt.files = files; if (isCur(rt)) renderRight(); }).catch(fail); renderRight(); };
+  $('#filesFilter').addEventListener('input', () => { const rt = curRt(); if (!rt) return; rt.fileFilter = $('#filesFilter').value; renderFiles(rt); });
+
+  function renderPreview(rt) {
+    const card = $('#previewCard'), head = $('#previewHead'), body = $('#previewBody');
+    const url = rt.previewUrl || store.get('pd_preview', 'http://localhost:5173');
+    head.innerHTML = `<form class="pv-form"><input value="${esc(url)}" aria-label="Preview URL" spellcheck="false"></form><div class="card-tools"><button class="ic-btn sm" data-r title="Reload">${I.reload}</button><button class="ic-btn sm" data-e title="Expand">${I.expand}</button><button class="ic-btn sm" data-x title="Close">${I.close}</button></div>`;
+    const frame = body.querySelector('iframe') || document.createElement('iframe');
+    frame.className = 'pv-iframe';
+    frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-same-origin');
+    if (!frame.isConnected) body.replaceChildren(frame);
+    if (frame.dataset.url !== url) { frame.src = url; frame.dataset.url = url; }
+    head.querySelector('form').onsubmit = (e) => {
+      e.preventDefault();
+      let u = head.querySelector('input').value.trim();
+      if (!/^https?:\/\//.test(u)) u = 'http://' + u;
+      if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(u)) return toast('预览只支持 localhost');
+      rt.previewUrl = u; store.set('pd_preview', u); renderPreview(rt);
+    };
+    head.querySelector('[data-r]').onclick = () => { frame.src = url; };
+    head.querySelector('[data-e]').onclick = () => workspace.expand(card);
+    head.querySelector('[data-x]').onclick = () => { rt.previewOpen = false; renderRight(); };
+  }
+
+  function renderTerminal(rt) {
+    const card = $('#terminalCard'), head = $('#terminalHead'), body = $('#terminalBody');
+    head.innerHTML = `<span class="ttl">Terminal <span class="mono" style="color:var(--tx-3)">${esc(rt.meta.cwd)}</span></span><div class="card-tools"><button class="ic-btn sm" data-x title="Close">${I.close}</button></div>`;
+    let output = body.querySelector('.term-b');
+    let form = body.querySelector('.term-in');
+    if (!output || !form || body.dataset.session !== rt.meta.id) {
+      output = document.createElement('div'); output.className = 'term-b';
+      form = document.createElement('form'); form.className = 'term-in';
+      form.innerHTML = `<span>❯</span><input aria-label="Run a terminal command" placeholder="Run a command in ${esc(projName(rt.meta.cwd))}" spellcheck="false">`;
+      body.replaceChildren(output, form);
+      body.dataset.session = rt.meta.id;
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const input = form.querySelector('input'), cmd = input.value.trim();
+        if (!cmd) return;
+        input.value = '';
+        const entry = { cmd, out: '…' };
+        rt.term.push(entry); renderTerminal(rt);
+        try { const r = await rpc(rt, { type: 'bash', command: cmd }); entry.out = r.output + (r.exitCode ? `\nCommand exited with code ${r.exitCode}` : ''); }
+        catch (err) { entry.out = String(err.message || err); }
+        renderTerminal(rt); scheduleChanges(rt); body.querySelector('input')?.focus();
+      };
+    }
+    output.innerHTML = rt.term.length ? rt.term.map((t) => `<span class="cmd">${esc(t.cmd)}</span>\n${colorOut(t.out)}\n`).join('\n') : '<span class="dim">Claude 运行的命令会显示在这里。也可以在下面输入命令，输出会加入对话上下文。</span>';
+    body.scrollTop = body.scrollHeight;
+    head.querySelector('[data-x]').onclick = () => { rt.terminalOpen = false; renderRight(); };
+  }
+
+  function renderFiles(rt) {
+    const card = $('#filesCard'), head = $('#filesHead'), body = $('#filesBody');
+    head.innerHTML = `<span class="ttl">Files</span><div class="card-tools"><button class="ic-btn sm" data-r title="Refresh">${I.reload}</button><button class="ic-btn sm" data-x title="Close">${I.close}</button></div>`;
+    head.querySelector('[data-r]').onclick = async () => { rt.files = null; try { rt.files = await call('sessions:files', rt.meta.id); renderFiles(rt); } catch (err) { fail(err); } };
+    head.querySelector('[data-x]').onclick = () => { rt.filesOpen = false; renderRight(); };
+    $('#filesFilter').value = rt.fileFilter || '';
+    if (!rt.files) { body.innerHTML = '<div class="diff-empty">Loading files…</div>'; return; }
+    const q = (rt.fileFilter || '').toLowerCase();
+    const tree = new Map();
+    for (const path of rt.files.filter((p) => !q || p.toLowerCase().includes(q))) {
+      const bits = path.split('/');
+      for (let i = 1; i <= bits.length; i++) {
+        const key = bits.slice(0, i).join('/');
+        if (!tree.has(key)) tree.set(key, { path: key, name: bits[i - 1], depth: i - 1, folder: i < bits.length, children: [] });
+        if (i > 1 && !tree.get(bits.slice(0, i - 1).join('/')).children.includes(key)) tree.get(bits.slice(0, i - 1).join('/')).children.push(key);
+      }
+    }
+    const rows = [];
+    const visit = (nodes) => {
+      nodes.sort((a, b) => Number(b.folder) - Number(a.folder) || a.name.localeCompare(b.name));
+      for (const node of nodes) {
+        rows.push(node);
+        if (node.folder && (q || rt.fileDirs.has(node.path))) visit(node.children.map((key) => tree.get(key)));
+      }
+    };
+    visit([...tree.values()].filter((node) => !node.depth));
+    body.innerHTML = rows.map((node) => {
+      const expanded = !!q || rt.fileDirs.has(node.path);
+      const icon = node.folder ? I.folder : I.file;
+      return `<button class="file-tree-row" style="--depth:${node.depth}" data-p="${esc(node.path)}" data-folder="${node.folder}" ${node.folder ? `aria-expanded="${expanded}"` : ''} title="${esc(node.path)}">${node.folder ? I.cv : ''}${icon}<span>${esc(node.name)}</span></button>`;
+    }).join('') || '<div class="diff-empty">No matching files</div>';
+    body.querySelectorAll('[data-p]').forEach((button) => button.onclick = () => {
+      if (button.dataset.folder === 'true') {
+        const path = button.dataset.p;
+        rt.fileDirs.has(path) ? rt.fileDirs.delete(path) : rt.fileDirs.add(path);
+        renderFiles(rt);
+      } else openFileRef(button.dataset.p);
+    });
+  }
 
   /* ---------- 头部菜单 ---------- */
   $('#sessNameBtn').onclick = (e) => { e.stopPropagation(); openPop('#sessMenu'); };
@@ -1442,12 +1572,32 @@
   });
 
   /* ================= 弹窗 / 菜单 ================= */
+  function fitModelMenu(menu, revealSelected = false) {
+    if (!menu.matches('#codeModelMenu, #modelMenu')) return;
+    // Both menus open upwards. Reserve the title bar and the gap above the trigger,
+    // rather than a fixed vh limit (the Cowork trigger can be mid-window).
+    const anchor = menu.parentElement.getBoundingClientRect();
+    const bottom = anchor.bottom - parseFloat(getComputedStyle(menu).bottom);
+    const top = $('.chrome').getBoundingClientRect().bottom + 8;
+    menu.style.setProperty('--model-menu-max-height', `${Math.max(0, bottom - top)}px`);
+    if (revealSelected) {
+      const selected = menu.querySelector('.opt.active, .model-opt.active');
+      // Scroll only the menu; scrollIntoView can also move the underlying page.
+      menu.scrollTop = selected ? selected.offsetTop - (menu.clientHeight - selected.offsetHeight) / 2 : 0;
+    }
+  }
+  window.addEventListener('resize', () => {
+    document.querySelectorAll('#codeModelMenu.open, #modelMenu.open').forEach((menu) => fitModelMenu(menu));
+  });
   function closePops() { document.querySelectorAll('.pop.open').forEach((p) => p.classList.remove('open')); }
   function openPop(sel) {
     const p = $(sel); if (!p) return;
     const was = p.classList.contains('open');
     closePops(); window.CC.closeMenus();
-    if (!was) p.classList.add('open');
+    if (!was) {
+      fitModelMenu(p, true);
+      p.classList.add('open');
+    }
   }
   document.addEventListener('click', (e) => { if (!e.target.closest('.pop')) closePops(); });
   $('#envMenu').querySelectorAll('.opt').forEach((o) => o.addEventListener('click', () => {
@@ -1703,10 +1853,7 @@
   }
   $('#modelBtn').onclick = (e) => {
     e.stopPropagation();
-    const m = $('#modelMenu');
-    const was = m.classList.contains('open');
-    closePops(); window.CC.closeMenus();
-    if (!was) m.classList.add('open');
+    openPop('#modelMenu');
   };
 
   // Cowork composer on the welcome page: hands the text to the shared send().
@@ -1746,7 +1893,7 @@
   coworkCard.id = 'coworkCard';
   coworkCard.hidden = true;
   coworkCard.innerHTML = `<header class="card-h"><span class="ttl">Progress</span><div class="card-tools"><button class="ic-btn sm" data-x title="Close">${I.close}</button></div></header><div class="card-b" id="coworkBody"></div>`;
-  $('#rightCol').prepend(coworkCard);
+  $('#dockPrimary').prepend(coworkCard);
   coworkCard.querySelector('[data-x]').onclick = () => { const rt = curRt(); if (rt) { rt.panelOpen = false; renderRight(); } };
   $('#panelBtn').onclick = () => { const rt = curRt(); if (!rt) return; rt.panelOpen = !rt.panelOpen; renderRight(); };
 

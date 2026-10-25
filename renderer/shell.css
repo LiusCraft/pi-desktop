@@ -11,8 +11,7 @@ body[data-os="win"] .sb-chrome-space { height: 50px; }
 .winctl button:hover { background: var(--hov); color: var(--tx); }
 .winctl button.x:hover { background: #c42b1c; color: #fff; }
 body[data-os="win"] .ch, body[data-os="win"] #chatMain .topbar { height: 44px; padding-right: 160px; }
-body[data-os="win"] .code-main.rc-open .ch { padding-right: 12px; }
-body[data-os="win"] .right-col { padding-top: 44px; }
+body[data-os="win"] .code-main { grid-template-rows: 44px minmax(0, 1fr); }
 #appMenu { min-width: 240px; }
 #appMenu .menu-item { display: flex; }
 #appMenu .kbd { margin-left: auto; font: 11.5px var(--mono); color: var(--tx-3); }
@@ -149,7 +148,6 @@ body[data-mode="chat"] .code-only { display: none; }
 @media (max-width: 768px) {
   .winctl { display: none; }
   body[data-os="win"] .ch, body[data-os="win"] #chatMain .topbar { padding-right: 8px; }
-  body[data-os="win"] .right-col { padding-top: 8px; }
   .sidebar { width: 300px; }
   .chip.idea { font-size: 15px; height: 48px; gap: 14px; }
   .clawd { right: 12px; }
@@ -159,7 +157,6 @@ body[data-mode="chat"] .code-only { display: none; }
 #chatMain .welcome { justify-content: flex-start; padding-top: 22vh; }
 #permBtn[data-m="auto"] { color: var(--tx); }
 body[data-mode="code"] .user-chip .user-name { margin-right: 0; }
-.code-main.rc-open .right-col { width: min(50vw, 780px); }
 .e-sug { max-width: 100%; }
 .sug-chip { max-width: 100%; white-space: nowrap; overflow: hidden; }
 .sug-chip .k { flex-shrink: 0; }
