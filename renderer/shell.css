@@ -17,7 +17,28 @@ body[data-os="win"] .code-main { grid-template-rows: 44px minmax(0, 1fr); }
 #appMenu .kbd { margin-left: auto; font: 11.5px var(--mono); color: var(--tx-3); }
 
 /* ---------- 侧边栏 ---------- */
-.sidebar { width: 340px; }
+.sidebar { width: var(--sidebar-width, 340px); }
+.sidebar-resize {
+  position: relative; flex: 0 0 10px; margin: 0 -5px; z-index: 36;
+  cursor: col-resize; touch-action: none; user-select: none; -webkit-app-region: no-drag;
+}
+.sidebar-resize::after {
+  content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 4px; height: 48px; border-radius: 2px; background: var(--tx-3); opacity: 0; pointer-events: none;
+}
+.sidebar-resize:hover::after, .sidebar-resize:focus-visible::after, .sidebar-resize.dragging::after { opacity: 1; }
+.sidebar-resize:focus-visible { outline: none; }
+.sidebar-resize:focus-visible::after { outline: 2px solid var(--tx-2); outline-offset: 2px; }
+.app.collapsed .sidebar-resize { display: none; }
+body.sidebar-resizing .sidebar { transition: none; }
+.sidebar-tip {
+  position: fixed; z-index: 200; padding: 8px 10px; border: 0.5px solid var(--line-2); border-radius: 8px;
+  background: var(--card); color: var(--tx); box-shadow: var(--menu-shadow); font-size: 13px; line-height: 20px;
+  pointer-events: none; -webkit-app-region: no-drag;
+}
+.sidebar-tip-row { display: flex; align-items: center; gap: 18px; }
+.sidebar-tip-key { margin-left: auto; color: var(--tx-3); white-space: nowrap; }
+.sidebar-tip-hint { color: var(--tx-2); }
 .seg { padding: 3px; border-radius: 9px; margin-bottom: 14px; }
 .seg button { height: 32px; font-size: 15px; gap: 8px; }
 body[data-mode="chat"] .seg [data-mode="chat"],
@@ -149,6 +170,7 @@ body[data-mode="chat"] .code-only { display: none; }
   .winctl { display: none; }
   body[data-os="win"] .ch, body[data-os="win"] #chatMain .topbar { padding-right: 8px; }
   .sidebar { width: 300px; }
+  .sidebar-resize, .sidebar-tip { display: none; }
   .chip.idea { font-size: 15px; height: 48px; gap: 14px; }
   .clawd { right: 12px; }
 }

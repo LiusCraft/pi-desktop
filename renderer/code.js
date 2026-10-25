@@ -1902,7 +1902,6 @@
     const rt = curRt();
     if (e.key === 'Escape') { closePops(); if (rt?.running) { e.preventDefault(); stop(rt); } app.classList.remove('mobile-open'); return; }
     if (mod && e.key.toLowerCase() === 'o' && rt) { e.preventDefault(); cycleViewMode(); return; }
-    if (mod && e.key === '.') { e.preventDefault(); $('#toggleSidebar').click(); return; }
     if (mod && e.key.toLowerCase() === 'd' && rt) { e.preventDefault(); (isCowork(rt) ? $('#panelBtn') : $('#diffBtn')).click(); return; }
     if (rt?.perm?.type === 'perm' && ['1', '2', '3'].includes(e.key) && !codeInput.value.trim() && document.activeElement?.tagName !== 'INPUT') {
       e.preventDefault();

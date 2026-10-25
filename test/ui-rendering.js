@@ -18,8 +18,11 @@ if (!process.versions.electron) {
   const model = { provider: 'fixture', id: 'test', name: 'Test model', contextWindow: 1000000 };
   let win, pr = null, prQueries = 0;
   const answers = [], opened = [], errors = [], styles = [];
+  const settings = { theme: 'dark', defaultMode: 'code', sidebarCollapsed: false };
+  ipcMain.on('app:boot', (e) => { e.returnValue = { settings }; });
   const replies = {
     'app:info': () => ({ version: 'test', keyProviders: [] }), 'app:theme': () => null,
+    'settings:get': () => settings, 'settings:set': (_e, patch) => Object.assign(settings, patch),
     'app:openExternal': (_e, url) => { opened.push(url); },
     'projects:list': () => [{ path: meta.projectPath, name: 'pi-desktop' }],
     'sessions:list': () => [meta], 'cowork:folders': () => [], 'sessions:importable': () => [],

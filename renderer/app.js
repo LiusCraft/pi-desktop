@@ -35,14 +35,151 @@
 
   /* ---------------- 侧边栏 ---------------- */
   const isMobile = () => matchMedia('(max-width: 768px)').matches;
-  if (bootSettings ? bootSettings.sidebarCollapsed : store.get('cc_collapsed', false)) app.classList.add('collapsed');
-  $('#toggleSidebar').onclick = () => {
-    if (isMobile()) return app.classList.remove('mobile-open');
-    app.classList.toggle('collapsed');
+  const sidebar = $('#sidebar'), sidebarResize = $('#sidebarResize'), sidebarToggle = $('#toggleSidebar'), sidebarTip = $('#sidebarTip');
+  const isMac = native ? native.platform === 'darwin' : /Mac/i.test(navigator.platform);
+  const sidebarKey = isMac ? '⌘ B' : 'Ctrl B';
+  const sidebarMin = 260, sidebarMax = () => Math.max(sidebarMin, Math.min(480, app.clientWidth - 480));
+  const clampSidebar = (width) => Math.max(sidebarMin, Math.min(sidebarMax(), width));
+  const savedWidth = store.get('pd_sidebar_width', 340);
+  let sidebarWidth = Number.isFinite(savedWidth) ? Math.max(sidebarMin, Math.min(480, savedWidth)) : 340;
+  let cancelSidebarDrag = null, sidebarTipTimer, sidebarHoverY = 0;
+  $('#sidebarShortcut').textContent = sidebarKey;
+  sidebarToggle.setAttribute('aria-keyshortcuts', isMac ? 'Meta+B' : 'Control+B');
+
+  function hideSidebarTip() {
+    clearTimeout(sidebarTipTimer);
+    sidebarTip.hidden = true;
+    sidebarResize.removeAttribute('aria-describedby');
+  }
+  function positionSidebarTip() {
+    const seam = sidebarResize.getBoundingClientRect();
+    sidebarTip.style.left = `${Math.max(8, Math.min(seam.x + seam.width / 2 + 12, innerWidth - sidebarTip.offsetWidth - 8))}px`;
+    sidebarTip.style.top = `${Math.max(8, Math.min(sidebarHoverY - sidebarTip.offsetHeight / 2, innerHeight - sidebarTip.offsetHeight - 8))}px`;
+  }
+  function queueSidebarTip(y) {
+    hideSidebarTip();
+    sidebarHoverY = y;
+    if (isMobile() || app.classList.contains('collapsed') || cancelSidebarDrag) return;
+    sidebarTipTimer = setTimeout(() => {
+      sidebarTip.hidden = false;
+      positionSidebarTip();
+      sidebarResize.setAttribute('aria-describedby', 'sidebarTip');
+    }, 700);
+  }
+  function fitSidebar() {
+    const width = clampSidebar(sidebarWidth);
+    app.style.setProperty('--sidebar-width', `${width}px`);
+    sidebarResize.setAttribute('aria-valuemin', sidebarMin);
+    sidebarResize.setAttribute('aria-valuemax', sidebarMax());
+    sidebarResize.setAttribute('aria-valuenow', width);
+    sidebarResize.setAttribute('aria-valuetext', `${Math.round(width)} pixels`);
+  }
+  function syncSidebarToggle() {
     const collapsed = app.classList.contains('collapsed');
+    sidebarToggle.setAttribute('aria-expanded', !collapsed);
+    sidebarToggle.title = `${collapsed ? 'Show' : 'Hide'} sidebar  ${sidebarKey}`;
+  }
+  function setSidebarCollapsed(collapsed) {
+    hideSidebarTip();
+    cancelSidebarDrag?.();
+    if (collapsed && document.activeElement === sidebarResize) sidebarToggle.focus();
+    app.classList.toggle('collapsed', collapsed);
+    syncSidebarToggle();
     store.set('cc_collapsed', collapsed);
     native?.invoke('settings:set', { sidebarCollapsed: collapsed }).catch(() => {});
+  }
+  if (bootSettings ? bootSettings.sidebarCollapsed : store.get('cc_collapsed', false)) app.classList.add('collapsed');
+  fitSidebar();
+  syncSidebarToggle();
+  sidebarToggle.onclick = () => {
+    if (isMobile()) return app.classList.remove('mobile-open');
+    setSidebarCollapsed(!app.classList.contains('collapsed'));
   };
+  sidebarResize.onpointerenter = (e) => { if (e.pointerType !== 'touch' && !e.buttons) queueSidebarTip(e.clientY); };
+  sidebarResize.onpointermove = (e) => {
+    if (cancelSidebarDrag) return;
+    sidebarHoverY = e.clientY;
+    if (!sidebarTip.hidden) positionSidebarTip();
+  };
+  sidebarResize.onpointerleave = hideSidebarTip;
+  sidebarResize.onfocus = () => {
+    const rect = sidebarResize.getBoundingClientRect();
+    queueSidebarTip(rect.y + rect.height / 2);
+  };
+  sidebarResize.onblur = hideSidebarTip;
+  sidebarResize.ondblclick = () => { if (!isMobile()) setSidebarCollapsed(true); };
+  sidebarResize.onpointerdown = (e) => {
+    if (e.button !== 0 || e.isPrimary === false || isMobile() || app.classList.contains('collapsed')) return;
+    e.preventDefault();
+    hideSidebarTip();
+    cancelSidebarDrag?.();
+    const start = sidebar.getBoundingClientRect().width;
+    let shield = null, moved = false;
+    const move = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      const delta = ev.clientX - e.clientX;
+      // Leave clicks alone so a double-click never saves a transient width.
+      if (!moved && Math.abs(delta) < 3) return;
+      if (!moved) {
+        moved = true;
+        shield = document.createElement('div');
+        shield.className = 'resize-shield';
+        document.body.appendChild(shield);
+        document.body.classList.add('workspace-resizing', 'sidebar-resizing');
+        sidebarResize.classList.add('dragging');
+      }
+      sidebarWidth = clampSidebar(start + delta);
+      fitSidebar();
+    };
+    const finish = (ev) => {
+      if (ev?.pointerId !== undefined && ev.pointerId !== e.pointerId) return;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      window.removeEventListener('blur', finish);
+      sidebarResize.removeEventListener('lostpointercapture', finish);
+      cancelSidebarDrag = null;
+      if (sidebarResize.hasPointerCapture(e.pointerId)) sidebarResize.releasePointerCapture(e.pointerId);
+      shield?.remove();
+      sidebarResize.classList.remove('dragging');
+      document.body.classList.remove('workspace-resizing', 'sidebar-resizing');
+      if (moved) store.set('pd_sidebar_width', sidebarWidth);
+    };
+    cancelSidebarDrag = finish;
+    try { sidebarResize.setPointerCapture(e.pointerId); } catch {}
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+    window.addEventListener('blur', finish);
+    sidebarResize.addEventListener('lostpointercapture', finish);
+  };
+  sidebarResize.onkeydown = (e) => {
+    if (isMobile() || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key) || e.metaKey || e.ctrlKey || e.altKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    hideSidebarTip();
+    const delta = (e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 40 : 10);
+    sidebarWidth = e.key === 'Home' ? sidebarMin : e.key === 'End' ? sidebarMax() : clampSidebar(clampSidebar(sidebarWidth) + delta);
+    fitSidebar();
+    store.set('pd_sidebar_width', sidebarWidth);
+  };
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') hideSidebarTip();
+    const mod = isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+    if (!mod || e.altKey || e.shiftKey || !['b', '.'].includes(e.key.toLowerCase()) || e.isComposing) return;
+    e.preventDefault();
+    if (!e.repeat) {
+      if (isMobile()) app.classList.toggle('mobile-open');
+      else setSidebarCollapsed(!app.classList.contains('collapsed'));
+    }
+  }, true);
+  window.addEventListener('blur', hideSidebarTip);
+  window.addEventListener('resize', () => {
+    hideSidebarTip();
+    cancelSidebarDrag?.();
+    fitSidebar();
+    if (isMobile() && document.activeElement === sidebarResize) sidebarResize.blur();
+  });
   document.querySelectorAll('.open-sb').forEach((b) => (b.onclick = () => app.classList.add('mobile-open')));
   $('#scrim').onclick = () => app.classList.remove('mobile-open');
 

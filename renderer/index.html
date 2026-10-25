@@ -34,7 +34,7 @@
         <button class="menu-item" data-m="help">Help</button>
       </div>
     </div>
-    <button class="ic-btn" id="toggleSidebar" title="Toggle sidebar  Ctrl+.">
+    <button class="ic-btn" id="toggleSidebar" title="Toggle sidebar" aria-label="Toggle sidebar" aria-controls="sidebar">
       <svg viewBox="0 0 20 20" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="3.5" width="15" height="13" rx="2.5"/><path d="M7.5 3.5v13"/></svg>
     </button>
     <button class="ic-btn mac-only" id="searchBtn" title="Search  ⌘K">
@@ -153,6 +153,7 @@
       </div>
     </div>
   </aside>
+  <div class="sidebar-resize" id="sidebarResize" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" aria-controls="sidebar" tabindex="0"></div>
 
   <!-- ============ Cowork 主区域 ============ -->
   <main class="main" id="chatMain">
@@ -438,6 +439,10 @@
   <button class="menu-item" data-act="copy">Copy session link</button>
   <div class="menu-sep"></div>
   <button class="menu-item danger" data-act="archive">Archive</button>
+</div>
+<div class="sidebar-tip" id="sidebarTip" role="tooltip" hidden>
+  <div class="sidebar-tip-row"><span>Hide sidebar</span><span class="sidebar-tip-key" id="sidebarShortcut"></span></div>
+  <div class="sidebar-tip-hint">Drag to resize</div>
 </div>
 <script src="app.js"></script>
 <script src="workspace.js"></script>
