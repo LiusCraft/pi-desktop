@@ -25,6 +25,8 @@ const RENDERER = path.join(here, '../renderer');
 const DEV_URL = process.env.ELECTRON_RENDERER_URL;
 
 app.setName('Pi Desktop');
+// Windows only shows (and groups) toasts for a registered app id.
+if (process.platform === 'win32') app.setAppUserModelId('dev.pi-desktop.app');
 const DEMO = process.argv.includes('--demo');
 const isMac = process.platform === 'darwin';
 let win: BrowserWindow | null = null;
@@ -205,6 +207,15 @@ const sessionCwd = async (id: string) => (await agent.call<{ cwd: string }>('hos
 
 type MainHandlers = { [K in (typeof MAIN_CHANNELS)[number]]: (...args: ApiArgs<K>) => ApiResult<K> | Promise<ApiResult<K>> };
 
+/** Notifications must stay referenced until dismissed, or their click handlers are collected. */
+const live = new Set<Notification>();
+function showMainWindow() {
+  if (!win || win.isDestroyed()) return createWindow();
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
 const handlers: MainHandlers = {
   'app:info': () => ({
     platform: process.platform,
@@ -214,9 +225,17 @@ const handlers: MainHandlers = {
     keyProviders: Object.keys(KEY_ENV),
     versions: { electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node },
   }),
-  'app:notify': ({ title, body }) => {
+  'app:notify': ({ title, body, sessionId }) => {
     if (settingsValue().notify === false) return;
-    if (Notification.isSupported() && !win?.isFocused()) new Notification({ title, body }).show();
+    if (!Notification.isSupported() || (win && !win.isDestroyed() && win.isFocused())) return;
+    const n = new Notification({ title, body });
+    live.add(n);
+    n.on('close', () => live.delete(n));
+    n.on('click', () => {
+      showMainWindow();
+      if (sessionId) win?.webContents.send('session:focus', sessionId);
+    });
+    n.show();
   },
   'app:openExternal': (url) => {
     if (/^https?:/.test(url)) void shell.openExternal(url);
@@ -298,11 +317,7 @@ function registerIpc() {
 // ------------------------------------------------------------ app
 
 if (!app.requestSingleInstanceLock()) app.quit();
-app.on('second-instance', () => {
-  if (!win) return;
-  if (win.isMinimized()) win.restore();
-  win.focus();
-});
+app.on('second-instance', showMainWindow);
 
 void app.whenReady().then(async () => {
   store = new Store(app.getPath('userData'));

@@ -125,15 +125,15 @@ function runEffects(id: string, fx: Effects) {
   if (fx.prCreated) call('sessions:update', id, { pr: fx.prCreated }).catch(() => {});
   if (fx.pollPr !== undefined) void pollPr(id, fx.pollPr);
   if (fx.editorText !== undefined) drafts.setText(sessionDraftKey(id), fx.editorText);
-  if (fx.settled) {
-    if (!isCur || document.hidden) {
-      updateSession(id, (x) => void (x.unread = !isCur));
-      call('app:notify', { title: s.meta.title, body: fx.settled.aborted ? 'Interrupted' : 'Claude finished' }).catch(() => {});
-    }
+  // Away = another session is open, or the window is hidden / not in front.
+  const away = !isCur || document.hidden || !document.hasFocus();
+  if (fx.settled && away) {
+    if (!isCur) updateSession(id, (x) => void (x.unread = true));
+    call('app:notify', { title: s.meta.title, body: fx.settled.aborted ? 'Interrupted' : 'Claude finished', sessionId: id }).catch(() => {});
   }
-  if (fx.waiting && (!isCur || document.hidden)) {
-    toast(`“${s.meta.title}” 需要你的确认`);
-    call('app:notify', { title: s.meta.title, body: 'Needs your approval' }).catch(() => {});
+  if (fx.waiting && away) {
+    if (!isCur || document.hidden) toast(`“${s.meta.title}” 需要你的确认`);
+    call('app:notify', { title: s.meta.title, body: 'Needs your approval', sessionId: id }).catch(() => {});
   }
 }
 

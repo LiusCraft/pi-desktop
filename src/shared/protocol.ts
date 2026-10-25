@@ -282,7 +282,7 @@ export type OpenTarget = 'vscode' | 'cursor' | 'terminal' | 'folder';
 
 export interface Api {
   'app:info'(): AppInfo;
-  'app:notify'(n: { title: string; body: string }): void;
+  'app:notify'(n: { title: string; body: string; sessionId?: string }): void;
   'app:openExternal'(url: string): void;
   'app:revealPath'(target: string, reveal?: boolean): void;
 
@@ -375,9 +375,11 @@ export interface PushEvents {
   'host:event': HostEvent;
   'settings:changed': SettingsPayload;
   'settings:section': string;
+  /** A notification was clicked: bring this session to the front. */
+  'session:focus': string;
 }
 export type PushChannel = keyof PushEvents;
-export const PUSH_CHANNELS: readonly PushChannel[] = ['host:event', 'settings:changed', 'settings:section'];
+export const PUSH_CHANNELS: readonly PushChannel[] = ['host:event', 'settings:changed', 'settings:section', 'session:focus'];
 
 // ------------------------------------------------------------ main ⇄ host messages
 

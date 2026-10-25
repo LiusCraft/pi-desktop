@@ -10,7 +10,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { bridge, call, isMac } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
-import { answerUi, bootstrap, cycleViewMode, fail, handleHostEvent, showWelcome, stop, toggleSidebar, togglePanel } from '@/store/actions';
+import { answerUi, bootstrap, cycleViewMode, fail, handleHostEvent, openSession, showWelcome, stop, toggleSidebar, togglePanel } from '@/store/actions';
 import { currentSession, getApp, setApp, useApp } from '@/store/app';
 import { activeDraft } from '@/store/drafts';
 import { useDialogs } from '@/store/dialogs';
@@ -80,8 +80,10 @@ export function App() {
   useEffect(() => {
     const offHost = bridge.on('host:event', handleHostEvent);
     const offSettings = bridge.on('settings:changed', (settings) => setApp((s) => void (s.settings = settings)));
+    const offFocus = bridge.on('session:focus', (id) => void openSession(id));
     bootstrap().catch(fail);
     return () => {
+      offFocus();
       offHost();
       offSettings();
     };
