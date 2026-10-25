@@ -4,6 +4,7 @@
 const { spawn } = require('node:child_process');
 const { EventEmitter } = require('node:events');
 const path = require('node:path');
+const { childEnv } = require('./env');
 
 const fs = require('node:fs');
 
@@ -15,12 +16,25 @@ const unpacked = (p) => p.replace(`app.asar${path.sep}`, `app.asar.unpacked${pat
 function findPiCli() {
   for (const dir of module.paths) {
     const pkg = path.join(dir, '@earendil-works', 'pi-coding-agent', 'package.json');
-    if (fs.existsSync(pkg)) return unpacked(path.join(path.dirname(pkg), JSON.parse(fs.readFileSync(pkg, 'utf8')).bin.pi));
+    if (!fs.existsSync(pkg)) continue;
+    try {
+      const { bin } = JSON.parse(fs.readFileSync(pkg, 'utf8'));
+      if (bin?.pi) return unpacked(path.join(path.dirname(pkg), bin.pi));
+    } catch {
+      // unreadable or malformed package.json: keep looking
+    }
   }
   throw new Error('@earendil-works/pi-coding-agent is not installed');
 }
 const PI_CLI = findPiCli();
 const EXTENSIONS_DIR = unpacked(path.join(__dirname, '..', 'extensions'));
+
+function nodeExecutable(execPath = process.execPath, platform = process.platform, electron = process.versions.electron) {
+  if (platform !== 'darwin' || !electron) return execPath;
+  // The macOS Helper has LSUIElement=true; reusing the main app creates extra Dock icons.
+  const helper = `${path.basename(execPath)} Helper`;
+  return path.join(path.dirname(execPath), '..', 'Frameworks', `${helper}.app`, 'Contents', 'MacOS', helper);
+}
 
 class PiRpc extends EventEmitter {
   constructor({ cwd, args = [], env = {}, extensions = [] }) {
@@ -39,14 +53,13 @@ class PiRpc extends EventEmitter {
   start() {
     const extArgs = this.extensions.flatMap((p) => ['-e', p]);
     // Run pi with Electron's bundled Node (or plain node in tests).
-    this.proc = spawn(process.execPath, [PI_CLI, '--mode', 'rpc', ...extArgs, ...this.args], {
+    this.proc = spawn(nodeExecutable(), [PI_CLI, '--mode', 'rpc', ...extArgs, ...this.args], {
       cwd: this.cwd,
-      env: {
-        ...process.env,
+      env: childEnv({
         ...this.env,
         ELECTRON_RUN_AS_NODE: '1',
         PI_DESKTOP_EXTENSIONS: this.extensions.join(path.delimiter),
-      },
+      }),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.proc.stdout.setEncoding('utf8'); // decoder keeps multi-byte characters intact across chunks
@@ -139,4 +152,4 @@ class PiRpc extends EventEmitter {
   }
 }
 
-module.exports = { PiRpc, PI_CLI, EXTENSIONS_DIR };
+module.exports = { PiRpc, PI_CLI, EXTENSIONS_DIR, nodeExecutable };

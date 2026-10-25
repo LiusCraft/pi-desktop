@@ -7,6 +7,8 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { Store } = require('../electron/store');
 const { SessionHub } = require('../electron/sessions');
+const { importAttachments } = require('../electron/attachments');
+const { decodeUserContent } = require('../renderer/attachments');
 
 delete process.env.NODE_TEST_CONTEXT;
 
@@ -36,7 +38,7 @@ describe('SessionHub', { timeout: 120000 }, () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
-  let meta;
+  let meta, toolBeforeRestart, imagePayload;
   it('lists the offline demo model', async () => {
     const { models } = await hub.models();
     assert.ok(models.some((m) => m.provider === 'demo' && m.id === 'demo-coder'));
@@ -61,6 +63,10 @@ describe('SessionHub', { timeout: 120000 }, () => {
     assert.doesNotMatch(changes[0].before, /\+ 1/);
     assert.match(fs.readFileSync(path.join(project, 'src/utils/date.js'), 'utf8'), /d\.getMonth\(\);/, 'main checkout untouched');
     assert.ok(hub.meta(meta.id).sessionFile, 'session file recorded');
+    const history = await hub.open(meta.id);
+    toolBeforeRestart = history.messages.find((m) => m.role === 'toolResult' && m.toolName === 'edit' && m.details?.diff);
+    assert.match(toolBeforeRestart?.details?.diff || '', /getMonth/);
+    toolBeforeRestart = JSON.parse(JSON.stringify(toolBeforeRestart));
   });
 
   it('cowork: scratch workspace when no folder is chosen', async () => {
@@ -118,11 +124,58 @@ describe('SessionHub', { timeout: 120000 }, () => {
     await done;
   });
 
+  it('persists a real image payload and mixed file reference using an idle follow-up', async () => {
+    const image = path.join(tmp, 'pixel.png');
+    const note = path.join(tmp, 'note.txt');
+    fs.writeFileSync(image, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'));
+    fs.writeFileSync(note, 'Reference document');
+    const result = await importAttachments([{ path: image }, { path: note }]);
+    assert.deepEqual(result.errors, []);
+    imagePayload = { text: 'Look at this picture', attachments: result.attachments, clientId: 'hub-image-turn' };
+    const done = waitSettled(hub, meta.id);
+    await hub.prompt(meta.id, imagePayload, 'followUp');
+    await done;
+    const history = await hub.open(meta.id);
+    const turn = history.messages.filter((m) => m.role === 'user').map((m) => decodeUserContent(m.content)).find((m) => m.clientId === imagePayload.clientId);
+    assert.ok(turn, 'structured user turn persisted');
+    assert.equal(turn.text, imagePayload.text);
+    assert.deepEqual(turn.attachments, imagePayload.attachments);
+  });
+
+  it('rejects an in-flight attachment prompt if pi exits during validation without restarting it', async (t) => {
+    const file = imagePayload.attachments.find((a) => a.kind === 'file').path;
+    const originalStat = fs.promises.stat.bind(fs.promises);
+    let releaseStat, validationStarted;
+    const entered = new Promise((resolve) => { validationStarted = resolve; });
+    const gate = new Promise((resolve) => { releaseStat = resolve; });
+    const mock = t.mock.method(fs.promises, 'stat', async (p, ...args) => {
+      if (p === file) { validationStarted(); await gate; }
+      return originalStat(p, ...args);
+    });
+    const pi = hub.procs.get(meta.id);
+    const before = hub.processVersions.get(meta.id) || 0;
+    const rejected = assert.rejects(hub.prompt(meta.id, { ...imagePayload, clientId: 'cancelled-before-admission' }), /pi exited while preparing/);
+    try {
+      await entered;
+      await pi.stop();
+      assert.equal(hub.procs.has(meta.id), false);
+      assert.equal(hub.processVersions.get(meta.id), before + 1);
+    } finally { releaseStat(); mock.mock.restore(); }
+    await rejected;
+    assert.equal(hub.procs.has(meta.id), false, 'late validation must not start a replacement process');
+  });
+
   it('resumes history after a restart', async () => {
     await hub.stopAll();
     hub = new SessionHub({ store: new Store(userData), userData, getEnv });
     const opened = await hub.open(meta.id);
     const roles = opened.messages.map((m) => m.role);
     assert.ok(roles.includes('user') && roles.includes('assistant') && roles.includes('toolResult'));
+    const restoredTool = opened.messages.find((m) => m.role === 'toolResult' && m.toolCallId === toolBeforeRestart.toolCallId);
+    assert.deepEqual(restoredTool, toolBeforeRestart, 'tool content and diff details survive restart');
+    const restoredTurn = opened.messages.filter((m) => m.role === 'user').map((m) => decodeUserContent(m.content)).find((m) => m.clientId === imagePayload.clientId);
+    assert.ok(restoredTurn, 'native image user turn survives restart');
+    assert.equal(restoredTurn.text, imagePayload.text);
+    assert.deepEqual(restoredTurn.attachments, imagePayload.attachments);
   });
 });

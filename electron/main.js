@@ -1,10 +1,13 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, safeStorage, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, safeStorage, Notification, clipboard } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { Store, KEY_ENV, envForKeys } = require('./store');
 const { SessionHub } = require('./sessions');
+const { childEnv } = require('./env');
 const git = require('./git');
+const attachments = require('./attachments');
+const { readSessionFile } = require('./files');
 
 app.setName('Pi Desktop');
 const DEMO = process.argv.includes('--demo');
@@ -69,7 +72,7 @@ function ensureDemoProject() {
     const src = path.join(__dirname, '..', 'demo', 'todo-app').replace('app.asar', 'app.asar.unpacked');
     fs.cpSync(src, dest, { recursive: true });
     try {
-      const g = (...a) => execFileSync('git', a, { cwd: dest, stdio: 'ignore' });
+      const g = (...a) => execFileSync('git', a, { cwd: dest, env: childEnv(), stdio: 'ignore' });
       g('init', '-q', '-b', 'main');
       g('add', '-A');
       g('-c', 'user.name=Pi Desktop', '-c', 'user.email=demo@pi.desktop', 'commit', '-qm', 'Initial commit');
@@ -268,10 +271,14 @@ function registerIpc() {
     return r.canceled ? [] : r.filePaths;
   });
 
+  handle('attachments:import', (sources) => attachments.importAttachments(sources));
+  handle('attachments:pick', () => attachments.pickAttachments(dialog, win));
+  handle('attachments:clipboard', () => attachments.clipboardAttachments(clipboard));
+
   handle('sessions:list', () => hub.list());
   handle('sessions:create', (opts) => hub.create(opts));
   handle('sessions:open', (id) => hub.open(id));
-  handle('sessions:prompt', (id, message, behavior) => hub.prompt(id, message, behavior));
+  handle('sessions:prompt', (id, payload, behavior) => hub.prompt(id, payload, behavior));
   handle('sessions:rpc', (id, command) => hub.rpc(id, command));
   handle('sessions:ui', (id, requestId, payload) => hub.uiResponse(id, requestId, payload));
   handle('sessions:mode', (id, mode) => hub.setMode(id, mode));
@@ -281,13 +288,7 @@ function registerIpc() {
   handle('sessions:changes', (id) => hub.changes(id));
   handle('sessions:pr', (id) => hub.prStatus(id));
   handle('sessions:files', (id) => git.listFiles(hub.meta(id).cwd));
-  handle('sessions:readFile', (id, rel) => {
-    const root = path.resolve(hub.meta(id).cwd);
-    const abs = path.resolve(root, rel);
-    if (abs !== root && !abs.startsWith(root + path.sep)) throw new Error('Path outside the session');
-    const buf = fs.readFileSync(abs);
-    return buf.length > 1024 * 1024 || buf.includes(0) ? null : buf.toString('utf8');
-  });
+  handle('sessions:readFile', (id, rel) => readSessionFile(hub.meta(id).cwd, rel));
   handle('sessions:importable', (dir) => hub.importable(dir));
   handle('sessions:import', (file) => hub.importSession(file));
   handle('sessions:openIn', (id, target) => git.openIn(target, hub.meta(id).cwd, shell));
