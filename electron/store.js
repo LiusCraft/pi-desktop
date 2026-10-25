@@ -30,10 +30,23 @@ const KEY_ENV = {
   openai: 'OPENAI_API_KEY',
   google: 'GEMINI_API_KEY',
   openrouter: 'OPENROUTER_API_KEY',
+  opencode: 'OPENCODE_API_KEY',
+  'opencode-go': 'OPENCODE_API_KEY',
   deepseek: 'DEEPSEEK_API_KEY',
   xai: 'XAI_API_KEY',
   groq: 'GROQ_API_KEY',
   mistral: 'MISTRAL_API_KEY',
 };
 
-module.exports = { Store, KEY_ENV };
+// opencode and opencode-go share one env var, so map saved keys by env name:
+// the first saved key wins and a stale duplicate cannot flip the value per launch.
+function envForKeys(keys) {
+  const env = {};
+  for (const [provider, key] of Object.entries(keys)) {
+    const name = KEY_ENV[provider];
+    if (name && key && !env[name]) env[name] = key;
+  }
+  return env;
+}
+
+module.exports = { Store, KEY_ENV, envForKeys };

@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, safeStorage, No
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { Store, KEY_ENV } = require('./store');
+const { Store, KEY_ENV, envForKeys } = require('./store');
 const { SessionHub } = require('./sessions');
 const git = require('./git');
 
@@ -31,9 +31,7 @@ function writeKey(provider, key) {
   store.set('keys', raw);
 }
 function piEnv() {
-  const env = {};
-  for (const [provider, key] of Object.entries(readKeys())) if (KEY_ENV[provider]) env[KEY_ENV[provider]] = key;
-  return env;
+  return envForKeys(readKeys());
 }
 
 // ------------------------------------------------------------ projects
