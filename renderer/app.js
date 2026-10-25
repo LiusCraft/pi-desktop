@@ -9,11 +9,23 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
   };
 
-  /* ---------------- 主题 ---------------- */
+  /* ---------------- 主题 / 设置 ---------------- */
+  // Settings live in the main process; the preload hands them over synchronously
+  // so the first paint already uses the right theme and sidebar state.
+  const native = window.piDesktop;
+  const bootSettings = native?.boot?.settings || null;
+  const resolvedTheme = (s) => (s?.theme === 'system' ? s.resolvedTheme : s?.theme) || s?.resolvedTheme || 'dark';
   const applyTheme = (t) => { document.documentElement.dataset.theme = t; store.set('cc_theme', t); };
-  applyTheme(store.get('cc_theme', 'dark'));
+  applyTheme(bootSettings ? resolvedTheme(bootSettings) : store.get('cc_theme', 'dark'));
+  // Same value, one retry: keeps the theme right if the sync bootstrap ever fails.
+  if (!bootSettings) native?.invoke('settings:get').then((s) => s && applyTheme(resolvedTheme(s))).catch(() => {});
+  // code.js opens the mode remembered in localStorage; on the very first run there
+  // is nothing stored yet, so the default-mode setting decides.
+  if (bootSettings?.defaultMode && store.get('cc_mode', null) === null) store.set('cc_mode', bootSettings.defaultMode);
   $('#themeToggle').onclick = () => {
-    applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+    native?.invoke('settings:set', { theme: next }).catch(() => {});
     closeMenus();
   };
 
@@ -23,11 +35,13 @@
 
   /* ---------------- 侧边栏 ---------------- */
   const isMobile = () => matchMedia('(max-width: 768px)').matches;
-  if (store.get('cc_collapsed', false)) app.classList.add('collapsed');
+  if (bootSettings ? bootSettings.sidebarCollapsed : store.get('cc_collapsed', false)) app.classList.add('collapsed');
   $('#toggleSidebar').onclick = () => {
     if (isMobile()) return app.classList.remove('mobile-open');
     app.classList.toggle('collapsed');
-    store.set('cc_collapsed', app.classList.contains('collapsed'));
+    const collapsed = app.classList.contains('collapsed');
+    store.set('cc_collapsed', collapsed);
+    native?.invoke('settings:set', { sidebarCollapsed: collapsed }).catch(() => {});
   };
   document.querySelectorAll('.open-sb').forEach((b) => (b.onclick = () => app.classList.add('mobile-open')));
   $('#scrim').onclick = () => app.classList.remove('mobile-open');
@@ -172,5 +186,10 @@
     if (e.key === 'Escape') { closeMenus(); app.classList.remove('mobile-open'); }
   });
 
-  window.CC = { highlight, renderMarkdown, esc, toast, closeMenus, wireCode, store };
+  // The settings window owns every persisted preference: follow it live.
+  native?.on('settings:changed', (s) => {
+    if (s?.theme || s?.resolvedTheme) applyTheme(resolvedTheme(s));
+  });
+
+  window.CC = { highlight, renderMarkdown, esc, toast, closeMenus, wireCode, store, settings: bootSettings || {} };
 })();

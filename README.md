@@ -15,7 +15,8 @@ npm run demo       # 打开内置演示项目，默认使用离线演示模型
 
 - 需要 Node 22.19+（只用于安装依赖；运行时 pi 跑在 Electron 自带的 Node 24 上）。
 - 首次启动会把 `demo/todo-app`（Code 演示项目）和 `demo/cowork-workspace`（Cowork 演示文件夹：收件箱、日程、待办）复制到用户数据目录。不配置任何 API Key 也能用 **Demo (offline)** 模型体验完整流程。
-- 接真实模型：右下角模型菜单 → **Add API key…**（或用户菜单 → API keys…）。也可以直接用 pi 自己的配置：环境变量、`~/.pi/agent/auth.json`、`models.json`。
+- 接真实模型：右下角模型菜单 → **Add API key…**，或打开设置（`Ctrl/⌘+,`）在 **API 密钥** 里管理。也可以直接用 pi 自己的配置：环境变量、`~/.pi/agent/auth.json`、`models.json`。
+- 设置窗口（`Ctrl/⌘+,`，用户菜单 → 设置）是独立窗口：外观（浅色 / 深色 / 跟随系统、侧边栏）、通用（通知、默认分区）、API 密钥、项目与文件夹、关于。偏好保存在用户数据目录的 `settings.json`，修改后主窗口立即跟随；窗口以 `settings.json` 之外的同步 IPC（`app:boot`）拿到首屏需要的值，不会先闪一下再变色。
 
 ## 架构
 
@@ -41,6 +42,7 @@ Renderer (renderer/)                         Main (electron/)                   
 | `extensions/demo-model.ts` | 离线演示模型：基于 pi-ai 的 faux provider，按脚本调用 pi 的**真实工具**（Code 和 Cowork 各有一组场景） |
 | `extensions/cowork-prompt.md` | Cowork 追加的系统提示：面向非程序员、把结果写成文件、用待办清单汇报进度 |
 | `renderer/code.js` | 把 pi 事件流渲染成会话界面：流式文本 / 思考、按 transcript 模式折叠的工具组、权限卡片、计划、diff、PR 条 |
+| `renderer/settings.html` | 独立设置窗口：外观、通用、API 密钥、项目与文件夹、关于；所有值都来自主进程，主窗口与设置窗口不会不一致 |
 
 ### pi 事件与界面的对应
 

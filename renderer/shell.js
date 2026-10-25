@@ -36,12 +36,26 @@
       search: () => $('#sbSearch').click(),
       theme: () => $('#themeToggle').click(),
       os: toggleOS,
-      settings: () => toast('Settings'),
+      settings: () => openSettings(),
       help: () => toast('Help · claude.ai/help'),
     })[b.dataset.m]();
   });
   $('#navBack').onclick = () => history.length > 1 ? history.back() : toast('Back');
   $('#navFwd').onclick = () => toast('Forward');
+
+  /* ---------- 设置窗口 ---------- */
+  // A real window with its own lifecycle; reopening focuses the existing one.
+  const openSettings = (section) => {
+    if (!native) return toast('设置只在桌面应用里可用');
+    native.invoke('settings:open', section).catch(() => toast('无法打开设置'));
+  };
+  $('#settingsBtn').onclick = () => { window.CC.closeMenus(); openSettings(); };
+  // The user menu is window chrome and this file loads last, so the runner icon
+  // opens the full key manager. Model menus keep code.js's quick "add a key" modal.
+  $('#keysBtn').onclick = () => { window.CC.closeMenus(); openSettings('keys'); };
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === ',') { e.preventDefault(); openSettings(); }
+  });
 
   /* ---------- 只做提示的按钮 ---------- */
   document.addEventListener('click', (e) => {
