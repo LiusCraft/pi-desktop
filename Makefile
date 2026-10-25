@@ -30,13 +30,14 @@ check-darwin:
 install: ## Install dependencies (npm ci)
 	$(NPM) ci
 
-dev: ## Run the app from source (npm start)
-	$(NPM) start
+dev: ## Run from source with hot reload (electron-vite dev)
+	$(NPM) run dev
 
-demo: ## Run from source against the bundled offline demo
-	$(NPM) demo
+demo: ## Build and run against the bundled offline demo
+	$(NPM) run build && $(NPM) run demo
 
-test: ## Run the test suite (real pi processes, no API key needed)
+test: ## Typecheck and run the test suite (real pi sessions, no API key needed)
+	$(NPM) run typecheck
 	$(NPM) test
 
 icon: ## Regenerate build/icon.png and build/icon.icns

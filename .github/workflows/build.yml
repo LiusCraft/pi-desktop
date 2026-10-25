@@ -1,7 +1,7 @@
 name: build
 
 # Packaging smoke test: proves the app still packs and that the bundled pi
-# survived electron-builder (it is a separate Node process, see pi-rpc.js).
+# survived electron-builder (the agent host imports it at runtime).
 # Signing is not exercised here — see release.yml.
 on:
   pull_request:
@@ -26,6 +26,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Typecheck and test
+        run: npm run typecheck && npm test
+
       - name: Pack
         run: npm run pack:mac -- --arm64
         env:
@@ -36,9 +39,10 @@ jobs:
           app="dist/mac-arm64/Pi Desktop.app/Contents/Resources/app"
           pi=node_modules/@earendil-works/pi-coding-agent/package.json
           test -f "$app/$pi"
-          test -f "$app/extensions/desktop-kit/index.ts"
-          test -f "$app/extensions/demo-model.ts"
-          test -f "$app/renderer/index.html"
+          test -f "$app/out/main/index.mjs"
+          test -f "$app/out/main/agent.mjs"
+          test -f "$app/out/preload/index.js"
+          test -f "$app/out/renderer/index.html"
           codesign --verify --strict "dist/mac-arm64/Pi Desktop.app"
           size=$(du -sh "dist/mac-arm64/Pi Desktop.app" | cut -f1)
           echo "packaged app ok: $size"

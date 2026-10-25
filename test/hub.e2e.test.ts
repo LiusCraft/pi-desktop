@@ -1,0 +1,270 @@
+// End-to-end: the agent host's SessionHub running real in-process pi sessions with
+// desktop-kit and the offline demo model. No API key and no Electron required.
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { decodeUserContent } from '@shared/attachments';
+import type { HostEvent, PermissionMode, PiEvent, UiRequest, UiResponse } from '@shared/protocol';
+import { importAttachments } from '../src/agent/attachments';
+import { SessionHub } from '../src/agent/hub';
+
+const ROOT = path.join(__dirname, '..');
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-desktop-hub-'));
+const agentDir = path.join(tmp, 'agent');
+// pi resolves its config (sessions, settings, auth) from here: never touch ~/.pi in tests.
+process.env.PI_CODING_AGENT_DIR = agentDir;
+
+function makeProject(name: string) {
+  const dir = path.join(tmp, name);
+  fs.cpSync(path.join(ROOT, 'demo', 'todo-app'), dir, { recursive: true });
+  const git = (...a: string[]) => execFileSync('git', a, { cwd: dir, stdio: 'pipe' });
+  git('init', '-q', '-b', 'main');
+  git('add', '-A');
+  git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init');
+  return dir;
+}
+
+type Answer = (req: UiRequest) => UiResponse;
+
+/** Collects one session's events and answers its questions. */
+class Driver {
+  events: HostEvent[] = [];
+  answer: Answer = () => ({ cancelled: true });
+  hub: SessionHub;
+  constructor() {
+    this.hub = new SessionHub({ userData: path.join(tmp, 'userData'), agentDir, emit: (e) => this.onEvent(e) });
+  }
+  private waiters: { id: string; resolve: () => void }[] = [];
+  private onEvent(e: HostEvent) {
+    this.events.push(e);
+    if (e.type === 'ui_request') queueMicrotask(() => this.hub.respond(e.sessionId, e.request.id, this.answer(e.request)));
+    if (e.type === 'pi' && e.event.type === 'agent_settled') {
+      for (const w of this.waiters.filter((w) => w.id === e.sessionId)) w.resolve();
+      this.waiters = this.waiters.filter((w) => w.id !== e.sessionId);
+    }
+  }
+  /** Run one prompt to agent_settled. */
+  async run(id: string, text: string, answer?: Answer) {
+    if (answer) this.answer = answer;
+    const from = this.events.length;
+    const settled = new Promise<void>((resolve) => this.waiters.push({ id, resolve }));
+    const { disposition } = await this.hub.prompt(id, { text, attachments: [] }, 'steer');
+    if (disposition === 'started') await settled;
+    const events = this.events.slice(from).filter((e) => 'sessionId' in e && e.sessionId === id);
+    const pi = events.filter((e): e is Extract<HostEvent, { type: 'pi' }> => e.type === 'pi').map((e) => e.event);
+    const ui = events.filter((e): e is Extract<HostEvent, { type: 'ui_request' }> => e.type === 'ui_request').map((e) => e.request);
+    const tools = pi.filter((e) => e.type === 'tool_execution_end');
+    const finalText = pi
+      .filter((e) => e.type === 'message_end' && e.message.role === 'assistant')
+      .map((e: PiEvent) => e.message.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join(''))
+      .filter(Boolean)
+      .at(-1) as string;
+    return { pi, ui, tools, finalText, events };
+  }
+}
+
+let driver: Driver;
+beforeAll(async () => {
+  driver = new Driver();
+  await driver.hub.init({});
+});
+afterAll(async () => {
+  await driver.hub.shutdown();
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+const codeSession = async (mode: PermissionMode = 'auto', worktree = false) => {
+  const project = makeProject(`proj-${Math.random().toString(36).slice(2, 8)}`);
+  const meta = await driver.hub.create({ kind: 'code', projectPath: project, worktree, model: 'demo/demo-coder', mode, title: 'test', autoName: false });
+  return { project, meta };
+};
+const read = (dir: string, rel: string) => fs.readFileSync(path.join(dir, rel), 'utf8');
+
+describe('code sessions', { timeout: 120_000 }, () => {
+  it('lists the offline demo model and its thinking levels', async () => {
+    const { models } = await driver.hub.listModels();
+    expect(models.some((m) => m.provider === 'demo' && m.id === 'demo-coder')).toBe(true);
+    expect(driver.hub.thinkingLevels('demo/demo-coder').length).toBeGreaterThan(1);
+  });
+
+  it('auto mode: fixes the bug end to end in an isolated worktree, without prompts', async () => {
+    const { project, meta } = await codeSession('auto', true);
+    expect(meta.branch).toMatch(/^claude\//);
+    expect(meta.cwd).not.toBe(project);
+    const opened = await driver.hub.open(meta.id);
+    expect(opened.model).toBe('demo/demo-coder');
+
+    const r = await driver.run(meta.id, '日期显示少了一个月，帮我修一下');
+    expect(r.ui).toHaveLength(0);
+    const names = r.tools.map((t) => t.toolName);
+    for (const t of ['todo_write', 'grep', 'read', 'bash', 'edit']) expect(names).toContain(t);
+    const bash = r.tools.filter((t) => t.toolName === 'bash');
+    expect(bash[0].isError, 'tests fail before the fix').toBe(true);
+    expect(bash.at(-1)!.isError, 'tests pass after the fix').toBe(false);
+    expect(read(meta.cwd, 'src/utils/date.js')).toMatch(/getMonth\(\) \+ 1/);
+    expect(read(project, 'src/utils/date.js'), 'main checkout untouched').not.toMatch(/getMonth\(\) \+ 1/);
+    expect(r.finalText).toMatch(/测试全部通过/);
+
+    const changes = await driver.hub.changes(meta.id);
+    expect(changes.map((c) => c.path).sort()).toEqual(['src/utils/date.js', 'tests/date.test.js']);
+    const status = r.events.filter((e) => e.type === 'status').map((e) => (e as any).status);
+    expect(status).toEqual(['running', 'idle']);
+  });
+
+  it('ask mode: edits and commands ask; deny stops the run', async () => {
+    const { meta } = await codeSession('default');
+    const r = await driver.run(meta.id, '日期显示少了一个月，帮我修一下', (req) =>
+      req.title.includes('Run npm test') ? { value: 'Allow' } : { value: 'Deny' });
+    const perms = r.ui.filter((u) => u.kind === 'permission');
+    expect(perms.some((u) => /Run npm test/.test(u.title))).toBe(true);
+    const edit = perms.find((u) => /Edit src\/utils\/date.js/.test(u.title)) as Extract<UiRequest, { kind: 'permission' }>;
+    expect(edit).toBeTruthy();
+    expect(r.pi.some((e) => e.type === 'tool_execution_start' && e.toolCallId === edit.toolCallId), 'request names its tool call').toBe(true);
+    expect(r.finalText).toMatch(/不执行/);
+    expect(read(meta.cwd, 'src/utils/date.js')).not.toMatch(/\+ 1/);
+  });
+
+  it('plan mode: blocks edits until the plan is approved, then auto-accepts edits', async () => {
+    const { meta } = await codeSession('plan');
+    const r = await driver.run(meta.id, '添加深色模式', (req) =>
+      req.kind === 'plan' ? { value: 'Approve & auto-accept edits' } : { value: 'Allow' });
+    expect(r.ui.some((u) => u.kind === 'plan')).toBe(true);
+    const metas = r.events.filter((e) => e.type === 'meta').map((e) => (e as any).meta.mode);
+    expect(metas.at(-1)).toBe('acceptEdits');
+    expect(driver.hub.meta(meta.id).mode).toBe('acceptEdits');
+    expect(fs.existsSync(path.join(meta.cwd, 'src/components/ThemeToggle.jsx'))).toBe(true);
+    const perms = r.ui.filter((u) => u.kind === 'permission').map((u) => u.title);
+    expect(perms.some((t) => /Create|Edit/.test(t)), 'no edit prompts after approval').toBe(false);
+    expect(perms.some((t) => /Run npm run build/.test(t)), 'commands still ask in acceptEdits').toBe(true);
+    expect(r.finalText).toMatch(/深色模式已加好/);
+  });
+
+  it('switching the mode mid-session takes effect on the next tool call', async () => {
+    const { meta } = await codeSession('auto');
+    await driver.hub.open(meta.id);
+    driver.hub.setMode(meta.id, 'default');
+    const r = await driver.run(meta.id, '日期显示少了一个月，帮我修一下', () => ({ value: 'Deny' }));
+    expect(r.ui.some((u) => u.kind === 'permission')).toBe(true);
+  });
+
+  it('subagent: the task tool runs an in-process read-only session and returns its report', async () => {
+    const { meta } = await codeSession();
+    const r = await driver.run(meta.id, '解释一下项目结构');
+    const task = r.tools.find((t) => t.toolName === 'task')!;
+    expect(task, 'task tool ran').toBeTruthy();
+    expect(task.isError, JSON.stringify(task.result).slice(0, 400)).toBe(false);
+    expect(task.result.details.text).toMatch(/数据流/);
+    expect(task.result.details.stats.reads).toBeGreaterThanOrEqual(2);
+    expect(r.pi.some((e) => e.type === 'tool_execution_update' && e.toolName === 'task'), 'progress updates').toBe(true);
+  });
+
+  it('auto mode: risky commands still ask (git push)', async () => {
+    const { meta } = await codeSession();
+    const r = await driver.run(meta.id, '提交并创建 PR', () => ({ value: 'Allow' }));
+    const asked = r.ui.filter((u) => u.kind === 'permission').map((u) => u.title);
+    expect(asked.some((t) => /git push/.test(t))).toBe(true);
+    expect(asked.some((t) => /git status/.test(t))).toBe(false);
+    expect(r.finalText).toMatch(/推送失败/);
+  });
+
+  it('resumes from the session file with tool details and image attachments', async () => {
+    const { meta } = await codeSession();
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
+    const imagePath = path.join(tmp, 'pixel.png');
+    fs.writeFileSync(imagePath, png);
+    const imported = await importAttachments([{ path: imagePath }]);
+    expect(imported.errors).toEqual([]);
+    const image = imported.attachments[0];
+    expect(image.kind).toBe('image');
+
+    await driver.hub.open(meta.id);
+    const settled = driver.run(meta.id, '日期显示少了一个月，帮我修一下');
+    await settled;
+    // A second prompt carrying an image through the real validation path.
+    const before = driver.events.length;
+    await driver.hub.prompt(meta.id, { text: 'look', attachments: [image], clientId: 'img-1' }, 'steer');
+    await new Promise<void>((resolve) => {
+      const t = setInterval(() => {
+        if (driver.events.slice(before).some((e) => e.type === 'pi' && e.sessionId === meta.id && e.event.type === 'agent_settled')) { clearInterval(t); resolve(); }
+      }, 50);
+    });
+
+    await driver.hub.archive(meta.id); // disposes the live session
+    const m = driver.hub.meta(meta.id);
+    m.archived = false; // reopen from disk
+    const reopened = await driver.hub.open(meta.id);
+    const edit = reopened.messages.find((x) => x.role === 'toolResult' && x.toolName === 'edit');
+    expect(edit?.details?.diff).toMatch(/padStart/);
+    const user = reopened.messages.filter((x) => x.role === 'user').map((x) => decodeUserContent(x.content)).find((u) => u.clientId === 'img-1');
+    expect(user?.text).toBe('look');
+    expect(user?.attachments[0]).toMatchObject({ kind: 'image', name: 'pixel.png' });
+    expect((user?.attachments[0] as any).data).toBeTruthy();
+  });
+
+  it('/clear starts a fresh context and keeps the session', async () => {
+    const { meta } = await codeSession();
+    await driver.run(meta.id, '你好');
+    const first = driver.hub.meta(meta.id).sessionFile;
+    await driver.hub.newContext(meta.id);
+    const opened = await driver.hub.open(meta.id);
+    expect(opened.messages.filter((m) => m.role === 'user')).toHaveLength(0);
+    expect(driver.hub.meta(meta.id).sessionFile).not.toBe(first);
+  });
+
+  it('names a session from its first prompt, and a rename locks the title', async () => {
+    const project = makeProject('naming');
+    const meta = await driver.hub.create({ kind: 'code', projectPath: project, worktree: false, model: 'demo/demo-coder', title: 'placeholder', autoName: true });
+    await driver.run(meta.id, '日期显示少了一个月 @src/utils/date.js 帮我修一下');
+    expect(driver.hub.meta(meta.id).title).toBe('日期显示少了一个月 帮我修一下');
+    driver.hub.update(meta.id, { title: 'Dates' });
+    expect(driver.hub.meta(meta.id)).toMatchObject({ title: 'Dates', titleLocked: true, autoName: false });
+  });
+});
+
+describe('cowork sessions', { timeout: 120_000 }, () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = path.join(tmp, `cowork-${Math.random().toString(36).slice(2, 8)}`);
+    fs.cpSync(path.join(ROOT, 'demo', 'cowork-workspace'), dir, { recursive: true });
+  });
+  const cowork = (projectPath: string | null) =>
+    driver.hub.create({ kind: 'cowork', projectPath, model: 'demo/demo-coder', title: 'task', autoName: false });
+
+  it('organizes the inbox; only moving files asks, even in auto mode', async () => {
+    const meta = await cowork(dir);
+    const r = await driver.run(meta.id, '帮我整理收件箱：归类、标记需要回复的邮件，并起草回复', () => ({ value: 'Allow' }));
+    const asked = r.ui.filter((u) => u.kind === 'permission').map((u) => u.title);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toMatch(/mv inbox\/04/);
+    expect(fs.existsSync(path.join(dir, '收件箱整理.md'))).toBe(true);
+    expect(fs.existsSync(path.join(dir, 'inbox/已归档/04-行业周刊.txt'))).toBe(true);
+    expect(r.tools.filter((t) => t.toolName === 'read')).toHaveLength(5);
+    expect(r.finalText).toMatch(/收件箱整理好了/);
+  });
+
+  it('denying the move leaves the files in place', async () => {
+    const meta = await cowork(dir);
+    const r = await driver.run(meta.id, '帮我整理收件箱', () => ({ value: 'Deny' }));
+    expect(fs.existsSync(path.join(dir, 'inbox/04-行业周刊.txt'))).toBe(true);
+    expect(r.finalText).toMatch(/不执行/);
+  });
+
+  it('writes a daily briefing file from the folder contents', async () => {
+    const meta = await cowork(dir);
+    // The idea prompt also mentions 邮件; it must still be treated as a briefing.
+    const r = await driver.run(meta.id, '每个工作日早上 8 点给我发一份简报：日程、待办和重要邮件');
+    expect(r.ui).toHaveLength(0);
+    const brief = fs.readdirSync(dir).find((f) => f.startsWith('每日简报-'));
+    expect(brief).toBeTruthy();
+    expect(read(dir, brief!)).toMatch(/季度预算评审/);
+  });
+
+  it('without a folder, works in a fresh temporary workspace', async () => {
+    const meta = await cowork(null);
+    expect(meta.scratch).toBe(true);
+    expect(meta.cwd.startsWith(path.join(tmp, 'userData', 'cowork'))).toBe(true);
+    expect(fs.existsSync(meta.cwd)).toBe(true);
+  });
+});

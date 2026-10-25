@@ -1,5 +1,7 @@
 node_modules/
 dist/
+out/
+out/
 *.log
 home/
 
