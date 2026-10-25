@@ -10,6 +10,7 @@ app.setName('Pi Desktop');
 const DEMO = process.argv.includes('--demo');
 const isMac = process.platform === 'darwin';
 let win = null;
+let settingsWin = null;
 let store, hub;
 
 // ------------------------------------------------------------ API keys (encrypted at rest when the OS supports it)
@@ -77,6 +78,36 @@ function ensureDemoProject() {
   return addProject(dest);
 }
 
+// ------------------------------------------------------------ settings
+// Preferences live in one place so every window reads the same values.
+// `theme: null` means "not chosen yet": the renderer keeps its local value.
+const DEFAULT_SETTINGS = { theme: null, notify: true, defaultMode: 'code', sidebarCollapsed: false };
+
+function settingsValue() {
+  return { ...DEFAULT_SETTINGS, ...store.get('settings', {}) };
+}
+function settingsPayload() {
+  const s = settingsValue();
+  const explicit = s.theme === 'light' || s.theme === 'dark';
+  let resolvedTheme = 'light';
+  if (explicit) resolvedTheme = s.theme;
+  else if (nativeTheme.shouldUseDarkColors) resolvedTheme = 'dark';
+  return { ...s, resolvedTheme, secureKeys: safeStorage.isEncryptionAvailable() };
+}
+function broadcast(channel, payload) {
+  for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(channel, payload);
+}
+function saveSettings(patch) {
+  const next = { ...settingsValue(), ...patch };
+  store.set('settings', next);
+  // Native chrome (title bar, menus, dialogs) follows the app's appearance.
+  nativeTheme.themeSource = ['light', 'dark'].includes(next.theme) ? next.theme : 'system';
+  applyThemeToWindows();
+  const payload = settingsPayload();
+  broadcast('settings:changed', payload);
+  return payload;
+}
+
 // ------------------------------------------------------------ window
 function overlayColors(dark) {
   return dark ? { color: '#1f1f1e', symbolColor: '#c3c1bb', height: 44 } : { color: '#f7f6f2', symbolColor: '#55534d', height: 44 };
@@ -109,6 +140,60 @@ function createWindow() {
   win.on('closed', () => (win = null));
 }
 
+function createSettingsWindow(section) {
+  const dark = settingsPayload().resolvedTheme === 'dark';
+  settingsWin = new BrowserWindow({
+    width: 800,
+    height: 640,
+    minWidth: 660,
+    minHeight: 460,
+    title: 'Settings',
+    backgroundColor: dark ? '#1d1d1c' : '#f7f6f2',
+    titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
+    ...(isMac ? { trafficLightPosition: { x: 16, y: 18 } } : { titleBarOverlay: overlayColors(dark) }),
+    show: false,
+    maximizable: false,
+    fullscreenable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+    },
+  });
+  settingsWin.loadFile(path.join(__dirname, '..', 'renderer', 'settings.html'), section ? { hash: section } : undefined);
+  settingsWin.once('ready-to-show', () => settingsWin?.show());
+  settingsWin.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  settingsWin.webContents.on('will-navigate', (e) => e.preventDefault());
+  settingsWin.on('closed', () => (settingsWin = null));
+}
+
+// Show the existing settings window instead of stacking duplicates.
+function openSettings(section) {
+  if (settingsWin && !settingsWin.isDestroyed()) {
+    if (section) settingsWin.webContents.send('settings:section', section);
+    if (settingsWin.isMinimized()) settingsWin.restore();
+    settingsWin.show();
+    settingsWin.focus();
+    return true;
+  }
+  createSettingsWindow(section);
+  return true;
+}
+
+function applyThemeToWindows() {
+  const dark = settingsPayload().resolvedTheme === 'dark';
+  if (!isMac) {
+    win?.setTitleBarOverlay(overlayColors(dark));
+    settingsWin?.setTitleBarOverlay(overlayColors(dark));
+  }
+  win?.setBackgroundColor(dark ? '#1f1f1e' : '#f7f6f2');
+  settingsWin?.setBackgroundColor(dark ? '#1d1d1c' : '#f7f6f2');
+}
+
 const send = (channel, payload) => win?.webContents.send(channel, payload);
 
 // ------------------------------------------------------------ IPC
@@ -117,20 +202,44 @@ function handle(channel, fn) {
 }
 
 function registerIpc() {
+  // Read synchronously by the preload: every window boots with the right theme,
+  // sidebar state and default mode instead of flashing a fallback first.
+  ipcMain.on('app:boot', (e) => {
+    e.returnValue = {
+      settings: settingsPayload(),
+      info: { platform: process.platform, version: app.getVersion(), demo: DEMO, keyProviders: Object.keys(KEY_ENV) },
+    };
+  });
+
   handle('app:info', () => ({
     platform: process.platform,
     version: app.getVersion(),
     demo: DEMO,
     userData: app.getPath('userData'),
     keyProviders: Object.keys(KEY_ENV),
+    versions: { electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node },
   }));
   handle('app:theme', (theme) => {
     if (!isMac && win) win.setTitleBarOverlay(overlayColors(theme === 'dark'));
   });
   handle('app:notify', ({ title, body }) => {
+    if (settingsValue().notify === false) return;
     if (Notification.isSupported() && !win?.isFocused()) new Notification({ title, body }).show();
   });
   handle('app:openExternal', (url) => /^https?:/.test(url) && shell.openExternal(url));
+  // Reveal or open a folder the app already knows about; anything else is refused.
+  handle('app:revealPath', (target, reveal) => {
+    const abs = path.resolve(String(target || ''));
+    const roots = [app.getPath('userData'), ...projects().map((p) => p.path), ...coworkFolders().map((p) => p.path)];
+    if (!roots.some((r) => abs === path.resolve(r) || abs.startsWith(path.resolve(r) + path.sep))) throw new Error('Path outside the app folders');
+    if (reveal) return shell.showItemInFolder(abs);
+    return fs.statSync(abs).isDirectory() ? shell.openPath(abs) : shell.showItemInFolder(abs);
+  });
+
+  handle('settings:open', (section) => openSettings(section));
+  handle('settings:get', () => settingsPayload());
+  handle('settings:set', (patch) => saveSettings(patch || {}));
+  handle('settings:close', () => settingsWin?.close());
 
   handle('projects:list', () => projects());
   handle('projects:add', async () => {
@@ -139,6 +248,10 @@ function registerIpc() {
   });
   handle('projects:demo', () => ensureDemoProject());
   handle('projects:info', async (dir) => ({ root: await git.repoRoot(dir), branch: await git.currentBranch(dir) }));
+  handle('projects:remove', (dir) => {
+    store.set('projects', store.get('projects', []).filter((p) => p.path !== dir));
+    return projects();
+  });
 
   handle('cowork:folders', () => coworkFolders());
   handle('cowork:addFolder', async () => {
@@ -146,6 +259,10 @@ function registerIpc() {
     return r.canceled ? null : addCoworkFolder(r.filePaths[0]);
   });
   handle('cowork:useFolder', (dir) => (fs.existsSync(dir) ? addCoworkFolder(dir) : null));
+  handle('cowork:removeFolder', (dir) => {
+    store.set('coworkFolders', store.get('coworkFolders', []).filter((p) => p.path !== dir));
+    return coworkFolders();
+  });
   handle('dialog:pickFiles', async () => {
     const r = await dialog.showOpenDialog(win, { properties: ['openFile', 'multiSelections'] });
     return r.canceled ? [] : r.filePaths;
@@ -187,6 +304,14 @@ function registerIpc() {
   handle('models:levels', (model) => hub.thinkingLevels(model));
 
   handle('keys:list', () => Object.keys(readKeys()));
+  handle('keys:status', () => {
+    const saved = readKeys();
+    return Object.fromEntries(Object.entries(KEY_ENV).map(([provider, env]) => [provider, {
+      env,
+      saved: Boolean(saved[provider]),
+      envSet: Boolean(process.env[env]),
+    }]));
+  });
   handle('keys:set', async (provider, key) => {
     writeKey(provider, key);
     await hub.restartProbe(); // new key → new model list
@@ -212,6 +337,12 @@ app.whenReady().then(() => {
   if (DEMO || !projects().length) ensureDemoProject();
   if (DEMO || !coworkFolders().length) ensureDemoCowork();
   registerIpc();
+  nativeTheme.on('updated', () => {
+    // Following the system: repaint both windows and tell the renderers.
+    if (['light', 'dark'].includes(settingsValue().theme)) return;
+    applyThemeToWindows();
+    broadcast('settings:changed', settingsPayload());
+  });
   createWindow();
   app.on('activate', () => BrowserWindow.getAllWindows().length === 0 && createWindow());
 });
