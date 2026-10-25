@@ -37,6 +37,7 @@ Renderer (renderer/)                         Main (electron/)                   
 |---|---|
 | `electron/pi-rpc.js` | 启动 pi，严格按 LF 切分 JSONL（不用 `readline`，它会在 U+2028 处切断），用 `id` 关联请求和响应，转发事件与 `extension_ui_request` |
 | `electron/sessions.js` | 会话元数据；新会话默认在 `claude/<名字>` 分支的独立 worktree 中运行；用 `--session <文件>` 恢复历史；导入 pi CLI 会话；一个常驻的 probe 进程用来列出模型 |
+| `electron/naming.js` | 会话命名：第一条提示词先当标题，再用一个一次性的 `pi --print` 进程（当前 provider 里最便宜的小模型、无工具、无 session）生成正式名字 |
 | `electron/git.js` | 相对会话起点 commit 的改动（含未跟踪文件）、`gh pr view` 的 PR/CI 状态、在 VS Code / Cursor / 终端中打开 |
 | `extensions/desktop-kit/index.ts` | 权限模式、output style、`todo_write`、`exit_plan_mode`、`task`（子 agent） |
 | `extensions/demo-model.ts` | 离线演示模型：基于 pi-ai 的 faux provider，按脚本调用 pi 的**真实工具**（Code 和 Cowork 各有一组场景） |
@@ -72,6 +73,15 @@ Renderer (renderer/)                         Main (electron/)                   
 `Output style` 在同一菜单里，和权限模式一样通过扩展命令即时切换；它改变的是 Claude 的回答方式，不是界面，也不是权限。Normal 模式是默认值，选择保存在 localStorage；`Output style` 同时写入当前会话元数据，恢复会话后继续生效。
 
 > 提示：Claude desktop 里 `Thinking` 只在会话已经产生过思考后出现；这里也做了同样的处理。`Ctrl+O` 只在可用的模式之间循环。
+
+### 会话命名
+
+新会话的名字来自用户的第一条提示词，但分两步：
+
+1. **先顶着**：第一条真实提示词（跳过 `/命令`）会立刻成为标题——去掉 `@文件`、代码块，压成一行并截到 60 字。
+2. **再取名**：同时在**独立的** `pi --print` 进程里让模型取一个 2–5 个词的名字。这个进程带 `--no-session --no-tools --no-extensions`，用当前 provider 里单价最低的小模型（thinking 关闭，20 秒超时），所以它不占会话上下文、也不拖慢会话的第一轮。结果写回会话元数据，并通过 `set_session_name` 写进 pi session。
+
+手动重命名后就不再自动命名；模型给出的是句子或礼貌回复时会被丢弃，保留提示词标题。离线演示模型没有可用的真实模型，自动跳过。
 
 ### 文件工具预览与附件
 
