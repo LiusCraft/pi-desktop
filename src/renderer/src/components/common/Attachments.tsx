@@ -17,7 +17,7 @@ export function AttachmentTiles({ attachments, onRemove, disabled }: {
   if (!attachments.length) return null;
   const open = (a: AnyAttachment) => {
     if (imageSource(a)) setPreview(a);
-    else toast(a.kind === 'file' ? `${a.path}\nLocal reference; moving or deleting this file makes it unavailable.` : 'Image unavailable');
+    else if (a.kind !== 'file') toast.warning('Image unavailable');
   };
   return (
     <>
@@ -27,7 +27,7 @@ export function AttachmentTiles({ attachments, onRemove, disabled }: {
           const missing = 'missing' in a && a.missing;
           return (
             <div key={a.id} className={cn('group relative flex h-14 max-w-56 items-center gap-2 overflow-hidden rounded-lg border bg-card pr-3 text-left', missing && 'opacity-60')}>
-              <button type="button" onClick={() => open(a)} title={a.kind === 'file' ? a.path : a.name} className="flex h-full min-w-0 items-center gap-2">
+              <button type="button" onClick={() => open(a)} title={a.kind === 'file' ? `${a.path} · 本机引用，移动或删除后不可用` : a.name} className="flex h-full min-w-0 items-center gap-2">
                 {src ? (
                   <img src={src} alt={a.name} className="h-full w-14 shrink-0 object-cover" />
                 ) : (

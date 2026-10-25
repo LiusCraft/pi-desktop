@@ -5,7 +5,7 @@ import { buildMessage, decodeUserContent } from '@shared/attachments';
 import type { HostEvent, OutputStyle, PermissionMode, SessionKind, SessionMeta, ThinkingLevel, UiResponse } from '@shared/protocol';
 import { diffStats, positiveLine } from '@shared/tool-previews';
 import { call, errText, modKey } from '@/lib/api';
-import { DESKTOP_COMMANDS, MODES, OUTPUT_STYLE_INFO, VIEW_MODES, type ViewMode } from '@/lib/constants';
+import { DESKTOP_COMMANDS, MODES, VIEW_MODES, type ViewMode } from '@/lib/constants';
 import { fmtTok, relPath } from '@/lib/format';
 import { currentSession, getApp, isCowork, setApp, setPref, updateSession, type AppState } from './app';
 import { dialogs } from './dialogs';
@@ -100,7 +100,10 @@ function flushEvents() {
           if (ev.status === 'idle' && s.running) effects.push([s.meta.id, settle(s, false, view)]);
           break;
         case 'notify':
-          (ev.level === 'error' ? toast.error : ev.level === 'warning' ? toast.warning : toast)(ev.message);
+          // Problems interrupt; info-level notices join the transcript instead.
+          if (ev.level === 'error') toast.error(ev.message);
+          else if (ev.level === 'warning') toast.warning(ev.message);
+          else push(s, { kind: 'note', key: newKey(), text: ev.message }, view);
           break;
         case 'editor_text':
           effects.push([s.meta.id, { editorText: ev.text }]);
@@ -132,7 +135,7 @@ function runEffects(id: string, fx: Effects) {
     call('app:notify', { title: s.meta.title, body: fx.settled.aborted ? 'Interrupted' : 'Claude finished', sessionId: id }).catch(() => {});
   }
   if (fx.waiting && away) {
-    if (!isCur || document.hidden) toast(`“${s.meta.title}” 需要你的确认`);
+    if (!isCur || document.hidden) toast.warning(`“${s.meta.title}” 需要你的确认`);
     call('app:notify', { title: s.meta.title, body: 'Needs your approval', sessionId: id }).catch(() => {});
   }
 }
@@ -188,7 +191,9 @@ export function setView(view: SessionKind) {
   });
   try {
     localStorage.setItem('cc_mode', JSON.stringify(view));
-  } catch {}
+  } catch {
+    // Storage can be unavailable; the in-memory preference still applies.
+  }
   const last = getApp().lastByView[view];
   const s = last ? getApp().sessions[last] : undefined;
   if (s && !s.meta.archived) void openSession(last!);
@@ -217,7 +222,9 @@ export async function openSession(id: string, fresh = false) {
   });
   try {
     localStorage.setItem('cc_mode', JSON.stringify(view));
-  } catch {}
+  } catch {
+    // Storage can be unavailable; the in-memory preference still applies.
+  }
   activateDraftFor();
   if (s.loaded && !fresh) {
     void pollPr(id);
@@ -269,7 +276,7 @@ async function slashCommand(s: SessionView | undefined, head: string, text: stri
   if (head === '/help') {
     clear();
     if (!s) {
-      toast('先开始一个会话');
+      toast.warning('先开始一个会话');
       return true;
     }
     const lines = [...DESKTOP_COMMANDS, ...s.commands.map((c) => [`/${c.name}`, c.description || c.source] as [string, string])];
@@ -287,13 +294,12 @@ async function slashCommand(s: SessionView | undefined, head: string, text: stri
         x.todosKey = null;
         x.ctxPct = 0;
       });
-      toast('Started a fresh context');
     } else if (head === '/compact') {
       await compactSession(id, text.slice(head.length).trim() || undefined);
     } else if (head === '/context') {
       setApp((st) => void (st.menu = 'context'));
     } else if (head === '/export') {
-      toast(`Exported to ${(await call('sessions:exportHtml', id)).path}`);
+      await exportHtml(id);
     }
   } catch (err) {
     fail(err);
@@ -314,6 +320,16 @@ function pushItem(id: string, item: Item) {
     const s = st.sessions[id];
     if (s) push(s, item, st.prefs.viewMode);
   });
+}
+
+/** Write the transcript to an HTML file and note the path in the conversation. */
+export async function exportHtml(id: string) {
+  try {
+    const { path } = await call('sessions:exportHtml', id);
+    pushItem(id, { kind: 'note', key: newKey(), text: `Exported to ${path}` });
+  } catch (err) {
+    fail(err);
+  }
 }
 
 async function createSession(firstPrompt: string, draftKey: string) {
@@ -347,7 +363,7 @@ async function createSession(firstPrompt: string, draftKey: string) {
 export async function send(queueOnly = false) {
   const draft = activeDraft();
   if (!draft || draft.sending) return;
-  if (draft.preparing) return void toast('等待附件处理完成后再发送');
+  if (draft.preparing) return void toast.warning('等待附件处理完成后再发送');
   const text = draft.text;
   const files = draft.attachments.slice();
   let s = currentSession();
@@ -357,11 +373,11 @@ export async function send(queueOnly = false) {
     return;
   }
   const head = text.trim().split(/\s+/)[0];
-  if (files.length && head.startsWith('/')) return void toast('斜杠命令不能携带附件；请先移除附件或使用普通消息');
+  if (files.length && head.startsWith('/')) return void toast.warning('斜杠命令不能携带附件；请先移除附件或使用普通消息');
   if (await slashCommand(s, head, text)) return;
 
   const st = getApp();
-  if (!s && st.view === 'code' && !st.prefs.project) return void toast('先选择一个项目');
+  if (!s && st.view === 'code' && !st.prefs.project) return void toast.warning('先选择一个项目');
   let key = draft.key;
   drafts.lock(key, true);
   if (!s) {
@@ -420,7 +436,7 @@ export async function send(queueOnly = false) {
     if (r.disposition === 'handled') {
       removeUser();
       if (optimistic) updateSession(id, (v) => void (v.running = false));
-    } else if (wasRunning && getApp().current === id) toast(queueOnly ? 'Queued for after the current task' : 'Claude will see this after the current step');
+    }
   } catch (err) {
     const u = item();
     if (u?.delivered) drafts.clear(key);
@@ -484,43 +500,40 @@ export function answerUi(id: string, itemKey: string, response: UiResponse, labe
 
 // ------------------------------------------------------------ session settings
 
-export function setPermMode(mode: PermissionMode, announce = false) {
+export function setPermMode(mode: PermissionMode) {
   const s = currentSession();
   if (s) {
     updateSession(s.meta.id, (v) => void (v.meta.mode = mode));
     call('sessions:setMode', s.meta.id, mode).catch(fail);
   } else setPref('mode', mode);
-  if (announce) toast(`Mode: ${MODES.find((m) => m.id === mode)!.name}`);
 }
 export function cycleMode() {
   const s = currentSession();
   const cur = s?.meta.mode ?? getApp().prefs.mode;
   const i = MODES.findIndex((m) => m.id === cur);
-  setPermMode(MODES[(i + 1) % MODES.length].id, true);
+  setPermMode(MODES[(i + 1) % MODES.length].id);
 }
 
-export function setViewMode(view: ViewMode, announce = false) {
+export function setViewMode(view: ViewMode) {
   setPref('viewMode', view);
   setApp((st) => {
     for (const s of Object.values(st.sessions)) applyViewMode(s, view);
   });
-  if (announce) toast(`Transcript view: ${VIEW_MODES.find((m) => m.id === view)!.name}`);
 }
 export function cycleViewMode() {
   const s = currentSession();
   const modes = VIEW_MODES.filter((m) => m.id !== 'thinking' || hasThinking(s));
   const at = modes.findIndex((m) => m.id === getApp().prefs.viewMode);
-  setViewMode((modes[at + 1] ?? modes[0]).id, true);
+  setViewMode((modes[at + 1] ?? modes[0]).id);
 }
 
-export function setOutputStyle(style: OutputStyle, announce = false) {
+export function setOutputStyle(style: OutputStyle) {
   setPref('outputStyle', style);
   const s = currentSession();
   if (s) {
     updateSession(s.meta.id, (v) => void (v.meta.outputStyle = style));
     call('sessions:setStyle', s.meta.id, style).catch(fail);
   }
-  if (announce) toast(`Output style: ${OUTPUT_STYLE_INFO.find((x) => x.id === style)!.name}`);
 }
 
 export async function chooseModel(id: string) {
@@ -576,7 +589,6 @@ export async function archiveSession(id: string, confirm = false) {
     await call('sessions:archive', id);
     updateSession(id, (v) => void (v.meta.archived = true));
     if (getApp().current === id) showWelcome();
-    toast('Archived');
   } catch (err) {
     fail(err);
   }
@@ -585,7 +597,6 @@ export async function archiveSession(id: string, confirm = false) {
 export async function forkSession(id: string) {
   try {
     await call('sessions:clone', id);
-    toast('已复制为新的 pi 会话分支（可在 CLI 中 /resume）');
   } catch (err) {
     fail(err);
   }
@@ -613,7 +624,7 @@ export function openAgent(id: string, toolCallId: string) {
 /** Stop one background subagent; the turn goes on without its report. */
 export async function stopTask(id: string, toolCallId: string) {
   try {
-    if (!(await call('sessions:stopTask', id, toolCallId))) toast('This task has already finished');
+    if (!(await call('sessions:stopTask', id, toolCallId))) toast.warning('This task has already finished');
   } catch (err) {
     fail(err);
   }
@@ -684,7 +695,9 @@ export async function loadChanges(id: string) {
         v.panels.diff = true;
       }
     });
-  } catch {}
+  } catch {
+    // The diff panel simply keeps its previous contents when a refresh fails.
+  }
 }
 
 export async function loadFiles(id: string, force = false) {
@@ -702,7 +715,9 @@ export async function refreshStats(id: string) {
   try {
     const st = await call('sessions:stats', id);
     if (st?.contextUsage?.percent != null) updateSession(id, (v) => void (v.ctxPct = st.contextUsage!.percent));
-  } catch {}
+  } catch {
+    // Context usage is cosmetic; keep the last known percentage.
+  }
 }
 
 const prTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -725,11 +740,13 @@ export async function pollPr(id: string, retries = 0) {
         v.pr = pr;
         v.meta.pr = { num: pr.num, url: pr.url, state: pr.state, draft: pr.draft };
       });
-      if (prevCi === 'pending' && (pr.ci === 'pass' || pr.ci === 'fail')) toast(`PR #${pr.num} · CI ${pr.ci === 'pass' ? 'passed' : 'failed'}`);
+      if (prevCi === 'pending' && pr.ci === 'fail') toast.error(`PR #${pr.num} · CI failed`);
       if (pr.state === 'open') prTimers.set(id, setTimeout(() => void pollPr(id), pr.ci === 'pending' ? 15000 : 60000));
       return;
     }
-  } catch {}
+  } catch {
+    // Polling failures are handled by the retry timer below.
+  }
   if (request === st.request && (st.retries || getApp().sessions[id]?.pr?.state === 'open')) {
     const retry = st.retries > 0;
     if (retry) st.retries--;
@@ -794,7 +811,6 @@ export async function importCliSession() {
     setApp((st) => void (st.sessions[meta.id] = emptySession(meta)));
     await openSession(meta.id);
     void refreshImportable();
-    toast('Imported session');
   } catch (err) {
     fail(err);
   }
@@ -823,7 +839,9 @@ export function toggleSidebar(collapsed?: boolean) {
   setApp((st) => void (st.sidebarCollapsed = next));
   try {
     localStorage.setItem('cc_collapsed', JSON.stringify(next));
-  } catch {}
+  } catch {
+    // Storage can be unavailable; the main process stores the real setting.
+  }
   call('settings:set', { sidebarCollapsed: next }).catch(() => {});
 }
 

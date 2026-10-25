@@ -3,9 +3,9 @@ import {
   BotIcon, ChevronDownIcon, FileTextIcon, FolderIcon, GlobeIcon, LaptopIcon, MoreVerticalIcon, PanelRightIcon, PlusIcon,
   SquareTerminalIcon, TerminalSquareIcon,
 } from 'lucide-react';
-import { toast } from 'sonner';
 import type { OpenTarget } from '@shared/protocol';
 import { CodeComposer, CoworkComposer } from '@/components/composer/Composers';
+import { copyText } from '@/components/common/Copy';
 import { Transcript } from '@/components/thread/Transcript';
 import { openCards, Workspace } from '@/components/workspace/Workspace';
 import {
@@ -19,7 +19,7 @@ import { COWORK_IDEAS, OUTPUT_STYLE_INFO, VIEW_MODES, type ViewMode } from '@/li
 import { fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
-  addProject, archiveSession, fail, importCliSession, renameSession, setOutputStyle, setViewMode,
+  addProject, archiveSession, exportHtml, fail, importCliSession, renameSession, setOutputStyle, setViewMode,
   togglePanel, welcomeDraftKey,
 } from '@/store/actions';
 import { useApp, useCurrent } from '@/store/app';
@@ -46,16 +46,16 @@ function SessionMenu({ s, trigger }: { s: SessionView; trigger: ReactNode }) {
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-60">
         <DropdownMenuItem onSelect={() => void renameSession(s.meta.id)}>Rename</DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => void navigator.clipboard.writeText(s.meta.cwd).then(() => toast('Copied'))}>Copy {s.meta.worktree ? 'worktree' : 'folder'} path</DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => call('sessions:exportHtml', s.meta.id).then((r) => toast(`Exported to ${r.path}`)).catch(fail)}>Export as HTML</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => void copyText(s.meta.cwd)}>Copy {s.meta.worktree ? 'worktree' : 'folder'} path</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => void exportHtml(s.meta.id)}>Export as HTML</DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="flex justify-between text-xs text-muted-foreground">Transcript view<span>{modKey}O</span></DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={view} onValueChange={(v) => setViewMode(v as ViewMode, true)}>
+        <DropdownMenuRadioGroup value={view} onValueChange={(v) => setViewMode(v as ViewMode)}>
           {views.map((m) => <DropdownMenuRadioItem key={m.id} value={m.id} title={m.desc}>{m.name}</DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="text-xs text-muted-foreground">Output style</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={s.meta.outputStyle} onValueChange={(v) => setOutputStyle(v as OutputStyle, true)}>
+        <DropdownMenuRadioGroup value={s.meta.outputStyle} onValueChange={(v) => setOutputStyle(v as OutputStyle)}>
           {OUTPUT_STYLE_INFO.map((o) => <DropdownMenuRadioItem key={o.id} value={o.id} title={o.desc}>{o.name}</DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />

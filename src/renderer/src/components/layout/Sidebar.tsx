@@ -4,7 +4,6 @@ import {
   ListChecksIcon, MoonIcon, MoreHorizontalIcon, PanelLeftIcon, PlusIcon, SearchIcon, SettingsIcon, ShapesIcon, SunIcon,
   TriangleAlertIcon,
 } from 'lucide-react';
-import { toast } from 'sonner';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -64,9 +63,14 @@ function SessionRow({ s, active, onArchive }: { s: SessionView; active: boolean;
   );
 }
 
-function NavItem({ icon, children, onClick }: { icon: React.ReactNode; children: React.ReactNode; onClick: () => void }) {
+function NavItem({ icon, children, onClick, hint, soon }: { icon: React.ReactNode; children: React.ReactNode; onClick?: () => void; hint?: string; soon?: boolean }) {
   return (
-    <button onClick={onClick} className="flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent">
+    <button
+      onClick={soon ? undefined : onClick}
+      aria-disabled={soon || undefined}
+      title={hint}
+      className={cn('flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm', soon ? 'cursor-default text-muted-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent')}
+    >
       <span className="flex size-4 items-center justify-center text-muted-foreground">{icon}</span>
       {children}
     </button>
@@ -89,13 +93,13 @@ function CodeNav() {
     <>
       <nav className="space-y-0.5 px-2">
         <NavItem icon={<PlusIcon className="size-4" />} onClick={showWelcome}>New</NavItem>
-        <NavItem icon={<ClockIcon className="size-4" />} onClick={() => toast('Routines 即将推出')}>Routines</NavItem>
-        <NavItem icon={<ShapesIcon className="size-4" />} onClick={() => toast('Customize：在 ~/.pi/agent 下管理扩展、技能和提示模板')}>Customize</NavItem>
+        <NavItem icon={<ClockIcon className="size-4" />} soon hint="Routines 即将推出">Routines</NavItem>
+        <NavItem icon={<ShapesIcon className="size-4" />} soon hint="Customize：在 ~/.pi/agent 下管理扩展、技能和提示模板">Customize</NavItem>
         <NavItem icon={<MoreHorizontalIcon className="size-4" />} onClick={() => setMore((m) => !m)}>More</NavItem>
         {more && (
           <div className="pl-7">
             {['Archived sessions', 'Usage', 'MCP servers'].map((x) => (
-              <button key={x} onClick={() => toast(`${x}：即将推出`)} className="flex h-7 w-full items-center rounded-lg px-2.5 text-sm text-muted-foreground hover:bg-sidebar-accent">{x}</button>
+              <button key={x} title={`${x}：即将推出`} aria-disabled className="flex h-7 w-full cursor-default items-center rounded-lg px-2.5 text-sm text-muted-foreground">{x}</button>
             ))}
           </div>
         )}
@@ -132,10 +136,10 @@ function CoworkNav() {
     <>
       <nav className="space-y-0.5 px-2">
         <NavItem icon={<PlusIcon className="size-4" />} onClick={showWelcome}>New</NavItem>
-        <NavItem icon={<BoxIcon className="size-4" />} onClick={() => toast('Projects 即将推出')}>Projects</NavItem>
-        <NavItem icon={<ShapesIcon className="size-4" />} onClick={() => toast('Artifacts 即将推出')}>Artifacts</NavItem>
-        <NavItem icon={<ClockIcon className="size-4" />} onClick={() => toast('Scheduled tasks 即将推出')}>Scheduled</NavItem>
-        <NavItem icon={<ArchiveIcon className="size-4" />} onClick={() => toast('Customize：技能、连接器与插件')}>Customize</NavItem>
+        <NavItem icon={<BoxIcon className="size-4" />} soon hint="Projects 即将推出">Projects</NavItem>
+        <NavItem icon={<ShapesIcon className="size-4" />} soon hint="Artifacts 即将推出">Artifacts</NavItem>
+        <NavItem icon={<ClockIcon className="size-4" />} soon hint="Scheduled tasks 即将推出">Scheduled</NavItem>
+        <NavItem icon={<ArchiveIcon className="size-4" />} soon hint="Customize：技能、连接器与插件">Customize</NavItem>
       </nav>
       <div className="mt-4 flex h-7 items-center px-4 text-xs font-medium text-muted-foreground">
         <span className="flex-1">Tasks</span>

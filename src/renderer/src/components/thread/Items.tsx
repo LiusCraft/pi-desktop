@@ -1,9 +1,9 @@
 import { memo, useState } from 'react';
-import { BookmarkIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CopyIcon, GitForkIcon, XIcon } from 'lucide-react';
-import { toast } from 'sonner';
+import { BookmarkIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, GitForkIcon, XIcon } from 'lucide-react';
 import { PLAN_CHOICES } from '@shared/protocol';
 import * as previews from '@shared/tool-previews';
 import { Markdown } from '@/components/common/Markdown';
+import { CopyGlyph, useCopy } from '@/components/common/Copy';
 import { AttachmentTiles } from '@/components/common/Attachments';
 import { DiffRows, TermOutput, ToolPreviewView } from '@/components/common/CodeView';
 import { Button } from '@/components/ui/button';
@@ -57,10 +57,11 @@ export const NoteItem = memo(function NoteItem({ item }: { item: ItemOf<'note'> 
 });
 
 export const FootItem = memo(function FootItem({ sid, item, prevText }: { sid: string; item: ItemOf<'foot'>; prevText?: string }) {
+  const { copied, copy } = useCopy();
   return (
     <div className="flex items-center gap-1 text-xs text-muted-foreground">
-      <Button variant="ghost" size="icon" className="size-7" title="Copy" onClick={() => void navigator.clipboard.writeText(prevText ?? '').then(() => toast('Copied'))}>
-        <CopyIcon className="size-3.5" />
+      <Button variant="ghost" size="icon" className="size-7" title={copied ? 'Copied' : 'Copy'} onClick={() => copy(prevText ?? '')}>
+        <CopyGlyph copied={copied} />
       </Button>
       <Button variant="ghost" size="icon" className="size-7" title="Fork session" onClick={() => void forkSession(sid)}>
         <GitForkIcon className="size-3.5" />

@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { FolderIcon, InfoIcon, KeyRoundIcon, MoonIcon, SettingsIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AppInfo, KeyStatus, Project, Settings, SettingsPayload } from '@shared/protocol';
+import { useCopy } from '@/components/common/Copy';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -62,6 +63,7 @@ export function SettingsApp() {
   const [keys, setKeys] = useState<Record<string, KeyStatus>>({});
   const [projects, setProjects] = useState<Project[]>([]);
   const [folders, setFolders] = useState<Project[]>([]);
+  const { copied, copy } = useCopy();
 
   useEffect(() => {
     const offChanged = bridge.on('settings:changed', (s) => {
@@ -88,7 +90,9 @@ export function SettingsApp() {
   useEffect(() => {
     try {
       history.replaceState(null, '', `#${section}`);
-    } catch {}
+    } catch {
+      // A file:// document rejects history rewrites; the section state is enough there.
+    }
   }, [section]);
 
   const patch = async (values: Partial<Settings>) => {
@@ -184,7 +188,6 @@ export function SettingsApp() {
               onClick={async () => {
                 await (kind === 'project' ? call('projects:remove', p.path) : call('cowork:removeFolder', p.path));
                 await reloadLists();
-                toast('已从列表移除，磁盘上的文件不受影响');
               }}
             >
               移除
@@ -194,9 +197,8 @@ export function SettingsApp() {
       </Panel>
     );
     const add = async (kind: 'project' | 'folder') => {
-      const added = await (kind === 'project' ? call('projects:add') : call('cowork:addFolder')).catch((e) => void toast.error(errText(e)));
+      await (kind === 'project' ? call('projects:add') : call('cowork:addFolder')).catch((e) => toast.error(errText(e)));
       await reloadLists();
-      if (added) toast(`已添加 ${added.name}`);
     };
     body = (
       <>
@@ -217,7 +219,7 @@ export function SettingsApp() {
           <Row title={`Pi Desktop${info?.demo ? '（演示模式）' : ''}`} hint={ver} />
           <Row title="数据目录" hint={<span className="font-mono">{info?.userData}</span>}>
             <Button size="sm" variant="outline" onClick={() => info && call('app:revealPath', info.userData).catch((e) => toast.error(errText(e)))}>打开</Button>
-            <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(info?.userData ?? '').then(() => toast('已复制'))}>复制路径</Button>
+            <Button size="sm" variant="outline" onClick={() => copy(info?.userData ?? '')}>{copied ? '已复制' : '复制路径'}</Button>
           </Row>
         </Panel>
       </>
@@ -240,7 +242,7 @@ export function SettingsApp() {
           <div className="mx-auto max-w-2xl">{body}</div>
         </main>
       </div>
-      <Toaster position="bottom-center" theme={settings.resolvedTheme ?? 'light'} />
+      <Toaster position="bottom-right" theme={settings.resolvedTheme ?? 'light'} />
     </div>
   );
 }
@@ -256,7 +258,6 @@ function KeysSection({ keys, secure, onChange }: { keys: Record<string, KeyStatu
       await call('keys:set', p, v);
       onChange(await call('keys:status'));
       setValue('');
-      toast(v ? '已保存，新会话会使用这个密钥' : '已删除');
     } catch (err) {
       toast.error(errText(err));
     } finally {

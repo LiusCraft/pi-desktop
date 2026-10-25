@@ -51,7 +51,6 @@ function KeysDialog({ spec }: { spec: Extract<DialogSpec, { kind: 'keys' }> }) {
     setSaving(true);
     try {
       await call('keys:set', provider, key.trim());
-      toast(key.trim() ? 'Saved. 新会话会使用这个密钥' : '已删除');
       await loadModels();
       spec.resolve(true);
     } catch (err) {

@@ -124,7 +124,7 @@ export function App() {
       </div>
       <CommandPalette />
       <DialogHost />
-      <Toaster position="bottom-center" />
+      <Toaster position="bottom-right" />
     </TooltipProvider>
   );
 }

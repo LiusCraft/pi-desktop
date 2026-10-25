@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  ArrowLeftIcon, BotIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CodeIcon, CopyIcon, ExternalLinkIcon, FileCodeIcon, FileIcon, FolderIcon,
+  ArrowLeftIcon, BotIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CodeIcon, ExternalLinkIcon, FileCodeIcon, FileIcon, FolderIcon,
   FolderOpenIcon, ListIcon, Maximize2Icon, MessageSquareIcon, Minimize2Icon, RefreshCwIcon, SearchIcon, SquareIcon, SquareTerminalIcon,
   Trash2Icon, XIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { lineWindow, WINDOW_LINES } from '@shared/tool-previews';
 import { CodeLines, DiffRows, TermOutput } from '@/components/common/CodeView';
+import { CopyGlyph, useCopy } from '@/components/common/Copy';
 import { Markdown } from '@/components/common/Markdown';
 import { TodoList, PlanActions } from '@/components/thread/Items';
 import { Button } from '@/components/ui/button';
@@ -132,7 +133,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const tools = (
     <>
       <IconBtn title="Search files" onClick={() => togglePanel(id, 'files', true)}><SearchIcon className="size-3.5" /></IconBtn>
-      <IconBtn title="Refresh" onClick={() => { setGaps(new Set()); setCollapsed(new Set()); void loadChanges(id); toast('Refreshed'); }}><RefreshCwIcon className="size-3.5" /></IconBtn>
+      <IconBtn title="Refresh" onClick={() => { setGaps(new Set()); setCollapsed(new Set()); void loadChanges(id); }}><RefreshCwIcon className="size-3.5" /></IconBtn>
       <IconBtn title="Open in VS Code" onClick={() => call('sessions:openIn', id, 'vscode').catch(fail)}><ExternalLinkIcon className="size-3.5" /></IconBtn>
     </>
   );
@@ -228,7 +229,7 @@ export function PreviewPanel({ s, ...card }: CardProps & { s: SessionView }) {
     e.preventDefault();
     let u = value.trim();
     if (!/^https?:\/\//.test(u)) u = `http://${u}`;
-    if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(u)) return void toast('预览只支持 localhost');
+    if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(u)) return void toast.warning('预览只支持 localhost');
     updateSession(s.meta.id, (v) => void (v.previewUrl = u));
     setPref('previewUrl', u);
   };
@@ -498,11 +499,12 @@ export function DetailPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const d = s.detail!;
   const id = s.meta.id;
   const close = () => closeDetail(id);
+  const { copied, copy } = useCopy();
   if (d.type === 'plan') {
     const plan = findByKey(s, d.key);
     if (plan?.kind !== 'plan') return null;
     return (
-      <Card {...card} title="Plan" onClose={close} tools={<IconBtn title="Copy" onClick={() => void navigator.clipboard.writeText(plan.md).then(() => toast('Plan copied'))}><CopyIcon className="size-3.5" /></IconBtn>}>
+      <Card {...card} title="Plan" onClose={close} tools={<IconBtn title={copied ? 'Copied' : 'Copy plan'} onClick={() => copy(plan.md)}><CopyGlyph copied={copied} /></IconBtn>}>
         <div className="space-y-4 p-4">
           <div className="flex items-start gap-2 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
             <MessageSquareIcon className="mt-0.5 size-3.5 shrink-0" />Review the plan. Approve it to let Claude start, or keep planning and reply with changes.
