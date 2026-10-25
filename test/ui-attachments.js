@@ -13,6 +13,10 @@ if (!process.versions.electron) {
   const { app, BrowserWindow, ipcMain } = require('electron');
   const A = require('../renderer/attachments');
   app.setPath('userData', process.env.PI_UI_USER_DATA);
+  const settings = { theme: 'dark', resolvedTheme: 'dark', sidebarCollapsed: false, defaultMode: 'code' };
+  ipcMain.on('app:boot', (event) => { event.returnValue = { settings }; });
+  ipcMain.handle('settings:get', () => settings);
+  ipcMain.handle('settings:set', (_event, patch) => Object.assign(settings, patch));
   const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7xkAAAAASUVORK5CYII=';
   const PNG2 = Buffer.concat([Buffer.from(PNG, 'base64'), Buffer.from([0])]).toString('base64');
   const model = { provider: 'fixture', id: 'vision', name: 'Vision fixture', input: ['text', 'image'], contextWindow: 1000000 };

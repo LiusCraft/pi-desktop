@@ -14,6 +14,10 @@ if (!process.versions.electron) {
   const assert = require('node:assert/strict');
   const { app, BrowserWindow, ipcMain } = require('electron');
   app.setPath('userData', process.env.PI_UI_USER_DATA);
+  const settings = { theme: 'dark', resolvedTheme: 'dark', sidebarCollapsed: false, defaultMode: 'code' };
+  ipcMain.on('app:boot', (event) => { event.returnValue = { settings }; });
+  ipcMain.handle('settings:get', () => settings);
+  ipcMain.handle('settings:set', (_event, patch) => Object.assign(settings, patch));
   const meta = { id: 'render-test', kind: 'code', title: 'Rendering regression', projectPath: 'C:/projects/pi-desktop', cwd: 'C:/projects/pi-desktop', branch: 'claude/long-branch-'.repeat(12), mode: 'auto', updatedAt: Date.now() };
   const model = { provider: 'fixture', id: 'test', name: 'Test model', contextWindow: 1000000 };
   let win, pr = null, prQueries = 0, history = [];

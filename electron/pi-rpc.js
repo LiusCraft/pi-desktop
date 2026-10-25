@@ -4,6 +4,7 @@
 const { spawn } = require('node:child_process');
 const { EventEmitter } = require('node:events');
 const path = require('node:path');
+const { childEnv } = require('./env');
 
 const fs = require('node:fs');
 
@@ -15,7 +16,13 @@ const unpacked = (p) => p.replace(`app.asar${path.sep}`, `app.asar.unpacked${pat
 function findPiCli() {
   for (const dir of module.paths) {
     const pkg = path.join(dir, '@earendil-works', 'pi-coding-agent', 'package.json');
-    if (fs.existsSync(pkg)) return unpacked(path.join(path.dirname(pkg), JSON.parse(fs.readFileSync(pkg, 'utf8')).bin.pi));
+    if (!fs.existsSync(pkg)) continue;
+    try {
+      const { bin } = JSON.parse(fs.readFileSync(pkg, 'utf8'));
+      if (bin?.pi) return unpacked(path.join(path.dirname(pkg), bin.pi));
+    } catch {
+      // unreadable or malformed package.json: keep looking
+    }
   }
   throw new Error('@earendil-works/pi-coding-agent is not installed');
 }
@@ -41,12 +48,11 @@ class PiRpc extends EventEmitter {
     // Run pi with Electron's bundled Node (or plain node in tests).
     this.proc = spawn(process.execPath, [PI_CLI, '--mode', 'rpc', ...extArgs, ...this.args], {
       cwd: this.cwd,
-      env: {
-        ...process.env,
+      env: childEnv({
         ...this.env,
         ELECTRON_RUN_AS_NODE: '1',
         PI_DESKTOP_EXTENSIONS: this.extensions.join(path.delimiter),
-      },
+      }),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.proc.stdout.setEncoding('utf8'); // decoder keeps multi-byte characters intact across chunks

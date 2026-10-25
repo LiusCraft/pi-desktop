@@ -12,6 +12,10 @@ if (!process.versions.electron) {
   const assert = require('node:assert/strict');
   const { app, BrowserWindow, ipcMain } = require('electron');
   app.setPath('userData', process.env.PI_UI_USER_DATA);
+  const settings = { theme: 'dark', resolvedTheme: 'dark', sidebarCollapsed: false, defaultMode: 'code' };
+  ipcMain.on('app:boot', (event) => { event.returnValue = { settings }; });
+  ipcMain.handle('settings:get', () => settings);
+  ipcMain.handle('settings:set', (_event, patch) => Object.assign(settings, patch));
   const metas = ['first', 'second'].map((id) => ({ id, kind: 'code', title: `Workspace ${id}`, projectPath: 'C:/projects/pi-desktop', cwd: 'C:/projects/pi-desktop', branch: 'claude/workspace-layout', baseBranch: 'main', baseCommit: 'fixture', mode: 'auto', updatedAt: Date.now() }));
   const model = { provider: 'fixture', id: 'test', name: 'Test model', contextWindow: 1000000 };
   const files = ['.github/workflows/test.yml', 'electron/main.js', 'renderer/index.html', 'renderer/nested/app.js', 'renderer/nested/style.css', 'README.md'];

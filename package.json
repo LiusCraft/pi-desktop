@@ -3,11 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "description": "Claude-desktop style Code UI on top of the pi coding agent (RPC mode)",
+  "author": "LiusCraft",
+  "license": "MIT",
+  "homepage": "https://github.com/liuscraft/pi-desktop",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/liuscraft/pi-desktop.git"
+  },
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
     "demo": "electron . --demo",
     "test": "node --test --test-reporter=spec test/*.test.js",
+    "pack:mac": "electron-builder --mac --dir",
+    "dist:mac": "electron-builder --mac dmg --publish never",
+    "publish:mac": "electron-builder --mac dmg --publish always",
     "dist": "electron-builder",
     "test:ui": "node test/ui-model-menu.js && node test/ui-rendering.js && node test/ui-workspace.js && node test/ui-attachments.js && node test/ui-smoke.js && node test/ui-cowork.js",
     "test:ui:model-menu": "node test/ui-model-menu.js",
@@ -19,28 +29,8 @@
     "@earendil-works/pi-coding-agent": "^1.4.0"
   },
   "devDependencies": {
+    "@electron/notarize": "^2.5.0",
     "electron": "^45.0.0",
     "electron-builder": "^26.0.0"
-  },
-  "build": {
-    "appId": "dev.pi-desktop.app",
-    "productName": "Pi Desktop",
-    "files": [
-      "electron/**",
-      "renderer/**",
-      "extensions/**",
-      "demo/**",
-      "package.json"
-    ],
-    "mac": {
-      "category": "public.app-category.developer-tools"
-    },
-    "win": {
-      "target": "nsis"
-    },
-    "linux": {
-      "target": "AppImage"
-    },
-    "asar": false
   }
 }

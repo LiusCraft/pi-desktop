@@ -15,7 +15,8 @@ npm run demo       # 打开内置演示项目，默认使用离线演示模型
 
 - 需要 Node 22.19+（只用于安装依赖；运行时 pi 跑在 Electron 自带的 Node 24 上）。
 - 首次启动会把 `demo/todo-app`（Code 演示项目）和 `demo/cowork-workspace`（Cowork 演示文件夹：收件箱、日程、待办）复制到用户数据目录。不配置任何 API Key 也能用 **Demo (offline)** 模型体验完整流程。
-- 接真实模型：右下角模型菜单 → **Add API key…**（或用户菜单 → API keys…）。也可以直接用 pi 自己的配置：环境变量、`~/.pi/agent/auth.json`、`models.json`。
+- 接真实模型：右下角模型菜单 → **Add API key…**，或打开设置（`Ctrl/⌘+,`）在 **API 密钥** 里管理。也可以直接用 pi 自己的配置：环境变量、`~/.pi/agent/auth.json`、`models.json`。
+- 设置窗口（`Ctrl/⌘+,`，用户菜单 → 设置）是独立窗口：外观（浅色 / 深色 / 跟随系统、侧边栏）、通用（通知、默认分区）、API 密钥、项目与文件夹、关于。偏好保存在用户数据目录的 `settings.json`，修改后主窗口立即跟随；窗口以 `settings.json` 之外的同步 IPC（`app:boot`）拿到首屏需要的值，不会先闪一下再变色。
 
 ## 架构
 
@@ -41,6 +42,7 @@ Renderer (renderer/)                         Main (electron/)                   
 | `extensions/demo-model.ts` | 离线演示模型：基于 pi-ai 的 faux provider，按脚本调用 pi 的**真实工具**（Code 和 Cowork 各有一组场景） |
 | `extensions/cowork-prompt.md` | Cowork 追加的系统提示：面向非程序员、把结果写成文件、用待办清单汇报进度 |
 | `renderer/code.js` | 把 pi 事件流渲染成会话界面：流式文本 / 思考、按 transcript 模式折叠的工具组、权限卡片、计划、diff、PR 条 |
+| `renderer/settings.html` | 独立设置窗口：外观、通用、API 密钥、项目与文件夹、关于；所有值都来自主进程，主窗口与设置窗口不会不一致 |
 
 ### pi 事件与界面的对应
 
@@ -122,13 +124,65 @@ npm i -D playwright && xvfb-run -a npm run test:ui   # 启动真实 Electron 窗
 - `test/attachment-message.test.js` / `test/attachments-backend.test.js`：附件消息往返、校验限制、剪贴板格式和图片请求转发。
 - `npm run test:ui:rendering`、`npm run test:ui:workspace`、`npm run test:ui:attachments`：真实 Electron 窗口与 preload、离线 mock IPC，不需要 Playwright；覆盖实时 / 历史预览、文件定位、附件发送与草稿恢复，不读写系统剪贴板。完整 `test:ui` 还包含依赖 Playwright 的 Code / Cowork demo 流程。
 
-## 打包
+## 打包与发布（macOS）
+
+只维护 macOS。构建走 `Makefile`（CI 调的是同一批 npm 脚本），需要 macOS + Xcode 命令行工具（`xcode-select --install`，`codesign` / `iconutil` / `sips` / `hdiutil` 都在里面）和 Node 22.19+。
 
 ```bash
-npm run dist
+make help              # 列出所有目标
+make install           # npm ci
+make app               # 只出 .app（当前架构），几十秒，改完就能双击跑
+make run               # 同上，然后 open 打开
+make dmg               # 当前架构的 dmg
+make dist              # arm64 + x64 各一个 dmg
+make icon              # 重新生成 build/icon.png + icon.icns
+make clean             # 删 dist/
 ```
 
-pi 作为独立的 Node 子进程运行，需要直接从文件系统读取自身和扩展的依赖，所以关闭了 asar（`"asar": false`）。
+产物：`dist/mac-arm64/Pi Desktop.app`（x64 是 `dist/mac/`）、`dist/Pi-Desktop-<版本>-<架构>.dmg`。dmg 里就一个 app 加一个 `/Applications` 快捷方式。
+
+### 签名与公证
+
+默认是**未签名**构建，本地能用；下载分发会弹 Gatekeeper。要正式发布就配好下面这套，配置一存在，`make dmg` 和 CI 都自动变成「Developer ID 签名 → 公证 → staple」，不需要改命令：
+
+| 变量 | 含义 |
+|---|---|
+| `CSC_LINK` | 导出的 `.p12`（Developer ID Application），路径或 base64 |
+| `CSC_KEY_PASSWORD` | `.p12` 的密码 |
+| `APPLE_ID` | Apple ID |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App 专用密码（appleid.apple.com 生成） |
+| `APPLE_TEAM_ID` | Team ID |
+
+也可以改用 App Store Connect API Key：`APPLE_API_KEY`（.p8 路径）+ `APPLE_API_KEY_ID` + `APPLE_API_ISSUER`，或钥匙串里的 `APPLE_KEYCHAIN_PROFILE`（`xcrun notarytool store-credentials`）。
+
+`scripts/after-sign.cjs` 是 electron-builder 的 `afterSign` 钩子：拿到 Developer ID 签名就公证 + staple，没有就做一次 ad-hoc 签名（Apple Silicon 上完全没有签名的 arm64 app 根本起不来，所以 ad-hoc 不是可选步骤）。
+
+### 发布一个版本
+
+```bash
+make release VERSION=0.2.0     # npm version + 打 tag + push
+```
+
+推上去的 `v0.2.0` tag 触发 `.github/workflows/release.yml`：arm64 和 x64 两个 dmg 在 `macos-14` 上交叉构建（没有按架构编译的原生模块，只有 Electron 的 zip 不同），然后 `gh release create/upload` 挂到同名 Release，附 `SHA256SUMS.txt`。签名靠仓库 secret：`MAC_CERT_P12`、`MAC_CERT_PASSWORD`、`APPLE_ID`、`APPLE_PASSWORD`、`APPLE_TEAM_ID`；不填也能跑通，只是产物未签名。
+
+不想走 tag 的话，本地直接 `GH_TOKEN=… make publish` 也能上传。
+
+`.github/workflows/build.yml` 是 PR 上的打包冒烟测试：跑 `--dir` 打包，然后断言 `Resources/app/node_modules/@earendil-works/pi-coding-agent` 和两个扩展真的进了包。
+
+### 未签名产物怎么打开
+
+首次打开会被拦（「无法打开，因为 Apple 无法验证」）：右键 → 打开，或者
+
+```bash
+xattr -cr /Applications/Pi\ Desktop.app   # 只在你自己确认过来源的情况下
+```
+
+### 两处刻意的选择
+
+- **`asar: false`**：pi 是独立的 Node 子进程，要直接从文件系统读自己的 `dist/` 和 TS 扩展；`app.asar` 会把它们藏起来。代价是 app 目录里有一万多文件（约 390 MB）。
+- **不做 universal 单包**：`@earendil-works/pi-tui` 自带 `darwin-arm64` / `darwin-x64` 两份预编译 `.node`，合并成 universal 要额外配 `@electron/universal` 的 `x64ArchFiles`，体积还翻倍。arm64 / x64 各一个 dmg 更省事。
+
+图标是 `scripts/make-icon.mjs` 用纯 Node（SDF 画形状 + 手写 PNG 编码，无依赖）生成的，改完跑 `make icon` 会一起更新 `.png` 和 `.icns`。
 
 ## 已知限制 / 下一步
 
@@ -138,4 +192,5 @@ pi 作为独立的 Node 子进程运行，需要直接从文件系统读取自�
 - pi 的 `find` 工具依赖 `fd`，pi 会自动下载；在离线环境下这一项会失败（`grep` 用系统里的 `rg`）。
 - **PR / CI 状态**依赖 `gh` CLI 已登录。
 - **预览**面板只允许 `localhost` 地址。
-- 已在 macOS 隔离用户数据下运行真实离线 demo，检查图片发送 / 恢复、工具定位、深浅主题和窄窗口；未手动验证系统截图 / Finder 复制文件。Windows / Linux 剪贴板格式有自动测试覆盖，仍需各平台真机确认。
+- 已在 macOS（打包版，Apple Silicon）和 Linux（xvfb）上实际跑过窗口；本次还在 macOS 隔离用户数据下运行真实离线 demo，检查图片发送 / 恢复、工具定位、深浅主题和窄窗口。未手动验证系统截图 / Finder 复制文件；Windows / Linux 剪贴板格式有自动测试覆盖，仍需各平台真机确认，Windows 原生窗口按钮也待真机确认。
+- 没有自动更新：升级靠重新下载 dmg。要接 `electron-updater` 得再产一个 `zip` target（dmg 不能做增量更新），并加一个设置项。
