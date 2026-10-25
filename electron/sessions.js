@@ -7,6 +7,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { PiRpc, EXTENSIONS_DIR } = require('./pi-rpc');
 const git = require('./git');
+const { validatePromptPayload } = require('./attachments');
+const { buildMessage } = require('../renderer/attachments');
 
 const NAMES = ['trusting-maxwell', 'eager-lovelace', 'quiet-hopper', 'brave-turing', 'calm-knuth', 'swift-ritchie', 'bold-curie', 'keen-dijkstra'];
 const PI_SESSIONS = path.join(os.homedir(), '.pi', 'agent', 'sessions');
@@ -19,6 +21,7 @@ class SessionHub extends EventEmitter {
     this.userData = userData;
     this.getEnv = getEnv; // extra env (API keys) for pi processes
     this.procs = new Map(); // sessionId -> PiRpc
+    this.processVersions = new Map(); // invalidate prompts still preparing when pi exits
     this.status = new Map(); // sessionId -> 'idle' | 'running'
     this.metas = store.get('sessions', []);
     this.probe = null;
@@ -149,6 +152,7 @@ class SessionHub extends EventEmitter {
       this.emit('event', { sessionId: id, event });
     });
     pi.on('exit', ({ code, signal, stderr }) => {
+      this.processVersions.set(id, (this.processVersions.get(id) || 0) + 1);
       this.procs.delete(id);
       this.setStatus(id, 'idle');
       this.emit('exit', { sessionId: id, code, signal, stderr: stderr.slice(-4000) });
@@ -178,15 +182,36 @@ class SessionHub extends EventEmitter {
     return { meta: this.meta(id), state, messages, stats };
   }
 
-  async prompt(id, message, behavior) {
+  async prompt(id, payload, behavior) {
+    const version = this.processVersions.get(id) || 0;
+    const checkProcess = () => {
+      if (version !== (this.processVersions.get(id) || 0)) throw new Error('pi exited while preparing this message. The draft has been retained; check history before retrying.');
+    };
+    const normalized = await validatePromptPayload(payload);
+    const { message, images } = buildMessage(normalized);
+    // Image decoding yields to process exit. Never restart pi and submit an
+    // old, in-flight message after its process (and a waiting Stop) has ended.
+    checkProcess();
     const pi = this.ensure(id);
     await pi.ready;
+    checkProcess();
+    if (images?.length) {
+      // Use current pi state, not potentially stale metadata from the model menu.
+      const state = await pi.send({ type: 'get_state' });
+      checkProcess();
+      if (!state.model?.input?.includes('image')) {
+        throw new Error('The selected model does not support image attachments. Choose an image-capable model or remove the images.');
+      }
+    }
     const m = this.meta(id);
     m.updatedAt = Date.now();
     this.save();
-    if (behavior === 'followUp') return pi.send({ type: 'follow_up', message }).catch(() => pi.send({ type: 'prompt', message }));
     const busy = this.status.get(id) === 'running';
-    return pi.send({ type: 'prompt', message, ...(busy && !message.startsWith('/') ? { streamingBehavior: behavior || 'steer' } : {}) });
+    const content = { message, ...(images?.length ? { images } : {}) };
+    // follow_up queues while streaming, but does not start an idle agent. Do not
+    // blindly retry failed queues as prompts (which can duplicate user turns).
+    if (busy && behavior === 'followUp') return pi.send({ type: 'follow_up', ...content });
+    return pi.send({ type: 'prompt', ...content, ...(busy && !message.startsWith('/') ? { streamingBehavior: behavior || 'steer' } : {}) });
   }
 
   async rpc(id, command) {

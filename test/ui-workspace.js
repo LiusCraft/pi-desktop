@@ -12,14 +12,15 @@ if (!process.versions.electron) {
   const assert = require('node:assert/strict');
   const { app, BrowserWindow, ipcMain } = require('electron');
   app.setPath('userData', process.env.PI_UI_USER_DATA);
+  const settings = { theme: 'dark', resolvedTheme: 'dark', sidebarCollapsed: false, defaultMode: 'code' };
+  ipcMain.on('app:boot', (event) => { event.returnValue = { settings: { ...settings } }; });
   const metas = ['first', 'second'].map((id) => ({ id, kind: 'code', title: `Workspace ${id}`, projectPath: 'C:/projects/pi-desktop', cwd: 'C:/projects/pi-desktop', branch: 'claude/workspace-layout', baseBranch: 'main', baseCommit: 'fixture', mode: 'auto', updatedAt: Date.now() }));
   const model = { provider: 'fixture', id: 'test', name: 'Test model', contextWindow: 1000000 };
   const files = ['.github/workflows/test.yml', 'electron/main.js', 'renderer/index.html', 'renderer/nested/app.js', 'renderer/nested/style.css', 'README.md'];
   const before = Array.from({ length: 60 }, (_, i) => `const old${i} = "${'long code '.repeat(30)}";`).join('\n');
   const after = before.replaceAll('const old', 'const updated');
-  const errors = [], commands = [], settingsWrites = [];
-  const settings = { theme: 'dark', resolvedTheme: 'dark', defaultMode: 'code', sidebarCollapsed: false };
-  ipcMain.on('app:boot', (e) => { e.returnValue = { settings: { ...settings } }; });
+  const errors = [], commands = [], settingsWrites = [], fileReads = [], pendingFileReads = [];
+  const longFile = Array.from({ length: 5500 }, (_, i) => `const current${i + 1} = "${'long source '.repeat(8)}";`).join('\n');
   let win, previewRequests = 0;
   const server = require('node:http').createServer((_req, res) => {
     previewRequests++;
@@ -41,10 +42,17 @@ if (!process.versions.electron) {
     'sessions:changes': () => [{ path: 'electron/main.js', before, after }],
     'sessions:pr': () => null,
     'sessions:files': () => files,
-    'sessions:readFile': (_e, _id, rel) => `// ${rel}\nconst example = true;`,
+    'sessions:readFile': (_e, id, rel) => {
+      fileReads.push({ id, rel });
+      if (rel.startsWith('slow-')) return new Promise((resolve, reject) => pendingFileReads.push({ id, rel, resolve, reject }));
+      if (rel === 'unavailable.js') return null;
+      if (rel === 'missing.js') throw new Error('ENOENT: current file is missing');
+      return rel === 'electron/main.js' ? longFile : `// ${rel}\nconst example = true;`;
+    },
   };
   for (const [channel, handler] of Object.entries(replies)) ipcMain.handle(channel, handler);
   const run = (fn, ...args) => win.webContents.executeJavaScript(`(${fn})(${args.map((a) => JSON.stringify(a)).join(',')})`);
+  const emit = (event) => win.webContents.send('pi:event', { sessionId: metas[0].id, event });
   // Inspect the localhost fixture through Electron, keeping the app's normal
   // cross-origin restrictions in place.
   const previewRun = (fn) => win.webContents.mainFrame.frames.find((frame) => frame.url.startsWith(`http://127.0.0.1:${server.address().port}/`))?.executeJavaScript(`(${fn})()`) ?? Promise.resolve(false);
@@ -98,10 +106,10 @@ if (!process.versions.electron) {
     }).map((el) => el.id)), [], 'all panels must remain inside their columns');
     const buttonsClear = await run(() => {
       const header = document.querySelector('.ch').getBoundingClientRect();
-      const controls = document.body.dataset.os === 'win' && innerWidth > 768 ? 145 : 0;
+      const nativeControls = document.body.dataset.os === 'win' && innerWidth > 768 ? 145 : 0;
       return [...document.querySelectorAll('#codeActions > button, #codeActions > .pop-wrap > button')].filter((el) => el.getBoundingClientRect().width).every((el) => {
         const r = el.getBoundingClientRect();
-        return r.x >= header.x && r.right <= header.right - controls;
+        return r.x >= header.x && r.right <= header.right - nativeControls;
       });
     });
     assert.ok(buttonsClear, 'tool buttons must remain accessible and clear of native window controls');
@@ -414,8 +422,82 @@ if (!process.versions.electron) {
     await click('#previewHead [data-x]');
     assert.equal(await run(() => !document.querySelector('#terminalCard').hidden), true, 'closing preview leaves terminal open');
 
-    // A different session must not reuse a terminal form bound to the old one.
+    // Tool filenames always open current source, even when git already knows the file.
+    const previewFixtures = [
+      { id: 'current-edit', name: 'edit', path: 'electron/main.js', details: { diff: '-3101 old\n+3101 replacement', firstChangedLine: 3101 } },
+      { id: 'past-eof', name: 'edit', path: 'past-eof.js', details: { diff: '-9000 removed', firstChangedLine: 9000 } },
+      ...['slow-first.js', 'slow-second.js', 'slow-close.js', 'slow-session.js', 'slow-welcome.js', 'slow-reject.js', 'missing.js', 'unavailable.js'].map((path) => ({ id: path, name: 'read', path })),
+    ];
+    emit({ type: 'agent_start' });
+    for (const f of previewFixtures) {
+      emit({ type: 'tool_execution_start', toolCallId: f.id, toolName: f.name, args: { path: f.path } });
+      emit({ type: 'tool_execution_end', toolCallId: f.id, toolName: f.name, result: { content: [{ type: 'text', text: 'snapshot' }], details: f.details } });
+    }
+    emit({ type: 'agent_settled' });
+    await wait(() => !!document.querySelector('[title="Open current file: electron/main.js"]'));
+    await run(() => document.querySelector('[title="Open current file: electron/main.js"]').closest('.e-group').querySelector('.g-sum').click());
+    const fileClick = (path) => click(`[title="Open current file: ${path}"]`);
+    await fileClick('electron/main.js');
+    await wait(() => document.querySelector('#bottomBody .target-line')?.dataset.line === '3101');
+    assert.equal(fileReads.at(-1).rel, 'electron/main.js');
+    assert.equal(await run(() => !document.querySelector('#bottomCard').hidden && !document.querySelector('#diffCard').hidden), true, 'current file and explicit diff remain separate panels');
+    assert.equal(await run(() => document.querySelectorAll('#bottomBody .vl').length), 1000);
+    assert.equal(await run(() => document.querySelector('#bottomBody .target-line span:last-child').textContent.startsWith('const current3101 =')), true, 'real current file is highlighted at firstChangedLine beyond line 2000');
+    assert.ok(await run(() => {
+      const target = document.querySelector('#bottomBody .target-line').getBoundingClientRect(), body = document.querySelector('#bottomBody').getBoundingClientRect();
+      return target.top >= body.top && target.bottom <= body.bottom;
+    }), 'requested target is scrolled into view');
+    assert.equal(await run(() => getComputedStyle(document.querySelector('#bottomBody')).overflowY === 'auto' && getComputedStyle(document.querySelector('#bottomBody .file-code')).overflowY === 'visible'), true, 'one vertical scroll owner');
+    await click('#bottomBody [data-next]');
+    assert.equal(await run(() => document.querySelector('#bottomBody .vl').dataset.line), '3601');
+    await click('#bottomBody [data-prev]');
+    assert.equal(await run(() => document.querySelector('#bottomBody .target-line').dataset.line), '3101');
+    await run(() => { const body = document.querySelector('#bottomBody'); body.scrollTop += 50; window.fileTop = body.scrollTop; });
+    await click('#filesBtn'); // Other panels re-render without resetting the file scroll.
+    assert.equal(await run(() => document.querySelector('#bottomBody').scrollTop === window.fileTop), true);
+    await click('#filesBtn');
+    await click('#bottomHead [data-diff]');
+    assert.equal(await run(() => document.querySelector('#diffBody .df').classList.contains('flash')), true, 'Diff remains an explicit entry point');
+    await bounded();
+    await fileClick('past-eof.js');
+    await wait(() => document.querySelector('#bottomBody .target-line')?.dataset.line === '2');
+    assert.match(await run(() => document.querySelector('#bottomBody .tool-preview-note').textContent), /Requested line 9000.*Showing the last line/);
+    await fileClick('unavailable.js');
+    await wait(() => document.querySelector('#bottomBody').textContent.includes('File preview unavailable'));
+    await fileClick('missing.js');
+    await wait(() => document.querySelector('#bottomBody .file-read-error'));
+    assert.equal(await run(() => document.querySelectorAll('#bottomBody .vl').length), 0);
+    await fileClick('slow-first.js');
+    await fileClick('slow-second.js');
+    assert.equal(pendingFileReads.length, 2);
+    pendingFileReads.find((r) => r.rel === 'slow-second.js').resolve('newer source');
+    await wait(() => document.querySelector('#bottomBody .vl')?.textContent.includes('newer source'));
+    pendingFileReads.find((r) => r.rel === 'slow-first.js').resolve('stale source');
+    await frame();
+    assert.equal(await run(() => document.querySelector('#bottomBody').textContent.includes('stale source')), false, 'older request cannot replace newer preview');
+    await fileClick('slow-close.js');
+    await click('#bottomHead [data-x]');
+    pendingFileReads.find((r) => r.rel === 'slow-close.js').resolve('must remain closed');
+    await frame();
+    assert.equal(await run(() => document.querySelector('#bottomCard').hidden), true, 'late response cannot reopen a closed file');
+    await fileClick('slow-welcome.js');
+    await click('#newSession');
+    pendingFileReads.find((r) => r.rel === 'slow-welcome.js').resolve('welcome stale');
+    await frame();
+    assert.equal(await run(() => document.body.dataset.view), 'welcome');
+    await run(() => [...document.querySelectorAll('.cn-s')].find((s) => s.textContent.includes('Workspace first')).click());
+    assert.equal(await run(() => document.querySelector('#bottomCard').hidden), true, 'returning after a pending read does not retain a loading panel');
+    await fileClick('slow-reject.js');
+    await fileClick('unavailable.js');
+    pendingFileReads.find((r) => r.rel === 'slow-reject.js').reject(new Error('late rejected read'));
+    await frame();
+    assert.equal(await run(() => document.querySelector('#bottomBody').textContent.includes('late rejected read')), false, 'late errors cannot replace the current file');
+    await fileClick('slow-session.js');
+    // A different session must not reuse terminal state or a pending file request.
     await run(() => document.querySelectorAll('.cn-s')[1].click());
+    pendingFileReads.find((r) => r.rel === 'slow-session.js').resolve('wrong session');
+    await frame();
+    assert.equal(await run(() => document.querySelector('#bottomCard').hidden), true, 'old-session read completion cannot open a file in the new session');
     await click('#termBtn');
     await run(() => { document.querySelector('.term-in input').value = 'echo second'; document.querySelector('.term-in').requestSubmit(); });
     await wait(() => document.querySelector('.term-b').textContent.includes('offline command output'));
@@ -461,7 +543,7 @@ if (!process.versions.electron) {
     await sidebarWidth(440, 'expanded reload retains the preferred width');
     await bounded();
     assert.deepEqual(errors, []);
-    console.log('PASS: sidebar hover/tooltip, native drag/capture/cleanup, collapse shortcuts, width persistence/mobile, four panels, retained iframe/input, narrow windows, expand/restore, file tree, session isolation');
+    console.log('PASS: sidebar hover/tooltip, native drag/capture/cleanup, collapse shortcuts, width persistence/mobile, four panels, independent splitters, retained iframe/input, narrow windows, file tree, long current-file targets/paging, explicit diff, request/session races');
     server.close();
     app.exit(0);
   }).catch((err) => { console.error(err); server.close(); app.exit(1); });

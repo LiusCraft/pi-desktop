@@ -1,5 +1,5 @@
 // Narrow, explicit bridge between the renderer and the main process.
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const INVOKE = new Set([
   'app:info', 'app:theme', 'app:notify', 'app:openExternal', 'app:revealPath',
@@ -8,6 +8,7 @@ const INVOKE = new Set([
   'sessions:mode', 'sessions:style', 'sessions:update', 'sessions:archive', 'sessions:changes', 'sessions:pr', 'sessions:files',
   'sessions:importable', 'sessions:import', 'sessions:openIn', 'sessions:readFile',
   'models:list', 'models:levels', 'keys:list', 'keys:set', 'keys:status',
+  'attachments:import', 'attachments:pick', 'attachments:clipboard',
   'cowork:folders', 'cowork:addFolder', 'cowork:useFolder', 'cowork:removeFolder', 'dialog:pickFiles', 'sessions:openPath',
   'settings:open', 'settings:get', 'settings:set', 'settings:close',
 ]);
@@ -23,6 +24,11 @@ try {
 contextBridge.exposeInMainWorld('piDesktop', {
   platform: process.platform,
   boot,
+  getPathForFile(file) {
+    // Only Electron can recover a dropped File's native path. Never expose
+    // webUtils itself or arbitrary filesystem operations to the renderer.
+    return webUtils.getPathForFile(file);
+  },
   invoke(channel, ...args) {
     if (!INVOKE.has(channel)) throw new Error(`Blocked IPC channel: ${channel}`);
     return ipcRenderer.invoke(channel, ...args);

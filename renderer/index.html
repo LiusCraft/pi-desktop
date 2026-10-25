@@ -310,7 +310,8 @@
             <g fill="#141413" class="eyes"><rect x="6" y="3" width="2" height="2"/><rect x="14" y="3" width="2" height="2"/></g>
           </svg>
           <div class="ac-pop" id="acPop"></div>
-          <button class="ic-btn sm cx-plus" id="codeAttach" title="Add context (@)"><svg viewBox="0 0 20 20" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 4v12M4 10h12"/></svg></button>
+          <div class="attachments" id="codeAttachments" aria-live="polite"></div>
+          <button class="ic-btn sm cx-plus" id="codeAttach" title="Add files (type @ to reference a project file)"><svg viewBox="0 0 20 20" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 4v12M4 10h12"/></svg></button>
           <textarea id="codeInput" rows="1" placeholder="Describe a task or ask a question"></textarea>
           <button class="cx-send" id="codeSend" title="Send">
             <svg class="i-ret" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M15.5 4.5v5a2 2 0 0 1-2 2H5M8 8.5l-3 3 3 3"/></svg>
@@ -446,6 +447,9 @@
 </div>
 <script src="app.js"></script>
 <script src="workspace.js"></script>
+<script src="tool-previews.js"></script>
+<script src="attachments.js"></script>
+<script src="composer.js"></script>
 <script src="code.js"></script>
 <script src="shell.js"></script>
 </body>

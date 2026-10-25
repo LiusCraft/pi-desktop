@@ -15,6 +15,10 @@ if (!process.versions.electron) {
   const assert = require('node:assert/strict');
   const { app, BrowserWindow, ipcMain } = require('electron');
   app.setPath('userData', process.env.PI_UI_USER_DATA);
+  const settings = { theme: 'dark', resolvedTheme: 'dark', sidebarCollapsed: false, defaultMode: 'code' };
+  ipcMain.on('app:boot', (event) => { event.returnValue = { settings }; });
+  ipcMain.handle('settings:get', () => settings);
+  ipcMain.handle('settings:set', (_event, patch) => Object.assign(settings, patch));
   const models = Array.from({ length: 80 }, (_, i) => ({
     provider: `provider-${Math.floor(i / 20) + 1}`, id: `model-${i + 1}`,
     name: i % 7 ? `Test model ${i + 1}` : `Long model ${i + 1} Preview Contributor`,

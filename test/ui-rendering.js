@@ -14,22 +14,26 @@ if (!process.versions.electron) {
   const assert = require('node:assert/strict');
   const { app, BrowserWindow, ipcMain } = require('electron');
   app.setPath('userData', process.env.PI_UI_USER_DATA);
+  const settings = { theme: 'dark', resolvedTheme: 'dark', sidebarCollapsed: false, defaultMode: 'code' };
+  ipcMain.on('app:boot', (event) => { event.returnValue = { settings }; });
+  ipcMain.handle('settings:get', () => settings);
+  ipcMain.handle('settings:set', (_event, patch) => Object.assign(settings, patch));
   const meta = { id: 'render-test', kind: 'code', title: 'Rendering regression', projectPath: 'C:/projects/pi-desktop', cwd: 'C:/projects/pi-desktop', branch: 'claude/long-branch-'.repeat(12), mode: 'auto', updatedAt: Date.now() };
   const model = { provider: 'fixture', id: 'test', name: 'Test model', contextWindow: 1000000 };
-  let win, pr = null, prQueries = 0;
+  let win, pr = null, prQueries = 0, history = [];
+  const currentFile = Array.from({ length: 4000 }, (_, i) => `const currentLine${i + 1} = ${i + 1};`).join('\n');
+  const fileReads = [];
   const answers = [], opened = [], errors = [], styles = [];
-  const settings = { theme: 'dark', defaultMode: 'code', sidebarCollapsed: false };
-  ipcMain.on('app:boot', (e) => { e.returnValue = { settings }; });
   const replies = {
     'app:info': () => ({ version: 'test', keyProviders: [] }), 'app:theme': () => null,
-    'settings:get': () => settings, 'settings:set': (_e, patch) => Object.assign(settings, patch),
     'app:openExternal': (_e, url) => { opened.push(url); },
     'projects:list': () => [{ path: meta.projectPath, name: 'pi-desktop' }],
     'sessions:list': () => [meta], 'cowork:folders': () => [], 'sessions:importable': () => [],
     'models:list': () => ({ models: [model], defaultModel: 'fixture/test' }), 'models:levels': () => ['off'],
-    'sessions:open': () => ({ meta, state: { model, thinkingLevel: 'off' }, messages: [], stats: {} }),
+    'sessions:open': () => ({ meta, state: { model, thinkingLevel: 'off' }, messages: history, stats: {} }),
     'sessions:rpc': () => ({ commands: [], levels: ['off'] }),
     'sessions:changes': () => [{ path: 'file.js', before: 'old', after: 'new' }],
+    'sessions:readFile': (_e, id, rel) => { fileReads.push({ id, rel }); return currentFile; },
     'sessions:pr': () => { prQueries++; return pr; },
     'sessions:ui': (_e, id, requestId, payload) => { answers.push({ id, requestId, payload }); },
     'sessions:style': (_e, id, style) => { styles.push(style); meta.outputStyle = style; },
@@ -217,7 +221,60 @@ if (!process.versions.electron) {
     await frame();
     await bounded();
     assert.deepEqual(errors, []);
-    console.log('PASS: question previews/options, bounded long text, clickable safe links, PR creation/refresh/states, transcript view, output style');
+    // Native previews must render identically for live tool events and saved history.
+    const fixtures = [
+      { id: 'offset', name: 'read', args: { path: 'read-offset.js', offset: 2501, limit: 2 }, result: { content: [{ type: 'text', text: '    const sample = 1;\n\n\n[9 more lines in file. Use offset=2503 to continue.]' }] } },
+      { id: 'truncated', name: 'read', args: { path: 'truncated.js', offset: 90 }, result: { content: [{ type: 'text', text: 'alpha\nbeta\n\n[Showing lines 90-91 of 4000 (50.0KB limit). Use offset=92 to continue.]' }], details: { truncation: { truncated: true, content: 'alpha\nbeta' } } } },
+      { id: 'edited', name: 'edit', args: { path: 'edited.js', edits: [{ oldText: 'old', newText: 'new' }] }, result: { content: [{ type: 'text', text: 'Successfully replaced' }], details: { diff: '     ...\n 3000 context\n-3001   old\n+3001   new\n+3002 extra\n 3002 next\n     ...', firstChangedLine: 3001 } } },
+      { id: 'written', name: 'write', args: { path: 'written.js', content: 'const snapshot = true;\n' }, result: { content: [{ type: 'text', text: 'Successfully wrote to written.js' }] } },
+      { id: 'failed', name: 'read', args: { path: 'missing.js', offset: 20 }, isError: true, result: { content: [{ type: 'text', text: 'ENOENT: file not found' }] } },
+      { id: 'failed-edit', name: 'edit', args: { path: 'denied.js' }, isError: true, result: { content: [{ type: 'text', text: 'Permission denied' }] } },
+      { id: 'image', name: 'read', args: { path: 'image.png' }, result: { content: [{ type: 'text', text: 'Read image file [image/png]' }, { type: 'image', mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7xkAAAAASUVORK5CYII=' }] } },
+    ];
+    emit({ type: 'agent_start' });
+    for (const f of fixtures) {
+      emit({ type: 'tool_execution_start', toolCallId: f.id, toolName: f.name, args: f.args });
+      emit({ type: 'tool_execution_end', toolCallId: f.id, toolName: f.name, result: f.result, isError: !!f.isError });
+    }
+    emit({ type: 'agent_settled' });
+    await wait(() => !!document.querySelector('[title="Open current file: image.png"]'));
+    const checkPreviews = async () => {
+      assert.deepEqual(await run(() => {
+        const row = document.querySelector('[title="Open current file: read-offset.js"]').closest('.g-row');
+        return { numbers: [...row.querySelectorAll('.vl .n')].map((n) => n.textContent), source: row.querySelector('.vl span:last-child').textContent, continuation: row.querySelector('.tool-continuation').textContent, nested: row.querySelectorAll('button button').length };
+      }), { numbers: ['2501', '2502'], source: '    const sample = 1;', continuation: '[9 more lines in file. Use offset=2503 to continue.]', nested: 0 });
+      assert.deepEqual(await run(() => {
+        const row = document.querySelector('[title="Open current file: edited.js"]').closest('.g-row');
+        return { numbers: [...row.querySelectorAll('.dr .n')].map((n) => n.textContent), added: row.querySelector('.plus').textContent, deleted: row.querySelector('.minus').textContent, gaps: row.querySelectorAll('.tool-preview-gap').length, source: row.querySelector('.dr.add .c').textContent };
+      }), { numbers: ['3000', '3001', '3001', '3002', '3002'], added: '+2', deleted: '−1', gaps: 2, source: '  new' });
+      assert.equal(await run(() => document.querySelector('[title="Open current file: written.js"]').closest('.g-row').querySelectorAll('.dr.add, .plus, .new').length), 0, 'writes must not claim new-file status or invented additions');
+      assert.match(await run(() => document.querySelector('[title="Open current file: written.js"]').closest('.g-row').textContent), /previous version unavailable/);
+      for (const file of ['missing.js', 'denied.js']) assert.equal(await run((p) => document.querySelector(`[title="Open current file: ${p}"]`).closest('.g-row').querySelectorAll('.vl').length, file), 0, 'errors are never numbered source');
+      assert.equal(await run(() => document.querySelector('[title="Open current file: image.png"]').closest('.g-row').querySelector('img').getAttribute('src').startsWith('data:image/png;base64,')), true);
+      assert.equal(await run(() => document.querySelector('[title="Open current file: truncated.js"]').closest('.g-row').querySelectorAll('.vl').length), 2, 'truncation metadata is not a code line');
+    };
+    await checkPreviews();
+    await run(() => document.querySelector('[title="Open current file: read-offset.js"]').closest('.e-group').querySelector('.g-sum').click());
+    const reads = fileReads.length;
+    await run(() => document.querySelector('[title="Open current file: read-offset.js"]').closest('.g-row').querySelector('[data-toggle]').click());
+    assert.equal(fileReads.length, reads, 'disclosure must not fetch or open a file');
+    assert.equal(await run(() => document.querySelector('[title="Open current file: read-offset.js"]').closest('.g-row').classList.contains('open')), true);
+    await run(() => document.querySelector('[title="Open current file: read-offset.js"]').click());
+    await wait(() => document.querySelector('#bottomBody .target-line')?.dataset.line === '2501');
+    assert.equal(fileReads.at(-1).rel, 'read-offset.js');
+    assert.equal(await run(() => document.querySelector('#bottomBody .target-line span:last-child').textContent), 'const currentLine2501 = 2501;', 'filename opens current source, not the earlier snapshot');
+    await run(() => document.querySelector('[title="Open current file: edited.js"]').click());
+    await wait(() => document.querySelector('#bottomBody .target-line')?.dataset.line === '3001');
+    assert.equal(await run(() => document.querySelectorAll('#bottomBody .vl').length), 1000, 'long file viewer is windowed around firstChangedLine');
+    await bounded();
+    history = [{ role: 'assistant', content: fixtures.map((f) => ({ type: 'toolCall', id: f.id, name: f.name, arguments: f.args })) }, ...fixtures.map((f) => ({ role: 'toolResult', toolCallId: f.id, toolName: f.name, content: f.result.content, details: f.result.details, isError: f.isError }))];
+    await new Promise((resolve) => { win.webContents.once('did-finish-load', resolve); win.webContents.reload(); });
+    await wait(() => document.querySelector('#codeModelName').textContent === 'Test model');
+    await run(() => document.querySelector('.cn-s').click());
+    await wait(() => !!document.querySelector('[title="Open current file: image.png"]'));
+    await checkPreviews();
+    assert.deepEqual(errors, []);
+    console.log('PASS: question previews/options, bounded text, links, PR states, transcript view, output style, native read/edit/write/image/error previews live and replayed');
     app.exit(0);
   }).catch((err) => { console.error(err); app.exit(1); });
 }
