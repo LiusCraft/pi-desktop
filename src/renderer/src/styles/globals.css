@@ -142,6 +142,11 @@
     @apply bg-background text-foreground font-sans antialiased;
     font-size: 14.5px;
     overflow: hidden;
+    /* App chrome is not selectable; only content and inputs opt back in. */
+    user-select: none;
+  }
+  .prose-chat, .code-lines, pre, [data-selectable], input, textarea, [contenteditable="true"] {
+    user-select: text;
   }
   button {
     cursor: pointer;

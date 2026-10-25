@@ -25,7 +25,7 @@ export const UserItem = memo(function UserItem({ sid, item }: { sid: string; ite
     <div className={cn('flex flex-col items-end gap-1.5', item.queued && 'opacity-60')} title={item.queued ? '排队中：Claude 完成当前步骤后处理' : undefined}>
       <AttachmentTiles attachments={item.attachments} />
       {item.text && (
-        <div className="max-w-[85%] rounded-2xl bg-user-bubble px-4 py-2.5 whitespace-pre-wrap break-words">
+        <div data-selectable className="max-w-[85%] rounded-2xl bg-user-bubble px-4 py-2.5 whitespace-pre-wrap break-words">
           {item.text.split(/(@[\w./-]+)/g).map((part, i) => (part.startsWith('@') ? <span key={i} className="text-primary">{part}</span> : part))}
         </div>
       )}
@@ -224,7 +224,7 @@ export const GroupItem = memo(function GroupItem({ sid, item, view }: { sid: str
             {step.done ? <span>{step.secs ? `Thought for ${step.secs}s` : 'Thought'}</span> : <span className="shimmer">Thinking…</span>}
             <ChevronRightIcon className="size-3.5 transition-transform group-open/think:rotate-90" />
           </summary>
-          <div className="mt-1 border-l-2 pl-3 text-sm whitespace-pre-wrap text-muted-foreground">{step.text}</div>
+          <div data-selectable className="mt-1 border-l-2 pl-3 text-sm whitespace-pre-wrap text-muted-foreground">{step.text}</div>
         </details>
       ))}
       {item.tools.length > 0 && (
@@ -294,7 +294,7 @@ export const AskItem = memo(function AskItem({ sid, item }: { sid: string; item:
   const [question, ...extra] = r.title.split(/\n\n(?=--- \d+\. [^\n]+ preview ---\n)/);
   return (
     <div className="rounded-xl border border-primary/40 bg-card p-3.5 shadow-sm">
-      <div className="mb-2 text-sm font-medium whitespace-pre-wrap">{question}</div>
+      <div data-selectable className="mb-2 text-sm font-medium whitespace-pre-wrap">{question}</div>
       {extra.map((p, i) => {
         const nl = p.indexOf('\n');
         return (
