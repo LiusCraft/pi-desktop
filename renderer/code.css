@@ -208,7 +208,7 @@ body[data-mode="code"] #chatNav, body[data-mode="code"] #chatMain { display: non
 .code-bottom { padding: 0 28px 10px; display: flex; justify-content: center; }
 .code-bottom .composer-slot { width: 100%; max-width: 640px; }
 
-.e-user { display: flex; justify-content: flex-end; margin-top: 22px; }
+.e-user { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; min-width: 0; margin-top: 22px; }
 .e-user .bubble {
   background: var(--card-2); border-radius: 14px;
   padding: 9px 14px; max-width: 85%;
@@ -282,6 +282,25 @@ body[data-mode="code"] #chatNav, body[data-mode="code"] #chatMain { display: non
 .g-row.denied .g-rh .lbl { text-decoration: line-through; }
 .g-det { display: none; padding: 0 12px 12px; }
 .g-row.open .g-det { display: block; }
+/* File names open current content; the separate disclosure only folds the snapshot. */
+.g-file-rh { gap: 7px; }
+.g-file-rh:hover { background: transparent; }
+.g-file-rh .tool-verb { flex-shrink: 0; }
+.tool-file { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--tx-2); text-align: left; }
+.tool-file:hover { text-decoration: underline; text-underline-offset: 3px; }
+.tool-row-toggle { align-self: stretch; display: flex; align-items: center; justify-content: flex-end; min-width: 30px; flex: 1; color: var(--tx-3); }
+.tool-row-toggle:hover { color: var(--tx); }
+.tool-file:focus-visible, .tool-row-toggle:focus-visible, .tool-diff-link:focus-visible, .file-window button:focus-visible { outline: 2px solid var(--tx-3); outline-offset: 2px; border-radius: 3px; }
+.g-row.err .tool-file, .g-row.err .tool-verb { color: var(--red); }
+.g-row.denied .tool-file { text-decoration: line-through; }
+.tool-preview-meta, .tool-preview-note { color: var(--tx-3); font: 12px/1.5 var(--ui); padding: 7px 0; overflow-wrap: anywhere; }
+.tool-continuation { border-top: 0.5px solid var(--line-2); margin-top: 6px; }
+.tool-preview-gap { padding: 4px 12px; color: var(--tx-3); font: 12px/1.6 var(--ui); }
+.tool-diff { max-height: 300px; overflow: auto; font: 12px/1.6 var(--mono); border: 0.5px solid var(--line); border-radius: 8px; }
+.tool-notice { white-space: pre-wrap; overflow-wrap: anywhere; }
+.tool-error { color: var(--red); }
+.tool-diff-link { color: var(--tx-3); font-size: 12px; margin-top: 8px; text-decoration: underline; text-underline-offset: 3px; }
+.tool-image img { display: block; max-width: 100%; max-height: 280px; object-fit: contain; border-radius: 6px; }
 .plus { color: var(--green); } .minus { color: var(--red); }
 
 .mbox {
@@ -420,7 +439,7 @@ button.chip-s:hover { background: var(--sel); color: var(--tx); }
 .ci-row .d { margin-left: auto; color: var(--tx-3); font-family: var(--mono); font-size: 12px; }
 
 .cx-box {
-  position: relative; display: flex; align-items: flex-end; gap: 8px;
+  position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: end; gap: 8px;
   background: var(--card); border: 0.5px solid var(--line-2); border-radius: 12px;
   padding: 9px 8px 9px 14px;
   transition: border-color .15s, box-shadow .15s;
@@ -590,6 +609,21 @@ body.workspace-resizing .pv-iframe { pointer-events: none; }
 .bc-note { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--tx-3); margin-bottom: 10px; }
 .bc-prompt { background: var(--card-2); border-radius: 10px; padding: 12px 14px; font-size: 13.5px; line-height: 1.65; color: var(--tx-2); margin-bottom: 18px; white-space: pre-wrap; }
 .bc-meta { font-size: 13.5px; color: var(--tx-3); margin-bottom: 8px; }
+/* The file panel, not its code block, owns scrolling in both directions. */
+.mbox.code-lines { padding: 8px 0; }
+#bottomBody.file-viewer { position: relative; }
+#bottomBody .file-code { border: 0; border-radius: 0; background: transparent; max-height: none; overflow: visible; min-width: 100%; width: max-content; }
+.code-lines .vl { white-space: pre; min-width: max-content; }
+.code-lines .vl.target-line { background: var(--blue-bg); box-shadow: inset 3px 0 var(--tx-3); }
+#bottomBody .file-code .vl { grid-template-columns: 62px 1fr; }
+.file-window { position: sticky; left: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 35px; padding: 6px 10px; font: 11px/1.5 var(--ui); color: var(--tx-3); background: var(--card); }
+.file-window button { color: var(--tx-2); white-space: nowrap; }
+.file-window button:disabled { color: var(--tx-3); opacity: .45; cursor: default; }
+.file-window span { min-width: 0; text-align: center; }
+.file-read-error { padding: 16px; color: var(--red); font-size: 13px; overflow-wrap: anywhere; }
+.file-read-error pre { white-space: pre-wrap; font: 12px/1.6 var(--mono); margin-top: 8px; }
+.file-diff-btn { padding: 0 8px; font-size: 12px; color: var(--tx-3); }
+.file-diff-btn:hover { color: var(--tx); }
 .bc-pad h2 { font-size: 20px; font-weight: 600; margin: 4px 0 8px; }
 .term-b { background: var(--win); font: 12.5px/1.6 var(--mono); color: var(--tx-2); padding: 12px 14px; white-space: pre-wrap; }
 .term-b .cmd { color: var(--tx); } .term-b .cmd::before { content: "❯ "; color: #d97757; }
@@ -652,3 +686,43 @@ kbd { font: 11px var(--mono); border: 0.5px solid var(--line-2); border-radius: 
 @media (max-width: 768px) { .ch .mobile-only { display: grid; } }
 .e-perm.res { white-space: nowrap; min-width: 0; }
 .e-perm.res .mono { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* 附件是消息的一部分，但不放进文字气泡。 */
+.attachments { min-width: 0; width: 100%; }
+.attachments[hidden] { display: none; }
+#codeAttachments { grid-column: 1 / -1; margin: 0; }
+#attachments { display: block; margin-bottom: 10px; }
+.attachment-strip, .user-attachments { display: flex; align-items: flex-end; gap: 10px; min-width: 0; max-width: 100%; overflow-x: auto; padding: 4px 2px; }
+.user-attachments { justify-content: flex-start; }
+.attachment-tile { position: relative; flex: 0 0 auto; width: 150px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--card); overflow: hidden; }
+.attachment-tile.is-image { width: 126px; }
+.user-attachments .attachment-tile.is-image { width: 200px; }
+.attachment-preview { width: 100%; display: flex; flex-direction: column; align-items: flex-start; text-align: left; color: var(--tx-2); }
+.attachment-preview > svg { margin: 14px 12px 4px; color: var(--tx-3); flex-shrink: 0; }
+.attachment-preview img { width: 100%; height: 100px; display: block; object-fit: contain; background: var(--card-2); }
+.user-attachments img { height: 150px; }
+.attachment-caption { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; max-width: 100%; min-width: 0; font-size: 12px; }
+.attachment-caption > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
+.attachment-caption small { color: var(--tx-3); font-size: 11px; }
+.attachment-remove { position: absolute; right: 5px; top: 5px; width: 23px; height: 23px; display: grid; place-items: center; border-radius: 50%; font-size: 18px; background: var(--card); color: var(--tx-2); border: 1px solid var(--line-2); }
+.attachment-remove:hover { color: var(--red); }
+.attachment-status { color: var(--tx-3); font-size: 12px; line-height: 1.5; white-space: pre-wrap; max-width: 100%; overflow-wrap: anywhere; }
+.attachment-error { position: relative; padding: 6px 26px 6px 0; color: var(--red); font-size: 12px; line-height: 1.5; max-width: 100%; overflow-wrap: anywhere; }
+.attachment-error [data-dismiss] { position: absolute; right: 0; top: 0; font-size: 19px; }
+.attachment-error button, .draft-recoveries button { color: var(--link); margin-left: 10px; font-size: 12px; }
+.draft-recoveries { width: 100%; font-size: 12px; color: var(--tx-2); }
+.draft-recoveries > div { display: flex; gap: 4px; padding: 6px 0; }
+.draft-recoveries span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queued .user-attachments { opacity: .6; }
+.drag-over { outline: 2px solid var(--blue); outline-offset: 2px; }
+.cx-box textarea { min-width: 0; width: 100%; }
+.cx-send:disabled, .attachment-remove:disabled { opacity: .4; cursor: default; }
+.attachment-preview:focus-visible, .attachment-remove:focus-visible, .attachment-dialog button:focus-visible { outline: 2px solid var(--blue); outline-offset: -3px; }
+.attachment-dialog { color: var(--tx); background: var(--card); border: 1px solid var(--line-2); border-radius: 14px; padding: 12px; max-width: 92vw; max-height: 90vh; }
+.attachment-dialog::backdrop { background: rgba(0,0,0,.65); }
+.attachment-dialog-head { display: flex; align-items: center; gap: 20px; justify-content: space-between; margin-bottom: 10px; font-size: 13px; }
+.attachment-dialog-head span { overflow-wrap: anywhere; }
+.attachment-dialog-head button { font-size: 24px; color: var(--tx-2); }
+.attachment-dialog > img { display: block; max-width: 85vw; max-height: 75vh; object-fit: contain; }
+@media (max-width: 768px) { .user-attachments .attachment-tile.is-image { width: 160px; } .user-attachments img { height: 120px; } }
+@media (prefers-reduced-motion: reduce) { .attachment-tile { transition: none; } }
