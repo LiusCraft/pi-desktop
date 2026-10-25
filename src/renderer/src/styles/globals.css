@@ -319,6 +319,10 @@
 .clawd.walking .leg.b { animation: clawd-step 0.36s infinite reverse; }
 .clawd.walking .pet { animation: clawd-bob 0.18s infinite; }
 
+/* Cat tail. */
+.clawd .tail { transform-origin: left center; }
+.clawd.walking .tail, .clawd.mood-waiting .tail { animation: clawd-float 0.4s ease-in-out infinite; }
+
 /* Thinking: looks up, dots appear one by one. */
 .clawd.mood-thinking .pet { animation: clawd-float 1.6s ease-in-out infinite; }
 .clawd.mood-thinking .eyes { transform: translate(1px, -1px); animation: none; }

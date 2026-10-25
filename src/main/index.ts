@@ -79,7 +79,7 @@ function ensureDemoProject() {
 
 // Preferences live in one place so every window reads the same values.
 // `theme: null` means "not chosen yet": follow the system.
-const DEFAULT_SETTINGS: Settings = { theme: null, notify: true, defaultMode: 'code', sidebarCollapsed: false };
+const DEFAULT_SETTINGS: Settings = { theme: null, notify: true, defaultMode: 'code', sidebarCollapsed: false, pet: true, petSkin: 'clawd' };
 
 function settingsValue(): Settings {
   return { ...DEFAULT_SETTINGS, ...store.get<Partial<Settings>>('settings', {}) };

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  ArchiveIcon, BoxIcon, ChevronDownIcon, ClockIcon, CodeXmlIcon, GitMergeIcon, GitPullRequestIcon, KeyRoundIcon,
+  ArchiveIcon, BoxIcon, ChevronDownIcon, ClockIcon, CodeXmlIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon, KeyRoundIcon,
   ListChecksIcon, MoonIcon, MoreHorizontalIcon, PanelLeftIcon, PlusIcon, SearchIcon, SettingsIcon, ShapesIcon, SunIcon,
   TriangleAlertIcon,
 } from 'lucide-react';
@@ -29,16 +29,26 @@ export function SidebarToggle({ className }: { className?: string }) {
   );
 }
 
+/** Session state, in priority order: needs you > working > unread > PR state > idle (empty circle). */
 function StatusIcon({ s }: { s: SessionView }) {
-  if (s.waiting) return <TriangleAlertIcon className="size-3.5 shrink-0 text-warning" />;
-  if (s.running) return <span className="size-3 shrink-0 animate-spin rounded-full border-[1.5px] border-primary border-t-transparent" />;
-  if (s.unread) return <span className="size-2 shrink-0 rounded-full bg-primary" />;
-  if (s.pr) return s.pr.state === 'merged' ? <GitMergeIcon className="size-3.5 shrink-0 text-[#8957e5]" /> : <GitPullRequestIcon className="size-3.5 shrink-0 text-success" />;
-  return null;
+  const icon = (() => {
+    if (s.waiting) return <TriangleAlertIcon className="size-3.5 text-warning" />;
+    if (s.running) return <span className="size-3 animate-spin rounded-full border-[1.5px] border-primary border-t-transparent" />;
+    if (s.unread) return <span className="size-2 rounded-full bg-primary" />;
+    if (s.pr) {
+      if (s.pr.state === 'merged') return <GitMergeIcon className="size-3.5 text-[#8957e5]" />;
+      if (s.pr.state === 'closed') return <GitPullRequestClosedIcon className="size-3.5 text-destructive" />;
+      if (s.pr.draft) return <GitPullRequestDraftIcon className="size-3.5 text-muted-foreground" />;
+      return <GitPullRequestIcon className="size-3.5 text-success" />;
+    }
+    return <span className="size-2.5 rounded-full border-[1.5px] border-muted-foreground/50" />;
+  })();
+  return <span className="flex size-4 shrink-0 items-center justify-center">{icon}</span>;
 }
 
 function SessionRow({ s, active, onArchive }: { s: SessionView; active: boolean; onArchive?: () => void }) {
-  const title = s.waiting ? 'Waiting for your approval' : s.running ? 'Working…' : `${s.meta.title} · ${ago(s.meta.updatedAt || Date.now(), true)}`;
+  const prNote = s.pr ? ` · PR #${s.pr.num} ${s.pr.state === 'open' && s.pr.draft ? 'draft' : s.pr.state}` : '';
+  const title = s.waiting ? 'Waiting for your approval' : s.running ? 'Working…' : `${s.meta.title} · ${ago(s.meta.updatedAt || Date.now(), true)}${prNote}`;
   return (
     <div className={cn('group flex h-8 items-center gap-2 rounded-lg px-2.5 text-sm', active ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent/70')}>
       <button className="flex min-w-0 flex-1 items-center gap-2 text-left" title={title} onClick={() => void openSession(s.meta.id)}>

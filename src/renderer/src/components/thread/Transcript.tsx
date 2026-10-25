@@ -34,19 +34,19 @@ function StatusLine({ s }: { s: SessionView }) {
   if (!s.running) return s.items.length ? <span className="spark opacity-60" /> : null;
   const tasks = runningTasks(s).length;
   return (
-    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-      <span className="spark spin" />
-      <span>{fmtDur(Date.now() - s.t0)} · {fmtTok(s.tokens)} tokens</span>
+    <div className="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap text-sm text-muted-foreground">
+      <span className="spark spin shrink-0" />
+      <span className="shrink-0">{fmtDur(Date.now() - s.t0)} · {fmtTok(s.tokens)} tokens</span>
       {tasks > 0 && (
         <button
-          className="rounded-md bg-info/15 px-1.5 py-0.5 text-info hover:bg-info/25"
+          className="shrink-0 rounded-md bg-info/15 px-1.5 py-0.5 text-info hover:bg-info/25"
           title="Show background tasks"
           onClick={() => togglePanel(s.meta.id, 'tasks', true)}
         >
           {tasks} running task{tasks > 1 ? 's' : ''}
         </button>
       )}
-      <span className="truncate">{s.waiting ? 'Waiting for you…' : s.statusText || 'Thinking…'}</span>
+      <span className="min-w-0 flex-1 truncate">{s.waiting ? 'Waiting for you…' : s.statusText || 'Thinking…'}</span>
     </div>
   );
 }

@@ -251,6 +251,9 @@ export interface Settings {
   notify: boolean;
   defaultMode: SessionKind;
   sidebarCollapsed: boolean;
+  /** The composer pet: shown or not, and which skin (see PET_SKINS in the renderer). */
+  pet: boolean;
+  petSkin: string;
 }
 export interface SettingsPayload extends Settings {
   resolvedTheme: 'light' | 'dark';

@@ -29,7 +29,7 @@ export function PrBar({ s }: { s: SessionView }) {
   );
   if (!s.pr) {
     return (
-      <div className="mb-8 flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-xs">
+      <div className="mb-2 flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-xs">
         <GitBranchIcon className="size-3.5 text-muted-foreground" />
         <span className="font-medium">{fname(s.meta.projectPath)}</span>
         <span className="truncate font-mono text-muted-foreground" title={s.meta.branch}>{s.meta.branch}</span>
@@ -47,7 +47,7 @@ export function PrBar({ s }: { s: SessionView }) {
   const tone = { open: 'text-success', draft: 'text-muted-foreground', closed: 'text-destructive', merged: 'text-[#8957e5]' }[status];
   const open = () => call('app:openExternal', pr.url);
   return (
-    <div className="mb-8 flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-xs">
+    <div className="mb-2 flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-xs">
       <button onClick={open} className={cn('flex items-center gap-1 font-medium', tone)} title={pr.url}>
         {status === 'merged' ? <GitMergeIcon className="size-3.5" /> : <GitPullRequestIcon className="size-3.5" />}#{pr.num}
       </button>

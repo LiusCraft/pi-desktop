@@ -13,6 +13,7 @@ import { Toaster } from 'sonner';
 import { bridge, call, errText, isMac } from '@/lib/api';
 import { applyTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
+import { PET_SKINS, PetSprite } from '@/components/composer/Clawd';
 
 type Section = 'appearance' | 'general' | 'keys' | 'projects' | 'about';
 const SECTIONS: { id: Section; label: string; icon: ReactNode }[] = [
@@ -121,6 +122,26 @@ export function SettingsApp() {
           <Row title="侧边栏" hint="启动时收起左侧导航。">
             <Switch checked={!!settings.sidebarCollapsed} onCheckedChange={(v) => void patch({ sidebarCollapsed: v })} />
           </Row>
+          <Row title="桌面宠物" hint="输入框上方走来走去、会随 agent 状态变化的像素小宠物。">
+            <Switch checked={settings.pet !== false} onCheckedChange={(v) => void patch({ pet: v })} />
+          </Row>
+          {settings.pet !== false && (
+            <Row title="宠物皮肤" col>
+              <div className="flex gap-4">
+                {PET_SKINS.map((p) => {
+                  const on = (settings.petSkin ?? 'clawd') === p.id;
+                  return (
+                    <button key={p.id} onClick={() => void patch({ petSkin: p.id })} aria-pressed={on} className="flex flex-col items-center gap-2">
+                      <span className={cn('flex h-16 w-24 items-center justify-center rounded-lg border-2 bg-muted/50', on ? 'border-primary' : 'border-border')}>
+                        <PetSprite skin={p.id} size={1.1} />
+                      </span>
+                      <span className={cn('text-xs', on ? 'font-medium' : 'text-muted-foreground')}>{p.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </Row>
+          )}
         </Panel>
       </>
     );

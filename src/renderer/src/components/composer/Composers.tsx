@@ -99,12 +99,15 @@ export function CodeComposer() {
     : s ? (s.meta.kind === 'cowork' ? 'Reply to Claude, or type / for commands' : 'Type / for commands') : 'Describe a task or ask a question';
   return (
     <div className="mx-auto w-full max-w-3xl px-6 pb-3">
-      {s ? <PrBar s={s} /> : <NewSessionChips />}
+      {!s && <NewSessionChips />}
+      {/* The pet walks on whatever is topmost: the PR bar when shown, else the input box. */}
+      <div className="relative">
+      <Clawd mood={moodOf(s)} from={s ? 0 : 0.6} />
+      {s && <PrBar s={s} />}
       <div
         className={cn('relative rounded-xl border bg-card px-4 py-2.5 transition-colors focus-within:border-muted-foreground/50', drag && 'ring-2 ring-primary/50')}
         onClick={(e) => !(e.target as HTMLElement).closest('button') && input.current?.focus()}
       >
-        <Clawd mood={moodOf(s)} from={s ? 0 : 0.6} />
         <div className="flex items-end gap-2">
           <ComposerInput ref={input} placeholder={placeholder} className="min-w-0 flex-1 py-0.5" onDragState={setDrag} />
           <button
@@ -119,6 +122,7 @@ export function CodeComposer() {
             {stopMode ? <CircleStopIcon className="size-[18px]" /> : <CornerDownLeftIcon className="size-4" />}
           </button>
         </div>
+      </div>
       </div>
       <div className="mt-1.5 flex items-center gap-0.5">
         <FootButton title="Add files (type @ to reference a project file)" className="w-7 justify-center px-0" onClick={pickAttachments}>
