@@ -29,6 +29,13 @@ function findPiCli() {
 const PI_CLI = findPiCli();
 const EXTENSIONS_DIR = unpacked(path.join(__dirname, '..', 'extensions'));
 
+function nodeExecutable(execPath = process.execPath, platform = process.platform, electron = process.versions.electron) {
+  if (platform !== 'darwin' || !electron) return execPath;
+  // The macOS Helper has LSUIElement=true; reusing the main app creates extra Dock icons.
+  const helper = `${path.basename(execPath)} Helper`;
+  return path.join(path.dirname(execPath), '..', 'Frameworks', `${helper}.app`, 'Contents', 'MacOS', helper);
+}
+
 class PiRpc extends EventEmitter {
   constructor({ cwd, args = [], env = {}, extensions = [] }) {
     super();
@@ -46,7 +53,7 @@ class PiRpc extends EventEmitter {
   start() {
     const extArgs = this.extensions.flatMap((p) => ['-e', p]);
     // Run pi with Electron's bundled Node (or plain node in tests).
-    this.proc = spawn(process.execPath, [PI_CLI, '--mode', 'rpc', ...extArgs, ...this.args], {
+    this.proc = spawn(nodeExecutable(), [PI_CLI, '--mode', 'rpc', ...extArgs, ...this.args], {
       cwd: this.cwd,
       env: childEnv({
         ...this.env,
@@ -145,4 +152,4 @@ class PiRpc extends EventEmitter {
   }
 }
 
-module.exports = { PiRpc, PI_CLI, EXTENSIONS_DIR };
+module.exports = { PiRpc, PI_CLI, EXTENSIONS_DIR, nodeExecutable };

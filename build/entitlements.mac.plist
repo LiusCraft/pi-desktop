@@ -7,7 +7,7 @@
 	<true/>
 	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
 	<true/>
-	<!-- The main process re-execs itself as Node (ELECTRON_RUN_AS_NODE) to run
+	<!-- The Electron Helper runs as Node (ELECTRON_RUN_AS_NODE) to host
 	     the pi child process, and pi loads third-party .node prebuilds that are
 	     signed by another team; library validation would reject both. -->
 	<key>com.apple.security.cs.allow-dyld-environment-variables</key>
