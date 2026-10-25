@@ -163,6 +163,7 @@ body[data-mode="code"] #chatNav, body[data-mode="code"] #chatMain { display: non
 .code-center { grid-column: 1; grid-row: 2; min-width: 0; min-height: 0; display: flex; flex-direction: column; container-type: inline-size; }
 
 .ch {
+  position: relative; z-index: 30;
   height: 50px; flex-shrink: 0;
   display: flex; align-items: center; gap: 6px;
   padding: 0 12px 0 18px;
@@ -235,14 +236,15 @@ body[data-mode="code"] #chatNav, body[data-mode="code"] #chatMain { display: non
 .e-text .cursor-dot { background: var(--tx); }
 .e-note { margin-top: 12px; font-size: 13px; color: var(--tx-3); }
 
-/* 思考 */
-.e-think { margin-top: 12px; }
-.e-think summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; font-size: 14px; color: var(--tx-3); }
-.e-think summary::-webkit-details-marker { display: none; }
-.e-think summary:hover { color: var(--tx-2); }
-.e-think summary .cv { transition: transform .15s; }
-.e-think[open] summary .cv { transform: rotate(90deg); }
-.e-think .tb { margin: 6px 0 2px; padding-left: 12px; border-left: 2px solid var(--line-2); font-size: 13.5px; color: var(--tx-3); line-height: 1.6; white-space: pre-wrap; }
+/* 思考（归入工具组：Normal 隐藏，Thinking 折叠，Verbose 展开） */
+.g-think { margin: 2px 0 4px; }
+.g-think summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; font-size: 14px; color: var(--tx-3); line-height: 1.5; }
+.g-think summary::-webkit-details-marker { display: none; }
+.g-think summary:hover { color: var(--tx-2); }
+.g-think summary .cv { transition: transform .15s; }
+.g-think[open] summary .cv { transform: rotate(90deg); }
+.g-think .tb { margin: 6px 0 4px; padding-left: 12px; border-left: 2px solid var(--line-2); font-size: 13.5px; color: var(--tx-3); line-height: 1.6; white-space: pre-wrap; }
+.e-group.e-hidden { display: none; }
 .shimmer {
   background: linear-gradient(90deg, var(--tx-3) 0%, var(--tx-3) 40%, var(--tx) 50%, var(--tx-3) 60%, var(--tx-3) 100%);
   background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
@@ -257,7 +259,9 @@ body[data-mode="code"] #chatNav, body[data-mode="code"] #chatMain { display: non
   max-width: 100%; min-width: 0; font-size: 14px; color: var(--tx-3); text-align: left; line-height: 1.5;
 }
 .g-sum .g-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.g-sum .plus, .g-sum .minus { flex-shrink: 0; }
+.g-sum .plus, .g-sum .minus { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.g-sum .stat + .stat { margin-left: -2px; }
+.e-group.has-thinking > .g-sum { margin-top: 2px; }
 .g-sum:hover { color: var(--tx-2); }
 .g-sum .cv { transition: transform .15s; flex-shrink: 0; }
 .e-group.open .g-sum .cv { transform: rotate(90deg); }
@@ -461,7 +465,7 @@ button.chip-s:hover { background: var(--sel); color: var(--tx); }
 .pop.pop-right { left: auto; right: 0; }
 .pop.pop-up { top: auto; bottom: calc(100% + 6px); transform: translateY(4px); }
 .pop.open { opacity: 1; pointer-events: auto; transform: none; }
-.ch-title .pop { top: calc(100% + 4px); left: 20px; }
+#sessMenu { position: fixed; top: 0; left: 0; background: var(--card); transition: none; }
 .pop .menu-item { padding: 7px 10px; font-size: 13.5px; color: var(--tx); }
 .pop .menu-item:hover { background: var(--hov); }
 .pop .menu-item.danger { color: var(--red); }
@@ -470,6 +474,13 @@ button.chip-s:hover { background: var(--sel); color: var(--tx); }
 .pop .menu-item.opt b { font-weight: 500; }
 .pop .menu-item.opt small { color: var(--tx-3); font-size: 12px; }
 .pop .menu-item.opt.active::after {
+  content: ""; position: absolute; right: 12px; top: 50%; margin-top: -4px;
+  width: 9px; height: 4.5px; border-left: 1.7px solid var(--tx); border-bottom: 1.7px solid var(--tx); transform: rotate(-45deg);
+}
+.pop-label.row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.pop-label.row kbd { border: 0; padding: 0; color: var(--tx-3); opacity: .75; }
+.pop .menu-item.pick { position: relative; padding-right: 30px; white-space: nowrap; }
+.pop .menu-item.pick.active::after {
   content: ""; position: absolute; right: 12px; top: 50%; margin-top: -4px;
   width: 9px; height: 4.5px; border-left: 1.7px solid var(--tx); border-bottom: 1.7px solid var(--tx); transform: rotate(-45deg);
 }

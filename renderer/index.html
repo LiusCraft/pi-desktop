@@ -240,13 +240,6 @@
           <button class="ch-name-btn" id="sessNameBtn"><span class="ch-name" id="sessName">New session</span>
             <svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 8l4 4 4-4"/></svg></button>
           <span class="tag" id="sessRepo">todo-app</span>
-          <div class="pop" id="sessMenu">
-            <button class="menu-item" data-act="rename">Rename</button>
-            <button class="menu-item" data-act="fork">Fork session</button>
-            <button class="menu-item" data-act="copy">Copy session link</button>
-            <div class="menu-sep"></div>
-            <button class="menu-item danger" data-act="archive">Archive</button>
-          </div>
         </div>
         <div class="ch-actions" id="codeActions">
           <button class="ic-btn code-act" id="termBtn" title="Terminal  Ctrl+`"><svg viewBox="0 0 20 20" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6l4 4-4 4M10 15h6"/></svg></button>
@@ -436,6 +429,16 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- Session menu lives at the root: fixed positioning keeps it out of the header's
+     overflow clipping and out of the transcript's stacking context. -->
+<div class="pop" id="sessMenu">
+  <button class="menu-item" data-act="rename">Rename</button>
+  <button class="menu-item" data-act="fork">Fork session</button>
+  <button class="menu-item" data-act="copy">Copy session link</button>
+  <div class="menu-sep"></div>
+  <button class="menu-item danger" data-act="archive">Archive</button>
+</div>
 <script src="app.js"></script>
 <script src="workspace.js"></script>
 <script src="code.js"></script>

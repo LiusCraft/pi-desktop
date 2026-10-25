@@ -37,10 +37,11 @@ class SessionHub extends EventEmitter {
     return this.metas.filter((m) => !m.archived).map((m) => ({ ...m, status: this.status.get(m.id) || 'idle' }));
   }
 
-  baseArgs({ model, thinking, mode, kind }) {
+  baseArgs({ model, thinking, mode, kind, outputStyle }) {
     return [
       '--tools', '+grep,+find,+ls',
       '--desktop-mode', mode || 'auto',
+      ...(outputStyle && outputStyle !== 'default' ? ['--desktop-output-style', outputStyle] : []),
       ...(kind === 'cowork' ? ['--desktop-profile', 'cowork', '--append-system-prompt', COWORK_PROMPT] : []),
       ...(model ? ['--model', model] : []),
       ...(thinking ? ['--thinking', thinking] : []),
@@ -73,10 +74,10 @@ class SessionHub extends EventEmitter {
   }
 
   // ------------------------------------------------------------ lifecycle
-  async create({ kind = 'code', projectPath, worktree = true, title, model, thinking, mode }) {
+  async create({ kind = 'code', projectPath, worktree = true, title, model, thinking, mode, outputStyle }) {
     const id = crypto.randomUUID();
     const slug = `${NAMES[Math.floor(Math.random() * NAMES.length)]}-${id.slice(0, 6)}`;
-    if (kind === 'cowork') return this.createCowork({ id, slug, projectPath, title, model, thinking, mode });
+    if (kind === 'cowork') return this.createCowork({ id, slug, projectPath, title, model, thinking, mode, outputStyle });
     const root = await git.repoRoot(projectPath);
     const base = root ? await git.head(root) : null;
     let cwd = projectPath;
@@ -89,7 +90,7 @@ class SessionHub extends EventEmitter {
     }
     const meta = {
       id, kind: 'code', title: title || 'New session', projectPath, cwd, branch, baseBranch, baseCommit: base,
-      worktree: cwd !== projectPath, model, thinking, mode: mode || 'auto',
+      worktree: cwd !== projectPath, model, thinking, mode: mode || 'auto', outputStyle: outputStyle || 'default',
       sessionFile: null, createdAt: Date.now(), updatedAt: Date.now(), pr: null,
     };
     this.metas.unshift(meta);
@@ -98,7 +99,7 @@ class SessionHub extends EventEmitter {
   }
 
   // Cowork tasks run directly in the chosen folder (or a fresh scratch workspace); no worktree, no diff base.
-  async createCowork({ id, slug, projectPath, title, model, thinking, mode }) {
+  async createCowork({ id, slug, projectPath, title, model, thinking, mode, outputStyle }) {
     let cwd = projectPath;
     if (!cwd) {
       const day = new Date().toISOString().slice(0, 10);
@@ -108,6 +109,7 @@ class SessionHub extends EventEmitter {
     const meta = {
       id, kind: 'cowork', title: title || 'New task', projectPath: cwd, cwd, scratch: !projectPath,
       branch: null, baseBranch: null, baseCommit: null, worktree: false, model, thinking, mode: mode || 'auto',
+      outputStyle: outputStyle || 'default',
       sessionFile: null, createdAt: Date.now(), updatedAt: Date.now(), pr: null,
     };
     this.metas.unshift(meta);
@@ -138,6 +140,10 @@ class SessionHub extends EventEmitter {
       }
       if (event.type === 'extension_ui_request' && event.method === 'setStatus' && event.statusKey === 'pi-desktop-mode') {
         m.mode = event.statusText;
+        this.save();
+      }
+      if (event.type === 'extension_ui_request' && event.method === 'setStatus' && event.statusKey === 'pi-desktop-output-style') {
+        m.outputStyle = event.statusText;
         this.save();
       }
       this.emit('event', { sessionId: id, event });
@@ -201,6 +207,14 @@ class SessionHub extends EventEmitter {
     if (pi?.running) await pi.send({ type: 'prompt', message: `/desktop-mode ${mode}` });
   }
 
+  async setOutputStyle(id, style) {
+    const m = this.meta(id);
+    m.outputStyle = style;
+    this.save();
+    const pi = this.procs.get(id);
+    if (pi?.running) await pi.send({ type: 'prompt', message: `/desktop-output-style ${style}` });
+  }
+
   async update(id, patch) {
     const m = this.meta(id);
     Object.assign(m, patch);
@@ -258,7 +272,7 @@ class SessionHub extends EventEmitter {
     const meta = {
       id: crypto.randomUUID(), title: info.name || info.firstPrompt?.slice(0, 60) || 'Imported session',
       projectPath: info.cwd, cwd: info.cwd, branch: root ? await git.currentBranch(root) : null, baseBranch: null,
-      baseCommit: root ? await git.head(root) : null, worktree: false, mode: 'auto', sessionFile: file,
+      baseCommit: root ? await git.head(root) : null, worktree: false, mode: 'auto', outputStyle: 'default', sessionFile: file,
       createdAt: info.mtime, updatedAt: info.mtime, pr: null, imported: true,
     };
     this.metas.unshift(meta);

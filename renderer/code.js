@@ -147,6 +147,18 @@
   const LEVEL_LABEL = { off: 'Off', minimal: 'Minimal', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra', max: 'Max' };
   const PERM_OPTIONS = ['Allow', 'Always allow', 'Deny'];
   const PLAN_OPTIONS = ['Approve & auto-accept edits', 'Approve, ask for edits', 'Keep planning'];
+  const VIEW_MODES = [
+    { id: 'normal', name: 'Normal', desc: 'Tool calls collapsed into summaries' },
+    { id: 'thinking', name: 'Thinking', desc: 'Summaries plus Claude’s thinking' },
+    { id: 'verbose', name: 'Verbose', desc: 'Every tool call, read, and step' },
+  ];
+  const OUTPUT_STYLES = [
+    { id: 'default', name: 'Default', desc: 'Standard software-engineering behavior' },
+    { id: 'proactive', name: 'Proactive', desc: 'Act on reasonable assumptions' },
+    { id: 'concise', name: 'Concise', desc: 'Lead with the result, skip narration' },
+    { id: 'explanatory', name: 'Explanatory', desc: 'Add short insights while working' },
+    { id: 'learning', name: 'Learning', desc: 'Learn by completing small pieces yourself' },
+  ];
   const DESKTOP_CMDS = [
     ['/clear', '开始新的上下文（保留会话）'],
     ['/compact', '压缩对话历史'],
@@ -167,6 +179,8 @@
     mode: store.get('pd_mode', 'auto'),
     model: store.get('pd_model', null),
     effort: store.get('pd_effort', 'high'),
+    viewMode: store.get('pd_view_mode', 'normal'),
+    outputStyle: store.get('pd_output_style', 'default'),
     models: [],
     levels: [],
     importable: [],
@@ -174,6 +188,8 @@
     coworkFolder: store.get('pd_cowork_folder', undefined), // undefined = not chosen yet, null = scratch workspace
     coworkFolders: [],
   };
+  if (!VIEW_MODES.some((m) => m.id === state.viewMode)) state.viewMode = 'normal';
+  if (!OUTPUT_STYLES.some((s) => s.id === state.outputStyle)) state.outputStyle = 'default';
   const isCowork = (rt) => rt?.meta.kind === 'cowork';
   const curRt = () => state.rts.get(state.cur);
   const isCur = (rt) => rt && rt.meta.id === state.cur;
@@ -224,11 +240,12 @@
   }
 
   function groupSummary(g) {
-    const c = { cmd: 0, fail: 0, read: new Set(), edit: new Set(), search: 0, agent: 0, other: 0 };
+    const c = { cmd: 0, fail: 0, read: new Set(), edit: new Set(), create: new Set(), search: 0, agent: 0, other: 0 };
     g.tools.forEach((t) => {
       if (t.kind === 'bash') { c.cmd++; if (t.status === 'err') c.fail++; }
       else if (t.kind === 'read') c.read.add(t.path);
-      else if (t.kind === 'edit' || t.kind === 'write') c.edit.add(t.path);
+      else if (t.kind === 'edit') c.edit.add(t.path);
+      else if (t.kind === 'write') c.create.add(t.path);
       else if (['grep', 'glob', 'ls'].includes(t.kind)) c.search++;
       else if (t.kind === 'agent') c.agent++;
       else c.other++;
@@ -237,6 +254,7 @@
     const parts = [];
     if (c.cmd) parts.push(`ran ${pl(c.cmd, 'a command', 'commands')}${c.fail ? ` (${c.fail} failed)` : ''}`);
     if (c.read.size) parts.push(`read ${pl(c.read.size, 'a file', 'files')}`);
+    if (c.create.size) parts.push(`created ${pl(c.create.size, 'a file', 'files')}`);
     if (c.edit.size) parts.push(`edited ${pl(c.edit.size, 'a file', 'files')}`);
     if (c.search) parts.push(`searched ${pl(c.search, 'once', 'times')}`);
     if (c.agent) parts.push(`used ${pl(c.agent, 'an agent', 'agents')}`);
@@ -244,9 +262,23 @@
     const s = parts.join(', ') || 'Used tools';
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
+  function groupStats(g) {
+    return g.tools.reduce((a, t) => {
+      if (t.add != null) { a.add += t.add; a.del += t.del; }
+      return a;
+    }, { add: 0, del: 0 });
+  }
+  const hasThinking = (rt) => !!rt && rt.events.some((e) =>
+    (e.type === 'group' && (e.steps || []).some((s) => s.kind === 'think')) || e.type === 'think');
+  function thoughtHTML(step, i) {
+    const label = step.done
+      ? (step.secs ? `Thought for ${step.secs}s` : 'Thought')
+      : '<span class="shimmer">Thinking…</span>';
+    return `<details class="g-think" data-t="${i}"${step.open ? ' open' : ''}><summary>${label}${I.cv}</summary><div class="tb"></div></details>`;
+  }
   function toolLabel(t) {
     const b = (x) => `<b>${esc(x)}</b>`;
-    const st = t.add != null ? ` <span class="plus">+${t.add}</span> <span class="minus">−${t.del}</span>` : '';
+    const st = t.add != null ? `${t.add ? ` <span class="plus">+${t.add}</span>` : ''}${t.del ? ` <span class="minus">−${t.del}</span>` : ''}` : '';
     const run = t.status === 'running';
     switch (t.kind) {
       case 'read': return `${run ? 'Reading' : 'Read'} ${b(fname(t.path))}`;
@@ -269,14 +301,6 @@
         el.innerHTML = `<div class="bubble">${esc(ev.text).replace(/@([\w./-]+)/g, '<span class="mention">@$1</span>')}</div>`;
         if (ev.queued) el.title = '排队中：Claude 完成当前步骤后处理';
         break;
-      case 'think': {
-        const d = document.createElement('details');
-        d.className = 'e-think';
-        if (!ev.done) d.open = true;
-        d.innerHTML = `<summary>${ev.done ? (ev.secs ? `Thought for ${ev.secs}s` : 'Thought') : '<span class="shimmer">Thinking…</span>'}${I.cv}</summary><div class="tb"></div>`;
-        d.querySelector('.tb').textContent = ev.text;
-        return d;
-      }
       case 'text':
         el.className = 'e-text';
         el.innerHTML = renderMarkdown(ev.text) + (ev.live ? '<span class="cursor-dot"></span>' : '');
@@ -287,17 +311,28 @@
         el.textContent = ev.text;
         break;
       case 'group': {
+        const thoughts = state.viewMode === 'normal' ? [] : (ev.steps || []).filter((s) => s.kind === 'think');
         const running = ev.tools.find((t) => t.status === 'running');
-        const ch = ev.tools.filter((t) => t.add != null);
-        const tt = { add: ch.reduce((a, t) => a + t.add, 0), del: ch.reduce((a, t) => a + t.del, 0) };
-        el.className = 'e-group' + (ev.open ? ' open' : '');
-        el.innerHTML = `<button class="g-sum"><span class="g-label${running ? ' shimmer' : ''}">${running ? `${toolLabel(running)}…` : esc(groupSummary(ev))}</span>
-            ${ch.length && !running ? `<span class="plus">+${tt.add}</span><span class="minus">−${tt.del}</span>` : ''}${I.cv}</button>
-          <div class="g-list">${ev.tools.map((t, i) => `<div class="g-row ${t.status}${t.open ? ' open' : ''}" data-i="${i}">
+        const { add, del } = groupStats(ev);
+        const hidden = !ev.tools.length && !thoughts.length;
+        el.className = 'e-group' + (ev.open ? ' open' : '') + (thoughts.length ? ' has-thinking' : '') + (hidden ? ' e-hidden' : '');
+        if (hidden) break;
+        el.innerHTML = `${thoughts.map(thoughtHTML).join('')}
+          ${ev.tools.length ? `<button class="g-sum"><span class="g-label${running ? ' shimmer' : ''}">${running ? `${toolLabel(running)}…` : esc(groupSummary(ev))}</span>
+            ${add > 0 ? `<span class="plus stat">+${add}</span>` : ''}${del > 0 ? `<span class="minus stat">−${del}</span>` : ''}${I.cv}</button>` : ''}
+          ${ev.tools.length ? `<div class="g-list">${ev.tools.map((t, i) => `<div class="g-row ${t.status}${t.open ? ' open' : ''}" data-i="${i}">
             <button class="g-rh"><span class="lbl${t.status === 'running' ? ' shimmer' : ''}">${toolLabel(t)}</span>${I.cv}</button>
-            ${t.detail && !['edit', 'write', 'agent'].includes(t.kind) ? `<div class="g-det">${t.detail}</div>` : ''}</div>`).join('')}</div>`;
-        el.querySelector('.g-sum').onclick = () => { ev.open = !ev.open; ev.userToggled = true; el.classList.toggle('open', ev.open); };
-        el.querySelector('.g-sum').title = el.querySelector('.g-label').textContent;
+            ${t.detail && !['edit', 'write', 'agent'].includes(t.kind) ? `<div class="g-det">${t.detail}</div>` : ''}</div>`).join('')}</div>` : ''}`;
+        el.querySelectorAll('.g-think').forEach((d, i) => {
+          const s = thoughts[i];
+          d.querySelector('.tb').textContent = s.text;
+          d.ontoggle = () => { s.open = d.open; s.userToggled = true; };
+        });
+        const sum = el.querySelector('.g-sum');
+        if (sum) {
+          sum.onclick = () => { ev.open = !ev.open; ev.userToggled = true; el.classList.toggle('open', ev.open); };
+          sum.title = el.querySelector('.g-label').textContent;
+        }
         el.querySelectorAll('.g-row').forEach((row) => {
           const t = ev.tools[+row.dataset.i];
           row.querySelector('.g-rh').title = row.querySelector('.lbl').textContent;
@@ -388,7 +423,7 @@
   let raf = 0;
   function push(rt, ev) {
     const last = rt.events.at(-1);
-    if (ev.type !== 'group' && ev.type !== 'perm' && last?.type === 'group' && last.open && !last.userToggled && !last.tools.some((t) => t.status === 'running')) {
+    if (state.viewMode !== 'verbose' && ev.type !== 'group' && ev.type !== 'perm' && last?.type === 'group' && last.open && !last.userToggled && !last.tools.some((t) => t.status === 'running')) {
       last.open = false;
       update(rt, last);
     }
@@ -464,8 +499,15 @@
   }
   function currentGroup(rt) {
     const last = rt.events.at(-1);
-    if (last?.type === 'group') { if (!last.userToggled) last.open = true; return last; }
-    return push(rt, { type: 'group', tools: [], open: true });
+    if (last?.type === 'group') return last;
+    return push(rt, { type: 'group', steps: [], tools: [], open: state.viewMode === 'verbose' });
+  }
+  function addThought(rt) {
+    const g = currentGroup(rt);
+    const step = { kind: 'think', text: '', done: false, t0: Date.now(), open: true, userToggled: false };
+    g.steps.push(step);
+    update(rt, g);
+    return { step, group: g };
   }
   function setStatusText(rt, t) {
     rt.statusText = t;
@@ -482,6 +524,7 @@
     const t = toolFromArgs(toolCallId, toolName, args);
     const g = currentGroup(rt);
     g.tools.push(t);
+    g.steps.push(t);
     rt.tools.set(toolCallId, { tool: t, group: g });
     update(rt, g);
     if (!replay) {
@@ -562,20 +605,22 @@
     const c = rt.cur || (rt.cur = { think: null, text: null, t0: Date.now() });
     switch (ame.type) {
       case 'thinking_start':
-        c.think = push(rt, { type: 'think', text: '', done: false, t0: Date.now() });
+        c.think = addThought(rt);
         setStatusText(rt, 'Thinking…');
         break;
       case 'thinking_delta':
-        if (!c.think) c.think = push(rt, { type: 'think', text: '', done: false, t0: Date.now() });
-        c.think.text += ame.delta;
-        update(rt, c.think);
+        if (!c.think) c.think = addThought(rt);
+        c.think.step.text += ame.delta;
+        update(rt, c.think.group);
         break;
       case 'thinking_end':
         if (c.think) {
-          c.think.text = ame.content ?? c.think.text;
-          c.think.done = true;
-          c.think.secs = Math.max(1, Math.round((Date.now() - c.think.t0) / 1000));
-          update(rt, c.think);
+          const s = c.think.step;
+          s.text = ame.content ?? s.text;
+          s.done = true;
+          s.secs = Math.max(1, Math.round((Date.now() - s.t0) / 1000));
+          if (!s.userToggled) s.open = state.viewMode === 'verbose';
+          update(rt, c.think.group);
         }
         break;
       case 'text_start':
@@ -631,7 +676,13 @@
             const last = rt.events.at(-1);
             if (!(last?.type === 'text' && last.text === finalText)) push(rt, { type: 'text', text: finalText, live: false, msgTs: m.timestamp });
           }
-          if (c.think && !c.think.done) { c.think.done = true; c.think.secs = Math.max(1, Math.round((Date.now() - c.think.t0) / 1000)); update(rt, c.think); }
+          if (c.think && !c.think.step.done) {
+            const s = c.think.step;
+            s.done = true;
+            s.secs = Math.max(1, Math.round((Date.now() - s.t0) / 1000));
+            if (!s.userToggled) s.open = state.viewMode === 'verbose';
+            update(rt, c.think.group);
+          }
           if (m.usage) rt.tokens = rt.tokens + (m.usage.output || 0);
           if (m.stopReason === 'error' && m.errorMessage) push(rt, { type: 'note', level: 'error', text: `Error: ${m.errorMessage}` });
           if (m.stopReason === 'aborted') push(rt, { type: 'note', text: 'Interrupted · 告诉 Claude 接下来该怎么做' });
@@ -685,8 +736,22 @@
     rt.cur = null;
     rt.events.forEach((e) => {
       if (e.type === 'text' && e.live) { e.live = false; update(rt, e); }
-      if (e.type === 'think' && !e.done) { e.done = true; update(rt, e); }
-      if (e.type === 'group' && e.tools.some((t) => t.status === 'running')) { e.tools.forEach((t) => t.status === 'running' && (t.status = 'denied')); update(rt, e); }
+      if (e.type === 'group') {
+        let changed = false;
+        (e.steps || []).forEach((s) => {
+          if (s.kind === 'think' && !s.done) {
+            s.done = true;
+            s.secs = Math.max(1, Math.round((Date.now() - s.t0) / 1000));
+            if (!s.userToggled) s.open = state.viewMode === 'verbose';
+            changed = true;
+          }
+        });
+        if (e.tools.some((t) => t.status === 'running')) {
+          e.tools.forEach((t) => t.status === 'running' && (t.status = 'denied'));
+          changed = true;
+        }
+        if (changed) update(rt, e);
+      }
     });
     rt.pendingUser.forEach((p) => { if (p.queued) { p.queued = false; update(rt, p); } });
     rt.pendingUser = [];
@@ -709,6 +774,10 @@
       if (req.statusKey === 'pi-desktop-mode' && req.statusText) {
         rt.meta.mode = req.statusText;
         if (isCur(rt)) showMode(req.statusText);
+      }
+      if (req.statusKey === 'pi-desktop-output-style' && req.statusText) {
+        rt.meta.outputStyle = req.statusText;
+        if (isCur(rt)) renderSessMenu();
       }
       return;
     }
@@ -778,7 +847,11 @@
       } else if (m.role === 'assistant') {
         sawAssistant = true;
         for (const b of m.content || []) {
-          if (b.type === 'thinking' && b.thinking) rt.events.push({ type: 'think', text: b.thinking, done: true });
+          if (b.type === 'thinking' && b.thinking) {
+            let g = rt.events.at(-1);
+            if (g?.type !== 'group') { g = { type: 'group', steps: [], tools: [], open: state.viewMode === 'verbose' }; rt.events.push(g); }
+            g.steps.push({ kind: 'think', text: b.thinking, done: true, open: state.viewMode === 'verbose' });
+          }
           else if (b.type === 'text' && b.text) rt.events.push({ type: 'text', text: b.text, live: false });
           else if (b.type === 'toolCall') onToolStart(rt, { toolCallId: b.id, toolName: b.name, args: b.arguments }, true);
         }
@@ -790,7 +863,7 @@
       }
     }
     if (sawAssistant) rt.events.push({ type: 'foot', t: rt.meta.updatedAt });
-    rt.events.forEach((e) => { if (e.type === 'group') e.open = false; });
+    rt.events.forEach((e) => { if (e.type === 'group') e.open = state.viewMode === 'verbose'; });
   }
 
   /* ================= 与主进程交互 ================= */
@@ -856,7 +929,8 @@
     if (head === '/help') {
       clearInput();
       if (!rt) return toast('先开始一个会话');
-      push(rt, { type: 'text', text: `### Commands\n${[...DESKTOP_CMDS, ...rt.commands.map((c) => [`/${c.name}`, c.description || c.source])].map(([k, d]) => `- \`${k}\` ${d}`).join('\n')}\n\n### Shortcuts\n- \`↵\` 发送（运行中会插话）· \`Ctrl/⌘ ↵\` 排队到当前任务之后 · \`⇧↵\` 换行\n- \`⇧Tab\` 切换模式 · \`Esc\` 中断\n- \`Ctrl/⌘ K\` 搜索 · \`Ctrl/⌘ .\` 侧边栏 · \`Ctrl/⌘ D\` Diff\n- 输入 \`@\` 引用文件` });
+      push(rt, { type: 'text', text: `### Commands\n${[...DESKTOP_CMDS, ...rt.commands.map((c) => [`/${c.name}`, c.description || c.source])].map(([k, d]) => `- \`${k}\` ${d}`).join('\n')}\n\n### Shortcuts\n- \`↵\` 发送（运行中会插话）· \`Ctrl/⌘ ↵\` 排队到当前任务之后 · \`⇧↵\` 换行\n- \`⇧Tab\` 切换模式 · \`Esc\` 中断
+- \`Ctrl/⌘ O\` 切换 transcript 视图（Normal / Thinking / Verbose）\n- \`Ctrl/⌘ K\` 搜索 · \`Ctrl/⌘ .\` 侧边栏 · \`Ctrl/⌘ D\` Diff\n- 输入 \`@\` 引用文件` });
       return;
     }
     if (rt && ['/clear', '/compact', '/context', '/export'].includes(head)) {
@@ -931,6 +1005,7 @@
       model: state.model,
       thinking: state.effort,
       mode: state.mode,
+      outputStyle: state.outputStyle,
     });
     const rt = runtime(meta);
     rt.loaded = true;
@@ -986,7 +1061,7 @@
       rt.thinking = r.state?.thinkingLevel;
       rt.ctxPct = r.stats?.contextUsage?.percent ?? null;
       if (isCur(rt)) { renderThread(); refreshChrome(); }
-      rpc(rt, { type: 'get_commands' }).then((c) => (rt.commands = (c.commands || []).filter((x) => x.name !== 'desktop-mode'))).catch(() => {});
+      rpc(rt, { type: 'get_commands' }).then((c) => (rt.commands = (c.commands || []).filter((x) => !['desktop-mode', 'desktop-output-style'].includes(x.name)))).catch(() => {});
       rpc(rt, { type: 'get_available_thinking_levels' }).then((l) => { rt.levels = l.levels; if (isCur(rt)) renderModelButtons(); }).catch(() => {});
       loadChanges(rt);
       pollPr(rt);
@@ -1006,6 +1081,7 @@
     $('#sessEnv').innerHTML = isCowork(rt) ? I.folder : I.laptop;
     $('#repoBtn svg').outerHTML = isCowork(rt) ? I.folder : LAPTOP;
     showMode(rt.meta.mode || 'auto');
+    renderSessMenu();
     renderModelButtons();
     renderPrBar(); renderRight(); updateStatus(); updateSendBtn(); renderProjects();
   }
@@ -1150,6 +1226,50 @@
     $('#permBtn').dataset.m = m.id;
     $('#permName').textContent = m.name;
     $('#permMenu').querySelectorAll('.opt').forEach((o) => o.classList.toggle('active', o.dataset.v === m.id));
+  }
+
+  function applyViewMode() {
+    for (const rt of state.rts.values()) {
+      rt.events.forEach((e) => {
+        if (e.type !== 'group') return;
+        if (!e.userToggled) e.open = state.viewMode === 'verbose';
+        (e.steps || []).forEach((s) => {
+          if (s.kind === 'think' && !s.userToggled) s.open = state.viewMode === 'verbose';
+        });
+      });
+    }
+  }
+  function setViewMode(id, announce) {
+    if (!VIEW_MODES.some((m) => m.id === id)) return;
+    state.viewMode = id;
+    store.set('pd_view_mode', id);
+    applyViewMode();
+    const rt = curRt();
+    if (rt) {
+      const top = msgsEl.scrollTop, stick = nearBottom();
+      renderThread();
+      if (!stick) msgsEl.scrollTop = top;
+    }
+    renderSessMenu();
+    if (announce) toast(`Transcript view: ${VIEW_MODES.find((m) => m.id === id).name}`);
+  }
+  function cycleViewMode() {
+    const rt = curRt();
+    const modes = VIEW_MODES.filter((m) => m.id !== 'thinking' || hasThinking(rt));
+    const at = modes.findIndex((m) => m.id === state.viewMode);
+    setViewMode((modes[at + 1] || modes[0]).id, true);
+  }
+  async function setOutputStyle(id, announce) {
+    if (!OUTPUT_STYLES.some((s) => s.id === id)) return;
+    state.outputStyle = id;
+    store.set('pd_output_style', id);
+    const rt = curRt();
+    if (rt) {
+      rt.meta.outputStyle = id;
+      call('sessions:style', rt.meta.id, id).catch(fail);
+    }
+    renderSessMenu();
+    if (announce) toast(`Output style: ${OUTPUT_STYLES.find((s) => s.id === id).name}`);
   }
   async function setPermMode(id, announce) {
     const rt = curRt();
@@ -1528,15 +1648,52 @@
   }
 
   /* ---------- 头部菜单 ---------- */
-  $('#sessNameBtn').onclick = (e) => { e.stopPropagation(); openPop('#sessMenu'); };
-  $('#sessMoreBtn').onclick = (e) => { e.stopPropagation(); openPop('#sessMenu'); };
-  $('#sessMenu').innerHTML = `<button class="menu-item" data-act="rename">Rename</button>
-    <button class="menu-item" data-act="copy">Copy worktree path</button>
-    <button class="menu-item" data-act="export">Export as HTML</button>
-    <div class="menu-sep"></div>
-    <button class="menu-item danger" data-act="archive">Archive</button>`;
+  function renderSessMenu() {
+    const rt = curRt();
+    if (!rt) return;
+    const style = rt.meta.outputStyle || state.outputStyle;
+    const viewRows = VIEW_MODES.filter((m) => m.id !== 'thinking' || hasThinking(rt)).map((m) =>
+      `<button class="menu-item pick${state.viewMode === m.id ? ' active' : ''}" data-view="${m.id}" title="${esc(m.desc)}">${esc(m.name)}</button>`).join('');
+    const styleRows = OUTPUT_STYLES.map((s) =>
+      `<button class="menu-item pick${style === s.id ? ' active' : ''}" data-style="${s.id}" title="${esc(s.desc)}">${esc(s.name)}</button>`).join('');
+    const key = state.info?.platform === 'darwin' ? '⌘O' : 'Ctrl+O';
+    $('#sessMenu').innerHTML = `<button class="menu-item" data-act="rename">Rename</button>
+      <button class="menu-item" data-act="copy">Copy worktree path</button>
+      <button class="menu-item" data-act="export">Export as HTML</button>
+      <div class="menu-sep"></div>
+      <div class="pop-label row"><span>Transcript view</span><kbd>${key}</kbd></div>
+      ${viewRows}
+      <div class="menu-sep"></div>
+      <div class="pop-label">Output style</div>
+      ${styleRows}
+      <div class="menu-sep"></div>
+      <button class="menu-item danger" data-act="archive">Archive</button>`;
+  }
+  function positionSessMenu() {
+    const menu = $('#sessMenu');
+    if (!menu.classList.contains('open')) return;
+    const btn = $('#sessNameBtn').getBoundingClientRect();
+    const width = menu.offsetWidth || 210;
+    const height = menu.offsetHeight || 0;
+    const left = Math.min(Math.max(8, btn.left), Math.max(8, innerWidth - width - 8));
+    const top = Math.min(btn.bottom + 6, Math.max(8, innerHeight - height - 8));
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+  }
+  const toggleSessMenu = () => {
+    renderSessMenu();
+    openPop('#sessMenu');
+    positionSessMenu();
+  };
+  $('#sessNameBtn').onclick = (e) => { e.stopPropagation(); toggleSessMenu(); };
+  $('#sessMoreBtn').onclick = (e) => { e.stopPropagation(); toggleSessMenu(); };
+  window.addEventListener('resize', positionSessMenu);
   $('#sessMenu').addEventListener('click', async (e) => {
-    const b = e.target.closest('[data-act]'); if (!b) return;
+    const vb = e.target.closest('button[data-view]');
+    if (vb) { closePops(); setViewMode(vb.dataset.view, true); return; }
+    const sb = e.target.closest('button[data-style]');
+    if (sb) { closePops(); setOutputStyle(sb.dataset.style, true); return; }
+    const b = e.target.closest('button[data-act]'); if (!b) return;
     closePops();
     const rt = curRt();
     if (!rt) return;
@@ -1744,6 +1901,7 @@
     if ((document.body.dataset.mode !== 'code' && document.body.dataset.view !== 'thread') || !pal.hidden || !$('#modal').hidden) return;
     const rt = curRt();
     if (e.key === 'Escape') { closePops(); if (rt?.running) { e.preventDefault(); stop(rt); } app.classList.remove('mobile-open'); return; }
+    if (mod && e.key.toLowerCase() === 'o' && rt) { e.preventDefault(); cycleViewMode(); return; }
     if (mod && e.key === '.') { e.preventDefault(); $('#toggleSidebar').click(); return; }
     if (mod && e.key.toLowerCase() === 'd' && rt) { e.preventDefault(); (isCowork(rt) ? $('#panelBtn') : $('#diffBtn')).click(); return; }
     if (rt?.perm?.type === 'perm' && ['1', '2', '3'].includes(e.key) && !codeInput.value.trim() && document.activeElement?.tagName !== 'INPUT') {

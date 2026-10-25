@@ -37,10 +37,10 @@ Renderer (renderer/)                         Main (electron/)                   
 | `electron/pi-rpc.js` | 启动 pi，严格按 LF 切分 JSONL（不用 `readline`，它会在 U+2028 处切断），用 `id` 关联请求和响应，转发事件与 `extension_ui_request` |
 | `electron/sessions.js` | 会话元数据；新会话默认在 `claude/<名字>` 分支的独立 worktree 中运行；用 `--session <文件>` 恢复历史；导入 pi CLI 会话；一个常驻的 probe 进程用来列出模型 |
 | `electron/git.js` | 相对会话起点 commit 的改动（含未跟踪文件）、`gh pr view` 的 PR/CI 状态、在 VS Code / Cursor / 终端中打开 |
-| `extensions/desktop-kit/index.ts` | 权限模式、`todo_write`、`exit_plan_mode`、`task`（子 agent） |
+| `extensions/desktop-kit/index.ts` | 权限模式、output style、`todo_write`、`exit_plan_mode`、`task`（子 agent） |
 | `extensions/demo-model.ts` | 离线演示模型：基于 pi-ai 的 faux provider，按脚本调用 pi 的**真实工具**（Code 和 Cowork 各有一组场景） |
 | `extensions/cowork-prompt.md` | Cowork 追加的系统提示：面向非程序员、把结果写成文件、用待办清单汇报进度 |
-| `renderer/code.js` | 把 pi 事件流渲染成会话界面：流式文本 / 思考、工具组、权限卡片、计划、diff、PR 条 |
+| `renderer/code.js` | 把 pi 事件流渲染成会话界面：流式文本 / 思考、按 transcript 模式折叠的工具组、权限卡片、计划、diff、PR 条 |
 
 ### pi 事件与界面的对应
 
@@ -54,6 +54,22 @@ Renderer (renderer/)                         Main (electron/)                   
 | 模型 / 思考强度 / 上下文圆环 | `get_available_models`、`set_model`、`set_thinking_level`、`get_session_stats` |
 | `/compact` `/context` `/clear` `/export` | `compact`、`get_session_stats`、`new_session`、`export_html` |
 | 终端面板里输入的命令 | `bash`（输出会进入下一轮上下文） |
+| Transcript view（Normal / Thinking / Verbose） | 纯前端：思考折进工具组，按模式决定摘要、思考或全部步骤 |
+| Output style（Default / Proactive / Concise / Explanatory / Learning） | `/desktop-output-style <style>`；desktop-kit 在 `before_agent_start` 追加对应系统提示 |
+
+### Transcript view 与 Output style
+
+会话标题旁的下拉菜单（或 `Ctrl/⌘+O`）控制 transcript 的详细程度，对应 Claude desktop Code tab 的三个视图：
+
+| 模式 | 显示内容 |
+|---|---|
+| **Normal**（默认） | 隐藏思考；同一段回复里的工具调用合并成一行摘要，例如 `Ran 2 commands, read 3 files, edited a file +14 −1` |
+| **Thinking** | 工具调用仍折叠成摘要，额外显示 `Thought for 12s`（可展开） |
+| **Verbose** | 展开工具组，显示每次命令、读文件和思考内容 |
+
+`Output style` 在同一菜单里，和权限模式一样通过扩展命令即时切换；它改变的是 Claude 的回答方式，不是界面，也不是权限。Normal 模式是默认值，选择保存在 localStorage；`Output style` 同时写入当前会话元数据，恢复会话后继续生效。
+
+> 提示：Claude desktop 里 `Thinking` 只在会话已经产生过思考后出现；这里也做了同样的处理。`Ctrl+O` 只在可用的模式之间循环。
 
 ### Cowork 与 Code 的区别
 

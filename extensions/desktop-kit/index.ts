@@ -12,8 +12,10 @@
  *     `[[pi-desktop:perm:<toolCallId>]]`, options PERM_OPTIONS.
  *   - Plan approval is a `select` whose title starts with `[[pi-desktop:plan:<toolCallId>]]`.
  *   - Mode changes are announced with `setStatus("pi-desktop-mode", mode)`.
+ *   - Output style changes are announced with `setStatus("pi-desktop-output-style", style)`.
  *   - The desktop switches modes with the `/desktop-mode <mode>` command, which pi runs
- *     immediately even while the agent is streaming.
+ *     immediately even while the agent is streaming. Output styles use the same pattern
+ *     with `/desktop-output-style <style>`.
  */
 import { spawn } from "node:child_process";
 import { delimiter, isAbsolute, relative, resolve } from "node:path";
@@ -23,9 +25,25 @@ import { Type } from "typebox";
 
 type Mode = "auto" | "default" | "acceptEdits" | "plan" | "bypass";
 const MODES: Mode[] = ["auto", "default", "acceptEdits", "plan", "bypass"];
+type OutputStyle = "default" | "proactive" | "concise" | "explanatory" | "learning";
+const OUTPUT_STYLES: OutputStyle[] = ["default", "proactive", "concise", "explanatory", "learning"];
 const PERM_OPTIONS = ["Allow", "Always allow", "Deny"];
 const PLAN_OPTIONS = ["Approve & auto-accept edits", "Approve, ask for edits", "Keep planning"];
 const STATUS_KEY = "pi-desktop-mode";
+const STYLE_STATUS_KEY = "pi-desktop-output-style";
+
+// Appended to the system prompt for the current turn. These change how Claude talks,
+// not what it is allowed to do (permission modes still decide that).
+const STYLE_PROMPTS: Record<Exclude<OutputStyle, "default">, string> = {
+	proactive: `# Output style: Proactive
+Start work immediately instead of asking about routine decisions. Make reasonable assumptions, state them briefly, and keep going. Do not pause for confirmation on reversible, in-scope work. Destructive actions, security warnings, and permission requests still require the normal safeguards.`,
+	concise: `# Output style: Concise
+Lead with the result. Omit preambles, restatements of the request, narration of what you are about to do, and closing recaps. Prefer short paragraphs and tight bullets. Full detail is still required for errors, security warnings, destructive-action confirmations, and whenever the user asks for an explanation.`,
+	explanatory: `# Output style: Explanatory
+While working, explain implementation choices and relevant codebase patterns in brief "Insight" asides: what you chose, the alternative, and why. Keep them short and skippable, and do not let them interrupt the flow of the work.`,
+	learning: `# Output style: Learning
+Work collaboratively and teach as you go. Explain key concepts in plain language, and when a small piece of the work is a good learning exercise, leave a clearly scoped \`TODO(human)\` marker with instructions instead of completing that piece. Keep making progress on everything else; ask before handing over larger chunks.`,
+};
 
 const READ_ONLY_TOOLS = new Set(["read", "grep", "find", "ls", "todo_write", "exit_plan_mode", "task", "tool_search", "codemode"]);
 const EDIT_TOOLS = new Set(["edit", "write"]);
@@ -69,23 +87,30 @@ export const isRiskyCommand = (command: string, profile = "code") =>
 const cmdKey = (command: string) => command.trim().split(/\s+/).slice(0, 2).join(" ");
 
 // Shared with other desktop extensions (the offline demo model reads the mode from here).
-const shared = ((globalThis as any).__piDesktop ??= { mode: "auto" as Mode, profile: "code" });
+const shared = ((globalThis as any).__piDesktop ??= { mode: "auto" as Mode, profile: "code", outputStyle: "default" as OutputStyle });
 
 export default function (pi: ExtensionAPI) {
 	const allowed = new Set<string>(); // "Always allow" command prefixes for this session
 
 	pi.registerFlag("desktop-mode", { type: "string", default: "auto", description: "Pi Desktop permission mode" });
 	pi.registerFlag("desktop-profile", { type: "string", default: "code", description: "Pi Desktop profile: code or cowork" });
+	pi.registerFlag("desktop-output-style", { type: "string", default: "default", description: "Pi Desktop output style" });
 
 	const setMode = (mode: Mode, ctx?: ExtensionContext) => {
 		shared.mode = mode;
 		ctx?.ui.setStatus(STATUS_KEY, mode);
+	};
+	const setOutputStyle = (style: OutputStyle, ctx?: ExtensionContext) => {
+		shared.outputStyle = style;
+		ctx?.ui.setStatus(STYLE_STATUS_KEY, style);
 	};
 
 	pi.on("session_start", async (_event, ctx) => {
 		shared.profile = pi.getFlag("desktop-profile") === "cowork" ? "cowork" : "code";
 		const flag = String(pi.getFlag("desktop-mode") ?? "auto") as Mode;
 		setMode(MODES.includes(flag) ? flag : "auto", ctx);
+		const styleFlag = String(pi.getFlag("desktop-output-style") ?? "default") as OutputStyle;
+		setOutputStyle(OUTPUT_STYLES.includes(styleFlag) ? styleFlag : "default", ctx);
 	});
 
 	pi.registerCommand("desktop-mode", {
@@ -98,6 +123,19 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			setMode(mode, ctx);
+		},
+	});
+
+	pi.registerCommand("desktop-output-style", {
+		description: "Set the Pi Desktop output style (default, proactive, concise, explanatory, learning)",
+		getArgumentCompletions: (prefix) => OUTPUT_STYLES.filter((s) => s.startsWith(prefix)).map((s) => ({ value: s, label: s })),
+		handler: async (args, ctx) => {
+			const style = args.trim() as OutputStyle;
+			if (!OUTPUT_STYLES.includes(style)) {
+				ctx.ui.notify(`Unknown output style "${args}". Use: ${OUTPUT_STYLES.join(", ")}`, "warning");
+				return;
+			}
+			setOutputStyle(style, ctx);
 		},
 	});
 
@@ -148,17 +186,24 @@ export default function (pi: ExtensionAPI) {
 		return ask(ctx, event.toolCallId, `Use ${name}`, `tool:${name}`);
 	});
 
-	pi.on("before_agent_start", async () => {
-		if (shared.mode !== "plan") return undefined;
+	pi.on("before_agent_start", async (event) => {
+		const style = shared.outputStyle as OutputStyle;
+		const stylePrompt = style !== "default" ? STYLE_PROMPTS[style] : null;
+		const planMessage =
+			shared.mode === "plan"
+				? {
+						customType: "pi-desktop-plan-mode",
+						display: false,
+						content:
+							"[pi-desktop] You are in PLAN MODE. Explore the code with read-only tools only. Do not edit files. " +
+							"When you understand the change, call exit_plan_mode with a concise markdown plan " +
+							"(Context, Changes as a numbered list, Verification) and wait for approval.",
+					}
+				: null;
+		if (!stylePrompt && !planMessage) return undefined;
 		return {
-			message: {
-				customType: "pi-desktop-plan-mode",
-				display: false,
-				content:
-					"[pi-desktop] You are in PLAN MODE. Explore the code with read-only tools only. Do not edit files. " +
-					"When you understand the change, call exit_plan_mode with a concise markdown plan " +
-					"(Context, Changes as a numbered list, Verification) and wait for approval.",
-			},
+			...(stylePrompt ? { systemPrompt: `${event.systemPrompt}\n\n${stylePrompt}` } : {}),
+			...(planMessage ? { message: planMessage } : {}),
 		};
 	});
 

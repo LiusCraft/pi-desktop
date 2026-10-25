@@ -158,6 +158,7 @@ function registerIpc() {
   handle('sessions:rpc', (id, command) => hub.rpc(id, command));
   handle('sessions:ui', (id, requestId, payload) => hub.uiResponse(id, requestId, payload));
   handle('sessions:mode', (id, mode) => hub.setMode(id, mode));
+  handle('sessions:style', (id, style) => hub.setOutputStyle(id, style));
   handle('sessions:update', (id, patch) => hub.update(id, patch));
   handle('sessions:archive', (id) => hub.archive(id));
   handle('sessions:changes', (id) => hub.changes(id));

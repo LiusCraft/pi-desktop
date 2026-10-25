@@ -5,7 +5,7 @@ const INVOKE = new Set([
   'app:info', 'app:theme', 'app:notify', 'app:openExternal',
   'projects:list', 'projects:add', 'projects:demo', 'projects:info',
   'sessions:list', 'sessions:create', 'sessions:open', 'sessions:prompt', 'sessions:rpc', 'sessions:ui',
-  'sessions:mode', 'sessions:update', 'sessions:archive', 'sessions:changes', 'sessions:pr', 'sessions:files',
+  'sessions:mode', 'sessions:style', 'sessions:update', 'sessions:archive', 'sessions:changes', 'sessions:pr', 'sessions:files',
   'sessions:importable', 'sessions:import', 'sessions:openIn', 'sessions:readFile',
   'models:list', 'models:levels', 'keys:list', 'keys:set',
   'cowork:folders', 'cowork:addFolder', 'cowork:useFolder', 'dialog:pickFiles', 'sessions:openPath',

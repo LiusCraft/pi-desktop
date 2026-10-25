@@ -17,7 +17,7 @@ if (!process.versions.electron) {
   const meta = { id: 'render-test', kind: 'code', title: 'Rendering regression', projectPath: 'C:/projects/pi-desktop', cwd: 'C:/projects/pi-desktop', branch: 'claude/long-branch-'.repeat(12), mode: 'auto', updatedAt: Date.now() };
   const model = { provider: 'fixture', id: 'test', name: 'Test model', contextWindow: 1000000 };
   let win, pr = null, prQueries = 0;
-  const answers = [], opened = [], errors = [];
+  const answers = [], opened = [], errors = [], styles = [];
   const replies = {
     'app:info': () => ({ version: 'test', keyProviders: [] }), 'app:theme': () => null,
     'app:openExternal': (_e, url) => { opened.push(url); },
@@ -29,6 +29,7 @@ if (!process.versions.electron) {
     'sessions:changes': () => [{ path: 'file.js', before: 'old', after: 'new' }],
     'sessions:pr': () => { prQueries++; return pr; },
     'sessions:ui': (_e, id, requestId, payload) => { answers.push({ id, requestId, payload }); },
+    'sessions:style': (_e, id, style) => { styles.push(style); meta.outputStyle = style; },
     'sessions:update': (_e, _id, patch) => Object.assign(meta, patch),
   };
   for (const [channel, handler] of Object.entries(replies)) ipcMain.handle(channel, handler);
@@ -132,11 +133,88 @@ if (!process.versions.electron) {
     pr = { num: 2, url: 'https://github.com/example/repo/pull/2', state: 'closed', ci: 'none', checks: [], comments: 0 };
     emit({ type: 'agent_settled' });
     await wait(() => document.querySelector('.pr-state')?.textContent === 'Closed');
+
+    // Transcript view: thinking folds into a single tool group, then switching detail level.
+    emit({ type: 'agent_start' });
+    emit({ type: 'message_start', message: { role: 'assistant' } });
+    emit({ type: 'message_update', assistantMessageEvent: { type: 'thinking_start' } });
+    emit({ type: 'message_update', assistantMessageEvent: { type: 'thinking_delta', delta: 'Read the date utility, then fix it.' } });
+    emit({ type: 'message_update', assistantMessageEvent: { type: 'thinking_end', content: 'Read the date utility, then fix it.' } });
+    emit({ type: 'tool_execution_start', toolCallId: 'tv-read', toolName: 'read', args: { path: 'src/utils/date.js' } });
+    emit({ type: 'tool_execution_end', toolCallId: 'tv-read', toolName: 'read', result: { content: [{ type: 'text', text: 'export function formatDate' }] } });
+    emit({ type: 'tool_execution_start', toolCallId: 'tv-edit', toolName: 'edit', args: { path: 'src/utils/date.js' } });
+    emit({ type: 'tool_execution_end', toolCallId: 'tv-edit', toolName: 'edit', result: { content: [{ type: 'text', text: 'ok' }], details: { diff: '- 3 old\n+ 3 new\n+ 4 extra' } } });
+    emit({ type: 'message_update', assistantMessageEvent: { type: 'text_start' } });
+    emit({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'Fixed.' } });
+    emit({ type: 'message_update', assistantMessageEvent: { type: 'text_end', content: 'Fixed.' } });
+    emit({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'Fixed.' }], stopReason: 'stop' } });
+    emit({ type: 'agent_settled' });
+    await wait(() => [...document.querySelectorAll('.e-group')].some((g) => g.querySelector('.g-label')?.textContent.includes('Read a file')));
+
+    const groupState = () => {
+      const found = [...document.querySelectorAll('.e-group')].filter((g) => g.querySelector('.g-label')?.textContent.includes('Read a file'));
+      if (found.length !== 1) return { groups: found.length };
+      const g = found[0];
+      return {
+        groups: found.length,
+        summary: g.querySelector('.g-label').textContent,
+        stats: [...g.querySelectorAll('.g-sum .stat')].map((x) => x.textContent).join(' '),
+        thoughts: g.querySelectorAll('.g-think').length,
+        openThoughts: g.querySelectorAll('.g-think[open]').length,
+        rows: g.querySelectorAll('.g-row').length,
+        listVisible: getComputedStyle(g.querySelector('.g-list')).display !== 'none',
+        open: g.classList.contains('open'),
+      };
+    };
+    const normal = await run(groupState);
+    assert.equal(normal.groups, 1, 'one tool group per assistant segment');
+    assert.equal(normal.summary, 'Read a file, edited a file', 'summary aggregates the whole segment');
+    assert.equal(normal.stats, '+2 −1', 'summary carries the combined diff stats');
+    assert.equal(normal.thoughts, 0, 'Normal hides thinking');
+    assert.equal(normal.listVisible, false, 'Normal collapses tool rows');
+    assert.deepEqual(errors, []);
+
+    await run(() => document.querySelector('#sessNameBtn').click());
+    await wait(() => document.querySelector('#sessMenu').classList.contains('open'));
+    await run(() => document.querySelector('[data-view="thinking"]').click());
+    await wait(() => document.querySelector('.g-think'));
+    const thinking = await run(groupState);
+    assert.equal(thinking.thoughts, 1, 'Thinking shows the thought row');
+    assert.equal(thinking.openThoughts, 0, 'Thinking keeps thought text collapsed');
+    assert.equal(thinking.listVisible, false, 'Thinking keeps tool rows collapsed');
+
+    await run(() => document.querySelector('#sessNameBtn').click());
+    await run(() => document.querySelector('[data-view="verbose"]').click());
+    await wait(() => document.querySelector('.e-group.open .g-think[open]'));
+    const verbose = await run(groupState);
+    assert.equal(verbose.open, true, 'Verbose expands the tool group');
+    assert.equal(verbose.listVisible, true, 'Verbose shows every tool row');
+    assert.equal(verbose.openThoughts, 1, 'Verbose expands thinking');
+
+    await run(() => document.querySelector('#sessNameBtn').click());
+    await run(() => document.querySelector('[data-view="normal"]').click());
+    await wait(() => !document.querySelector('.g-think'));
+    // Ctrl+O cycles only through the modes that make sense for this session.
+    await run(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'o', ctrlKey: true, bubbles: true })));
+    await wait(() => document.querySelector('.g-think'));
+    await run(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'o', ctrlKey: true, bubbles: true })));
+    await wait(() => document.querySelector('.e-group.open'));
+    await run(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'o', ctrlKey: true, bubbles: true })));
+    await wait(() => !document.querySelector('.g-think'));
+
+    // Output style lives in the same session menu and is pushed to the live session.
+    await run(() => document.querySelector('#sessNameBtn').click());
+    await run(() => document.querySelector('[data-style="concise"]').click());
+    for (let i = 0; i < 50 && meta.outputStyle !== 'concise'; i++) await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(meta.outputStyle, 'concise', 'output style is persisted for the session');
+    assert.ok(styles.includes('concise'), 'output style change reaches the main process');
+    assert.equal(await run(() => document.querySelector('[data-style="concise"]').classList.contains('active')), true);
+    await bounded();
     win.setContentSize(900, 600);
     await frame();
     await bounded();
     assert.deepEqual(errors, []);
-    console.log('PASS: question previews/options, bounded long text, clickable safe links, PR creation/refresh/states');
+    console.log('PASS: question previews/options, bounded long text, clickable safe links, PR creation/refresh/states, transcript view, output style');
     app.exit(0);
   }).catch((err) => { console.error(err); app.exit(1); });
 }
