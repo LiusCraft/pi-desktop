@@ -2,12 +2,13 @@
 const { execFile, spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const { childEnv } = require('./env');
 
 const MAX_FILE = 512 * 1024;
 
 function run(cmd, args, cwd, { allowFail = false } = {}) {
   return new Promise((resolve, reject) => {
-    execFile(cmd, args, { cwd, maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
+    execFile(cmd, args, { cwd, env: childEnv(), maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
       if (err && !allowFail) return reject(Object.assign(err, { stderr: String(stderr) }));
       resolve(err ? null : String(stdout));
     });
@@ -111,8 +112,14 @@ async function prStatus(cwd) {
 }
 
 function openIn(app, cwd, shell) {
+  // .cmd shims (code.cmd, cursor.cmd) only resolve through the command
+  // processor; everywhere else we exec the binary directly.
+  const winQuote = (s) => (/[\s"]/.test(s) ? `"${s.split('"').join('""')}"` : s);
   const detached = (cmd, args, opts = {}) => {
-    const p = spawn(cmd, args, { cwd, detached: true, stdio: 'ignore', shell: process.platform === 'win32', ...opts });
+    const base = { cwd, env: childEnv(), detached: true, stdio: 'ignore', windowsHide: true, ...opts };
+    const p = process.platform === 'win32'
+      ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', [cmd, ...args].map(winQuote).join(' ')], base)
+      : spawn(cmd, args, base);
     p.on('error', () => {});
     p.unref();
   };

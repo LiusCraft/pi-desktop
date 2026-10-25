@@ -1,0 +1,67 @@
+# macOS packaging. Run it through `make` (see Makefile) or electron-builder.
+#
+# pi runs as a separate Node child process (process.execPath with
+# ELECTRON_RUN_AS_NODE) and reads its own files plus the TypeScript extensions
+# from disk, so asar stays off: app.asar would hide them from both pi and the
+# extension loader.
+appId: dev.pi-desktop.app
+productName: Pi Desktop
+copyright: Copyright © ${author}
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - electron/**
+  - renderer/**
+  - extensions/**
+  - demo/**
+  - package.json
+
+asar: false
+# No native modules are compiled at install time: pi-tui ships prebuilt .node
+# binaries and everything else is WASM, so a rebuild only adds node-gyp noise.
+npmRebuild: false
+# Runs after packing + signing, before the dmg is assembled (notarize + staple).
+afterSign: ./scripts/after-sign.cjs
+
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  target:
+    - dmg
+  minimumSystemVersion: '12.0'
+  # Sign + notarize only when credentials exist; scripts/after-sign.cjs decides.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  artifactName: Pi-Desktop-${version}-${arch}.${ext}
+
+dmg:
+  title: ${productName} ${version}
+  artifactName: Pi-Desktop-${version}-${arch}.${ext}
+  window:
+    width: 540
+    height: 380
+  contents:
+    - x: 150
+      y: 190
+      type: file
+    - x: 390
+      y: 190
+      type: link
+      path: /Applications
+
+# Not maintained right now (macOS only); kept so the config describes them.
+win:
+  target: nsis
+
+linux:
+  target: AppImage
+
+publish:
+  provider: github
+  owner: liuscraft
+  repo: pi-desktop
