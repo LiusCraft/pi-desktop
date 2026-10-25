@@ -1,14 +1,17 @@
 import { Fragment, useState, type ReactNode } from 'react';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import type { SessionView } from '@/store/types';
-import { CoworkPanel, DetailPanel, DiffPanel, FilesPanel, PreviewPanel, TerminalPanel, type CardProps } from './Panels';
+import { CoworkPanel, DetailPanel, DiffPanel, FilesPanel, PreviewPanel, TasksPanel, TerminalPanel, type CardProps } from './Panels';
 
-type CardId = 'progress' | 'diff' | 'preview' | 'detail' | 'files' | 'terminal';
+type CardId = 'progress' | 'tasks' | 'diff' | 'preview' | 'detail' | 'files' | 'terminal';
 
 /** Which cards are open, split into the two tool columns. */
 export function openCards(s: SessionView): { primary: CardId[]; secondary: CardId[] } {
-  if (s.meta.kind === 'cowork') return { primary: [...(s.panels.progress ? (['progress'] as const) : []), ...(s.detail ? (['detail'] as const) : [])], secondary: [] };
+  if (s.meta.kind === 'cowork') {
+    return { primary: [...(s.panels.progress ? (['progress'] as const) : []), ...(s.panels.tasks ? (['tasks'] as const) : []), ...(s.detail ? (['detail'] as const) : [])], secondary: [] };
+  }
   const primary: CardId[] = [];
+  if (s.panels.tasks) primary.push('tasks');
   if (s.panels.diff) primary.push('diff');
   if (s.panels.preview) primary.push('preview');
   if (s.detail) primary.push('detail');
@@ -21,6 +24,7 @@ export function openCards(s: SessionView): { primary: CardId[]; secondary: CardI
 function renderCard(id: CardId, s: SessionView, card: CardProps): ReactNode {
   switch (id) {
     case 'progress': return <CoworkPanel s={s} {...card} />;
+    case 'tasks': return <TasksPanel s={s} {...card} />;
     case 'diff': return <DiffPanel s={s} {...card} />;
     case 'preview': return <PreviewPanel s={s} {...card} />;
     case 'detail': return <DetailPanel s={s} {...card} />;

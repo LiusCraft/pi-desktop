@@ -50,7 +50,7 @@ export type ItemOf<K extends Item['kind']> = Extract<Item, { kind: K }>;
 export type Detail =
   | { type: 'plan'; key: string }
   | { type: 'agent'; toolCallId: string }
-  | { type: 'file'; path: string; line: number; start?: number; loading: boolean; text?: string | null; error?: string };
+  | { type: 'file'; path: string; line: number; start?: number; loading: boolean; text?: string | null; error?: string; image?: string | null };
 
 export interface ChangedFile extends FileChange {
   add: number;
@@ -64,6 +64,8 @@ export interface Panels {
   terminal: boolean;
   /** Cowork's progress / files / context card. */
   progress: boolean;
+  /** Background tasks (running and finished subagents). */
+  tasks: boolean;
 }
 
 /** Everything the renderer knows about one session. */

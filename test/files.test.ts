@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll as after, beforeAll as before, describe, it } from 'vitest';
-import { MAX_FILE_BYTES, readSessionFile } from '../src/agent/files';
+import { MAX_FILE_BYTES, readSessionFile, readSessionImage } from '../src/agent/files';
 
 // Creating symlinks on Windows needs Developer Mode or admin rights.
 const canSymlink = (() => {
@@ -83,5 +83,27 @@ describe('session current-file reader', () => {
     const fifo = path.join(root, 'pipe');
     execFileSync('mkfifo', [fifo]);
     assert.equal(readSessionFile(root, 'pipe'), null);
+  });
+});
+
+describe('session image reader', () => {
+  let root;
+  const png = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
+  before(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-image-reader-'));
+    fs.writeFileSync(path.join(root, 'shot.png'), png);
+    fs.writeFileSync(path.join(root, 'fake.png'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    fs.writeFileSync(path.join(root, 'notes.txt'), 'hello');
+  });
+  after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  it('returns raster images as data URLs typed by their bytes', () => {
+    assert.deepEqual(readSessionImage(root, 'shot.png'), { mimeType: 'image/png', src: `data:image/png;base64,${png.toString('base64')}` });
+  });
+
+  it('refuses non-images, disguised files and paths outside the session', () => {
+    assert.equal(readSessionImage(root, 'fake.png'), null);
+    assert.equal(readSessionImage(root, 'notes.txt'), null);
+    assert.throws(() => readSessionImage(root, '../outside.png'), /outside the session/);
   });
 });

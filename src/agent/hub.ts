@@ -7,22 +7,22 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   createAgentSession, createAgentSessionFromServices, createAgentSessionRuntime, createAgentSessionServices,
-  createCodemodeExtension, createMcpExtension, createToolSearchExtension, DefaultResourceLoader, getAgentDir,
-  hasTrustRequiringProjectResources, ModelRuntime, ProjectTrustStore, SessionManager, SettingsManager,
+  createCodemodeExtension, createMcpExtension, createToolSearchExtension, DefaultResourceLoader, estimateTokens,
+  formatSkillsForPrompt, getAgentDir, hasTrustRequiringProjectResources, ModelRuntime, ProjectTrustStore, SessionManager, SettingsManager,
   type AgentSession, type AgentSessionRuntime, type CreateAgentSessionRuntimeFactory, type ExtensionUIContext,
 } from '@earendil-works/pi-coding-agent';
 import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import { buildMessage } from '@shared/attachments';
 import type {
-  CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
-  PrSummary, SessionMeta, SessionStats, SessionSummary, SlashCommand, StreamingBehavior, ThinkingLevel, UiRequest, UiRequestInput, UiResponse,
+  ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
+  PrSummary, SessionMeta, SessionStats, SubagentProgress, SessionSummary, SlashCommand, StreamingBehavior, ThinkingLevel, UiRequest, UiRequestInput, UiResponse,
 } from '@shared/protocol';
 import { validatePromptPayload } from './attachments';
 import coworkPrompt from './cowork-prompt.md?raw';
 import { registerDemoModel } from './demo-model';
 import { createDesktopKit, type KitHost, type KitState, type SubagentRun } from './desktop-kit';
 import { toWireEvent } from './events';
-import { readSessionFile, resolveInside } from './files';
+import { readSessionFile, readSessionImage, resolveInside } from './files';
 import * as git from './git';
 import * as naming from './naming';
 import { Store } from './store';
@@ -48,6 +48,24 @@ interface Live {
   /** Bumped on dispose: prompts still preparing must not reach a new session. */
   generation: number;
   disposed: boolean;
+  /** Running `task` subagents by tool call id, so one can be stopped on its own. */
+  tasks: Map<string, AbortController>;
+}
+
+/** Rough token count for text the SDK does not measure for us. */
+const approxTokens = (text: string) => Math.ceil(text.length / 4);
+
+/** What a subagent tool call shows in its transcript, and what it is doing meanwhile. */
+function subagentStepLabel(name: string, args: any) {
+  const a = args ?? {};
+  switch (name) {
+    case 'bash': return { label: String(a.command ?? ''), activity: 'Running a command' };
+    case 'read': return { label: String(a.path ?? ''), activity: `Reading ${path.basename(String(a.path ?? 'a file'))}` };
+    case 'grep': return { label: String(a.pattern ?? ''), activity: 'Searching' };
+    case 'find': return { label: String(a.pattern ?? a.path ?? ''), activity: 'Finding files' };
+    case 'ls': return { label: String(a.path ?? '.'), activity: 'Listing files' };
+    default: return { label: name, activity: `Using ${name}` };
+  }
 }
 
 export interface HubOptions {
@@ -221,7 +239,7 @@ export class SessionHub {
     const live: Live = {
       id, runtime: null as unknown as AgentSessionRuntime,
       kit: { mode: m.mode, profile: m.kind, outputStyle: m.outputStyle, allowed: new Set() },
-      pending: new Map(), status: 'idle', generation: 0, disposed: false,
+      pending: new Map(), status: 'idle', generation: 0, disposed: false, tasks: new Map(),
     };
     const resumed = m.sessionFile && fs.existsSync(m.sessionFile);
     const sessionManager = resumed ? SessionManager.open(m.sessionFile!, undefined, m.cwd) : SessionManager.create(m.cwd);
@@ -401,42 +419,80 @@ export class SessionHub {
   private async runSubagent(live: Live, run: SubagentRun) {
     const cwd = run.ctx.cwd;
     const stats = { commands: 0, reads: 0, searches: 0, failed: 0 };
-    const kit: KitState = { mode: 'plan', profile: live.kit.profile, outputStyle: 'default', allowed: new Set() };
-    const settingsManager = SettingsManager.create(cwd, this.agentDir, { projectTrusted: !hasTrustRequiringProjectResources(cwd) || this.trust.get(cwd) === true });
-    const resourceLoader = new DefaultResourceLoader({
-      cwd, agentDir: this.agentDir, settingsManager,
-      // Nobody answers prompts inside a subagent: plan mode blocks anything that would ask.
-      extensionFactories: [createDesktopKit({ state: kit, ask: async () => ({ cancelled: true }), setMode: () => {} })],
-    });
-    await resourceLoader.reload();
-    const { session } = await createAgentSession({
-      cwd, agentDir: this.agentDir, modelRuntime: this.models, model: run.ctx.model, resourceLoader, settingsManager,
-      sessionManager: SessionManager.inMemory(cwd), tools: SUBAGENT_TOOLS,
-    });
-    let text = '';
-    const onAbort = () => void session.abort();
+    const progress: SubagentProgress = { startedAt: Date.now(), tokens: 0, toolUses: 0, activity: 'Starting', steps: [] };
+    const report = () => run.onProgress({ ...stats }, { ...progress, steps: progress.steps.slice(-200) });
+    // Stopped with the whole turn (run.signal) or on its own from the Background tasks panel.
+    const stop = new AbortController();
+    live.tasks.set(run.id, stop);
+    const onAbort = () => stop.abort();
     run.signal?.addEventListener('abort', onAbort, { once: true });
+    let text = '';
     try {
-      await session.bindExtensions({});
-      session.subscribe((event: any) => {
-        if (event.type === 'tool_execution_end') {
-          if (event.toolName === 'bash') stats.commands++;
-          else if (event.toolName === 'read') stats.reads++;
-          else stats.searches++;
-          if (event.isError) stats.failed++;
-          run.onProgress({ ...stats });
-        }
-        if (event.type === 'message_end' && event.message?.role === 'assistant') {
-          const t = (event.message.content ?? []).filter((c: any) => c.type === 'text').map((c: any) => c.text).join('');
-          if (t) text = t;
-        }
+      const kit: KitState = { mode: 'plan', profile: live.kit.profile, outputStyle: 'default', allowed: new Set() };
+      const settingsManager = SettingsManager.create(cwd, this.agentDir, { projectTrusted: !hasTrustRequiringProjectResources(cwd) || this.trust.get(cwd) === true });
+      const resourceLoader = new DefaultResourceLoader({
+        cwd, agentDir: this.agentDir, settingsManager,
+        // Nobody answers prompts inside a subagent: plan mode blocks anything that would ask.
+        extensionFactories: [createDesktopKit({ state: kit, ask: async () => ({ cancelled: true }), setMode: () => {} })],
       });
-      await session.prompt(run.prompt);
+      await resourceLoader.reload();
+      const { session } = await createAgentSession({
+        cwd, agentDir: this.agentDir, modelRuntime: this.models, model: run.ctx.model, resourceLoader, settingsManager,
+        sessionManager: SessionManager.inMemory(cwd), tools: SUBAGENT_TOOLS,
+      });
+      const abortSession = () => void session.abort();
+      stop.signal.addEventListener('abort', abortSession, { once: true });
+      try {
+        await session.bindExtensions({});
+        session.subscribe((event: any) => {
+          if (event.type === 'tool_execution_start') {
+            const { label, activity } = subagentStepLabel(event.toolName, event.args);
+            progress.toolUses++;
+            progress.activity = activity;
+            progress.steps.push({ kind: 'tool', id: event.toolCallId, name: event.toolName, label, status: 'running' });
+            report();
+          }
+          if (event.type === 'tool_execution_end') {
+            if (event.toolName === 'bash') stats.commands++;
+            else if (event.toolName === 'read') stats.reads++;
+            else stats.searches++;
+            if (event.isError) stats.failed++;
+            const step = progress.steps.find((x) => x.kind === 'tool' && x.id === event.toolCallId);
+            if (step?.kind === 'tool') step.status = event.isError ? 'err' : 'done';
+            progress.activity = 'Thinking';
+            report();
+          }
+          if (event.type === 'message_end' && event.message?.role === 'assistant') {
+            progress.tokens += Number(event.message.usage?.output) || 0;
+            const t = (event.message.content ?? []).filter((c: any) => c.type === 'text').map((c: any) => c.text).join('');
+            if (t) {
+              text = t;
+              progress.steps.push({ kind: 'text', text: t.length > 4000 ? `${t.slice(0, 4000)}…` : t });
+            }
+            report();
+          }
+        });
+        if (!stop.signal.aborted) await session.prompt(run.prompt);
+      } finally {
+        stop.signal.removeEventListener('abort', abortSession);
+        session.dispose();
+      }
     } finally {
       run.signal?.removeEventListener('abort', onAbort);
-      session.dispose();
+      live.tasks.delete(run.id);
     }
+    progress.endedAt = Date.now();
+    progress.activity = stop.signal.aborted ? 'Stopped' : 'Done';
+    report();
+    if (stop.signal.aborted && !run.signal?.aborted) throw new Error('The user stopped this subagent from the Background tasks panel.');
     return text;
+  }
+
+  /** Stop one running subagent; the parent turn carries on with an error result. */
+  stopTask(id: string, toolCallId: string) {
+    const task = this.live.get(id)?.tasks.get(toolCallId);
+    task?.abort();
+    return !!task;
   }
 
   // ------------------------------------------------------------ open / prompt
@@ -640,6 +696,55 @@ export class SessionHub {
     const live = this.live.get(id);
     return live ? this.statsOf(live.runtime.session) : null;
   }
+
+  /** Where the context window goes. Fixed parts are estimated from their text; messages fill the rest of the last measured total. */
+  context(id: string): ContextBreakdown | null {
+    const live = this.live.get(id);
+    if (!live) return null;
+    const session = live.runtime.session;
+    const usage = session.getContextUsage();
+    const contextWindow = usage?.contextWindow || session.model?.contextWindow || 0;
+    if (!contextWindow) return null;
+    const items: ContextBreakdown['items'] = [];
+    const active = new Set(session.getActiveToolNames());
+    for (const tool of session.getAllTools()) {
+      if (!active.has(tool.name)) continue;
+      const where = tool.sourceInfo?.path ?? '';
+      const group = /\bmcp\b/i.test(`${where} ${tool.sourceInfo?.source ?? ''}`) ? 'mcp' : where.startsWith('builtin:') ? 'system' : 'extension';
+      const text = tool.name + (tool.description ?? '') + JSON.stringify(tool.parameters ?? {}) + (tool.promptGuidelines ?? []).join('\n');
+      items.push({ group, name: tool.name, tokens: approxTokens(text) });
+    }
+    const loader = session.resourceLoader;
+    for (const skill of loader.getSkills().skills) {
+      if (!skill.disableModelInvocation) items.push({ group: 'skills', name: skill.name, tokens: approxTokens(formatSkillsForPrompt([skill])) });
+    }
+    for (const file of loader.getAgentsFiles().agentsFiles) items.push({ group: 'memory', name: file.path, tokens: approxTokens(file.content) });
+    const sum = (group: string) => items.filter((i) => i.group === group).reduce((n, i) => n + i.tokens, 0);
+    // Skills and memory files are part of the system prompt text; count them once.
+    const prompt = Math.max(0, approxTokens(session.systemPrompt) - sum('skills') - sum('memory'));
+    const fixed = prompt + sum('mcp') + sum('extension') + sum('system') + sum('skills') + sum('memory');
+    const measured = usage?.tokens ?? null;
+    const used = measured != null ? Math.max(measured, fixed) : fixed + session.messages.reduce((n, m) => n + estimateTokens(m), 0);
+    const compaction = session.settingsManager.getCompactionSettings(session.model ?? undefined);
+    const buffer = compaction.enabled ? Math.min(compaction.reserveTokens, Math.max(0, contextWindow - used)) : 0;
+    return {
+      contextWindow,
+      used,
+      estimated: measured == null,
+      categories: [
+        { key: 'messages', label: 'Messages', tokens: used - fixed },
+        { key: 'mcp', label: 'MCP tools', tokens: sum('mcp') },
+        { key: 'extension', label: 'Extension tools', tokens: sum('extension') },
+        { key: 'system', label: 'System tools', tokens: sum('system') },
+        { key: 'skills', label: 'Skills', tokens: sum('skills') },
+        { key: 'memory', label: 'Memory files', tokens: sum('memory') },
+        { key: 'prompt', label: 'System prompt', tokens: prompt },
+        { key: 'buffer', label: 'Autocompact buffer', tokens: buffer },
+        { key: 'free', label: 'Free space', tokens: Math.max(0, contextWindow - used - buffer) },
+      ],
+      items: items.sort((a, b) => b.tokens - a.tokens),
+    };
+  }
   async exportHtml(id: string) {
     const live = await this.ensure(id);
     return { path: await live.runtime.session.exportToHtml() };
@@ -711,6 +816,9 @@ export class SessionHub {
   }
   readFile(id: string, rel: string) {
     return readSessionFile(this.meta(id).cwd, rel);
+  }
+  readImage(id: string, rel: string) {
+    return readSessionImage(this.meta(id).cwd, rel);
   }
   /** Absolute path of something inside the session folder (for main to open or reveal). */
   resolvePath(id: string, rel: string) {

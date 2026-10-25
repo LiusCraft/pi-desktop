@@ -1,14 +1,14 @@
 import { useRef, useState } from 'react';
-import { ArrowUpIcon, CornerDownLeftIcon, FolderIcon, InfoIcon, LaptopIcon, PlusIcon, SquareIcon } from 'lucide-react';
-import { toast } from 'sonner';
+import { ArrowUpIcon, CircleStopIcon, CornerDownLeftIcon, FolderIcon, FolderPlusIcon, GitBranchIcon, InfoIcon, LaptopIcon, PlusIcon } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { call, modKey } from '@/lib/api';
+import { modKey } from '@/lib/api';
 import { fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { addCoworkFolder, addProject, fail, selectProject, send, setCoworkFolder, stop } from '@/store/actions';
-import { modelName, useApp, useCurrent } from '@/store/app';
+import { addCoworkFolder, addProject, selectProject, send, setCoworkFolder, stop } from '@/store/actions';
+import { modelName, setPref, useApp, useCurrent } from '@/store/app';
 import { useDrafts } from '@/store/drafts';
+import { Clawd, moodOf } from './Clawd';
 import { ComposerInput, pickAttachments, type ComposerHandle } from './ComposerInput';
 import { ContextRing, EffortMenu, FootButton, ModeMenu, ModelMenu } from './Menus';
 import { PrBar } from './PrBar';
@@ -20,64 +20,70 @@ function useSendState() {
   return { s, ready, busy: !!(draft?.sending || draft?.preparing || s?.stopping), stopMode: !!s?.running && !ready };
 }
 
-/** Claude Code's pixel mascot; it bobs while the agent works. */
-function Clawd({ busy }: { busy: boolean }) {
+function Chip({ children, className, ...props }: React.ComponentProps<'button'>) {
   return (
-    <svg className={cn('clawd pointer-events-none absolute -top-[26px] left-5', busy && 'busy')} viewBox="0 0 22 14" width="38" height="24" shapeRendering="crispEdges" aria-hidden>
-      <g fill="#d97757">
-        <rect x="3" y="0" width="16" height="10" />
-        <rect x="0" y="4" width="3" height="3" />
-        <rect x="19" y="4" width="3" height="3" />
-        <rect x="4" y="10" width="2" height="4" />
-        <rect x="8" y="10" width="2" height="4" />
-        <rect x="12" y="10" width="2" height="4" />
-        <rect x="16" y="10" width="2" height="4" />
-      </g>
-      <g fill="#141413">
-        <rect x="6" y="3" width="2" height="2" />
-        <rect x="14" y="3" width="2" height="2" />
-      </g>
-    </svg>
+    <button {...props} className={cn('flex h-8 max-w-60 items-center gap-1.5 rounded-lg bg-muted/80 px-2.5 text-sm text-foreground/85 hover:bg-accent hover:text-foreground data-[state=open]:bg-accent', className)}>
+      {children}
+    </button>
   );
 }
 
-function ProjectButton() {
-  const s = useCurrent();
+/** Where a new session runs: environment, project, branch / worktree. */
+function NewSessionChips() {
   const projects = useApp((st) => st.projects);
   const project = useApp((st) => st.prefs.project);
-  if (s) {
-    const cowork = s.meta.kind === 'cowork';
-    return (
-      <FootButton
-        title={s.meta.cwd}
-        onClick={() => (cowork ? call('sessions:openPath', s.meta.id, '.', false).catch(fail) : toast(s.meta.cwd))}
-      >
-        {cowork ? <FolderIcon className="size-3.5" /> : <LaptopIcon className="size-3.5" />}
-        <span className="truncate">{s.meta.scratch ? 'Temporary workspace' : fname(s.meta.projectPath)}</span>
-      </FootButton>
-    );
-  }
+  const worktree = useApp((st) => st.prefs.worktree);
+  const branch = useApp((st) => st.projectBranch);
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <FootButton title="Project">
-          <LaptopIcon className="size-3.5" />
-          <span className="truncate">{project ? fname(project) : 'Choose a project'}</span>
-        </FootButton>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start" className="w-64">
-        <DropdownMenuLabel className="text-xs text-muted-foreground">Project</DropdownMenuLabel>
-        {projects.map((p) => (
-          <DropdownMenuItem key={p.path} onSelect={() => selectProject(p.path)} title={p.path} className={cn(p.path === project && 'font-medium')}>
-            <LaptopIcon className="size-3.5" />{p.name}
+    <div className="mb-2.5 flex flex-wrap items-center gap-2">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Chip title="Environment"><LaptopIcon className="size-4 shrink-0" />Local</Chip>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" side="top" className="w-60">
+          <DropdownMenuLabel className="text-xs text-muted-foreground">Environment</DropdownMenuLabel>
+          <DropdownMenuItem className="flex-col items-start gap-0"><b className="font-medium">Local</b><span className="text-xs text-muted-foreground">在这台电脑上运行</span></DropdownMenuItem>
+          <DropdownMenuItem disabled className="flex-col items-start gap-0"><b className="font-medium">Cloud</b><span className="text-xs text-muted-foreground">即将推出</span></DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Chip title={project ?? 'Choose a project'}><FolderIcon className="size-4 shrink-0" /><span className="truncate">{project ? fname(project) : 'Choose a project'}</span></Chip>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" side="top" className="w-64">
+          <DropdownMenuLabel className="text-xs text-muted-foreground">Project</DropdownMenuLabel>
+          {projects.map((p) => (
+            <DropdownMenuItem key={p.path} onSelect={() => selectProject(p.path)} title={p.path} className={cn(p.path === project && 'font-medium')}>
+              <FolderIcon className="size-3.5" />{p.name}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => void addProject()}>
+            <PlusIcon className="size-3.5" />Open folder…
           </DropdownMenuItem>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => void addProject()}>
-          <PlusIcon className="size-3.5" />Open folder…
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {project && (
+        <div className="flex h-8 items-center rounded-lg bg-muted/80 text-sm text-foreground/85">
+          <span className="flex items-center gap-1.5 pr-2 pl-2.5" title={branch ? `Current branch: ${branch}` : 'Not a git repository'}>
+            <GitBranchIcon className="size-4 shrink-0" />
+            <span className="max-w-32 truncate">{branch ?? 'no git'}</span>
+          </span>
+          {branch && (
+            <>
+              <span className="h-3.5 w-px bg-border" />
+              <label className="flex h-full cursor-pointer items-center gap-1.5 rounded-r-lg pr-2.5 pl-2 hover:bg-accent" title="在独立的 git worktree 和分支里工作，不影响当前工作区">
+                <input type="checkbox" checked={worktree} onChange={(e) => setPref('worktree', e.target.checked)} className="size-3.5 accent-[var(--info)]" />
+                worktree
+              </label>
+            </>
+          )}
+        </div>
+      )}
+      <Chip title="Open folder…" className="w-8 justify-center px-0" onClick={() => void addProject()}>
+        <FolderPlusIcon className="size-4" />
+      </Chip>
+    </div>
   );
 }
 
@@ -92,38 +98,37 @@ export function CodeComposer() {
     ? `↵ to send, ${modKey}↵ to queue for later`
     : s ? (s.meta.kind === 'cowork' ? 'Reply to Claude, or type / for commands' : 'Type / for commands') : 'Describe a task or ask a question';
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 pb-4">
-      {s && <PrBar s={s} />}
+    <div className="mx-auto w-full max-w-3xl px-6 pb-3">
+      {s ? <PrBar s={s} /> : <NewSessionChips />}
       <div
-        className={cn('relative rounded-2xl border bg-card px-3 pt-3 pb-2 shadow-sm transition-shadow focus-within:shadow-md', drag && 'ring-2 ring-primary/50')}
+        className={cn('relative rounded-xl border bg-card px-4 py-2.5 transition-colors focus-within:border-muted-foreground/50', drag && 'ring-2 ring-primary/50')}
         onClick={(e) => !(e.target as HTMLElement).closest('button') && input.current?.focus()}
       >
-        <Clawd busy={!!s?.running} />
+        <Clawd mood={moodOf(s)} from={s ? 0 : 0.6} />
         <div className="flex items-end gap-2">
-          <button className="mb-0.5 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground" title="Add files (type @ to reference a project file)" onClick={pickAttachments}>
-            <PlusIcon className="size-4" />
-          </button>
-          <ComposerInput ref={input} placeholder={placeholder} className="min-w-0 flex-1 py-1" onDragState={setDrag} />
+          <ComposerInput ref={input} placeholder={placeholder} className="min-w-0 flex-1 py-0.5" onDragState={setDrag} />
           <button
             disabled={busy}
             onClick={() => (stopMode ? void stop(s!.meta.id) : void send(false))}
             title={stopMode ? 'Stop (Esc)' : 'Send (↵)'}
             className={cn(
-              'mb-0.5 flex size-8 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40',
-              stopMode ? 'bg-foreground text-background' : ready ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+              'flex size-7 shrink-0 items-center justify-center rounded-md transition-colors disabled:opacity-40',
+              stopMode ? 'text-foreground hover:bg-accent' : ready ? 'text-foreground hover:bg-accent' : 'text-muted-foreground/70',
             )}
           >
-            {stopMode ? <SquareIcon className="size-3 fill-current" /> : <CornerDownLeftIcon className="size-4" />}
+            {stopMode ? <CircleStopIcon className="size-[18px]" /> : <CornerDownLeftIcon className="size-4" />}
           </button>
         </div>
       </div>
       <div className="mt-1.5 flex items-center gap-0.5">
-        <ProjectButton />
+        <FootButton title="Add files (type @ to reference a project file)" className="w-7 justify-center px-0" onClick={pickAttachments}>
+          <PlusIcon className="size-4" />
+        </FootButton>
         <ModeMenu mode={s ? s.meta.mode : prefs.mode} />
         <span className="flex-1" />
         <ModelMenu model={s ? s.model : prefs.model} trigger={<FootButton><ModelLabel id={s ? s.model : prefs.model} /></FootButton>} />
         <EffortMenu levels={s ? s.levels : levels} effort={s ? s.thinking : prefs.effort} />
-        <ContextRing pct={s?.ctxPct ?? null} busy={s?.running} />
+        <ContextRing pct={s?.ctxPct ?? null} busy={s?.running} sid={s?.meta.id} />
       </div>
     </div>
   );

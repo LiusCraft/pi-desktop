@@ -9,7 +9,7 @@ import { DiffRows, TermOutput, ToolPreviewView } from '@/components/common/CodeV
 import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/kbd';
 import { Textarea } from '@/components/ui/textarea';
-import { ago, fname } from '@/lib/format';
+import { ago, fmtTok } from '@/lib/format';
 import { groupStats, groupSummary, isFileTool, toolLabel, type ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
 import { useApp, updateSession } from '@/store/app';
@@ -129,59 +129,80 @@ const Stat = ({ add, del }: { add?: number; del?: number }) => (
   </>
 );
 
-function ToolDetail({ tool }: { tool: ToolState }) {
-  if (tool.preview) return <ToolPreviewView preview={tool.preview} path={tool.path ?? ''} />;
+/** What a read tool returned for an image file, so the viewer can show files outside the session too. */
+const readImageSrc = (tool: ToolState) => (tool.preview?.type === 'image' ? tool.preview.images[0]?.src : undefined);
+
+function ToolDetail({ sid, tool }: { sid: string; tool: ToolState }) {
+  if (tool.preview) return <ToolPreviewView preview={tool.preview} path={tool.path ?? ''} sid={sid} onOpenImage={(src) => void openFileRef(tool.path!, undefined, src)} />;
   if (tool.kind === 'bash') return <TermOutput cmd={tool.cmd} out={tool.output ?? ''} />;
   if (tool.output) return <pre className="max-h-80 overflow-auto px-3 py-2 font-mono text-xs whitespace-pre-wrap">{tool.output}</pre>;
   return <div className="px-3 py-2 text-xs text-muted-foreground">{tool.status === 'running' ? 'Running…' : 'No output'}</div>;
 }
 
+/** "Ran" + "npm test": the verb stays muted, the subject is brighter (like Claude Code's tool list). */
+function splitLabel(tool: ToolState): [string, string] {
+  if (tool.kind === 'agent') return [tool.status === 'running' ? 'Running agent' : 'Ran agent', tool.desc];
+  if (tool.kind === 'other') return [toolLabel(tool), ''];
+  const label = toolLabel(tool);
+  const cut = label.indexOf(' ');
+  return cut < 0 ? [label, ''] : [label.slice(0, cut), label.slice(cut + 1)];
+}
+
+const Chevron = ({ open }: { open: boolean }) => (
+  <ChevronRightIcon className={cn('size-3.5 shrink-0 transition-transform', open && 'rotate-90')} />
+);
+
 const ToolRow = memo(function ToolRow({ sid, tool }: { sid: string; tool: ToolState }) {
   const running = tool.status === 'running';
-  const tone = tool.status === 'err' ? 'text-destructive' : tool.status === 'denied' ? 'text-muted-foreground line-through' : '';
-  const verb = { read: ['Reading', 'Read'], edit: ['Editing', 'Edited'], write: ['Writing', 'Wrote'] }[tool.kind as 'read' | 'edit' | 'write']?.[running ? 0 : 1];
-  const header = isFileTool(tool) ? (
-    <div className={cn('flex min-w-0 items-center gap-1.5 text-sm', tone)}>
-      <span className={cn('text-muted-foreground', running && 'shimmer')}>{verb}</span>
-      <button className="truncate font-medium hover:underline" title={`Open current file: ${tool.path}`} onClick={() => void openFileRef(tool.path!, tool.kind === 'read' ? tool.args?.offset : tool.firstChangedLine)}>
-        {fname(tool.path!)}
-      </button>
-      <Stat add={tool.add} del={tool.del} />
-      <button className="ml-auto rounded p-0.5 text-muted-foreground hover:bg-accent" aria-expanded={tool.open} aria-label={`Toggle preview for ${fname(tool.path!)}`} onClick={() => toggleTool(sid, tool.id)}>
-        {tool.open ? <ChevronDownIcon className="size-3.5" /> : <ChevronRightIcon className="size-3.5" />}
-      </button>
-    </div>
-  ) : (
-    <button
-      className={cn('flex w-full min-w-0 items-center gap-1.5 text-left text-sm', tone)}
-      aria-expanded={tool.open}
-      onClick={() => (tool.kind === 'agent' ? openAgent(sid, tool.id) : toggleTool(sid, tool.id))}
-      title={toolLabel(tool)}
-    >
-      <span className={cn('truncate', running && 'shimmer')}>
-        {tool.kind === 'agent' ? (
-          <>
-            Agent · <b className="font-medium">{tool.desc}</b>
-            {tool.summary && <span className="ml-1.5 text-muted-foreground">{tool.summary}</span>}
-          </>
-        ) : (
-          toolLabel(tool)
-        )}
-      </span>
-      <span className="ml-auto text-muted-foreground">{tool.open ? <ChevronDownIcon className="size-3.5" /> : <ChevronRightIcon className="size-3.5" />}</span>
-    </button>
+  const err = tool.status === 'err', denied = tool.status === 'denied';
+  const [verb, subject] = splitLabel(tool);
+  const toggle = () => (tool.kind === 'agent' ? openAgent(sid, tool.id) : toggleTool(sid, tool.id));
+  const extra = tool.kind === 'agent' && (
+    <>
+      {tool.sub ? (
+        <span className="shrink-0">
+          {tool.sub.toolUses} tool use{tool.sub.toolUses === 1 ? '' : 's'} · {fmtTok(tool.sub.tokens)} tokens{running && tool.sub.activity ? ` · ${tool.sub.activity}` : ''}
+        </span>
+      ) : tool.summary && <span className="truncate">{tool.summary}</span>}
+      {err && <span className="shrink-0 text-destructive">Failed</span>}
+      {denied && <span className="shrink-0 text-foreground/80">Blocked</span>}
+    </>
   );
   return (
-    <div className="py-1">
-      {header}
+    <div>
+      <div
+        className={cn('flex h-10 min-w-0 cursor-pointer items-center gap-1.5 px-3 text-sm text-muted-foreground hover:bg-accent/40', err && 'text-destructive')}
+        role="button"
+        tabIndex={0}
+        aria-expanded={tool.open}
+        title={toolLabel(tool)}
+        onClick={toggle}
+        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggle())}
+      >
+        <span className={cn('shrink-0', running && 'shimmer')}>{verb}</span>
+        {subject && (isFileTool(tool) ? (
+          <button
+            className={cn('min-w-0 truncate text-foreground/90 hover:underline', err && 'text-destructive', denied && 'line-through')}
+            title={`Open current file: ${tool.path}`}
+            onClick={(e) => { e.stopPropagation(); void openFileRef(tool.path!, tool.kind === 'read' ? tool.args?.offset : tool.firstChangedLine, readImageSrc(tool)); }}
+          >
+            {subject}
+          </button>
+        ) : <span className={cn('min-w-0 truncate text-foreground/90', err && 'text-destructive', denied && 'line-through')}>{subject}</span>)}
+        {extra}
+        <Stat add={tool.add} del={tool.del} />
+        <Chevron open={tool.open && tool.kind !== 'agent'} />
+      </div>
       {tool.open && tool.kind !== 'agent' && (
-        <div className="mt-1.5 overflow-hidden rounded-lg border bg-code">
-          <ToolDetail tool={tool} />
-          {isFileTool(tool) && tool.status === 'done' && tool.kind !== 'read' && (
-            <button className="w-full border-t px-3 py-1 text-left text-xs text-primary hover:bg-accent" onClick={() => openDiffRef(tool.path!)}>
-              View diff
-            </button>
-          )}
+        <div className="px-3 pb-3">
+          <div className="overflow-hidden rounded-lg border bg-code">
+            <ToolDetail sid={sid} tool={tool} />
+            {isFileTool(tool) && tool.status === 'done' && tool.kind !== 'read' && (
+              <button className="w-full border-t px-3 py-1 text-left text-xs text-primary hover:bg-accent" onClick={() => openDiffRef(tool.path!)}>
+                View diff
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -213,7 +234,7 @@ export const GroupItem = memo(function GroupItem({ sid, item, view }: { sid: str
             {item.open ? <ChevronDownIcon className="size-3.5 shrink-0" /> : <ChevronRightIcon className="size-3.5 shrink-0" />}
           </button>
           {item.open && (
-            <div className="ml-1 border-l pl-3">
+            <div className="mt-2 divide-y overflow-hidden rounded-[10px] border">
               {item.tools.map((t) => <ToolRow key={t.id} sid={sid} tool={t} />)}
             </div>
           )}

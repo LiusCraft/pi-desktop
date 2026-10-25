@@ -27,7 +27,7 @@ export function emptySession(meta: SessionMeta): SessionView {
     meta, items: [], loaded: false, running: false, t0: 0, tokens: 0, statusText: '', ctxPct: null,
     model: meta.model ?? null, thinking: meta.thinking ?? null, levels: [], commands: [], waiting: null, unread: false,
     todosKey: null, lastTodos: [], outputs: [], term: [], changes: [], pr: meta.pr, prHidden: false, files: null,
-    panels: { diff: false, preview: false, files: false, terminal: false, progress: true }, detail: null, previewUrl: null,
+    panels: { diff: false, preview: false, files: false, terminal: false, progress: true, tasks: false }, detail: null, previewUrl: null,
     pendingUser: [], stopping: false, hostEpoch: 0, cur: null,
   };
 }
@@ -84,6 +84,7 @@ export function toolStart(s: SessionView, ev: { toolCallId: string; toolName: st
   }
   const g = currentGroup(s, view);
   const tool = toolFromArgs(ev.toolCallId, ev.toolName, ev.args);
+  if (tool.kind === 'agent' && !replay) tool.sub = { startedAt: Date.now(), tokens: 0, toolUses: 0, activity: 'Starting', steps: [] };
   g.tools.push(tool);
   if (!replay) s.statusText = `${toolLabel(tool)}…`;
 }
@@ -134,6 +135,8 @@ export function toolEnd(
   } else if (t.kind === 'agent') {
     t.md = ev.result?.details?.text || text;
     t.summary = ev.result?.details?.summary || '';
+    if (ev.result?.details?.progress) t.sub = ev.result.details.progress;
+    else if (t.sub && !t.sub.endedAt) t.sub = { ...t.sub, endedAt: Date.now(), activity: ev.isError ? 'Stopped' : 'Done' };
   } else if (t.kind !== 'read') t.output = text.slice(0, 8000);
 
   if (t.kind === 'bash' && !replay) {
@@ -278,7 +281,10 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
     case 'tool_execution_update':
       if (ev.toolName === 'task') {
         const found = findTool(s, ev.toolCallId);
-        if (found) found.tool.summary = textOf(ev.partialResult?.content);
+        if (found) {
+          found.tool.summary = textOf(ev.partialResult?.content);
+          if (ev.partialResult?.details?.progress) found.tool.sub = ev.partialResult.details.progress;
+        }
       }
       return {};
     case 'tool_execution_end':
@@ -311,7 +317,10 @@ export function settle(s: SessionView, aborted: boolean, view: ViewMode): Effect
     if (item.kind === 'text' && item.live) item.live = false;
     if (item.kind === 'group') {
       for (const step of item.thoughts) if (!step.done) finishThought(step, view);
-      for (const t of item.tools) if (t.status === 'running') t.status = 'denied';
+      for (const t of item.tools) {
+        if (t.status === 'running') t.status = 'denied';
+        if (t.sub && !t.sub.endedAt) t.sub = { ...t.sub, endedAt: Date.now(), activity: 'Stopped' };
+      }
     }
   }
   // Only authoritative user events or clear_queue confirm consumption/cancellation.

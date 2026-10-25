@@ -132,6 +132,33 @@ export interface SessionStats {
   contextUsage?: { tokens: number | null; contextWindow: number; percent: number | null };
 }
 
+/** One step a subagent took, for its transcript. */
+export type SubagentStep =
+  | { kind: 'tool'; id: string; name: string; label: string; status: 'running' | 'done' | 'err' }
+  | { kind: 'text'; text: string };
+
+/** Live progress of a `task` subagent (also kept in the final tool result details). */
+export interface SubagentProgress {
+  startedAt: number;
+  endedAt?: number;
+  tokens: number;
+  toolUses: number;
+  /** What it is doing right now, e.g. "Running a command". */
+  activity: string;
+  steps: SubagentStep[];
+}
+
+/** Estimated split of the context window (like Claude Code's /context). */
+export interface ContextBreakdown {
+  contextWindow: number;
+  used: number;
+  /** False when the total comes from the last model response, true when it is all estimated. */
+  estimated: boolean;
+  categories: { key: 'messages' | 'mcp' | 'extension' | 'system' | 'skills' | 'memory' | 'prompt' | 'buffer' | 'free'; label: string; tokens: number }[];
+  /** Per-item detail for the expandable sections. */
+  items: { group: 'mcp' | 'extension' | 'system' | 'skills' | 'memory'; name: string; tokens: number }[];
+}
+
 export interface OpenSessionResult {
   meta: SessionMeta;
   messages: AgentMessage[];
@@ -304,7 +331,11 @@ export interface Api {
   'sessions:pr'(id: string): PrStatus | null;
   'sessions:files'(id: string): string[];
   'sessions:readFile'(id: string, rel: string): string | null;
+  'sessions:readImage'(id: string, rel: string): { mimeType: string; src: string } | null;
+  'sessions:context'(id: string): ContextBreakdown | null;
+  'sessions:stopTask'(id: string, toolCallId: string): boolean;
   'sessions:importable'(projectPath: string): ImportableSession[];
+  'git:branch'(dir: string): string | null;
   'sessions:import'(file: string): SessionMeta;
   'models:list'(): { models: ModelInfo[]; defaultModel: string | null };
   'models:levels'(model: string | null): ThinkingLevel[];
@@ -320,8 +351,9 @@ export const HOST_CHANNELS = [
   'sessions:setMode', 'sessions:setStyle', 'sessions:update', 'sessions:archive', 'sessions:abort',
   'sessions:clearQueue', 'sessions:newContext', 'sessions:compact', 'sessions:stats', 'sessions:exportHtml',
   'sessions:clone', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:bash',
-  'sessions:changes', 'sessions:pr', 'sessions:files', 'sessions:readFile', 'sessions:importable',
-  'sessions:import', 'models:list', 'models:levels',
+  'sessions:changes', 'sessions:pr', 'sessions:files', 'sessions:readFile', 'sessions:readImage',
+  'sessions:context', 'sessions:stopTask', 'sessions:importable',
+  'sessions:import', 'git:branch', 'models:list', 'models:levels',
 ] as const satisfies readonly ApiChannel[];
 
 export const MAIN_CHANNELS = [

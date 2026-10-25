@@ -17,7 +17,7 @@ import { StringEnum } from '@earendil-works/pi-ai';
 import { Type } from 'typebox';
 import {
   PLAN_CHOICES,
-  type OutputStyle, type PermissionMode, type SessionKind, type UiRequestInput, type UiResponse,
+  type OutputStyle, type PermissionMode, type SessionKind, type SubagentProgress, type UiRequestInput, type UiResponse,
 } from '@shared/protocol';
 
 /** First words of the hidden message injected in plan mode (the demo model looks for it). */
@@ -46,10 +46,12 @@ export interface SubagentStats {
   failed: number;
 }
 export interface SubagentRun {
+  /** The `task` tool call id, so the UI can stop this one subagent. */
+  id: string;
   prompt: string;
   ctx: ExtensionContext;
   signal: AbortSignal | undefined;
-  onProgress: (stats: SubagentStats) => void;
+  onProgress: (stats: SubagentStats, progress: SubagentProgress) => void;
 }
 
 export interface KitHost {
@@ -258,22 +260,25 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         prompt: Type.String({ description: 'Complete, self-contained instructions for the subagent' }),
       }),
       annotations: { readOnlyHint: true },
-      async execute(_id, params, signal, onUpdate, ctx) {
+      async execute(id, params, signal, onUpdate, ctx) {
         let stats: SubagentStats = { commands: 0, reads: 0, searches: 0, failed: 0 };
+        let progress: SubagentProgress | undefined;
         const text = await runSubagent({
+          id,
           prompt: params.prompt,
           ctx,
           signal,
-          onProgress: (next) => {
+          onProgress: (next, live) => {
             stats = next;
-            onUpdate?.({ content: [{ type: 'text', text: subagentSummary(stats) }], details: { ...params, stats, text: '' } });
+            progress = live;
+            onUpdate?.({ content: [{ type: 'text', text: subagentSummary(stats) }], details: { ...params, stats, progress, text: '' } });
           },
         });
         if (signal?.aborted) throw new Error('Subagent aborted');
         if (!text) throw new Error('Subagent produced no report');
         return {
           content: [{ type: 'text', text: text.length > 20000 ? `${text.slice(0, 20000)}\n…(truncated)` : text }],
-          details: { ...params, stats, summary: subagentSummary(stats), text },
+          details: { ...params, stats, progress, summary: subagentSummary(stats), text },
         };
       },
     });

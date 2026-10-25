@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import {
-  ChevronDownIcon, FileTextIcon, FolderIcon, GlobeIcon, LaptopIcon, MoreVerticalIcon, PanelRightIcon, PlusIcon,
+  BotIcon, ChevronDownIcon, FileTextIcon, FolderIcon, GlobeIcon, LaptopIcon, MoreVerticalIcon, PanelRightIcon, PlusIcon,
   SquareTerminalIcon, TerminalSquareIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -9,19 +9,20 @@ import { CodeComposer, CoworkComposer } from '@/components/composer/Composers';
 import { Transcript } from '@/components/thread/Transcript';
 import { openCards, Workspace } from '@/components/workspace/Workspace';
 import {
-  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup,
   DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { call, isMac, modKey } from '@/lib/api';
 import { COWORK_IDEAS, OUTPUT_STYLE_INFO, VIEW_MODES, type ViewMode } from '@/lib/constants';
 import { fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
-  addProject, archiveSession, fail, importCliSession, renameSession, selectProject, setOutputStyle, setViewMode,
+  addProject, archiveSession, fail, importCliSession, renameSession, setOutputStyle, setViewMode,
   togglePanel, welcomeDraftKey,
 } from '@/store/actions';
-import { setPref, useApp, useCurrent } from '@/store/app';
+import { useApp, useCurrent } from '@/store/app';
 import { drafts } from '@/store/drafts';
 import { hasThinking } from '@/store/transcript';
 import type { SessionView } from '@/store/types';
@@ -75,6 +76,7 @@ function Header({ s }: { s?: SessionView }) {
   const collapsed = useApp((st) => st.sidebarCollapsed);
   const cowork = s?.meta.kind === 'cowork';
   const p = s?.panels;
+  const hasTasks = !!s?.items.some((i) => i.kind === 'group' && i.tools.some((t) => t.kind === 'agent'));
   return (
     <header className={cn('app-drag titlebar-inset flex h-11 shrink-0 items-center gap-1 px-3', collapsed && isMac && 'pl-[84px]')}>
       {collapsed && <SidebarToggle />}
@@ -94,6 +96,7 @@ function Header({ s }: { s?: SessionView }) {
             {cowork ? (s.meta.scratch ? 'Temporary workspace' : fname(s.meta.projectPath)) : `${fname(s.meta.projectPath)}${s.meta.branch ? ` · ${s.meta.branch}` : ''}`}
           </span>
           <span className="flex-1" />
+          {hasTasks && <HeaderButton on={p!.tasks} title="Background tasks" onClick={() => togglePanel(s.meta.id, 'tasks')}><BotIcon className="size-4" /></HeaderButton>}
           {cowork ? (
             <HeaderButton on={p!.progress} title="Progress" onClick={() => togglePanel(s.meta.id, 'progress')}><PanelRightIcon className="size-4" /></HeaderButton>
           ) : (
@@ -130,40 +133,16 @@ function Header({ s }: { s?: SessionView }) {
 // ------------------------------------------------------------ welcome screens
 
 function CodeWelcome() {
-  const projects = useApp((st) => st.projects);
   const project = useApp((st) => st.prefs.project);
-  const worktree = useApp((st) => st.prefs.worktree);
   const importable = useApp((st) => st.importable);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 overflow-y-auto px-6">
-        <div className="w-full max-w-md rounded-2xl border bg-card p-2 shadow-sm">
-          {projects.map((p) => (
-            <button key={p.path} title={p.path} onClick={() => selectProject(p.path)} className={cn('flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-sm hover:bg-accent', p.path === project && 'bg-accent font-medium')}>
-              <LaptopIcon className="size-4 text-muted-foreground" />
-              <span className="truncate">{p.name}</span>
-            </button>
-          ))}
-          <button onClick={() => void addProject()} className="flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-sm text-muted-foreground hover:bg-accent hover:text-foreground">
-            <PlusIcon className="size-4" />Open folder…
-          </button>
-          <div className="my-1.5 border-t" />
-          <DropdownMenu>
-            <DropdownMenuTrigger className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs text-muted-foreground hover:bg-accent">
-              Local environment<ChevronDownIcon className="size-3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-60">
-              <DropdownMenuLabel className="text-xs text-muted-foreground">Environment</DropdownMenuLabel>
-              <DropdownMenuItem className="flex-col items-start gap-0"><b className="font-medium">Local</b><span className="text-xs text-muted-foreground">在这台电脑上运行</span></DropdownMenuItem>
-              <DropdownMenuItem disabled className="flex-col items-start gap-0"><b className="font-medium">Cloud</b><span className="text-xs text-muted-foreground">即将推出</span></DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem checked={worktree} onCheckedChange={(v) => setPref('worktree', !!v)} onSelect={(e) => e.preventDefault()}>
-                Use isolated worktree
-              </DropdownMenuCheckboxItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-        {project && (
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 overflow-y-auto px-6">
+        <h1 className="flex items-center gap-3 font-serif text-3xl font-normal tracking-tight">
+          <span className="spark size-6!" aria-hidden />
+          {project ? fname(project) : 'Pick a project to start'}
+        </h1>
+        {project ? (
           <button
             disabled={!importable.length}
             onClick={() => void importCliSession()}
@@ -172,6 +151,8 @@ function CodeWelcome() {
             <TerminalSquareIcon className="size-4" />
             {importable.length ? `Import ${importable.length} pi CLI session${importable.length > 1 ? 's' : ''}` : 'No pi CLI sessions to import'}
           </button>
+        ) : (
+          <Button variant="outline" onClick={() => void addProject()}><PlusIcon className="size-4" />Open folder…</Button>
         )}
       </div>
       <CodeComposer />

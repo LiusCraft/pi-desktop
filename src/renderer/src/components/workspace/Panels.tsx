@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  ArrowLeftIcon, ChevronDownIcon, ChevronRightIcon, CodeIcon, CopyIcon, ExternalLinkIcon, FileIcon, FolderIcon, FolderOpenIcon,
-  ListIcon, Maximize2Icon, MessageSquareIcon, Minimize2Icon, RefreshCwIcon, SearchIcon, XIcon,
+  ArrowLeftIcon, BotIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CodeIcon, CopyIcon, ExternalLinkIcon, FileCodeIcon, FileIcon, FolderIcon,
+  FolderOpenIcon, ListIcon, Maximize2Icon, MessageSquareIcon, Minimize2Icon, RefreshCwIcon, SearchIcon, SquareIcon, SquareTerminalIcon,
+  Trash2Icon, XIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { lineWindow, WINDOW_LINES } from '@shared/tool-previews';
@@ -9,14 +10,14 @@ import { CodeLines, DiffRows, TermOutput } from '@/components/common/CodeView';
 import { Markdown } from '@/components/common/Markdown';
 import { TodoList, PlanActions } from '@/components/thread/Items';
 import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { call } from '@/lib/api';
 import { modeName } from '@/lib/constants';
-import { fdir, fname } from '@/lib/format';
+import { fdir, fmtDur, fmtTok, fname } from '@/lib/format';
+import type { ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
 import {
-  closeDetail, diffTarget, fail, loadChanges, loadFiles, openDiffRef, openFileRef, runTerminal, setFileWindow, togglePanel,
+  closeDetail, diffTarget, fail, loadChanges, loadFiles, openAgent, openDiffRef, openFileRef, runTerminal, setFileWindow, stopTask, togglePanel,
 } from '@/store/actions';
 import { modelName, setPref, updateSession, useApp } from '@/store/app';
 import { findByKey, findTool } from '@/store/transcript';
@@ -69,33 +70,60 @@ const Empty = ({ children }: { children: ReactNode }) => <div className="flex h-
 
 export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [closedDirs, setClosedDirs] = useState<Set<string>>(new Set());
   const [gaps, setGaps] = useState<Set<string>>(new Set());
+  const [showTree, setShowTree] = useState(true);
+  const [active, setActive] = useState<string | null>(null);
   const body = useRef<HTMLDivElement>(null);
-  const [flash, setFlash] = useState<string | null>(null);
   const id = s.meta.id;
   const scrollTo = (p: string) => {
     const el = [...(body.current?.querySelectorAll<HTMLElement>('[data-path]') ?? [])].find((x) => x.dataset.path === p || p.endsWith('/' + x.dataset.path) || x.dataset.path!.endsWith(p));
-    if (!el) return false;
-    el.scrollIntoView({ block: 'start' });
-    setFlash(el.dataset.path!);
-    setTimeout(() => setFlash(null), 900);
+    if (!el || !body.current) return false;
+    body.current.scrollTop = el.offsetTop;
+    setActive(el.dataset.path!);
     return true;
+  };
+  const open = (p: string) => {
+    setCollapsed((c) => {
+      const n = new Set(c);
+      n.delete(p);
+      return n;
+    });
+    requestAnimationFrame(() => scrollTo(p));
   };
   // "View diff" on a tool row jumps here.
   useEffect(() => {
     if (!diffTarget.path) return;
     const target = diffTarget.path;
-    setCollapsed((c) => {
-      const n = new Set(c);
-      n.delete(target);
-      return n;
-    });
+    open(target);
     if (!scrollTo(target)) void loadChanges(id).then(() => requestAnimationFrame(() => scrollTo(target)));
     diffTarget.path = null;
   }, [diffTarget.seq, s.changes.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The file whose header has scrolled past the top is the one the tree highlights.
+  const onScroll = () => {
+    const el = body.current;
+    if (!el) return;
+    let current: string | null = null;
+    for (const f of el.querySelectorAll<HTMLElement>('[data-path]')) {
+      if (f.offsetTop - el.scrollTop > 8) break;
+      current = f.dataset.path!;
+    }
+    setActive(current ?? s.changes[0]?.path ?? null);
+  };
+
+  // Changed files grouped by folder, root files first.
+  const dirs = useMemo(() => {
+    const map = new Map<string, typeof s.changes>();
+    for (const f of s.changes) {
+      const d = fdir(f.path);
+      if (!map.has(d)) map.set(d, []);
+      map.get(d)!.push(f);
+    }
+    return [...map.entries()].sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b)));
+  }, [s.changes]);
 
   const title = (
-    <span className="flex min-w-0 items-center gap-1 font-mono text-xs">
+    <span className="flex min-w-0 items-center gap-1.5 text-sm font-normal">
       <span className="truncate">{s.meta.baseBranch || 'base'}</span>
       <span className="text-muted-foreground">→</span>
       <span className="truncate">{s.meta.branch || fname(s.meta.cwd)}</span>
@@ -103,55 +131,89 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   );
   const tools = (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <IconBtn title="Changed files"><ListIcon className="size-3.5" /></IconBtn>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="max-h-80 w-72 overflow-y-auto">
-          <DropdownMenuLabel className="text-xs text-muted-foreground">Changed files</DropdownMenuLabel>
-          {s.changes.map((f) => (
-            <DropdownMenuItem key={f.path} onSelect={() => scrollTo(f.path)} className="justify-between gap-3">
-              <span className="truncate">{f.path}</span>
-              <span className="shrink-0 font-mono text-xs"><span className="text-success">+{f.add}</span> <span className="text-destructive">−{f.del}</span></span>
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
       <IconBtn title="Search files" onClick={() => togglePanel(id, 'files', true)}><SearchIcon className="size-3.5" /></IconBtn>
       <IconBtn title="Refresh" onClick={() => { setGaps(new Set()); setCollapsed(new Set()); void loadChanges(id); toast('Refreshed'); }}><RefreshCwIcon className="size-3.5" /></IconBtn>
       <IconBtn title="Open in VS Code" onClick={() => call('sessions:openIn', id, 'vscode').catch(fail)}><ExternalLinkIcon className="size-3.5" /></IconBtn>
     </>
   );
+  const treeToggle = (
+    <IconBtn title={showTree ? 'Hide changed files' : 'Show changed files'} aria-pressed={showTree} className={cn(showTree && 'bg-info/15 text-info hover:bg-info/20 hover:text-info')} onClick={() => setShowTree((v) => !v)}>
+      <ListIcon className="size-4" />
+    </IconBtn>
+  );
   let content: ReactNode;
   if (!s.meta.baseCommit) content = <Empty>{'这个项目不是 git 仓库\n初始化 git 后即可查看 Claude 的改动'}</Empty>;
   else if (!s.changes.length) content = <Empty>{'No changes yet\nClaude 修改的文件会出现在这里'}</Empty>;
-  else content = (
-    <div ref={body} className="divide-y">
-      {s.changes.map((f) => {
-        const isCollapsed = collapsed.has(f.path);
-        return (
-          <div key={f.path} data-path={f.path} className={cn('transition-colors', flash === f.path && 'bg-primary/10')}>
-            <button
-              className="sticky top-0 z-10 flex w-full items-center gap-2 border-b bg-card px-3 py-1.5 text-left text-xs"
-              onClick={() => setCollapsed((c) => { const n = new Set(c); if (n.has(f.path)) n.delete(f.path); else n.add(f.path); return n; })}
-            >
-              {isCollapsed ? <ChevronRightIcon className="size-3.5" /> : <ChevronDownIcon className="size-3.5" />}
-              <CodeIcon className="size-3.5 text-muted-foreground" />
-              <span className="font-medium">{fname(f.path)}</span>
-              <span className="truncate text-muted-foreground">{fdir(f.path)}</span>
-              {f.status === 'A' && <span className="text-[10px] font-semibold text-success">NEW</span>}
-              {f.status === 'D' && <span className="text-[10px] font-semibold text-destructive">DELETED</span>}
-              <span className="ml-auto font-mono"><span className="text-success">+{f.add}</span> <span className="text-destructive">−{f.del}</span></span>
-            </button>
-            {!isCollapsed && (f.binary ? <div className="px-3 py-2 text-xs text-muted-foreground">Binary or large file</div> : (
-              <DiffRows before={f.before} after={f.status === 'D' ? null : f.after} path={f.path} openGaps={gaps} onOpenGap={(g) => setGaps((x) => new Set(x).add(g))} />
+  else {
+    const fileRow = (f: (typeof s.changes)[number]) => (
+      <button
+        key={f.path}
+        title={f.path}
+        onClick={() => open(f.path)}
+        className={cn('flex w-full items-center gap-2 rounded-md py-1 pr-2 pl-2 text-left text-[13px] hover:bg-accent', active === f.path && 'bg-accent')}
+      >
+        <FileCodeIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className={cn('min-w-0 flex-1 truncate', f.status === 'D' && 'line-through opacity-70')}>{fname(f.path)}</span>
+        <span className="shrink-0 font-mono text-xs"><span className="text-success">+{f.add}</span> <span className="text-destructive">−{f.del}</span></span>
+      </button>
+    );
+    content = (
+      <div className="flex h-full min-h-0">
+        {showTree && (
+          <nav className="w-[38%] max-w-72 min-w-44 shrink-0 overflow-y-auto border-r p-1.5" aria-label="Changed files">
+            {dirs.map(([dir, files]) => dir === '' ? files.map((f) => fileRow(f)) : (
+              <div key={dir}>
+                <button
+                  className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] hover:bg-accent"
+                  title={dir}
+                  onClick={() => setClosedDirs((c) => { const n = new Set(c); if (n.has(dir)) n.delete(dir); else n.add(dir); return n; })}
+                >
+                  {closedDirs.has(dir) ? <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" /> : <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />}
+                  <span className="truncate">{dir}</span>
+                </button>
+                {!closedDirs.has(dir) && <div className="ml-3.5 border-l">{files.map((f) => fileRow(f))}</div>}
+              </div>
             ))}
-          </div>
-        );
-      })}
-    </div>
+          </nav>
+        )}
+        <div ref={body} onScroll={onScroll} className="relative min-w-0 flex-1 overflow-auto">
+          {s.changes.map((f) => {
+            const isCollapsed = collapsed.has(f.path);
+            return (
+              <section key={f.path} data-path={f.path}>
+                <div className="group sticky top-0 z-10 flex items-center gap-2 border-b bg-card px-3 py-2 text-[13px]">
+                  <button
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    aria-expanded={!isCollapsed}
+                    onClick={() => setCollapsed((c) => { const n = new Set(c); if (n.has(f.path)) n.delete(f.path); else n.add(f.path); return n; })}
+                  >
+                    {isCollapsed ? <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" /> : <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />}
+                    <FileCodeIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="shrink-0 font-medium">{fname(f.path)}</span>
+                    {fdir(f.path) && <span className="truncate text-muted-foreground">{fdir(f.path)}</span>}
+                    <span className="shrink-0 font-mono text-xs"><span className="text-success">+{f.add}</span> <span className="text-destructive">−{f.del}</span></span>
+                    {f.status === 'A' && <span className="shrink-0 text-[10px] font-semibold text-success">NEW</span>}
+                    {f.status === 'D' && <span className="shrink-0 text-[10px] font-semibold text-destructive">DELETED</span>}
+                  </button>
+                  {f.status !== 'D' && (
+                    <IconBtn title="Open file" className="size-6 opacity-0 group-hover:opacity-100" onClick={() => void openFileRef(f.path)}><CodeIcon className="size-3.5" /></IconBtn>
+                  )}
+                </div>
+                {!isCollapsed && (f.binary ? <div className="px-3 py-2 text-xs text-muted-foreground">Binary or large file</div> : (
+                  <DiffRows wrap before={f.before} after={f.status === 'D' ? null : f.after} path={f.path} openGaps={gaps} onOpenGap={(g) => setGaps((x) => new Set(x).add(g))} />
+                ))}
+              </section>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <Card {...card} title={<>{treeToggle}{title}</>} tools={tools} onClose={() => togglePanel(id, 'diff', false)} bodyClass="overflow-hidden">
+      {content}
+    </Card>
   );
-  return <Card {...card} title={title} tools={tools} onClose={() => togglePanel(id, 'diff', false)}>{content}</Card>;
 }
 
 // ------------------------------------------------------------ preview
@@ -290,6 +352,146 @@ export function TerminalPanel({ s, ...card }: CardProps & { s: SessionView }) {
   );
 }
 
+// ------------------------------------------------------------ background tasks
+
+/** Every subagent of the session, newest first. */
+function agentTools(s: SessionView) {
+  const out: ToolState[] = [];
+  for (const item of s.items) if (item.kind === 'group') for (const t of item.tools) if (t.kind === 'agent') out.push(t);
+  return out.reverse();
+}
+
+export const runningTasks = (s: SessionView) => agentTools(s).filter((t) => t.status === 'running');
+
+/** Re-render every second while something is running, for the elapsed timers. */
+function useTicker(on: boolean) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!on) return;
+    const t = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [on]);
+}
+
+const elapsed = (t: ToolState) => (t.sub ? fmtDur((t.sub.endedAt ?? Date.now()) - t.sub.startedAt) : '');
+
+function TaskMeta({ tool, onTranscript }: { tool: ToolState; onTranscript?: () => void }) {
+  const sub = tool.sub;
+  const running = tool.status === 'running';
+  const state = running ? sub?.activity || 'Working' : tool.status === 'err' ? 'Failed' : tool.status === 'denied' ? 'Stopped' : 'Completed';
+  return (
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-muted-foreground">
+      {sub && <span><b className="font-medium text-foreground/80">{fmtTok(sub.tokens)}</b> tokens</span>}
+      {sub && <span><b className="font-medium text-foreground/80">{sub.toolUses}</b> tool use{sub.toolUses === 1 ? '' : 's'}</span>}
+      <span className={cn(running && 'shimmer', tool.status === 'err' && 'text-destructive')}>{state}</span>
+      {onTranscript && <button className="text-info hover:underline" onClick={onTranscript}>View transcript</button>}
+    </div>
+  );
+}
+
+export function TasksPanel({ s, ...card }: CardProps & { s: SessionView }) {
+  const id = s.meta.id;
+  const all = agentTools(s);
+  const [cleared, setCleared] = useState<Set<string>>(new Set());
+  const running = all.filter((t) => t.status === 'running');
+  const done = all.filter((t) => t.status !== 'running' && !cleared.has(t.id));
+  useTicker(running.length > 0);
+  const row = (t: ToolState) => (
+    <div key={t.id} className="group rounded-lg border bg-muted/40 px-3 py-2.5">
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium" title={t.desc}>{t.desc}</div>
+          <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1"><BotIcon className="size-3" />Agent</span>
+            {t.sub && <span className="tabular-nums">{elapsed(t)}</span>}
+          </div>
+        </div>
+        {t.status === 'running' ? (
+          <IconBtn title="Stop this task" className="size-6 border bg-card" onClick={() => void stopTask(id, t.id)}><SquareIcon className="size-2.5 fill-current" /></IconBtn>
+        ) : t.status === 'done' ? <CheckIcon className="mt-0.5 size-4 text-success" /> : <XIcon className="mt-0.5 size-4 text-destructive" />}
+      </div>
+      <div className="mt-1.5"><TaskMeta tool={t} onTranscript={() => openAgent(id, t.id)} /></div>
+    </div>
+  );
+  return (
+    <Card
+      {...card}
+      title="Background tasks"
+      tools={<IconBtn title="Clear finished tasks" disabled={!done.length} className="disabled:opacity-40" onClick={() => setCleared(new Set(all.filter((t) => t.status !== 'running').map((t) => t.id)))}><Trash2Icon className="size-3.5" /></IconBtn>}
+      onClose={() => togglePanel(id, 'tasks', false)}
+    >
+      {!running.length && !done.length ? <Empty>{'No background tasks\nSubagents Claude starts show up here'}</Empty> : (
+        <div className="space-y-4 p-3">
+          {running.length > 0 && (
+            <section className="space-y-2">
+              <h3 className="px-0.5 text-xs text-muted-foreground">Running</h3>
+              {running.map(row)}
+            </section>
+          )}
+          {done.length > 0 && (
+            <section className="space-y-2">
+              <h3 className="px-0.5 text-xs text-muted-foreground">Finished</h3>
+              {done.map(row)}
+            </section>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+const STEP_ICON: Record<string, typeof FileIcon> = { bash: SquareTerminalIcon, read: FileIcon, grep: SearchIcon, find: SearchIcon, ls: FolderIcon };
+
+/** A subagent's prompt, every tool call and message it produced, then its report. */
+function AgentTranscript({ s, tool, card, close }: { s: SessionView; tool: ToolState; card: CardProps; close: () => void }) {
+  const running = tool.status === 'running';
+  useTicker(running);
+  const body = useRef<HTMLDivElement>(null);
+  const steps = tool.sub?.steps ?? [];
+  // The report is the last message; don't show it twice.
+  const shown = !running && tool.md && steps.at(-1)?.kind === 'text' ? steps.slice(0, -1) : steps;
+  useEffect(() => {
+    if (running) body.current?.scrollTo({ top: body.current.scrollHeight });
+  }, [running, steps.length]);
+  return (
+    <Card
+      {...card}
+      title={<><IconBtn title="Back" onClick={close}><ArrowLeftIcon className="size-3.5" /></IconBtn><span className="truncate">{tool.desc}</span>{tool.sub && <span className="shrink-0 text-xs font-normal text-muted-foreground tabular-nums">{elapsed(tool)}</span>}</>}
+      tools={running && <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => void stopTask(s.meta.id, tool.id)}>Stop</Button>}
+      onClose={close}
+      bodyClass="overflow-hidden"
+    >
+      <div ref={body} className="h-full overflow-auto">
+        <div className="space-y-3 p-4">
+          <TaskMeta tool={tool} />
+          <div className="rounded-lg bg-muted px-3 py-2 text-xs whitespace-pre-wrap text-muted-foreground">{tool.prompt}</div>
+          {shown.length > 0 && (
+            <div className="space-y-1.5 border-l pl-3">
+              {shown.map((step, i) => {
+                if (step.kind === 'text') return <div key={i} className="text-sm"><Markdown text={step.text} /></div>;
+                const Icon = STEP_ICON[step.name] ?? CodeIcon;
+                return (
+                  <div key={i} className={cn('flex min-w-0 items-center gap-2 text-xs', step.status === 'err' && 'text-destructive')} title={step.label}>
+                    <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="shrink-0 text-muted-foreground">{step.name}</span>
+                    <span className={cn('truncate font-mono', step.status === 'running' && 'shimmer')}>{step.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {running ? <div className="text-sm"><span className="shimmer">{tool.sub?.activity || tool.summary || 'Working…'}</span></div> : (
+            <>
+              {tool.summary && <div className="text-xs text-muted-foreground">{tool.summary}</div>}
+              {tool.md ? <Markdown text={tool.md} /> : !steps.length && <div className="text-sm text-muted-foreground">No transcript was recorded for this task.</div>}
+            </>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 // ------------------------------------------------------------ detail: plan, subagent, file
 
 export function DetailPanel({ s, ...card }: CardProps & { s: SessionView }) {
@@ -314,19 +516,7 @@ export function DetailPanel({ s, ...card }: CardProps & { s: SessionView }) {
   if (d.type === 'agent') {
     const tool = findTool(s, d.toolCallId)?.tool;
     if (!tool) return null;
-    return (
-      <Card {...card} title={<><IconBtn title="Back" onClick={close}><ArrowLeftIcon className="size-3.5" /></IconBtn><span className="truncate">{tool.desc}</span></>} onClose={close}>
-        <div className="space-y-3 p-4">
-          <div className="rounded-lg bg-muted px-3 py-2 text-xs whitespace-pre-wrap text-muted-foreground">{tool.prompt}</div>
-          {tool.status === 'running' ? <div className="text-sm"><span className="shimmer">{tool.summary || 'Working…'}</span></div> : (
-            <>
-              {tool.summary && <div className="text-xs text-muted-foreground">{tool.summary}</div>}
-              <Markdown text={tool.md || ''} />
-            </>
-          )}
-        </div>
-      </Card>
-    );
+    return <AgentTranscript s={s} tool={tool} card={card} close={close} />;
   }
   return <FileViewer s={s} {...card} />;
 }
@@ -358,6 +548,12 @@ function FileViewer({ s, ...card }: CardProps & { s: SessionView }) {
     >
       {d.loading ? <Empty>Loading current file…</Empty> : d.error ? (
         <div className="p-4 text-sm text-destructive">Unable to open current file.<pre className="mt-2 text-xs whitespace-pre-wrap">{d.error}</pre></div>
+      ) : d.image !== undefined ? (
+        d.image ? (
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-[repeating-conic-gradient(var(--muted)_0_25%,transparent_0_50%)] bg-[length:20px_20px] p-4">
+            <img src={d.image} alt={fname(d.path)} className="max-h-full max-w-full object-contain shadow-sm" />
+          </div>
+        ) : <Empty>{'Image preview unavailable\nNot a supported image, outside the session folder, or larger than 20 MiB'}</Empty>
       ) : !view ? <Empty>{'File preview unavailable\nBinary, non-text, or larger than 1 MiB'}</Empty> : (
         <>
           {nav}

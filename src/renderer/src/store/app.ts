@@ -74,10 +74,12 @@ export interface AppState {
   /** Thinking levels of the default model (welcome screens). */
   levels: ThinkingLevel[];
   importable: ImportableSession[];
+  /** Current git branch of the selected project (new-session chips). */
+  projectBranch: string | null;
   sessions: Record<string, SessionView>;
   paletteOpen: boolean;
-  /** A footer menu opened by a slash command (/model, /permissions). */
-  menu: 'model' | 'mode' | null;
+  /** A footer menu opened by a slash command (/model, /permissions, /context). */
+  menu: 'model' | 'mode' | 'context' | null;
   sidebarCollapsed: boolean;
 }
 
@@ -102,6 +104,7 @@ export const useApp = create<AppState>()(
     models: [],
     levels: [],
     importable: [],
+    projectBranch: null,
     sessions: {},
     paletteOpen: false,
     menu: null,

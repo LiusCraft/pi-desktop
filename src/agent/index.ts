@@ -3,6 +3,7 @@
 // id-correlated calls; session events flow back as a single event stream.
 import type { HostMethod, HostToMain, MainToHost } from '@shared/protocol';
 import { importAttachments } from './attachments';
+import * as git from './git';
 import { applyChildPath } from './env';
 import { SessionHub } from './hub';
 
@@ -69,8 +70,12 @@ const handlers: Record<HostMethod, Handler> = {
   'sessions:pr': withHub((h, id) => h.prStatus(id)),
   'sessions:files': withHub((h, id) => h.files(id)),
   'sessions:readFile': withHub((h, id, rel) => h.readFile(id, rel)),
+  'sessions:readImage': withHub((h, id, rel) => h.readImage(id, rel)),
+  'sessions:context': withHub((h, id) => h.context(id)),
+  'sessions:stopTask': withHub((h, id, toolCallId) => h.stopTask(id, toolCallId)),
   'sessions:importable': withHub((h, dir) => h.importable(dir)),
   'sessions:import': withHub((h, file) => h.importSession(file)),
+  'git:branch': (dir) => git.currentBranch(dir),
   'models:list': withHub((h) => h.listModels()),
   'models:levels': withHub((h, model) => h.thinkingLevels(model)),
 };

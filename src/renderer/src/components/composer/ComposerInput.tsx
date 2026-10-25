@@ -90,6 +90,8 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
     const input = useRef<HTMLTextAreaElement>(null);
     const [items, setItems] = useState<Suggestion[]>([]);
     const [sel, setSel] = useState(0);
+    const menu = useRef<HTMLDivElement>(null);
+    const request = useRef(0);
     useImperativeHandle(ref, () => ({ focus: () => input.current?.focus() }));
 
     // Grow with the text, up to a limit.
@@ -103,9 +105,15 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
       input.current?.focus();
     }, [key]);
 
+    // Keep the highlighted suggestion visible while moving through a long list.
+    useEffect(() => {
+      menu.current?.querySelector<HTMLElement>(`[data-index="${sel}"]`)?.scrollIntoView({ block: 'nearest' });
+    }, [sel, items]);
+
     const suggest = async () => {
       const el = input.current;
       if (!el) return;
+      const current = ++request.current;
       const pos = el.selectionStart, before = el.value.slice(0, pos);
       const s = currentSession();
       let m: RegExpMatchArray | null;
@@ -117,8 +125,10 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
         if (!s.files) await loadFiles(s.meta.id);
         const files = getApp().sessions[s.meta.id]?.files ?? [];
         const q = m[1].toLowerCase();
-        next = files.filter((p) => p.toLowerCase().includes(q)).slice(0, 10).map((p) => ({ label: `@${fname(p)}`, hint: p, insert: `@${p} `, from: pos - m![1].length - 1 }));
+        next = files.filter((p) => p.toLowerCase().includes(q)).slice(0, 50).map((p) => ({ label: `@${fname(p)}`, hint: p, insert: `@${p} `, from: pos - m![1].length - 1 }));
       }
+      // A slower, older lookup (e.g. loading the file list) must not replace a newer one.
+      if (current !== request.current) return;
       setItems(next);
       setSel((i) => Math.min(i, Math.max(0, next.length - 1)));
     };
@@ -197,15 +207,25 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
     return (
       <div className={cn('relative', className)}>
         {items.length > 0 && (
-          <div className="absolute bottom-full left-0 z-30 mb-2 w-full max-w-md overflow-hidden rounded-lg border bg-popover p-1 shadow-lg">
+          <div
+            ref={menu}
+            role="listbox"
+            aria-label="Suggestions"
+            // Clicking the list must not take focus from the textarea (that would close it).
+            onMouseDown={(e) => e.preventDefault()}
+            className="absolute bottom-full left-0 z-50 mb-2 max-h-72 w-full max-w-md overflow-y-auto overscroll-contain rounded-lg border bg-popover p-1 shadow-lg"
+          >
             {items.map((it, i) => (
               <button
                 key={it.insert}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  pick(i);
-                }}
-                className={cn('flex w-full items-baseline gap-3 rounded-md px-2.5 py-1.5 text-left text-sm', i === sel && 'bg-accent')}
+                type="button"
+                role="option"
+                aria-selected={i === sel}
+                data-index={i}
+                tabIndex={-1}
+                onMouseMove={() => i !== sel && setSel(i)}
+                onClick={() => pick(i)}
+                className={cn('flex w-full cursor-pointer items-baseline gap-3 rounded-md px-2.5 py-1.5 text-left text-sm', i === sel ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60')}
               >
                 <span className="shrink-0 font-mono">{it.label}</span>
                 <span className="truncate text-xs text-muted-foreground">{it.hint}</span>

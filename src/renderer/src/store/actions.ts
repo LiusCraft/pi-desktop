@@ -289,18 +289,9 @@ async function slashCommand(s: SessionView | undefined, head: string, text: stri
       });
       toast('Started a fresh context');
     } else if (head === '/compact') {
-      updateSession(id, (x) => void (x.statusText = 'Compacting…'));
-      const r = await call('sessions:compact', id, text.slice(head.length).trim() || undefined);
-      pushItem(id, { kind: 'note', key: newKey(), text: `Compacted · ${fmtTok(r.tokensBefore)} → ~${fmtTok(r.estimatedTokensAfter ?? 0)} tokens` });
-      void refreshStats(id);
+      await compactSession(id, text.slice(head.length).trim() || undefined);
     } else if (head === '/context') {
-      const st = await call('sessions:stats', id);
-      if (!st) throw new Error('No stats yet');
-      const u = st.contextUsage;
-      pushItem(id, {
-        kind: 'text', key: newKey(), live: false,
-        text: `### Context\n- 当前用量：${u?.tokens != null ? `${fmtTok(u.tokens)} / ${fmtTok(u.contextWindow)}（${Math.round(u.percent ?? 0)}%）` : '未知'}\n- 消息：${st.userMessages} 条用户消息，${st.assistantMessages} 条回复，${st.toolCalls} 次工具调用\n- 累计 tokens：输入 ${fmtTok(st.tokens.input)}，输出 ${fmtTok(st.tokens.output)}，缓存读取 ${fmtTok(st.tokens.cacheRead)}\n- 费用：$${(st.cost || 0).toFixed(4)}\n\n用量高时运行 \`/compact\`。`,
-      });
+      setApp((st) => void (st.menu = 'context'));
     } else if (head === '/export') {
       toast(`Exported to ${(await call('sessions:exportHtml', id)).path}`);
     }
@@ -308,6 +299,14 @@ async function slashCommand(s: SessionView | undefined, head: string, text: stri
     fail(err);
   }
   return true;
+}
+
+/** Summarise older messages to free context (/compact, or the context popover). */
+export async function compactSession(id: string, instructions?: string) {
+  updateSession(id, (x) => void (x.statusText = 'Compacting…'));
+  const r = await call('sessions:compact', id, instructions);
+  pushItem(id, { kind: 'note', key: newKey(), text: `Compacted · ${fmtTok(r.tokensBefore)} → ~${fmtTok(r.estimatedTokensAfter ?? 0)} tokens` });
+  void refreshStats(id);
 }
 
 function pushItem(id: string, item: Item) {
@@ -611,9 +610,23 @@ export function openAgent(id: string, toolCallId: string) {
   updateSession(id, (v) => void (v.detail = { type: 'agent', toolCallId }));
 }
 
+/** Stop one background subagent; the turn goes on without its report. */
+export async function stopTask(id: string, toolCallId: string) {
+  try {
+    if (!(await call('sessions:stopTask', id, toolCallId))) toast('This task has already finished');
+  } catch (err) {
+    fail(err);
+  }
+}
+
+const IMAGE_FILE = /\.(png|jpe?g|gif|webp|bmp)$/i;
+
 let fileRequest = 0;
-/** Show the current contents of a session file in the detail panel, at a line. */
-export async function openFileRef(path: string, line?: number) {
+/**
+ * Show the current contents of a session file in the detail panel, at a line.
+ * Images show as images; `fallbackImage` (what a read tool returned) covers files outside the session.
+ */
+export async function openFileRef(path: string, line?: number, fallbackImage?: string) {
   const s = currentSession();
   if (!s) return;
   const id = s.meta.id;
@@ -626,6 +639,11 @@ export async function openFileRef(path: string, line?: number) {
     return request === fileRequest && getApp().current === id && d?.type === 'file' && d.path === rel;
   };
   try {
+    if (IMAGE_FILE.test(rel) || fallbackImage) {
+      const image = (await call('sessions:readImage', id, rel).catch(() => null))?.src ?? fallbackImage ?? null;
+      if (stillShowing()) updateSession(id, (v) => void (v.detail = { type: 'file', path: rel, line: target, loading: false, image }));
+      return;
+    }
     const text = await call('sessions:readFile', id, rel);
     if (stillShowing()) updateSession(id, (v) => void (v.detail = { type: 'file', path: rel, line: target, loading: false, text }));
   } catch (err) {
@@ -758,9 +776,12 @@ export async function addProject() {
 
 export async function refreshImportable() {
   const project = getApp().prefs.project;
-  if (!project || getApp().view !== 'code') return setApp((st) => void (st.importable = []));
-  const list = await call('sessions:importable', project).catch(() => []);
-  setApp((st) => void (st.importable = list));
+  if (!project || getApp().view !== 'code') return setApp((st) => void ((st.importable = []), (st.projectBranch = null)));
+  const [list, branch] = await Promise.all([call('sessions:importable', project).catch(() => []), call('git:branch', project).catch(() => null)]);
+  setApp((st) => {
+    st.importable = list;
+    st.projectBranch = branch && branch !== 'HEAD' ? branch : null;
+  });
 }
 
 export async function importCliSession() {

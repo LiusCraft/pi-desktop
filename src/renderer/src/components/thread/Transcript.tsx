@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { fmtDur, fmtTok } from '@/lib/format';
+import { runningTasks } from '@/components/workspace/Panels';
+import { togglePanel } from '@/store/actions';
 import { useApp } from '@/store/app';
 import type { Item, SessionView } from '@/store/types';
 import { AskItem, FootItem, GroupItem, NoteItem, PermItem, PlanItem, TextItem, TodosItem, UserItem } from './Items';
@@ -30,12 +32,21 @@ function StatusLine({ s }: { s: SessionView }) {
     return () => clearInterval(t);
   }, [s.running]);
   if (!s.running) return s.items.length ? <span className="spark opacity-60" /> : null;
+  const tasks = runningTasks(s).length;
   return (
     <div className="flex items-center gap-2 text-sm text-muted-foreground">
       <span className="spark spin" />
-      <span>
-        {fmtDur(Date.now() - s.t0)} · {fmtTok(s.tokens)} tokens · {s.waiting ? 'Waiting for you…' : s.statusText || 'Thinking…'}
-      </span>
+      <span>{fmtDur(Date.now() - s.t0)} · {fmtTok(s.tokens)} tokens</span>
+      {tasks > 0 && (
+        <button
+          className="rounded-md bg-info/15 px-1.5 py-0.5 text-info hover:bg-info/25"
+          title="Show background tasks"
+          onClick={() => togglePanel(s.meta.id, 'tasks', true)}
+        >
+          {tasks} running task{tasks > 1 ? 's' : ''}
+        </button>
+      )}
+      <span className="truncate">{s.waiting ? 'Waiting for you…' : s.statusText || 'Thinking…'}</span>
     </div>
   );
 }

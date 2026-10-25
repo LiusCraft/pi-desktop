@@ -1,3 +1,4 @@
+import type { SubagentProgress } from '@shared/protocol';
 import type { ToolPreview } from '@shared/tool-previews';
 import { fname } from './format';
 
@@ -26,6 +27,8 @@ export interface ToolState {
   /** Subagent report and progress. */
   md?: string;
   summary?: string;
+  /** Subagent transcript, tokens and current activity (Background tasks panel). */
+  sub?: SubagentProgress;
 }
 
 const KIND: Record<string, ToolKind> = { read: 'read', edit: 'edit', write: 'write', bash: 'bash', powershell: 'bash', grep: 'grep', find: 'glob', ls: 'ls', task: 'agent' };
