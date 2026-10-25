@@ -1,30 +1,30 @@
 // Settings window. Every value comes from the main process (single source of
 // truth), so the main window and this one can never disagree.
 import { useEffect, useState, type ReactNode } from 'react';
-import { FolderIcon, InfoIcon, KeyRoundIcon, MoonIcon, SettingsIcon } from 'lucide-react';
+import { BrainIcon, FolderIcon, InfoIcon, MoonIcon, SettingsIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import type { AppInfo, KeyStatus, Project, Settings, SettingsPayload } from '@shared/protocol';
+import type { AppInfo, Project, Settings, SettingsPayload } from '@shared/protocol';
 import { useCopy } from '@/components/common/Copy';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Toaster } from 'sonner';
 import { bridge, call, errText, isMac } from '@/lib/api';
 import { applyTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import { PET_SKINS, PetSprite } from '@/components/composer/Clawd';
+import { ModelsSection } from './ModelsSection';
 
-type Section = 'appearance' | 'general' | 'keys' | 'projects' | 'about';
+type Section = 'appearance' | 'general' | 'models' | 'projects' | 'about';
 const SECTIONS: { id: Section; label: string; icon: ReactNode }[] = [
   { id: 'appearance', label: '外观', icon: <MoonIcon className="size-4" /> },
   { id: 'general', label: '通用', icon: <SettingsIcon className="size-4" /> },
-  { id: 'keys', label: 'API 密钥', icon: <KeyRoundIcon className="size-4" /> },
+  { id: 'models', label: '模型管理', icon: <BrainIcon className="size-4" /> },
   { id: 'projects', label: '项目与文件夹', icon: <FolderIcon className="size-4" /> },
   { id: 'about', label: '关于', icon: <InfoIcon className="size-4" /> },
 ];
-const isSection = (s: string): s is Section => SECTIONS.some((x) => x.id === s);
+// `keys` was the old section id: keep old links working.
+const normalizeSection = (s: string): Section => (s === 'keys' ? 'models' : (s as Section));
+const isSection = (s: string): s is Section => SECTIONS.some((x) => x.id === s || (x.id === 'models' && s === 'keys'));
 const revealLabel = isMac ? '在 Finder 中显示' : '在资源管理器中显示';
 
 function Row({ title, hint, children, col }: { title: ReactNode; hint?: ReactNode; children?: ReactNode; col?: boolean }) {
@@ -58,9 +58,8 @@ function ThemeOption({ id, label, current, onPick }: { id: 'light' | 'dark' | 's
 
 export function SettingsApp() {
   const [settings, setSettings] = useState<Partial<SettingsPayload>>(bridge.boot.settings ?? {});
-  const [section, setSection] = useState<Section>(() => (isSection(location.hash.slice(1)) ? (location.hash.slice(1) as Section) : 'appearance'));
+  const [section, setSection] = useState<Section>(() => (isSection(location.hash.slice(1)) ? normalizeSection(location.hash.slice(1)) : 'appearance'));
   const [info, setInfo] = useState<AppInfo | null>(null);
-  const [keys, setKeys] = useState<Record<string, KeyStatus>>({});
   const [projects, setProjects] = useState<Project[]>([]);
   const [folders, setFolders] = useState<Project[]>([]);
   const { copied, copy } = useCopy();
@@ -70,12 +69,11 @@ export function SettingsApp() {
       setSettings(s);
       applyTheme(s);
     });
-    const offSection = bridge.on('settings:section', (s) => isSection(s) && setSection(s));
-    void Promise.all([call('settings:get'), call('app:info'), call('keys:status'), call('projects:list'), call('cowork:folders')]).then(([s, i, k, p, f]) => {
+    const offSection = bridge.on('settings:section', (s) => isSection(s) && setSection(normalizeSection(s)));
+    void Promise.all([call('settings:get'), call('app:info'), call('projects:list'), call('cowork:folders')]).then(([s, i, p, f]) => {
       setSettings(s);
       applyTheme(s);
       setInfo(i);
-      setKeys(k);
       setProjects(p);
       setFolders(f);
     });
@@ -169,8 +167,8 @@ export function SettingsApp() {
         </Panel>
       </>
     );
-  } else if (section === 'keys') {
-    body = <KeysSection keys={keys} secure={!!settings.secureKeys} onChange={setKeys} />;
+  } else if (section === 'models') {
+    body = <ModelsSection />;
   } else if (section === 'projects') {
     const list = (items: Project[], kind: 'project' | 'folder') => (
       <Panel>
@@ -221,6 +219,10 @@ export function SettingsApp() {
             <Button size="sm" variant="outline" onClick={() => info && call('app:revealPath', info.userData).catch((e) => toast.error(errText(e)))}>打开</Button>
             <Button size="sm" variant="outline" onClick={() => copy(info?.userData ?? '')}>{copied ? '已复制' : '复制路径'}</Button>
           </Row>
+          <Row title="pi 配置目录" hint={<span className="font-mono">{info?.agentDir}</span>}>
+            <Button size="sm" variant="outline" onClick={() => info && call('app:revealPath', info.agentDir).catch((e) => toast.error(errText(e)))}>打开</Button>
+            <Button size="sm" variant="outline" onClick={() => copy(info?.agentDir ?? '')}>{copied ? '已复制' : '复制路径'}</Button>
+          </Row>
         </Panel>
       </>
     );
@@ -239,66 +241,10 @@ export function SettingsApp() {
           ))}
         </nav>
         <main className="min-w-0 flex-1 overflow-y-auto p-8">
-          <div className="mx-auto max-w-2xl">{body}</div>
+          <div className="mx-auto max-w-3xl">{body}</div>
         </main>
       </div>
       <Toaster position="bottom-right" theme={settings.resolvedTheme ?? 'light'} />
     </div>
-  );
-}
-
-function KeysSection({ keys, secure, onChange }: { keys: Record<string, KeyStatus>; secure: boolean; onChange: (k: Record<string, KeyStatus>) => void }) {
-  const providers = Object.keys(keys);
-  const [provider, setProvider] = useState('anthropic');
-  const [value, setValue] = useState('');
-  const [saving, setSaving] = useState(false);
-  const save = async (p = provider, v = value.trim()) => {
-    setSaving(true);
-    try {
-      await call('keys:set', p, v);
-      onChange(await call('keys:status'));
-      setValue('');
-    } catch (err) {
-      toast.error(errText(err));
-    } finally {
-      setSaving(false);
-    }
-  };
-  return (
-    <>
-      <Heading title="API 密钥" sub="只保存在这台电脑上，只在 agent 进程里使用。" />
-      <p className="mb-4 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
-        {secure ? '系统加密存储可用，密钥会加密后写入磁盘。' : '当前系统没有可用的加密存储，密钥以明文保存在应用数据目录。'}
-        也可以改用环境变量或 <code>~/.pi/agent/auth.json</code>；这里保存的密钥优先。
-      </p>
-      <Panel>
-        <div className="flex gap-2 p-4">
-          <Select value={provider} onValueChange={setProvider}>
-            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-            <SelectContent>{providers.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
-          </Select>
-          <Input type="password" autoComplete="off" spellCheck={false} placeholder="粘贴 API key，留空保存则删除" value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void save()} />
-          <Button disabled={saving} onClick={() => void save()}>{saving ? '保存中…' : '保存'}</Button>
-        </div>
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs text-muted-foreground">
-            <tr><th className="px-4 py-2 font-medium">Provider</th><th className="px-4 py-2 font-medium">环境变量</th><th className="px-4 py-2 font-medium">状态</th><th /></tr>
-          </thead>
-          <tbody className="divide-y">
-            {providers.map((p) => {
-              const k = keys[p];
-              return (
-                <tr key={p}>
-                  <td className="px-4 py-2 font-medium">{p}</td>
-                  <td className="px-4 py-2 font-mono text-xs text-muted-foreground">{k.env}</td>
-                  <td className="px-4 py-2">{k.saved ? <Badge>已保存</Badge> : k.envSet ? <Badge variant="secondary">环境变量已设置</Badge> : <Badge variant="outline">未设置</Badge>}</td>
-                  <td className="px-4 py-2 text-right">{k.saved && <Button size="sm" variant="ghost" className="text-destructive" onClick={() => void save(p, '')}>删除</Button>}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </Panel>
-    </>
   );
 }

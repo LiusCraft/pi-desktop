@@ -35,6 +35,12 @@ let scheduled = false;
 
 /** Events arrive one IPC message at a time; fold a frame's worth into one render. */
 export function handleHostEvent(ev: HostEvent) {
+  // Login prompts belong to the settings window; model changes refresh the pickers.
+  if (ev.type === 'auth_prompt' || ev.type === 'auth_event') return;
+  if (ev.type === 'models_changed') {
+    void loadModels();
+    return;
+  }
   queue.push(ev);
   if (scheduled) return;
   scheduled = true;
@@ -51,6 +57,7 @@ function flushEvents() {
   setApp((st) => {
     const view = st.prefs.viewMode;
     for (const ev of events) {
+      if (ev.type === 'auth_prompt' || ev.type === 'auth_event' || ev.type === 'models_changed') continue;
       if (ev.type === 'host_exit') {
         for (const s of Object.values(st.sessions)) {
           if (s.running) settle(s, true, view);

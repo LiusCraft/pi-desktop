@@ -1,11 +1,11 @@
-// Main process: windows, settings, projects, API keys and the IPC surface. Every
-// pi session lives in the agent host (a utilityProcess); session calls are
+// Main process: windows, settings, projects and the IPC surface. Every pi
+// session lives in the agent host (a utilityProcess); session calls are
 // forwarded to it unchanged and its events are relayed to the windows.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, Notification, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, Notification, shell } from 'electron';
 import {
   HOST_CHANNELS, MAIN_CHANNELS,
   type ApiArgs, type ApiResult, type BootPayload, type HostEvent, type Project, type PushChannel, type PushEvents,
@@ -15,8 +15,8 @@ import { childEnv } from '../agent/env';
 import { resolveInside } from '../agent/files';
 import { Store } from '../agent/store';
 import { AgentClient } from './agent-client';
+import { agentDir, migrateLegacyKeys } from './agent-auth';
 import { clipboardAttachments, type ClipboardItemLike } from './clipboard';
-import { KEY_ENV, keyStatus, readKeys, writeKey } from './keys';
 import { openIn } from './open-in';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -89,7 +89,7 @@ function settingsValue(): Settings {
 function settingsPayload(): SettingsPayload {
   const s = settingsValue();
   const resolvedTheme = s.theme === 'light' || s.theme === 'dark' ? s.theme : nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-  return { ...s, resolvedTheme, secureKeys: safeStorage.isEncryptionAvailable() };
+  return { ...s, resolvedTheme };
 }
 function broadcast<K extends PushChannel>(channel: K, payload: PushEvents[K]) {
   for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(channel, payload);
@@ -149,10 +149,10 @@ function createWindow() {
 function createSettingsWindow(section?: string) {
   const dark = isDark();
   settingsWin = new BrowserWindow({
-    width: 820,
-    height: 640,
-    minWidth: 660,
-    minHeight: 460,
+    width: 960,
+    height: 720,
+    minWidth: 720,
+    minHeight: 520,
     title: 'Settings',
     backgroundColor: dark ? BG.dark : BG.light,
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
@@ -165,7 +165,11 @@ function createSettingsWindow(section?: string) {
   load(settingsWin, 'settings', section);
   settingsWin.once('ready-to-show', () => settingsWin?.show());
   harden(settingsWin);
-  settingsWin.on('closed', () => (settingsWin = null));
+  settingsWin.on('closed', () => {
+    settingsWin = null;
+    // A browser/device login outlives the window otherwise; the flow needs an answer that can no longer arrive.
+    void agent?.call('host:cancelLogins').catch(() => {});
+  });
 }
 
 /** Show the existing settings window instead of stacking duplicates. */
@@ -194,7 +198,7 @@ function applyThemeToWindows() {
 /** Folders the app may open or reveal: its data dir, projects and Cowork folders. */
 function knownRoot(target: string) {
   const abs = path.resolve(String(target || ''));
-  const roots = [app.getPath('userData'), ...projects().map((p) => p.path), ...coworkFolders().map((p) => p.path)];
+  const roots = [app.getPath('userData'), agentDir(), ...projects().map((p) => p.path), ...coworkFolders().map((p) => p.path)];
   if (!roots.some((r) => abs === path.resolve(r) || abs.startsWith(path.resolve(r) + path.sep))) throw new Error('Path outside the app folders');
   return abs;
 }
@@ -222,7 +226,7 @@ const handlers: MainHandlers = {
     version: app.getVersion(),
     demo: DEMO,
     userData: app.getPath('userData'),
-    keyProviders: Object.keys(KEY_ENV),
+    agentDir: agentDir(),
     versions: { electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node },
   }),
   'app:notify': ({ title, body, sessionId }) => {
@@ -281,12 +285,6 @@ const handlers: MainHandlers = {
   'attachments:clipboard': () =>
     clipboardAttachments(() => (clipboard as unknown as { read(): Promise<ClipboardItemLike[]> }).read(), importAttachments),
 
-  'keys:status': () => keyStatus(store),
-  'keys:set': async (provider, key) => {
-    writeKey(store, provider, key);
-    await agent.call('host:setApiKeys', readKeys(store));
-  },
-
   'sessions:openIn': async (id, target) => openIn(target, await sessionCwd(id)),
   // Open or reveal a file the agent produced, constrained to the session folder.
   'sessions:openPath': async (id, rel, reveal) => {
@@ -302,7 +300,7 @@ function registerIpc() {
   ipcMain.on('app:boot', (e) => {
     e.returnValue = {
       settings: settingsPayload(),
-      info: { platform: process.platform, version: app.getVersion(), demo: DEMO, keyProviders: Object.keys(KEY_ENV) },
+      info: { platform: process.platform, version: app.getVersion(), demo: DEMO, agentDir: agentDir() },
     } satisfies BootPayload;
   });
   for (const channel of MAIN_CHANNELS) {
@@ -321,10 +319,11 @@ app.on('second-instance', showMainWindow);
 
 void app.whenReady().then(async () => {
   store = new Store(app.getPath('userData'));
+  migrateLegacyKeys(store);
   nativeTheme.themeSource = ['light', 'dark'].includes(String(settingsValue().theme)) ? (settingsValue().theme as 'light' | 'dark') : 'system';
   agent = new AgentClient(
     path.join(here, 'agent.mjs'),
-    () => ({ userData: app.getPath('userData'), demo: DEMO, apiKeys: readKeys(store) }),
+    () => ({ userData: app.getPath('userData'), demo: DEMO }),
     (event: HostEvent) => broadcast('host:event', event),
   );
   void agent.start().catch((err) => console.error('[main] agent host failed to start:', err));

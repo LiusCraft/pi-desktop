@@ -33,13 +33,13 @@ type Handler = (...args: any[]) => unknown;
 const withHub = (fn: (hub: SessionHub, ...args: any[]) => unknown): Handler => async (...args) => fn(await ready, ...args);
 
 const handlers: Record<HostMethod, Handler> = {
-  'host:init': async ({ userData, apiKeys }) => {
+  'host:init': async ({ userData }) => {
     if (hub) return;
     hub = new SessionHub({ userData, emit: (event) => send({ kind: 'event', event }) });
-    await hub.init(apiKeys);
+    await hub.init();
     resolveReady(hub);
   },
-  'host:setApiKeys': withHub((h, keys) => h.setApiKeys(keys)),
+  'host:cancelLogins': withHub((h) => h.admin.cancelAll()),
   'host:meta': withHub((h, id) => ({ ...h.meta(id) })),
   'host:importAttachments': (sources) => importAttachments(sources),
   'host:shutdown': async () => {
@@ -78,6 +78,15 @@ const handlers: Record<HostMethod, Handler> = {
   'git:branch': (dir) => git.currentBranch(dir),
   'models:list': withHub((h) => h.listModels()),
   'models:levels': withHub((h, model) => h.thinkingLevels(model)),
+  'models:catalog': withHub((h) => h.admin.catalog()),
+  'models:login': withHub((h, provider, authType, name) => h.admin.login(provider, authType, name)),
+  'models:loginRespond': withHub((h, loginId, requestId, value) => h.admin.respond(loginId, requestId, value)),
+  'models:loginCancel': withHub((h, loginId) => h.admin.cancel(loginId)),
+  'models:logout': withHub((h, provider) => h.admin.logout(provider)),
+  'models:endpointSave': withHub((h, draft) => h.admin.saveEndpoint(draft)),
+  'models:endpointRemove': withHub((h, id) => h.admin.removeEndpoint(id)),
+  'models:endpointDiscover': withHub((h, draft) => h.admin.discover(draft)),
+  'models:refresh': withHub((h) => h.admin.refresh()),
 };
 
 port.on('message', async ({ data }) => {

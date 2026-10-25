@@ -16,15 +16,19 @@ npm run build && npm run demo  # 打开内置演示项目，默认使用离线�
 
 - 需要 Node 22.12+（构建与测试用）；运行时 agent 跑在 Electron 自带的 Node 上。
 - 首次启动会把 `demo/todo-app`（Code 演示项目）和 `demo/cowork-workspace`（Cowork 演示文件夹：收件箱、日程、待办）复制到用户数据目录。不配置任何 API Key 也能用 **Demo (offline)** 模型体验完整流程。
-- 接真实模型：右下角模型菜单 → **Add API key…**，或打开设置（`Ctrl/⌘+,`）在 **API 密钥** 里管理。也可以直接用 pi 自己的配置：环境变量、`~/.pi/agent/auth.json`、`models.json`。你在 `~/.pi/agent` 里装的扩展、技能、提示模板和 MCP 服务器照常加载，和 CLI 一致。
-- 设置窗口（`Ctrl/⌘+,`）是独立窗口：外观（浅色 / 深色 / 跟随系统、侧边栏）、通用（通知、默认分区）、API 密钥、项目与文件夹、关于。偏好保存在用户数据目录的 `settings.json`，修改后主窗口立即跟随；preload 用同步 IPC（`app:boot`）拿到首屏需要的值，不会先闪一下再变色。
+- 接真实模型：打开设置（`Ctrl/⌘+,`）→ **模型管理**，和 pi CLI 用同一套配置：
+  - **账号登录**：Anthropic（Claude Pro/Max）、OpenAI（ChatGPT）、GitHub Copilot、xAI、Meta、Kimi、OpenRouter、Radius 等 provider 的 OAuth 登录，浏览器授权或设备码，凭证写入 `~/.pi/agent/auth.json`。
+  - **API 密钥**：所有支持密钥的 provider，交互流程和 pi 的 `/login` 完全一致（包括需要多个环境变量的 provider）。
+  - **自定义端点**：OpenAI Chat Completions / Responses、Anthropic Messages、Google Generative AI 兼容地址写入 `~/.pi/agent/models.json`；可以直接从端点的 `/models` 拉取模型列表，并按模型 ID 从 [models.dev](https://models.dev) 自动对齐上下文大小、输出上限和每百万 token 价格。密钥仍只存 `auth.json`，本地端点自动写入 pi 的占位密钥。
+  - 环境变量、`auth.json`、`models.json` 里已有的配置都会识别；你在 `~/.pi/agent` 里装的扩展、技能、提示模板和 MCP 服务器照常加载，和 CLI 一致。
+- 设置窗口（`Ctrl/⌘+,`）是独立窗口：外观（浅色 / 深色 / 跟随系统、侧边栏）、通用（通知、默认分区）、模型管理、项目与文件夹、关于。偏好保存在用户数据目录的 `settings.json`，修改后主窗口立即跟随；preload 用同步 IPC（`app:boot`）拿到首屏需要的值，不会先闪一下再变色。
 
 ## 架构
 
 ```
 Renderer (src/renderer)            Main (src/main)                  Agent host (src/agent, utilityProcess)
 ┌────────────────────────────┐ IPC ┌──────────────────────────┐ port ┌──────────────────────────────────────┐
-│ React + shadcn/ui          │◀───▶│ 窗口 / 设置 / 项目 / 密钥  │◀────▶│ SessionHub                           │
+│ React + shadcn/ui          │◀───▶│ 窗口 / 设置 / 项目        │◀────▶│ SessionHub                           │
 │ zustand 状态，pi 事件 →     │     │ 对话框、剪贴板、shell     │      │  每个会话一个 AgentSessionRuntime     │
 │ transcript（store/）        │     │ 会话调用原样转发给 host    │      │  （pi SDK，进程内）                    │
 │ preload：只暴露协议里的通道 │     │ host 崩溃后下次调用自动重启│      │  desktop-kit · demo 模型 · 命名 · git │
@@ -37,6 +41,9 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 | `src/shared/protocol.ts` | 三个进程之间的契约：渲染进程能调用的每个通道（`Api`）、哪些转发给 agent host（`HOST_CHANNELS`）、host 推回的事件流（`HostEvent`）、交互请求（`UiRequest`） |
 | `src/agent/hub.ts` | 会话元数据、worktree、`createAgentSessionRuntime` 创建 / 恢复会话、事件转发、交互请求（权限 / 计划 / 扩展对话框）、子 agent、会话命名、CLI 会话导入 |
 | `src/agent/desktop-kit.ts` | 每个会话一个实例的 pi 扩展：权限模式、output style、`todo_write`、`exit_plan_mode`、`task`（子 agent） |
+| `src/agent/model-admin.ts` | 模型管理：provider / 登录方式枚举、OAuth 与 API key 登录事件桥接、登出、自定义端点保存与热加载 |
+| `src/agent/endpoints.ts` | `models.json` 读写（保留手写字段）、`/models` 发现、本地端点占位密钥 |
+| `src/agent/models-dev.ts` | models.dev 目录（按天缓存）：按模型 ID / canonical ID 匹配上下文、输出上限和价格 |
 | `src/agent/demo-model.ts` | 离线演示模型：pi-ai 的 faux provider 注册到共享的 `ModelRuntime`，按脚本调用 pi 的**真实工具** |
 | `src/agent/index.ts` | utilityProcess 入口：按 id 关联调用与结果，事件单向推送 |
 | `src/main/agent-client.ts` | 启动 / 重启 agent host，`call(method, ...args)` |

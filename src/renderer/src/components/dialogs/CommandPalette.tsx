@@ -3,7 +3,6 @@ import { call, modKey } from '@/lib/api';
 import { ago, fname } from '@/lib/format';
 import { addProject, openSession, setView, showWelcome, togglePanel } from '@/store/actions';
 import { currentSession, getApp, setApp, useApp } from '@/store/app';
-import { dialogs } from '@/store/dialogs';
 
 /** ⌘K: jump to a session or run an action. */
 export function CommandPalette() {
@@ -21,7 +20,7 @@ export function CommandPalette() {
     { label: 'Open folder…', run: () => void addProject() },
     { label: 'Toggle diff', hint: `${modKey}D`, run: () => { const s = currentSession(); if (s) togglePanel(s.meta.id, 'diff'); } },
     { label: 'Toggle terminal', run: () => { const s = currentSession(); if (s) togglePanel(s.meta.id, 'terminal'); } },
-    { label: 'API keys…', run: () => void dialogs.keys() },
+    { label: '模型管理…', run: () => call('settings:open', 'models') },
     { label: 'Toggle theme', run: () => call('settings:set', { theme: getApp().settings.resolvedTheme === 'dark' ? 'light' : 'dark' }) },
     { label: 'Settings…', hint: `${modKey},`, run: () => call('settings:open') },
   ];

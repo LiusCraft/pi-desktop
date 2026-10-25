@@ -239,11 +239,136 @@ export type HostEvent =
   | { type: 'status'; sessionId: string; status: 'idle' | 'running' }
   | { type: 'meta'; sessionId: string; meta: SessionMeta }
   | { type: 'notify'; sessionId: string; message: string; level: 'info' | 'warning' | 'error' }
+  /** A login flow is waiting for an answer (settings window). */
+  | { type: 'auth_prompt'; loginId: string; provider: string; providerName: string; requestId: string; prompt: AuthPrompt }
+  /** Out-of-band login progress: browser URL, device code, status text. */
+  | { type: 'auth_event'; loginId: string; provider: string; event: AuthEvent }
+  /** Accounts, keys or endpoints changed: reload model lists. */
+  | { type: 'models_changed' }
   | { type: 'editor_text'; sessionId: string; text: string }
   | { type: 'extension_error'; sessionId: string; error: string }
   | { type: 'host_exit'; code: number | null; stderr: string };
 
 // ------------------------------------------------------------ settings and app info
+
+// ------------------------------------------------------------ model management
+
+/** How a provider can be authenticated (pi's AuthType). */
+export type AuthType = 'oauth' | 'api_key';
+/** API families pi can talk to for a models.json endpoint. */
+export type EndpointApi = 'openai-completions' | 'openai-responses' | 'anthropic-messages' | 'google-generative-ai';
+
+/** USD per million tokens, pi's model cost shape. */
+export interface ModelCost {
+  input?: number;
+  output?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+}
+
+/** Metadata that can be filled from models.dev (or the endpoint itself) for one model id. */
+export interface ModelMeta {
+  name?: string;
+  contextWindow?: number;
+  maxTokens?: number;
+  reasoning?: boolean;
+  input?: string[];
+  cost?: ModelCost;
+  /** Where the metadata came from. */
+  source?: 'models.dev' | 'endpoint' | 'manual';
+}
+
+/** One provider pi knows about, built in or declared in models.json. */
+export interface ProviderInfo {
+  id: string;
+  name: string;
+  /** Sign in with an account (OAuth). */
+  oauth: boolean;
+  oauthName?: string;
+  /** The OAuth login is backed by a subscription (ChatGPT, Claude Pro/Max, Copilot…). */
+  subscription?: boolean;
+  /** The provider accepts an API key. */
+  apiKey: boolean;
+  /** The provider has an interactive API-key setup (others are ambient only: env vars, cloud credentials). */
+  apiKeyLogin: boolean;
+  configured: boolean;
+  /** Which method the current credential used. */
+  authType?: AuthType;
+  /** Human-readable status source, e.g. "stored credential", "ANTHROPIC_API_KEY". */
+  source?: string;
+  /** A stored credential exists, so it can be removed here. */
+  credential: boolean;
+  /** Declared in models.json (custom endpoint or built-in override). */
+  custom: boolean;
+  /** Chat models this provider currently offers. */
+  models: number;
+}
+
+export interface EndpointModel extends ModelMeta {
+  id: string;
+}
+
+/** A models.json provider, as the settings UI edits it. */
+export interface EndpointInfo {
+  id: string;
+  name: string;
+  baseUrl: string;
+  api: string;
+  /** The id is a built-in provider whose base URL (and models) this entry overrides. */
+  builtin: boolean;
+  /** A credential resolves for this provider (stored in auth.json, in models.json, or from env). */
+  keySet: boolean;
+  keySource?: string;
+  models: EndpointModel[];
+  /** models.json fields this editor does not manage (headers, compat, modelOverrides…). */
+  extra: string[];
+}
+
+export interface ModelCatalogInfo {
+  providers: ProviderInfo[];
+  endpoints: EndpointInfo[];
+  paths: { agentDir: string; auth: string; models: string };
+  /** When the models.dev catalog used for alignment was last fetched. */
+  catalogAt: number | null;
+  /** Problems loading models.json or the catalog. */
+  errors: string[];
+}
+
+/** What the endpoint editor sends back to the host. */
+export interface EndpointDraft {
+  id: string;
+  name?: string;
+  baseUrl: string;
+  api: string;
+  /** A new API key to store for this provider (auth.json), never written to models.json. */
+  apiKey?: string;
+  /** Remove the stored credential for this provider. */
+  removeKey?: boolean;
+  models: EndpointModel[];
+}
+
+/** API families the endpoint editor offers; models.json accepts others too. */
+export const ENDPOINT_APIS: readonly EndpointApi[] = ['openai-completions', 'openai-responses', 'anthropic-messages', 'google-generative-ai'];
+
+export interface EndpointDiscovery {
+  models: EndpointModel[];
+  error?: string;
+}
+
+/** A question pi's login flow asks while authenticating. */
+export interface AuthPrompt {
+  type: 'text' | 'secret' | 'select' | 'manual_code';
+  message: string;
+  placeholder?: string;
+  options?: { id: string; label: string; description?: string }[];
+}
+
+/** Out-of-band progress from a login flow. */
+export type AuthEvent =
+  | { type: 'info'; message: string; links?: { url: string; label?: string }[] }
+  | { type: 'auth_url'; url: string; instructions?: string }
+  | { type: 'device_code'; userCode: string; verificationUri: string; intervalSeconds?: number; expiresInSeconds?: number }
+  | { type: 'progress'; message: string };
 
 export type ThemeSetting = 'light' | 'dark' | 'system';
 export interface Settings {
@@ -257,24 +382,19 @@ export interface Settings {
 }
 export interface SettingsPayload extends Settings {
   resolvedTheme: 'light' | 'dark';
-  secureKeys: boolean;
 }
 export interface AppInfo {
   platform: string;
   version: string;
   demo: boolean;
   userData: string;
-  keyProviders: string[];
+  /** pi's config directory (auth.json, models.json, extensions): shared with the pi CLI. */
+  agentDir: string;
   versions: { electron?: string; chrome?: string; node?: string };
 }
 export interface BootPayload {
   settings: SettingsPayload;
-  info: Pick<AppInfo, 'platform' | 'version' | 'demo' | 'keyProviders'>;
-}
-export interface KeyStatus {
-  env: string;
-  saved: boolean;
-  envSet: boolean;
+  info: Pick<AppInfo, 'platform' | 'version' | 'demo' | 'agentDir'>;
 }
 export type OpenTarget = 'vscode' | 'cursor' | 'terminal' | 'folder';
 
@@ -303,8 +423,6 @@ export interface Api {
   'attachments:pick'(): AttachmentImportResult;
   'attachments:clipboard'(): ClipboardImportResult;
 
-  'keys:status'(): Record<string, KeyStatus>;
-  'keys:set'(provider: string, key: string): void;
 
   'sessions:openIn'(id: string, target: OpenTarget): void;
   'sessions:openPath'(id: string, rel: string, reveal: boolean): void;
@@ -342,6 +460,18 @@ export interface Api {
   'sessions:import'(file: string): SessionMeta;
   'models:list'(): { models: ModelInfo[]; defaultModel: string | null };
   'models:levels'(model: string | null): ThinkingLevel[];
+  // ---- model management (pi's auth.json + models.json, shared with the CLI)
+  'models:catalog'(): ModelCatalogInfo;
+  /** Resolves once the credential is saved; progress arrives as auth_* host events. */
+  'models:login'(provider: string, authType: AuthType, name?: string): void;
+  'models:loginRespond'(loginId: string, requestId: string, value: string): void;
+  'models:loginCancel'(loginId: string): void;
+  'models:logout'(provider: string): void;
+  'models:endpointSave'(draft: EndpointDraft): ModelCatalogInfo;
+  'models:endpointRemove'(id: string): ModelCatalogInfo;
+  'models:endpointDiscover'(draft: EndpointDraft): EndpointDiscovery;
+  /** Reload models.json and refresh pi's catalogs + the models.dev metadata cache. */
+  'models:refresh'(): ModelCatalogInfo;
 }
 
 export type ApiChannel = keyof Api;
@@ -357,6 +487,8 @@ export const HOST_CHANNELS = [
   'sessions:changes', 'sessions:pr', 'sessions:files', 'sessions:readFile', 'sessions:readImage',
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
   'sessions:import', 'git:branch', 'models:list', 'models:levels',
+  'models:catalog', 'models:login', 'models:loginRespond', 'models:loginCancel', 'models:logout',
+  'models:endpointSave', 'models:endpointRemove', 'models:endpointDiscover', 'models:refresh',
 ] as const satisfies readonly ApiChannel[];
 
 export const MAIN_CHANNELS = [
@@ -365,7 +497,7 @@ export const MAIN_CHANNELS = [
   'projects:list', 'projects:add', 'projects:remove',
   'cowork:folders', 'cowork:addFolder', 'cowork:useFolder', 'cowork:removeFolder',
   'attachments:import', 'attachments:pick', 'attachments:clipboard',
-  'keys:status', 'keys:set', 'sessions:openIn', 'sessions:openPath',
+  'sessions:openIn', 'sessions:openPath',
 ] as const satisfies readonly ApiChannel[];
 
 export const API_CHANNELS: readonly ApiChannel[] = [...MAIN_CHANNELS, ...HOST_CHANNELS];
@@ -386,7 +518,7 @@ export const PUSH_CHANNELS: readonly PushChannel[] = ['host:event', 'settings:ch
 /** Calls only main makes (configuration and internal lookups). */
 export interface HostInternal {
   'host:init'(opts: HostInitOptions): void;
-  'host:setApiKeys'(keys: Record<string, string>): void;
+  'host:cancelLogins'(): void;
   'host:meta'(id: string): SessionMeta;
   'host:importAttachments'(sources: AttachmentSource[]): AttachmentImportResult;
   'host:shutdown'(): void;
@@ -394,7 +526,6 @@ export interface HostInternal {
 export interface HostInitOptions {
   userData: string;
   demo: boolean;
-  apiKeys: Record<string, string>;
 }
 export type HostMethod = (typeof HOST_CHANNELS)[number] | keyof HostInternal;
 

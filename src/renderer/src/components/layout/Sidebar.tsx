@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  ArchiveIcon, BoxIcon, ChevronDownIcon, ClockIcon, CodeXmlIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon, KeyRoundIcon,
+  ArchiveIcon, BoxIcon, ChevronDownIcon, ClockIcon, CodeXmlIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon, BrainIcon,
   ListChecksIcon, MoonIcon, MoreHorizontalIcon, PanelLeftIcon, PlusIcon, SearchIcon, SettingsIcon, ShapesIcon, SunIcon,
   TriangleAlertIcon,
 } from 'lucide-react';
@@ -172,7 +172,7 @@ function UserMenu() {
         <DropdownMenuItem onSelect={() => call('settings:set', { theme: theme === 'dark' ? 'light' : 'dark' })}>
           {theme === 'dark' ? <SunIcon /> : <MoonIcon />}切换深色 / 浅色
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => call('settings:open', 'keys')}><KeyRoundIcon />API keys…</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => call('settings:open', 'models')}><BrainIcon />模型管理…</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => call('settings:open')}><SettingsIcon />设置<span className="ml-auto text-xs text-muted-foreground">{modKey},</span></DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

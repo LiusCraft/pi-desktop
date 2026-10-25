@@ -68,7 +68,7 @@ class Driver {
 let driver: Driver;
 beforeAll(async () => {
   driver = new Driver();
-  await driver.hub.init({});
+  await driver.hub.init();
 });
 afterAll(async () => {
   await driver.hub.shutdown();

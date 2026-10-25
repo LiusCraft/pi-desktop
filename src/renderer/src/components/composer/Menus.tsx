@@ -12,7 +12,6 @@ import { fmtTok, fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { chooseEffort, chooseModel, compactSession, fail, setPermMode } from '@/store/actions';
 import { setApp, useApp } from '@/store/app';
-import { dialogs } from '@/store/dialogs';
 
 /** A dropdown that a slash command (/model, /permissions) can also open. */
 function useMenu(name: 'model' | 'mode' | 'context') {
@@ -68,7 +67,7 @@ export function ModelMenu({ model, trigger, align = 'end' }: { model: string | n
           </div>
         ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => void dialogs.keys()}>Add API key…</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => call('settings:open', 'models')}>管理模型…</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

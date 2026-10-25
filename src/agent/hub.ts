@@ -24,6 +24,7 @@ import { createDesktopKit, type KitHost, type KitState, type SubagentRun } from 
 import { toWireEvent } from './events';
 import { readSessionFile, readSessionImage, resolveInside } from './files';
 import * as git from './git';
+import { ModelAdmin } from './model-admin';
 import * as naming from './naming';
 import { Store } from './store';
 
@@ -80,13 +81,17 @@ export interface HubOptions {
 export class SessionHub {
   readonly agentDir: string;
   models!: ModelRuntime;
+  /** Accounts, API keys and custom endpoints; shares auth.json and models.json with pi. */
+  admin!: ModelAdmin;
   private readonly store: Store;
+  private settings!: SettingsManager;
   private metas: SessionMeta[];
   private readonly live = new Map<string, Live>();
   private readonly opening = new Map<string, Promise<Live>>();
   private readonly trust: ProjectTrustStore;
-  private apiKeys: Record<string, string> = {};
   private namers = new Set<AbortController>();
+  /** Model catalog refreshes are serialized: a refresh reloads models.json, so two in flight can drop a provider. */
+  private modelRefresh: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly opts: HubOptions) {
     this.agentDir = opts.agentDir ?? getAgentDir();
@@ -95,27 +100,32 @@ export class SessionHub {
     this.trust = new ProjectTrustStore(this.agentDir);
   }
 
-  async init(apiKeys: Record<string, string> = {}) {
+  async init() {
     this.models = await ModelRuntime.create({
       authPath: path.join(this.agentDir, 'auth.json'),
       modelsPath: path.join(this.agentDir, 'models.json'),
       signal: AbortSignal.timeout(15_000),
     });
     registerDemoModel(this.models);
-    await this.setApiKeys(apiKeys);
+    this.settings = SettingsManager.create(os.homedir(), this.agentDir);
+    this.admin = new ModelAdmin({
+      agentDir: this.agentDir,
+      userData: this.opts.userData,
+      models: () => this.models,
+      refresh: (options) => this.refreshModels(options),
+      deviceId: () => this.settings.getOrCreateDeviceId(),
+      emit: (event) => this.emit(event),
+    });
     // Model catalogs refresh in the background, like pi's RPC mode.
-    void this.models.refresh({ signal: AbortSignal.timeout(15_000) }).catch(() => {});
+    void this.refreshModels({ signal: AbortSignal.timeout(15_000) }).catch(() => {});
   }
 
-  /** Keys saved in the desktop app override pi's own config for this process only. */
-  async setApiKeys(keys: Record<string, string>) {
-    for (const provider of Object.keys(this.apiKeys)) {
-      if (!keys[provider]) await this.models.removeRuntimeApiKey(provider).catch(() => {});
-    }
-    for (const [provider, key] of Object.entries(keys)) {
-      if (key && this.apiKeys[provider] !== key) await this.models.setRuntimeApiKey(provider, key).catch(() => {});
-    }
-    this.apiKeys = { ...keys };
+  /** Queue a catalog refresh behind any other refresh (each one reloads models.json). */
+  refreshModels(options: { allowNetwork?: boolean; providers?: string[]; signal?: AbortSignal } = {}) {
+    const run = () => this.models.refresh(options);
+    const next = this.modelRefresh.then(run, run);
+    this.modelRefresh = next.catch(() => {});
+    return next;
   }
 
   private emit(event: HostEvent) {
@@ -152,7 +162,7 @@ export class SessionHub {
     // The offline demo model needs no credentials, so it never waits on availability checks.
     for (const m of this.models.getModels('demo')) if (!available.some((a) => a.provider === m.provider && a.id === m.id)) available.push(m);
     const models = available.map((m) => this.modelInfo(m));
-    const settings = SettingsManager.create(os.homedir(), this.agentDir);
+    const settings = this.settings ?? SettingsManager.create(os.homedir(), this.agentDir);
     const provider = settings.getDefaultProvider(), model = settings.getDefaultModel();
     const fallback = models.find((m) => m.provider !== 'demo');
     const defaultModel = provider && model ? `${provider}/${model}` : fallback ? `${fallback.provider}/${fallback.id}` : null;
