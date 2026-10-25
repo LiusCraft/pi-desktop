@@ -2,6 +2,8 @@
 (() => {
   const $ = (s) => document.querySelector(s);
   const { highlight, renderMarkdown, esc, toast, wireCode } = window.CC;
+  const previews = window.ToolPreviews;
+  const attachments = window.PiAttachments;
   const api = window.piDesktop;
   if (!api) {
     document.body.dataset.mode = 'chat';
@@ -126,9 +128,25 @@
     return html;
   }
   const smallDiff = (a, b, path) => `<div class="dv">${diffRows(a, b, path, new Set(), 2)}</div>`;
-  const codeLines = (src, path, hl) =>
-    `<div class="mbox" style="padding:8px 0">${String(src).split('\n').slice(0, 2000).map((l, i) =>
-      `<div class="vl"${hl === i + 1 ? ' style="background:var(--blue-bg)"' : ''}><span class="n">${i + 1}</span><span>${highlight(l, langOf(path)) || ' '}</span></div>`).join('')}</div>`;
+  function codeLines(src, path, hl, startLine = 1, limit = previews.PREVIEW_LINES, viewer = false) {
+    const lines = Array.isArray(src) ? src : String(src).split('\n');
+    return `<div class="mbox code-lines${viewer ? ' file-code' : ''}">${lines.slice(0, limit).map((l, i) => {
+      const line = startLine + i;
+      return `<div class="vl${hl === line ? ' target-line' : ''}" data-line="${line}"><span class="n">${line}</span><span>${highlight(l, langOf(path)) || ' '}</span></div>`;
+    }).join('')}</div>`;
+  }
+  function toolPreviewHTML(p, path) {
+    if (p.type === 'error' || p.type === 'notice') return `<pre class="mbox tool-notice${p.type === 'error' ? ' tool-error' : ''}">${esc(p.text || 'No preview available')}</pre>`;
+    if (p.type === 'image') return `<div class="tool-image">${p.images.map((image) => `<img src="${esc(image.src)}" alt="${esc(fname(path))}" title="${esc(path)}" loading="lazy">`).join('')}<div class="tool-preview-note">${esc(p.text || 'Image preview unavailable')}</div></div>`;
+    if (p.type === 'diff') {
+      const rows = p.rows.slice(0, previews.PREVIEW_LINES);
+      return `<div class="dv tool-diff">${rows.map((r) => r.gap ? '<div class="tool-preview-gap">… unchanged lines …</div>' : rowHTML(r, langOf(path))).join('')}</div>${p.rows.length > rows.length ? '<div class="tool-preview-note">Preview limited to 200 rows. Open the file to see current content.</div>' : ''}`;
+    }
+    const count = p.empty ? 0 : p.lines.length;
+    const shown = Math.min(count, previews.PREVIEW_LINES);
+    const range = count ? `Lines ${p.startLine}–${p.startLine + shown - 1}${p.totalLines ? ` of ${p.totalLines}` : ''}` : 'Empty file';
+    return `<div class="tool-preview-meta">${esc(p.note || range)}${p.note ? ` · ${range}` : ''}</div>${p.empty ? '' : codeLines(p.lines, path, null, p.startLine)}${count > shown ? `<div class="tool-preview-note">${count - shown} more lines in this result. Open the file to see current content.</div>` : ''}${p.footer ? `<div class="tool-preview-note tool-continuation">${esc(p.footer)}</div>` : ''}`;
+  }
   const colorOut = (out) => esc(out).split('\n').map((l) =>
     /✓|✔|passed|built in|\[new branch\]/.test(l) && !/failed|✖/.test(l) ? `<span class="ok">${l}</span>` :
     /✗|✖|FAIL|failed|Error|exited with code [1-9]/.test(l) ? `<span class="err">${l}</span>` :
@@ -202,7 +220,7 @@
     if (rt) { rt.meta = meta; return rt; }
     rt = {
       meta, events: [], loaded: false, running: meta.status === 'running', statusText: '', t0: 0, tokens: 0,
-      ctxPct: null, cur: null, tools: new Map(), todosEv: null, pendingUser: [], perm: null, unread: false,
+      ctxPct: null, cur: null, tools: new Map(), todosEv: null, pendingUser: [], submitting: null, stopping: false, processVersion: 0, perm: null, unread: false,
       changes: [], pr: meta.pr || null, prHidden: false, diffOpen: false, previewOpen: false, filesOpen: false, terminalOpen: false, bottom: null,
       openGaps: new Set(), collapsed: new Set(), term: [], commands: [], files: null, model: null, levels: [],
       outputs: [], panelOpen: innerWidth > 1180, fileDirs: new Set(), fileFilter: '',
@@ -210,6 +228,14 @@
     state.rts.set(meta.id, rt);
     return rt;
   }
+
+  const composer = window.PiComposer.create({ api, onChange() {
+    autosize();
+    autosizeCowork();
+    updateSendBtn();
+  } });
+  const welcomeDraftKey = () => `welcome:${document.body.dataset.mode}:${document.body.dataset.mode === 'chat' ? state.coworkFolder || 'scratch' : state.project || 'none'}`;
+  const sessionDraftKey = (rt) => `session:${rt.meta.id}`;
 
   /* ================= 事件渲染 ================= */
   function questionTitle(title) {
@@ -240,12 +266,12 @@
   }
 
   function groupSummary(g) {
-    const c = { cmd: 0, fail: 0, read: new Set(), edit: new Set(), create: new Set(), search: 0, agent: 0, other: 0 };
+    const c = { cmd: 0, fail: 0, read: new Set(), edit: new Set(), write: new Set(), search: 0, agent: 0, other: 0 };
     g.tools.forEach((t) => {
       if (t.kind === 'bash') { c.cmd++; if (t.status === 'err') c.fail++; }
       else if (t.kind === 'read') c.read.add(t.path);
       else if (t.kind === 'edit') c.edit.add(t.path);
-      else if (t.kind === 'write') c.create.add(t.path);
+      else if (t.kind === 'write') c.write.add(t.path);
       else if (['grep', 'glob', 'ls'].includes(t.kind)) c.search++;
       else if (t.kind === 'agent') c.agent++;
       else c.other++;
@@ -254,7 +280,7 @@
     const parts = [];
     if (c.cmd) parts.push(`ran ${pl(c.cmd, 'a command', 'commands')}${c.fail ? ` (${c.fail} failed)` : ''}`);
     if (c.read.size) parts.push(`read ${pl(c.read.size, 'a file', 'files')}`);
-    if (c.create.size) parts.push(`created ${pl(c.create.size, 'a file', 'files')}`);
+    if (c.write.size) parts.push(`wrote ${pl(c.write.size, 'a file', 'files')}`);
     if (c.edit.size) parts.push(`edited ${pl(c.edit.size, 'a file', 'files')}`);
     if (c.search) parts.push(`searched ${pl(c.search, 'once', 'times')}`);
     if (c.agent) parts.push(`used ${pl(c.agent, 'an agent', 'agents')}`);
@@ -293,12 +319,24 @@
     }
   }
 
+  function toolRowHTML(t, i) {
+    const file = ['read', 'edit', 'write'].includes(t.kind) && t.path;
+    const state = `g-row ${t.status}${t.open ? ' open' : ''}`;
+    const detail = t.detail ? `<div class="g-det">${t.detail}${file && t.status === 'done' && t.kind !== 'read' ? '<button class="tool-diff-link" data-diff>View diff</button>' : ''}</div>` : '';
+    if (!file) return `<div class="${state}" data-i="${i}"><button class="g-rh" aria-expanded="${!!t.open}"><span class="lbl${t.status === 'running' ? ' shimmer' : ''}">${toolLabel(t)}</span>${I.cv}</button>${detail}</div>`;
+    const verb = { read: ['Reading', 'Read'], edit: ['Editing', 'Edited'], write: ['Writing', 'Wrote'] }[t.kind][t.status === 'running' ? 0 : 1];
+    const stats = t.add != null ? `<span class="plus">+${t.add}</span><span class="minus">−${t.del}</span>` : '';
+    return `<div class="${state}" data-i="${i}"><div class="g-rh g-file-rh"><span class="tool-verb">${verb}</span><button class="tool-file" data-file title="Open current file: ${esc(t.path)}">${esc(fname(t.path))}</button>${stats}<button class="tool-row-toggle" data-toggle aria-label="${esc(`Toggle ${verb.toLowerCase()} preview for ${fname(t.path)}`)}" aria-expanded="${!!t.open}" title="Toggle preview">${I.cv}</button></div>${detail}</div>`;
+  }
+
   function renderEvent(ev, rt) {
     const el = document.createElement('div');
     switch (ev.type) {
       case 'user':
-        el.className = 'e-user' + (ev.queued ? ' queued' : '');
-        el.innerHTML = `<div class="bubble">${esc(ev.text).replace(/@([\w./-]+)/g, '<span class="mention">@$1</span>')}</div>`;
+        el.className = 'e-user' + (ev.queued ? ' queued' : '') + (ev.failed ? ' failed' : '');
+        el.innerHTML = `${ev.attachments?.length ? `<div class="user-attachments">${window.PiComposer.tiles(ev.attachments)}</div>` : ''}${ev.text ? `<div class="bubble">${esc(ev.text).replace(/@([\w./-]+)/g, '<span class="mention">@$1</span>')}</div>` : ''}${ev.notice ? `<div class="attachment-status">${esc(ev.notice)}</div>` : ''}${ev.failed ? '<div class="attachment-error">Delivery not confirmed. Check the conversation before retrying.<button data-recover>Restore draft</button></div>' : ''}`;
+        window.PiComposer.wireGallery(el, ev.attachments || []);
+        el.querySelector('[data-recover]')?.addEventListener('click', () => composer.recover(sessionDraftKey(rt), ev.submission || ev));
         if (ev.queued) el.title = '排队中：Claude 完成当前步骤后处理';
         break;
       case 'text':
@@ -320,9 +358,7 @@
         el.innerHTML = `${thoughts.map(thoughtHTML).join('')}
           ${ev.tools.length ? `<button class="g-sum"><span class="g-label${running ? ' shimmer' : ''}">${running ? `${toolLabel(running)}…` : esc(groupSummary(ev))}</span>
             ${add > 0 ? `<span class="plus stat">+${add}</span>` : ''}${del > 0 ? `<span class="minus stat">−${del}</span>` : ''}${I.cv}</button>` : ''}
-          ${ev.tools.length ? `<div class="g-list">${ev.tools.map((t, i) => `<div class="g-row ${t.status}${t.open ? ' open' : ''}" data-i="${i}">
-            <button class="g-rh"><span class="lbl${t.status === 'running' ? ' shimmer' : ''}">${toolLabel(t)}</span>${I.cv}</button>
-            ${t.detail && !['edit', 'write', 'agent'].includes(t.kind) ? `<div class="g-det">${t.detail}</div>` : ''}</div>`).join('')}</div>` : ''}`;
+          ${ev.tools.length ? `<div class="g-list">${ev.tools.map(toolRowHTML).join('')}</div>` : ''}`;
         el.querySelectorAll('.g-think').forEach((d, i) => {
           const s = thoughts[i];
           d.querySelector('.tb').textContent = s.text;
@@ -335,13 +371,17 @@
         }
         el.querySelectorAll('.g-row').forEach((row) => {
           const t = ev.tools[+row.dataset.i];
-          row.querySelector('.g-rh').title = row.querySelector('.lbl').textContent;
-          row.querySelector('.g-rh').onclick = () => {
-            if (t.kind === 'edit' || t.kind === 'write') return openFileRef(t.path);
+          const header = row.querySelector('.g-rh');
+          if (!header.classList.contains('g-file-rh')) header.title = row.querySelector('.lbl').textContent;
+          const toggle = row.querySelector('[data-toggle]') || header;
+          toggle.onclick = () => {
             if (t.kind === 'agent') return openBottom(rt, { type: 'agent', tool: t });
             t.open = !t.open;
             row.classList.toggle('open', t.open);
+            toggle.setAttribute('aria-expanded', String(t.open));
           };
+          row.querySelector('[data-file]')?.addEventListener('click', () => openFileRef(t.path, t.kind === 'read' ? t.args?.offset : t.firstChangedLine, rt));
+          row.querySelector('[data-diff]')?.addEventListener('click', () => openDiffRef(rt, t.path));
         });
         break;
       }
@@ -360,7 +400,7 @@
         let preview = '';
         if (t.kind === 'bash') preview = `<pre class="mbox"><span class="cmd">${esc(t.cmd)}</span></pre>`;
         else if (t.kind === 'edit') preview = (t.args?.edits || []).slice(0, 6).map((e) => smallDiff(e.oldText, e.newText, t.path)).join('');
-        else if (t.kind === 'write') preview = smallDiff(null, t.args?.content || '', t.path);
+        else if (t.kind === 'write') preview = toolPreviewHTML({ ...previews.write(t.args), note: 'Content to write · previous version unavailable' }, t.path);
         else if (t.args) preview = `<pre class="mbox">${esc(JSON.stringify(t.args, null, 2).slice(0, 2000))}</pre>`;
         const always = t.kind === 'bash' ? `Always allow <span class="mono">${esc(t.cmd.split(/\s+/).slice(0, 2).join(' '))}</span>` : t.kind === 'edit' || t.kind === 'write' ? 'Allow all edits this session' : 'Always allow';
         el.innerHTML = `<div class="p-t">${esc(ev.title)}</div>${preview}
@@ -534,13 +574,6 @@
     }
   }
 
-  function editStats(details) {
-    const d = details?.diff;
-    if (typeof d !== 'string') return null;
-    const lines = d.split('\n');
-    return { add: lines.filter((l) => /^\+\s*\d/.test(l)).length, del: lines.filter((l) => /^-\s*\d/.test(l)).length };
-  }
-
   function onToolEnd(rt, { toolCallId, toolName, result, isError }, replay) {
     const text = contentText(result?.content);
     if (toolName === 'todo_write') {
@@ -563,13 +596,16 @@
     const t = entry.tool;
     const blocked = isError && /denied|Plan mode|blocked|not approved|no UI/i.test(text);
     t.status = blocked ? 'denied' : isError ? 'err' : 'done';
-    if (t.kind === 'read') t.detail = codeLines(text, t.path);
+    if (['read', 'edit', 'write'].includes(t.kind)) {
+      const preview = previews[t.kind](t.args, result, !!isError);
+      t.detail = toolPreviewHTML(preview, t.path);
+      t.firstChangedLine = preview.firstChangedLine;
+      if (preview.type === 'diff') { t.add = preview.add; t.del = preview.del; }
+    }
+    if (t.kind === 'read') { /* Preview prepared above for live events and history. */ }
     else if (t.kind === 'bash') t.detail = termBox(t.cmd, text);
     else if (t.kind === 'edit' || t.kind === 'write') {
-      const st = editStats(result?.details) || (t.kind === 'write' && !isError ? { add: String(t.args?.content || '').split('\n').length, del: 0 } : null);
-      if (st && !isError) Object.assign(t, st);
-      if (isError) t.detail = `<pre class="mbox">${esc(text)}</pre>`;
-      else if (t.path) {
+      if (!isError && t.path) {
         const rel = relPath(rt, t.path);
         const prev = rt.outputs.find((o) => o.path === rel);
         if (prev) prev.t = Date.now();
@@ -660,13 +696,16 @@
       case 'message_end': {
         const m = ev.message || {};
         if (m.role === 'user') {
-          const text = contentText(m.content);
-          if (text.startsWith('[pi-desktop]')) break;
-          const i = rt.pendingUser.findIndex((p) => p.text.trim() === text.trim());
+          const user = attachments.decodeUserContent(m.content);
+          if (user.text.startsWith('[pi-desktop]')) break;
+          const i = user.clientId
+            ? rt.pendingUser.findIndex((p) => p.clientId === user.clientId)
+            : rt.pendingUser.findIndex((p) => !p.attachments?.length && p.text === user.text);
           if (i >= 0) {
             const [p] = rt.pendingUser.splice(i, 1);
-            if (p.queued) { p.queued = false; update(rt, p); }
-          } else push(rt, { type: 'user', text });
+            Object.assign(p, user, { queued: false, delivered: true, failed: false });
+            update(rt, p);
+          } else if (!user.clientId || !rt.events.some((p) => p.type === 'user' && p.clientId === user.clientId)) push(rt, { type: 'user', ...user, delivered: true });
         } else if (m.role === 'assistant') {
           const c = rt.cur || {};
           // message_end is authoritative: reconcile streamed text/thinking with the final content.
@@ -753,8 +792,8 @@
         if (changed) update(rt, e);
       }
     });
-    rt.pendingUser.forEach((p) => { if (p.queued) { p.queued = false; update(rt, p); } });
-    rt.pendingUser = [];
+    // Only authoritative user events or clear_queue confirm consumption/cancellation.
+    rt.pendingUser.forEach((p) => { if (!p.queued && !p.delivered) { p.failed = true; update(rt, p); } });
     push(rt, { type: 'foot', t: Date.now(), usage: `${fmtDur(Date.now() - rt.t0)} · ${fmtTok(rt.tokens)} tokens` });
     rt.meta.updatedAt = Date.now();
     if (!isCur(rt) || document.hidden) {
@@ -838,12 +877,12 @@
     let sawAssistant = false;
     for (const m of messages) {
       if (m.role === 'user') {
-        const text = contentText(m.content);
-        if (text.startsWith('[pi-desktop]')) continue;
+        const user = attachments.decodeUserContent(m.content);
+        if (user.text.startsWith('[pi-desktop]')) continue;
         if (sawAssistant) rt.events.push({ type: 'foot', t: m.timestamp || Date.now() });
         sawAssistant = false;
         rt.todosEv = null;
-        rt.events.push({ type: 'user', text });
+        rt.events.push({ type: 'user', ...user, delivered: true });
       } else if (m.role === 'assistant') {
         sawAssistant = true;
         for (const b of m.content || []) {
@@ -920,10 +959,15 @@
 
   /* ================= 发送 ================= */
   async function send(queueOnly) {
-    const text = codeInput.value.trim();
+    const draft = composer.current();
+    if (!draft || draft.sending) return;
+    if (draft.preparing) return toast('等待附件处理完成后再发送');
+    const { text, attachments: files } = composer.snapshot(draft);
     let rt = curRt();
-    if (!text) { if (rt?.running) stop(rt); return; }
-    const head = text.split(/\s+/)[0];
+    if (rt?.stopping) return;
+    if (!text.trim() && !files.length) { if (rt?.running) stop(rt); return; }
+    const head = text.trim().split(/\s+/)[0];
+    if (files.length && head.startsWith('/')) return toast('斜杠命令不能携带附件；请先移除附件或使用普通消息');
 
     if (head === '/model' || head === '/permissions') { clearInput(); openPop(head === '/model' ? '#codeModelMenu' : '#permMenu'); return; }
     if (head === '/help') {
@@ -958,44 +1002,81 @@
       return;
     }
 
+    if (!rt && document.body.dataset.mode === 'code' && !state.project) return toast('先选择一个项目');
+    composer.lock(draft, true);
     if (!rt) {
-      if (document.body.dataset.mode === 'code' && !state.project) return toast('先选择一个项目');
-      try {
-        rt = await createSession(text);
-      } catch (err) { return fail(err); }
+      try { rt = await createSession(text || files[0]?.name || 'Attachments', draft); }
+      catch (err) { composer.lock(draft, false); return composer.error(draft, err); }
     }
-    clearInput();
+    const clientId = crypto.randomUUID();
+    const submission = { text, attachments: files, clientId };
+    let wire;
+    try { wire = attachments.buildMessage(submission); }
+    catch (err) { composer.lock(draft, false); return composer.error(draft, err); }
     const wasRunning = rt.running;
-    const ev = push(rt, { type: 'user', text, queued: wasRunning });
+    const ev = push(rt, { type: 'user', ...submission, submission, wire: wire.message, queued: wasRunning, acknowledged: false });
     rt.pendingUser.push(ev);
-    toBottom();
+    let finishSubmission;
+    const submitting = rt.submitting = new Promise((resolve) => { finishSubmission = resolve; });
+    if (isCur(rt)) toBottom();
     const optimistic = !wasRunning && !text.startsWith('/');
     if (optimistic) { rt.running = true; rt.t0 = Date.now(); rt.tokens = 0; rt.todosEv = null; setStatusText(rt, 'Thinking…'); renderSessions(); updateSendBtn(); }
     try {
-      const r = await call('sessions:prompt', rt.meta.id, text, queueOnly ? 'followUp' : 'steer');
+      const r = await call('sessions:prompt', rt.meta.id, files.length ? submission : text, queueOnly ? 'followUp' : 'steer');
+      if (ev.exited) { composer.error(draft, '进程已退出，发送状态未确认；草稿已保留，请核对历史后再发送'); return; }
+      ev.acknowledged = true;
+      composer.clear(draft);
       if (r?.disposition === 'handled') {
-        // An extension command or input handler consumed it; no run starts.
-        rt.pendingUser.splice(rt.pendingUser.indexOf(ev), 1);
+        removeUser(rt, ev);
         if (optimistic) { rt.running = false; refreshChrome(); }
-      } else if (wasRunning) toast(queueOnly ? 'Queued for after the current task' : 'Claude will see this after the current step');
+      } else if (wasRunning && isCur(rt)) toast(queueOnly ? 'Queued for after the current task' : 'Claude will see this after the current step');
     } catch (err) {
+      if (ev.delivered) composer.clear(draft);
+      else if (ev.exited) composer.error(draft, '进程已退出，发送状态未确认；草稿已保留，请核对历史后再发送');
+      else if (/exited|closed|timeout|timed out|terminated/i.test(String(err?.message || err))) {
+        ev.failed = true; ev.queued = false; update(rt, ev);
+        composer.error(draft, '发送状态未确认，请核对会话后再重试，避免重复发送');
+      } else { removeUser(rt, ev); composer.error(draft, err); }
       if (optimistic) rt.running = false;
-      fail(err);
       refreshChrome();
+    } finally {
+      composer.lock(draft, false);
+      if (rt.submitting === submitting) rt.submitting = null;
+      finishSubmission();
     }
   }
-  async function stop(rt) {
-    if (!rt?.running) return;
-    try {
-      const q = await rpc(rt, { type: 'clear_queue' });
-      const restored = [...(q?.steering || []), ...(q?.followUp || [])].join('\n');
-      if (restored && isCur(rt)) { codeInput.value = restored; autosize(); updateSendBtn(); }
-      await rpc(rt, { type: 'abort' });
-    } catch (err) { fail(err); }
+  function removeUser(rt, ev) {
+    rt.pendingUser = rt.pendingUser.filter((p) => p !== ev);
+    rt.events = rt.events.filter((p) => p !== ev);
+    dirty.delete(ev);
+    ev.el?.remove();
   }
-  function clearInput() { codeInput.value = ''; autosize(); acClose(); updateSendBtn(); }
+  async function stop(rt) {
+    if (!rt || rt.stopping || (!rt.running && !rt.submitting)) return;
+    const version = rt.processVersion;
+    rt.stopping = true;
+    setStatusText(rt, 'Stopping…');
+    updateSendBtn();
+    try {
+      // Main-process image validation can still start/queue the prompt. Abort
+      // only after its admission result, never an earlier, unrelated run.
+      if (rt.submitting) await rt.submitting;
+      if (version !== rt.processVersion) return;
+      const q = await rpc(rt, { type: 'clear_queue' });
+      for (const wire of [...(q?.steering || []), ...(q?.followUp || [])]) {
+        const decoded = attachments.decodeUserContent(wire);
+        const p = rt.pendingUser.find((p) => decoded.clientId ? p.clientId === decoded.clientId : p.wire === wire);
+        const snapshot = p?.submission || decoded;
+        if (p) removeUser(rt, p);
+        composer.recover(sessionDraftKey(rt), snapshot);
+      }
+      if (version === rt.processVersion) await rpc(rt, { type: 'abort' });
+    } catch (err) { if (version === rt.processVersion) fail(err); }
+    finally { rt.stopping = false; if (isCur(rt)) refreshChrome(); }
+  }
+  function clearInput() { const d = composer.current(); if (d) composer.clear(d); acClose(); }
 
-  async function createSession(firstPrompt) {
+  async function createSession(firstPrompt, draft) {
     const cowork = document.body.dataset.mode === 'chat';
     const meta = await call('sessions:create', {
       kind: cowork ? 'cowork' : 'code',
@@ -1010,12 +1091,17 @@
     const rt = runtime(meta);
     rt.loaded = true;
     rt.model = state.model;
-    await openSession(meta.id, true);
+    const active = !draft || composer.isActive(draft);
+    if (draft) composer.rekey(draft, sessionDraftKey(rt));
+    if (active) await openSession(meta.id, true);
+    else renderSessions();
     return rt;
   }
 
   /* ================= 视图 ================= */
   function showWelcome() {
+    fileRequest++;
+    if (curRt()?.bottom?.loading) curRt().bottom = null;
     state.cur = null;
     $('#repoBtn svg').outerHTML = LAPTOP;
     document.body.dataset.view = 'welcome';
@@ -1024,6 +1110,7 @@
     if (mode === 'chat') return showCoworkWelcome();
     $('#codeWelcome').hidden = false; $('#codeThread').hidden = true;
     $('#codeWelcomeSlot').appendChild(codeComposer);
+    composer.activate(welcomeDraftKey());
     $('.ch').classList.add('is-new');
     codeMain.classList.remove('rc-open');
     workspace.reset();
@@ -1035,6 +1122,8 @@
   }
 
   async function openSession(id, fresh) {
+    fileRequest++;
+    if (curRt()?.bottom?.loading) curRt().bottom = null;
     state.cur = id;
     const rt = state.rts.get(id);
     rt.unread = false;
@@ -1045,6 +1134,7 @@
     state.lastByMode[mode] = id;
     $('#codeWelcome').hidden = true; $('#codeThread').hidden = false;
     $('#codeThreadSlot').appendChild(codeComposer);
+    composer.activate(sessionDraftKey(rt));
     $('.ch').classList.remove('is-new');
     renderThread();
     refreshChrome();
@@ -1088,9 +1178,13 @@
 
   function updateSendBtn() {
     const rt = curRt();
-    const stopMode = rt?.running && !codeInput.value.trim();
+    const d = composer.current();
+    const ready = !!(d?.text.trim() || d?.attachments.length);
+    const stopMode = rt?.running && !ready;
+    codeSend.disabled = !!(d?.sending || d?.preparing || rt?.stopping);
+    $('#sendBtn').disabled = !ready || !!(d?.sending || d?.preparing || rt?.stopping);
     codeSend.classList.toggle('stop', !!stopMode);
-    codeSend.classList.toggle('ready', !!codeInput.value.trim());
+    codeSend.classList.toggle('ready', ready);
     codeSend.title = stopMode ? 'Stop (Esc)' : 'Send (↵)';
     const mod = state.info?.platform === 'darwin' ? '⌘' : 'Ctrl+';
     codeInput.placeholder = rt?.running ? `↵ to send, ${mod}↵ to queue for later` : rt ? (isCowork(rt) ? 'Reply to Claude, or type / for commands' : 'Type / for commands') : 'Describe a task or ask a question';
@@ -1163,6 +1257,7 @@
   /* ---------- 项目 ---------- */
   function selectProject(p) {
     state.project = p;
+    if (!curRt()) composer.activate(welcomeDraftKey());
     store.set('pd_project', p);
     renderProjects();
     refreshImportable();
@@ -1487,20 +1582,31 @@
     const q = String(p).replace(/\\/g, '/');
     return q.startsWith(cwd + '/') ? q.slice(cwd.length + 1) : q.replace(/^\.\//, '');
   }
-  async function openFileRef(p, line) {
-    const rt = curRt();
-    if (!rt) return;
-    const rel = relPath(rt, p);
-    if (rt.changes.some((f) => f.path === rel)) {
-      rt.diffOpen = true; rt.collapsed.delete(rel);
-      renderRight();
-      scrollToFile(rel);
-      return;
-    }
+  let fileRequest = 0;
+  function openDiffRef(rt, path) {
+    if (!isCur(rt)) return;
+    const rel = relPath(rt, path);
+    rt.diffOpen = true; rt.collapsed.delete(rel);
+    renderRight();
+    if (!scrollToFile(rel)) loadChanges(rt).then(() => { if (isCur(rt)) scrollToFile(rel); });
+  }
+  async function openFileRef(p, line, rt = curRt()) {
+    if (!rt || !isCur(rt)) return;
+    const rel = relPath(rt, p), request = ++fileRequest;
+    const pending = { type: 'file', path: rel, line: previews.positiveLine(line), loading: true };
+    openBottom(rt, pending);
     try {
       const text = await call('sessions:readFile', rt.meta.id, rel);
-      openBottom(rt, { type: 'file', path: rel, line, text });
-    } catch { toast(`无法打开 ${rel}`); }
+      if (request !== fileRequest || !isCur(rt) || rt.bottom !== pending) return;
+      pending.loading = false;
+      pending.text = text;
+      renderBottom(rt);
+    } catch (err) {
+      if (request !== fileRequest || !isCur(rt) || rt.bottom !== pending) return;
+      pending.loading = false;
+      pending.error = String(err.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+      renderBottom(rt);
+    }
   }
   $('#diffBtn').onclick = () => { const rt = curRt(); if (!rt) return; rt.diffOpen = !rt.diffOpen; if (rt.diffOpen) loadChanges(rt); renderRight(); };
   $('#diffCard .card-tools').addEventListener('click', (e) => {
@@ -1528,7 +1634,9 @@
     const card = $('#bottomCard'), head = $('#bottomHead'), body = $('#bottomBody');
     const b = rt?.bottom;
     card.hidden = !b;
-    if (!b) return;
+    body.classList.toggle('file-viewer', b?.type === 'file');
+    if (!b) { body._file = null; return; }
+    if (b.type !== 'file') body._file = null;
     const close = `<button class="ic-btn sm" data-x title="Close">${I.close}</button>`;
     const expand = `<button class="ic-btn sm" data-e title="Expand">${I.expand}</button>`;
     if (b.type === 'plan') {
@@ -1545,10 +1653,29 @@
         ${t.status === 'running' ? `<div class="bc-meta"><span class="shimmer">${esc(t.summary || 'Working…')}</span></div>` : `<div class="bc-meta">${esc(t.summary || '')}</div><div class="e-text" style="margin:0">${renderMarkdown(t.md || '')}</div>`}</div>`;
       linkify(body);
     } else if (b.type === 'file') {
-      head.innerHTML = `<span class="ttl"><span class="mono">${esc(b.path)}</span></span><div class="card-tools">${close}</div>`;
-      body.innerHTML = `<div style="padding:8px">${b.text == null ? '<div class="diff-empty">Binary or large file</div>' : codeLines(b.text, b.path, b.line)}</div>`;
-      const hl = body.querySelector('.vl[style]');
-      if (hl) body.scrollTop = hl.offsetTop - 80;
+      const hasDiff = rt.changes.some((f) => f.path === b.path);
+      head.innerHTML = `<span class="ttl" title="${esc(b.path)}"><span class="mono">${esc(b.path)}</span></span><div class="card-tools">${hasDiff ? '<button class="file-diff-btn" data-diff>Diff</button>' : ''}${expand}${close}</div>`;
+      const same = body._file === b && body._fileStart === b.start && body._fileLoading === b.loading;
+      const top = same ? body.scrollTop : 0, left = same ? body.scrollLeft : 0;
+      if (!same) {
+        if (b.loading) body.innerHTML = '<div class="diff-empty">Loading current file…</div>';
+        else if (b.error) body.innerHTML = `<div class="file-read-error">Unable to open current file.<pre>${esc(b.error)}</pre></div>`;
+        else if (b.text == null) body.innerHTML = '<div class="diff-empty">File preview unavailable<br>Binary, non-text, or larger than 1 MiB</div>';
+        else {
+          const view = previews.lineWindow(b.text, b.line, b.start);
+          const nav = `<div class="file-window"><button data-prev${view.previous == null ? ' disabled' : ''}>Previous lines</button><span>Lines ${view.startLine}–${view.endLine} of ${view.totalLines}</span><button data-next${view.next == null ? ' disabled' : ''}>Next lines</button></div>`;
+          body.innerHTML = `${nav}${b.line > view.totalLines ? `<div class="tool-preview-note">Requested line ${b.line} is beyond the current file (${view.totalLines} lines). Showing the last line.</div>` : ''}${codeLines(view.lines, b.path, view.targetLine, view.startLine, previews.WINDOW_LINES, true)}${nav}`;
+          for (const [key, start] of [['prev', view.previous], ['next', view.next]]) body.querySelectorAll(`[data-${key}]`).forEach((button) => button.onclick = () => { if (start != null && isCur(rt) && rt.bottom === b) { b.start = start; renderBottom(rt); } });
+        }
+        body._file = b; body._fileStart = b.start; body._fileLoading = b.loading;
+      }
+      head.querySelector('[data-diff]')?.addEventListener('click', () => openDiffRef(rt, b.path));
+      if (same) { body.scrollTop = top; body.scrollLeft = left; }
+      else {
+        const target = body.querySelector('.target-line');
+        body.scrollTop = target ? target.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - 65 : 0;
+        body.scrollLeft = 0;
+      }
     }
     head.querySelector('[data-x]').onclick = () => { rt.bottom = null; renderRight(); };
     head.querySelector('[data-e]')?.addEventListener('click', () => workspace.expand(card));
@@ -1857,7 +1984,7 @@
   });
   codeSend.onclick = () => send(false);
   $('.cx-box').addEventListener('click', (e) => { if (!e.target.closest('button')) codeInput.focus(); });
-  $('#codeAttach').onclick = () => { codeInput.value += (codeInput.value && !/\s$/.test(codeInput.value) ? ' ' : '') + '@'; codeInput.focus(); acUpdate(); };
+  $('#codeAttach').onclick = () => composer.pick();
 
   /* ================= 搜索面板 ================= */
   const pal = $('#palette'), palInput = $('#palInput'), palList = $('#palList');
@@ -1950,7 +2077,7 @@
     renderModelButtons();
     renderTasks();
     renderSessions();
-    sendBtn.disabled = !input.value.trim();
+    composer.activate(welcomeDraftKey(), 'cowork');
     input.focus();
   }
 
@@ -1981,6 +2108,7 @@
   }
   function setCoworkFolder(f) {
     state.coworkFolder = f;
+    if (!curRt()) composer.activate(welcomeDraftKey(), 'cowork');
     store.set('pd_cowork_folder', f);
     renderFolderButton();
   }
@@ -2014,34 +2142,20 @@
     openPop('#modelMenu');
   };
 
-  // Cowork composer on the welcome page: hands the text to the shared send().
+  // Welcome and thread composers submit the same session-owned draft.
   const autosizeCowork = () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 240) + 'px'; };
-  input.addEventListener('input', () => { autosizeCowork(); sendBtn.disabled = !input.value.trim(); });
+  input.addEventListener('input', () => { autosizeCowork(); updateSendBtn(); });
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); coworkSend(); }
   });
   sendBtn.onclick = coworkSend;
-  function coworkSend() {
-    const text = input.value.trim();
-    if (!text) return;
-    input.value = '';
-    autosizeCowork();
-    sendBtn.disabled = true;
-    codeInput.value = text;
-    send(false);
-  }
-  $('#attachBtn').onclick = async () => {
-    const files = await call('dialog:pickFiles').catch(fail);
-    if (!files?.length) return;
-    input.value = `${input.value.trim()}${input.value.trim() ? '\n\n' : ''}附件：\n${files.map((f) => `- ${f}`).join('\n')}\n`;
-    autosizeCowork();
-    sendBtn.disabled = false;
-    input.focus();
-  };
+  function coworkSend() { send(false); }
+  $('#attachBtn').onclick = () => composer.pick();
   document.querySelectorAll('.chip.idea').forEach((c) => (c.onclick = () => {
     input.value = c.dataset.prompt;
+    composer.current();
     autosizeCowork();
-    sendBtn.disabled = false;
+    updateSendBtn();
     input.focus();
   }));
 
@@ -2098,8 +2212,17 @@
     const rt = state.rts.get(sessionId);
     if (!rt) return;
     if (rt.running) settle(rt, true);
+    rt.processVersion++;
+    for (const p of [...rt.pendingUser]) {
+      p.exited = true;
+      removeUser(rt, p);
+      // Unacknowledged submissions still own their locked draft. Acknowledged
+      // queues have cleared it, so recover the retained bytes before replay.
+      if (p.acknowledged && !p.delivered) composer.recover(sessionDraftKey(rt), p.submission);
+    }
     rt.loaded = false;
     if (code) push(rt, { type: 'note', level: 'error', text: `pi 进程退出（${code}）${error ? `：${error}` : ''}\n${(stderr || '').trim().split('\n').slice(-6).join('\n')}` });
+    if (isCur(rt)) refreshChrome();
   });
 
   (async () => {

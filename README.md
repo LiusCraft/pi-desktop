@@ -73,6 +73,16 @@ Renderer (renderer/)                         Main (electron/)                   
 
 > 提示：Claude desktop 里 `Thinking` 只在会话已经产生过思考后出现；这里也做了同样的处理。`Ctrl+O` 只在可用的模式之间循环。
 
+### 文件工具预览与附件
+
+- **Read / Edit / Write**：展开工具行可查看带行号的读取片段、本次编辑的红绿 diff，或实际写入的内容快照。点击文件名会在现有右侧文件查看器打开**当前正文**并定位；历史快照不会被当前正文或累计 Git diff 替代。需要累计改动时使用独立的 **Diff** 入口。
+- **添加附件**：Code 和 Cowork 的输入框都支持粘贴截图、复制的本地文件、拖入文件，以及点击 **+** 多选文件；`@` 仍用于引用项目文件。发送前可以预览和移除，也可以只发附件。多行文字保留换行、制表符和缩进，富文本只提取纯文本，不加载其中的远程内容。
+- **发送与恢复**：附件单独排列在文字气泡上方，图片可点击放大。图片使用 pi 原生 image blocks 传给支持图片的模型并随会话保存；普通文件是供 agent 读取的**本地路径引用**，不会自动解析 PDF / Office，也不会另存一份。移动或删除原文件后，该引用可能失效。
+- **草稿与取消**：会话间草稿互相隔离；导入失败或发送失败不会清空附件。停止运行时，已取消的排队消息可恢复为草稿；有新草稿时显示 Restore / Discard，避免覆盖。未发送草稿仅在本次应用运行期间保留。
+- **默认限制**：每条消息最多 10 个附件，单个源文件最多 20 MiB、源文件合计最多 50 MiB。图片会缩放至最长边 2000 px，单张输出 base64 最多 4.5 MiB、图片 base64 合计最多 20 MiB。不支持图片的模型会明确报错；带附件的 slash command 不会被静默执行并丢弃附件。
+
+历史恢复沿用 pi 的 `get_messages`：可恢复当前会话上下文中的附件，不额外提供压缩前完整 transcript 或历史分支浏览器。文件正文预览限于当前会话工作目录内、最多 1 MiB 的文本文件；历史内联工具片段不受文件后来移动或删除影响。
+
 ### Cowork 与 Code 的区别
 
 | | Code | Cowork |
@@ -109,8 +119,10 @@ npm i -D playwright && xvfb-run -a npm run test:ui   # 启动真实 Electron 窗
 
 - `test/rpc-e2e.test.js`：Auto 模式修 bug（修复前测试真的失败，修复后真的通过）、Ask 模式拒绝、Plan 模式审批、子 agent、Auto 模式下高风险命令仍需询问。
 - `test/rpc-e2e.test.js`（Cowork）：整理收件箱时只有移动文件需要确认；拒绝后文件保持原样；根据文件夹内容生成简报文件；确认追加的系统提示已生效。
-- `test/hub.test.js`：worktree 隔离（主工作区不被改动）、git diff、重启后从会话文件恢复；Cowork 的临时工作区、直接在选定文件夹中工作、权限确认经由 hub 转发。
-- 两个测试文件都同时在 Node 22 和 Electron 自带的 Node 24 上跑通过。
+- `test/hub.test.js`：worktree 隔离（主工作区不被改动）、git diff、工具详情及图片附件跨进程重启恢复；Cowork 的临时工作区、直接在选定文件夹中工作、权限确认经由 hub 转发。
+- `test/tool-previews.test.js` / `test/files.test.js`：原生工具输出、行号 / 分页，以及文件边界、符号链接、二进制和大小限制。
+- `test/attachment-message.test.js` / `test/attachments-backend.test.js`：附件消息往返、校验限制、剪贴板格式和图片请求转发。
+- `npm run test:ui:rendering`、`npm run test:ui:workspace`、`npm run test:ui:attachments`：真实 Electron 窗口与 preload、离线 mock IPC，不需要 Playwright；覆盖实时 / 历史预览、文件定位、附件发送与草稿恢复，不读写系统剪贴板。完整 `test:ui` 还包含依赖 Playwright 的 Code / Cowork demo 流程。
 
 ## 打包与发布（macOS）
 
@@ -180,5 +192,5 @@ xattr -cr /Applications/Pi\ Desktop.app   # 只在你自己确认过来源的情
 - pi 的 `find` 工具依赖 `fd`，pi 会自动下载；在离线环境下这一项会失败（`grep` 用系统里的 `rg`）。
 - **PR / CI 状态**依赖 `gh` CLI 已登录。
 - **预览**面板只允许 `localhost` 地址。
-- 目前只在 macOS（打包版，Apple Silicon）和 Linux（xvfb）上实际跑过窗口。macOS 用 `hiddenInset` 红绿灯，Windows 用 `titleBarOverlay` 原生窗口按钮，Windows 那套还需要在真机上确认。
+- 已在 macOS（打包版，Apple Silicon）和 Linux（xvfb）上实际跑过窗口；本次还在 macOS 隔离用户数据下运行真实离线 demo，检查图片发送 / 恢复、工具定位、深浅主题和窄窗口。未手动验证系统截图 / Finder 复制文件；Windows / Linux 剪贴板格式有自动测试覆盖，仍需各平台真机确认，Windows 原生窗口按钮也待真机确认。
 - 没有自动更新：升级靠重新下载 dmg。要接 `electron-updater` 得再产一个 `zip` target（dmg 不能做增量更新），并加一个设置项。

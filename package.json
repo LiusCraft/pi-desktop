@@ -19,10 +19,11 @@
     "dist:mac": "electron-builder --mac dmg --publish never",
     "publish:mac": "electron-builder --mac dmg --publish always",
     "dist": "electron-builder",
-    "test:ui": "node test/ui-model-menu.js && node test/ui-rendering.js && node test/ui-workspace.js && node test/ui-smoke.js && node test/ui-cowork.js",
+    "test:ui": "node test/ui-model-menu.js && node test/ui-rendering.js && node test/ui-workspace.js && node test/ui-attachments.js && node test/ui-smoke.js && node test/ui-cowork.js",
     "test:ui:model-menu": "node test/ui-model-menu.js",
     "test:ui:rendering": "node test/ui-rendering.js",
-    "test:ui:workspace": "node test/ui-workspace.js"
+    "test:ui:workspace": "node test/ui-workspace.js",
+    "test:ui:attachments": "node test/ui-attachments.js"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^1.4.0"
