@@ -1,9 +1,8 @@
 # macOS packaging. Run it through `make` (see Makefile) or electron-builder.
 #
-# pi runs as a separate Node child process (the background Electron Helper on
-# macOS, with ELECTRON_RUN_AS_NODE) and reads its own files plus the TypeScript
-# extensions from disk, so asar stays off: app.asar would hide them from both
-# pi and the extension loader.
+# The pi SDK runs inside the agent host (an Electron utilityProcess). It loads its
+# own assets, user extensions (through jiti) and prebuilt .node binaries from
+# disk, and spawns tool binaries, so asar stays off to keep all of that plain.
 appId: dev.pi-desktop.app
 productName: Pi Desktop
 copyright: Copyright © ${author}
@@ -12,10 +11,9 @@ directories:
   output: dist
   buildResources: build
 
+# `npm run build` (electron-vite) must run first; the scripts in package.json do.
 files:
-  - electron/**
-  - renderer/**
-  - extensions/**
+  - out/**
   - demo/**
   - package.json
 
