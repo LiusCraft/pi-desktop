@@ -1,9 +1,9 @@
 # macOS packaging. Run it through `make` (see Makefile) or electron-builder.
 #
-# pi runs as a separate Node child process (process.execPath with
-# ELECTRON_RUN_AS_NODE) and reads its own files plus the TypeScript extensions
-# from disk, so asar stays off: app.asar would hide them from both pi and the
-# extension loader.
+# pi runs as a separate Node child process (the background Electron Helper on
+# macOS, with ELECTRON_RUN_AS_NODE) and reads its own files plus the TypeScript
+# extensions from disk, so asar stays off: app.asar would hide them from both
+# pi and the extension loader.
 appId: dev.pi-desktop.app
 productName: Pi Desktop
 copyright: Copyright © ${author}
