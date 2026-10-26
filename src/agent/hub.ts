@@ -15,7 +15,7 @@ import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import { buildMessage, decodeUserContent } from '@shared/attachments';
 import type {
   ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
-  PrSummary, SessionMeta, SessionStats, SubagentProgress, SessionSummary, SlashCommand, StreamingBehavior, ThinkingLevel, UiRequest, UiRequestInput, UiResponse,
+  PrSummary, SessionMeta, SessionStats, SubagentProgress, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, UiRequest, UiRequestInput, UiResponse,
 } from '@shared/protocol';
 import { validatePromptPayload } from './attachments';
 import coworkPrompt from './cowork-prompt.md?raw';
@@ -26,7 +26,9 @@ import { readSessionFile, readSessionImage, resolveInside } from './files';
 import * as git from './git';
 import { ModelAdmin } from './model-admin';
 import * as naming from './naming';
+import { pickSideModel } from './side-model';
 import { Store } from './store';
+import * as prediction from './suggest';
 
 const NAMES = ['trusting-maxwell', 'eager-lovelace', 'quiet-hopper', 'brave-turing', 'calm-knuth', 'swift-ritchie', 'bold-curie', 'keen-dijkstra'];
 /** Tools on top of pi's defaults (read, bash, edit, write). */
@@ -91,6 +93,8 @@ export class SessionHub {
   private readonly opening = new Map<string, Promise<Live>>();
   private readonly trust: ProjectTrustStore;
   private namers = new Set<AbortController>();
+  /** In-flight next-message predictions, so a new turn or a closed session can cancel them. */
+  private suggesters = new Map<string, AbortController>();
   /** Model catalog refreshes are serialized: a refresh reloads models.json, so two in flight can drop a provider. */
   private modelRefresh: Promise<unknown> = Promise.resolve();
 
@@ -603,6 +607,8 @@ export class SessionHub {
 
   async prompt(id: string, payload: unknown, behavior: StreamingBehavior): Promise<{ disposition: string }> {
     const live = await this.ensure(id);
+    // The ghost text predicted the previous turn; a real message makes it stale.
+    this.abortSuggestion(id);
     if (live.historyBusy) throw new Error('正在调整对话历史，请稍后发送');
     const generation = live.generation;
     const normalized = await validatePromptPayload(payload);
@@ -662,7 +668,7 @@ export class SessionHub {
     const live = this.live.get(id);
     const current = live?.runtime.session.model ? `${live.runtime.session.model.provider}/${live.runtime.session.model.id}` : m.model;
     const { models, defaultModel } = await this.listModels();
-    const pick = naming.pickNamingModel(models, current ?? defaultModel);
+    const pick = pickSideModel(models, current ?? defaultModel);
     const model = this.findModel(pick);
     if (!model) return; // demo/offline: there is no real model to ask
     const controller = new AbortController();
@@ -687,6 +693,92 @@ export class SessionHub {
     now.autoNamed = true;
     this.save();
     this.setTitle(id, title);
+  }
+
+  // ------------------------------------------------------------ next-message prediction
+
+  private abortSuggestion(id: string) {
+    this.suggesters.get(id)?.abort();
+    this.suggesters.delete(id);
+  }
+
+  /** The live session only if it can answer right now (not closed, not mid-turn). */
+  private idleLive(id: string) {
+    const live = this.live.get(id);
+    if (!live || live.disposed || live.status === 'running' || live.runtime.session.isStreaming) return null;
+    return live;
+  }
+
+  /**
+   * The cheapest real model already known to have credentials. The availability
+   * snapshot is refreshed for the model pickers, so this does not re-run provider
+   * auth checks on every turn. The offline demo model never predicts.
+   */
+  private autoSideModel(current: string | null | undefined) {
+    const available = this.models.getAvailableSnapshot();
+    const pick = pickSideModel(available, current);
+    const fallback = available.length === 0 && current && !current.startsWith('demo/') ? current : null;
+    return this.findModel(pick ?? fallback);
+  }
+
+  private isAvailable(model: { provider: string; id: string }) {
+    const available = this.models.getAvailableSnapshot();
+    // An empty snapshot means the availability check has not run yet: do not block
+    // the configured model just because nobody has looked.
+    return available.length === 0 || available.some((m) => m.provider === model.provider && m.id === model.id);
+  }
+
+  /** The prediction model: configured mode first, then the cheap automatic choice. */
+  private sideModel(current: string | null | undefined, options?: SuggestionOptions) {
+    const mode = options?.model;
+    const requested = mode === 'session' ? current : mode === 'fixed' ? options?.modelId : null;
+    if (requested) {
+      const model = this.findModel(requested);
+      // A fixed model also needs credentials; the session's own model is already running.
+      if (model && model.provider !== 'demo' && (mode === 'session' || this.isAvailable(model))) return model;
+    }
+    return this.autoSideModel(current);
+  }
+
+  /**
+   * Guess the user's next message with one cheap, tool-less request. It never
+   * touches the session: no prompt, no tools, no context mutation. Every failure
+   * is silent — the composer just keeps no ghost text.
+   */
+  async suggest(id: string, options?: SuggestionOptions): Promise<{ text: string } | null> {
+    // Any prediction from before this call is stale, whether or not the turn can ask now.
+    this.abortSuggestion(id);
+    const live = this.idleLive(id);
+    if (!live) return null;
+    const session = live.runtime.session;
+    const current = session.model ? `${session.model.provider}/${session.model.id}` : this.meta(id).model;
+    const model = this.sideModel(current, options);
+    if (!model) return null;
+    const excerpt = prediction.transcriptExcerpt(session.messages, { context: options?.context, contextWindow: model.contextWindow });
+    if (!excerpt) return null;
+    const controller = new AbortController();
+    const generation = live.generation;
+    this.suggesters.set(id, controller);
+    const timeout = options?.context === 'all' ? prediction.FULL_TIMEOUT_MS : prediction.TIMEOUT_MS;
+    const timer = setTimeout(() => controller.abort(), timeout);
+    try {
+      const reply = await this.models.completeSimple(model, {
+        systemPrompt: prediction.SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: excerpt.text, timestamp: Date.now() }],
+      }, { signal: controller.signal, maxTokens: 256 });
+      // A new turn, a replaced session or a closed one makes the reply stale.
+      const now = this.live.get(id);
+      if (!now || now !== live || now.disposed || now.generation !== generation) return null;
+      if (now.status === 'running' || now.runtime.session.isStreaming) return null;
+      if (reply.stopReason === 'error' || reply.stopReason === 'aborted') return null;
+      const text = prediction.cleanSuggestion(prediction.contentText(reply.content), excerpt.lastAssistant);
+      return text ? { text } : null;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+      if (this.suggesters.get(id) === controller) this.suggesters.delete(id);
+    }
   }
 
   /** Persist a title, tell pi (it records session_info) and tell the UI. */
@@ -744,6 +836,7 @@ export class SessionHub {
   private async dispose(id: string) {
     const live = this.live.get(id);
     if (!live) return;
+    this.abortSuggestion(id);
     live.disposed = true;
     live.generation++;
     this.live.delete(id);
@@ -767,6 +860,7 @@ export class SessionHub {
   }
   async newContext(id: string) {
     const live = await this.ensure(id);
+    this.abortSuggestion(id);
     await live.runtime.newSession();
   }
   async compact(id: string, instructions?: string) {
@@ -841,6 +935,7 @@ export class SessionHub {
   }
   async clone(id: string) {
     const live = await this.ensure(id);
+    this.abortSuggestion(id);
     const leafId = live.runtime.session.sessionManager.getLeafId();
     if (!leafId) throw new Error('Cannot fork an empty session');
     await live.runtime.fork(leafId, { position: 'at' });
@@ -958,6 +1053,8 @@ export class SessionHub {
   async shutdown() {
     for (const c of this.namers) c.abort();
     this.namers.clear();
+    for (const c of this.suggesters.values()) c.abort();
+    this.suggesters.clear();
     await Promise.all([...this.live.keys()].map((id) => this.dispose(id)));
   }
 }

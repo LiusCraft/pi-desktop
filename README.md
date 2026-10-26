@@ -21,7 +21,7 @@ npm run build && npm run demo  # 打开内置演示项目，默认使用离线�
   - **API 密钥**：所有支持密钥的 provider，交互流程和 pi 的 `/login` 完全一致（包括需要多个环境变量的 provider）。
   - **自定义端点**：OpenAI Chat Completions / Responses、Anthropic Messages、Google Generative AI 兼容地址写入 `~/.pi/agent/models.json`；可以直接从端点的 `/models` 拉取模型列表。每个模型都能编辑名称、上下文大小、最大输出、四项每百万 token 价格、推理与图像输入能力；[models.dev](https://models.dev) 仅补充缺失值，手动值（包括免费价格 0）始终优先。保存不等待公开目录网络请求；目录中的 0 token 限制会忽略，重新保存端点也能清理旧配置里的无效 0 值。密钥仍只存 `auth.json`，本地端点自动写入 pi 的占位密钥。
   - 环境变量、`auth.json`、`models.json` 里已有的配置都会识别；你在 `~/.pi/agent` 里装的扩展、技能、提示模板和 MCP 服务器照常加载，和 CLI 一致。
-- 设置窗口（`Ctrl/⌘+,`）是独立窗口：外观（浅色 / 深色 / 跟随系统、侧边栏）、通用（通知、默认分区）、模型管理、项目与文件夹、关于。偏好保存在用户数据目录的 `settings.json`，修改后主窗口立即跟随；preload 用同步 IPC（`app:boot`）拿到首屏需要的值，不会先闪一下再变色。
+- 设置窗口（`Ctrl/⌘+,`）是独立窗口：外观（浅色 / 深色 / 跟随系统、侧边栏）、通用（通知、输入预测、默认分区）、模型管理、项目与文件夹、关于。偏好保存在用户数据目录的 `settings.json`，修改后主窗口立即跟随；preload 用同步 IPC（`app:boot`）拿到首屏需要的值，不会先闪一下再变色。
 
 ## 架构
 
@@ -44,6 +44,8 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 | `src/agent/model-admin.ts` | 模型管理：provider / 登录方式枚举、OAuth 与 API key 登录事件桥接、登出、自定义端点保存与热加载 |
 | `src/agent/endpoints.ts` | `models.json` 读写（保留手写字段）、`/models` 发现、本地端点占位密钥 |
 | `src/agent/models-dev.ts` | models.dev 目录（按天缓存）：按模型 ID / canonical ID 匹配上下文、输出上限和价格 |
+| `src/agent/naming.ts` / `src/agent/suggest.ts` | 后台小请求：会话命名与下一句输入预测（`completeSimple`，不进会话上下文） |
+| `src/agent/side-model.ts` | 给后台请求挑同 provider 里最便宜的小模型 |
 | `src/agent/demo-model.ts` | 离线演示模型：pi-ai 的 faux provider 注册到共享的 `ModelRuntime`，按脚本调用 pi 的**真实工具** |
 | `src/agent/index.ts` | utilityProcess 入口：按 id 关联调用与结果，事件单向推送 |
 | `src/main/agent-client.ts` | 启动 / 重启 agent host，`call(method, ...args)` |
@@ -94,6 +96,16 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 2. **再取名**：同时通过共享的 `ModelRuntime.completeSimple` 单独请求一次模型，取一个 2–5 个词的名字。这次请求不经过任何会话、不带工具，用当前 provider 里单价最低的小模型（20 秒超时），所以它不占会话上下文、也不拖慢会话的第一轮。结果写回会话元数据，并通过 `setSessionName` 写进 pi session。
 
 手动重命名后就不再自动命名；模型给出的是句子或礼貌回复时会被丢弃，保留提示词标题。离线演示模型没有可用的真实模型，自动跳过。
+
+### 输入预测
+
+每轮任务结束（`agent_settled`，主动中断不算）后，如果当前打开的会话输入框是空的、窗口也没有隐藏，界面会通过 `sessions:suggest` 让 agent host 单独请求一次模型，猜用户下一句会说什么，并以灰色 ghost text 显示在空输入框里。
+
+- 和会话命名一样，这次请求**不经过会话**：不带工具，8 秒超时（全上下文 20 秒）；不占会话上下文，也不会写进 transcript。
+- **模型**（设置 → 通用 → 输入预测 → 预测模型）：**自动**（默认，session 所属 provider 里单价最低的小模型）、**跟随会话**（用会话当前的模型，更好但可能更贵）、**指定模型**（从已配置凭据的模型里选一个）。指定的模型不可用时回退到自动；离线 Demo 模型不参与预测。
+- **上下文**：默认最近 6 条 user / assistant 消息，可改成 1–50 条；打开「全部上下文」会发送整段对话，并按预测模型的上下文窗口截断（最多约 12 万字符）。工具输出不参与；消息里附带的文件 / 选区上下文会在发送前剔除。
+- **采用**：在空输入框里按 `→`（光标在末尾时）或 `Tab`，灰色文字变成真正的草稿，再按 `↵` 发送；`Esc` 忽略。任何输入都会让预测消失；切换会话、开始新的一轮或停止运行会取消或丢弃旧的预测。
+- 预测失败、超时、返回拒绝或复述上一句时什么都不显示；可以在 设置 → 通用 → 输入预测 关闭（默认开启）。
 
 ### 文件工具预览与附件
 
@@ -146,7 +158,7 @@ npm run test:desktop # 构建后用项目自带的 Electron 运行 Playwright �
 - `test/desktop/interactions.spec.ts`：临时配置目录中的真实 Electron 窗口，覆盖模型元数据编辑、价格 0、token 限制校验、文件菜单、预览引用、Diff 评论、随消息发送及历史回退 / 分支；`test/context-reference.test.ts` 覆盖引用格式、草稿隔离与恢复、容量限制。
 - `test/attachment-message.test.ts` / `test/attachments-backend.test.ts`：附件消息往返、校验限制、剪贴板格式（macOS / Windows / Linux）和图片规范化。
 - `test/tool-previews.test.ts` / `test/files.test.ts`：原生工具输出、行号 / 分页，以及文件边界、符号链接（需要系统允许创建符号链接）、二进制和大小限制。
-- `test/naming.test.ts`、`test/git-pr.test.ts`：命名规则、`gh pr view` 结果映射。
+- `test/naming.test.ts`、`test/suggest.test.ts`、`test/side-model.test.ts`、`test/git-pr.test.ts`：命名规则、输入预测的上下文裁剪与回复清洗、小模型挑选、`gh pr view` 结果映射。
 
 ## 打包与发布（macOS）
 

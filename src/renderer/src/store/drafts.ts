@@ -19,6 +19,8 @@ export interface Draft {
   references: ContextReference[];
   /** Bumped by every edit; a paste that lands after the user typed must not clobber the text. */
   revision: number;
+  /** Ghost text guessed after the last turn; shown only while the composer is empty. */
+  suggestion: string | null;
   preparing: number;
   sending: boolean;
   errors: string[];
@@ -32,7 +34,10 @@ interface DraftState {
 
 export const useDrafts = create<DraftState>()(immer(() => ({ drafts: {}, active: null })));
 
-const blank = (key: string): Draft => ({ key, text: '', attachments: [], references: [], revision: 0, preparing: 0, sending: false, errors: [], recoveries: [] });
+const blank = (key: string): Draft => ({ key, text: '', attachments: [], references: [], revision: 0, suggestion: null, preparing: 0, sending: false, errors: [], recoveries: [] });
+
+/** Composer drafts are keyed per session (and per welcome screen). */
+export const sessionDraftKey = (id: string) => `session:${id}`;
 
 function edit(key: string, fn: (d: Draft) => void) {
   useDrafts.setState((st) => {
@@ -59,6 +64,16 @@ export const drafts = {
       if (d.text === text) return;
       d.text = text;
       d.revision++;
+      d.suggestion = null;
+    });
+  },
+  setSuggestion(key: string, suggestion: string | null) {
+    edit(key, (d) => void (d.suggestion = suggestion));
+  },
+  /** The feature was turned off: no draft may keep showing a guess. */
+  clearSuggestions() {
+    useDrafts.setState((st) => {
+      for (const d of Object.values(st.drafts)) d.suggestion = null;
     });
   },
   insert(key: string, text: string, selection?: [number, number]) {
@@ -67,6 +82,7 @@ export const drafts = {
       const [start, end] = selection ?? [d.text.length, d.text.length];
       d.text = d.text.slice(0, start) + text + d.text.slice(end);
       d.revision++;
+      d.suggestion = null;
     });
   },
   error(key: string, err: unknown) {
@@ -139,7 +155,10 @@ export const drafts = {
     }
   },
   lock(key: string, sending: boolean) {
-    edit(key, (d) => void (d.sending = sending));
+    edit(key, (d) => {
+      d.sending = sending;
+      if (sending) d.suggestion = null;
+    });
   },
   clear(key: string) {
     edit(key, (d) => {
@@ -147,6 +166,7 @@ export const drafts = {
       d.attachments = [];
       d.references = [];
       d.errors = [];
+      d.suggestion = null;
       d.revision++;
     });
   },
@@ -167,6 +187,7 @@ export const drafts = {
         d.text = s.text;
         d.attachments = s.attachments.slice();
         d.references = s.references?.slice() ?? [];
+        d.suggestion = null;
         d.revision++;
       } else d.recoveries.push({ text: s.text, attachments: s.attachments.slice(), references: s.references?.slice(), label: s.label });
     });
@@ -179,6 +200,7 @@ export const drafts = {
       d.text = s.text;
       d.attachments = s.attachments.slice();
       d.references = s.references?.slice() ?? [];
+      d.suggestion = null;
       d.revision++;
     });
   },

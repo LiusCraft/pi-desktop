@@ -10,7 +10,8 @@ import { DESKTOP_COMMANDS, MODES, VIEW_MODES, type ViewMode } from '@/lib/consta
 import { fmtTok, relPath } from '@/lib/format';
 import { currentSession, getApp, isCowork, setApp, setPref, updateSession, type AppState } from './app';
 import { dialogs } from './dialogs';
-import { activeDraft, drafts, getDraft, useDrafts } from './drafts';
+import { activeDraft, drafts, getDraft, sessionDraftKey, useDrafts } from './drafts';
+import { primeSuggestion } from './predict';
 import {
   addUiRequest, applyPiEvent, applyViewMode, emptySession, findByKey, hasThinking, newKey, push, replay, resolveUi, settle, type Effects,
 } from './transcript';
@@ -20,7 +21,7 @@ export const fail = (err: unknown) => toast.error(errText(err));
 
 // ------------------------------------------------------------ drafts
 
-export const sessionDraftKey = (id: string) => `session:${id}`;
+export { sessionDraftKey };
 export function welcomeDraftKey(st: AppState = getApp()) {
   return st.view === 'cowork' ? `welcome:cowork:${st.prefs.coworkFolder || 'scratch'}` : `welcome:code:${st.prefs.project || 'none'}`;
 }
@@ -142,6 +143,9 @@ function runEffects(id: string, fx: Effects) {
     if (!isCur) updateSession(id, (x) => void (x.unread = true));
     call('app:notify', { title: s.meta.title, body: fx.settled.aborted ? 'Interrupted' : 'Claude finished', sessionId: id }).catch(() => {});
   }
+  // A finished turn is the moment the user is likely to type again. An interrupted
+  // run is not: there is no natural follow-up to guess.
+  if (fx.settled && !fx.settled.aborted) void primeSuggestion(id);
   if (fx.waiting && away) {
     if (!isCur || document.hidden) toast.warning(`“${s.meta.title}” 需要你的确认`);
     call('app:notify', { title: s.meta.title, body: 'Needs your approval', sessionId: id }).catch(() => {});

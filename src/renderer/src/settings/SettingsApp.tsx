@@ -3,9 +3,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { BrainIcon, FolderIcon, InfoIcon, MoonIcon, SettingsIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import type { AppInfo, Project, Settings, SettingsPayload } from '@shared/protocol';
+import type { AppInfo, ModelInfo, Project, Settings, SettingsPayload, SuggestionModelMode } from '@shared/protocol';
+import { SUGGESTION_DEFAULT_CONTEXT, SUGGESTION_MAX_CONTEXT } from '@shared/protocol';
 import { useCopy } from '@/components/common/Copy';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Toaster } from 'sonner';
 import { bridge, call, errText, isMac } from '@/lib/api';
@@ -26,6 +28,11 @@ const SECTIONS: { id: Section; label: string; icon: ReactNode }[] = [
 const normalizeSection = (s: string): Section => (s === 'keys' ? 'models' : (s as Section));
 const isSection = (s: string): s is Section => SECTIONS.some((x) => x.id === s || (x.id === 'models' && s === 'keys'));
 const revealLabel = isMac ? '在 Finder 中显示' : '在资源管理器中显示';
+const SUGGESTION_MODES: { id: SuggestionModelMode; label: string; hint: string }[] = [
+  { id: 'auto', label: '自动', hint: '同 provider 里单价最低的小模型' },
+  { id: 'session', label: '跟随会话', hint: '用会话当前的模型，更好但可能更贵' },
+  { id: 'fixed', label: '指定', hint: '固定使用下面选择的模型' },
+];
 
 function Row({ title, hint, children, col }: { title: ReactNode; hint?: ReactNode; children?: ReactNode; col?: boolean }) {
   return (
@@ -53,6 +60,63 @@ function ThemeOption({ id, label, current, onPick }: { id: 'light' | 'dark' | 's
       <span className={cn('h-16 w-24 rounded-lg border-2', swatch, id === current ? 'border-primary' : 'border-border')} />
       <span className={cn('text-xs', id === current ? 'font-medium' : 'text-muted-foreground')}>{label}</span>
     </button>
+  );
+}
+
+/** Number input that commits on blur or Enter, so a half-typed count is never saved. */
+function CountInput({ value, disabled, onCommit }: { value: number; disabled?: boolean; onCommit: (value: number) => void }) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  const commit = () => {
+    const next = Math.round(Number(text));
+    if (!Number.isFinite(next) || next < 1) return setText(String(value));
+    onCommit(Math.min(SUGGESTION_MAX_CONTEXT, next));
+  };
+  return (
+    <Input
+      type="number"
+      min={1}
+      max={SUGGESTION_MAX_CONTEXT}
+      value={text}
+      disabled={disabled}
+      aria-label="预测上下文条数"
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
+      className="h-8 w-16 text-center"
+    />
+  );
+}
+
+/** Models that can be pinned for prediction; the list is the ones with working credentials. */
+function SuggestionModelSelect({ value, onChange }: { value: string | null; onChange: (id: string | null) => void }) {
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  useEffect(() => {
+    const load = () => {
+      void call('models:list').then((r) => setModels(r.models.filter((m) => m.provider !== 'demo'))).catch(() => {});
+    };
+    load();
+    // A login or endpoint change in the models section refreshes this list too.
+    return bridge.on('host:event', (ev) => { if (ev.type === 'models_changed') load(); });
+  }, []);
+  const known = models.some((m) => `${m.provider}/${m.id}` === value);
+  return (
+    <select
+      value={value ?? ''}
+      onChange={(e) => onChange(e.target.value || null)}
+      aria-label="预测使用的模型"
+      className="h-8 w-64 shrink-0 rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+    >
+      <option value="">未指定（回退到自动）</option>
+      {value && !known && <option value={value}>{value}（不可用）</option>}
+      {[...new Set(models.map((m) => m.provider))].map((provider) => (
+        <optgroup key={provider} label={provider}>
+          {models.filter((m) => m.provider === provider).map((m) => (
+            <option key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>{m.name || m.id}</option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
   );
 }
 
@@ -150,11 +214,46 @@ export function SettingsApp() {
   } else if (section === 'general') {
     body = (
       <>
-        <Heading title="通用" sub="通知与默认视图。" />
+        <Heading title="通用" sub="通知、输入预测与默认视图。" />
         <Panel>
           <Row title="任务通知" hint="任务跑完且窗口不在最前面时，发送系统通知。">
             <Switch checked={settings.notify !== false} onCheckedChange={(v) => void patch({ notify: v })} />
           </Row>
+          <Row title="输入预测" hint="每轮任务结束后用一个模型猜你下一句想说什么，以灰色文字显示在空输入框里。按 → 或 Tab 采用，Esc 忽略。">
+            <Switch checked={settings.suggestions !== false} onCheckedChange={(v) => void patch({ suggestions: v })} />
+          </Row>
+          {settings.suggestions !== false && (
+            <>
+              <Row title="预测模型" hint="自动 = 同 provider 里最便宜的小模型，跟随会话 = 会话当前模型，指定 = 固定一个模型；不可用时都回退到自动。离线 Demo 模型不参与预测。">
+                <div className="flex shrink-0 rounded-lg bg-muted p-0.5 text-sm">
+                  {SUGGESTION_MODES.map((m) => (
+                    <button
+                      key={m.id}
+                      title={m.hint}
+                      onClick={() => void patch({ suggestionModel: m.id })}
+                      className={cn('rounded-md px-3 py-1', (settings.suggestionModel ?? 'auto') === m.id ? 'bg-background shadow-sm' : 'text-muted-foreground')}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </Row>
+              {(settings.suggestionModel ?? 'auto') === 'fixed' && (
+                <Row title="指定模型" hint="只列出当前可用（已配置凭据）的模型。">
+                  <SuggestionModelSelect value={settings.suggestionModelId ?? null} onChange={(id) => void patch({ suggestionModelId: id })} />
+                </Row>
+              )}
+              <Row title="预测上下文" hint="带上最近多少条 user / assistant 消息（不含工具输出），最多 50 条。">
+                <div className="flex shrink-0 items-center gap-2">
+                  <CountInput value={settings.suggestionContext ?? SUGGESTION_DEFAULT_CONTEXT} disabled={!!settings.suggestionFullContext} onCommit={(n) => void patch({ suggestionContext: n })} />
+                  <span className="text-sm text-muted-foreground">条</span>
+                </div>
+              </Row>
+              <Row title="全部上下文" hint="发送整段 user / assistant 对话，并按预测模型的上下文窗口截断。">
+                <Switch checked={!!settings.suggestionFullContext} onCheckedChange={(v) => void patch({ suggestionFullContext: v })} />
+              </Row>
+            </>
+          )}
           <Row title="默认分区" hint="第一次启动时打开的视图；之后会记住你最后切换到的分区。">
             <div className="flex rounded-lg bg-muted p-0.5 text-sm">
               {(['code', 'cowork'] as const).map((m) => (

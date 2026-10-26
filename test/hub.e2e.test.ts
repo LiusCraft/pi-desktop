@@ -269,6 +269,14 @@ describe('code sessions', { timeout: 120_000 }, () => {
     driver.hub.update(meta.id, { title: 'Dates' });
     expect(driver.hub.meta(meta.id)).toMatchObject({ title: 'Dates', titleLocked: true, autoName: false });
   });
+
+  it('skips next-message prediction when only the offline demo model exists', async () => {
+    const { meta } = await codeSession();
+    await driver.hub.open(meta.id);
+    expect(await driver.hub.suggest(meta.id, { model: 'auto', context: 6 })).toBeNull();
+    expect(await driver.hub.suggest(meta.id, { model: 'session', context: 'all' })).toBeNull();
+    expect(await driver.hub.suggest(meta.id, { model: 'fixed', modelId: 'demo/demo-coder', context: 6 })).toBeNull();
+  });
 });
 
 describe('cowork sessions', { timeout: 120_000 }, () => {

@@ -390,9 +390,24 @@ export type AuthEvent =
   | { type: 'progress'; message: string };
 
 export type ThemeSetting = 'light' | 'dark' | 'system';
+/** How the next-message prediction picks its model. */
+export type SuggestionModelMode = 'auto' | 'session' | 'fixed';
+/** Default and maximum conversation depth of a prediction (number of messages). */
+export const SUGGESTION_DEFAULT_CONTEXT = 6;
+export const SUGGESTION_MAX_CONTEXT = 50;
 export interface Settings {
   theme: ThemeSetting | null;
   notify: boolean;
+  /** After a turn settles, predict the user's next message as ghost text in the composer. */
+  suggestions: boolean;
+  /** auto: cheapest model of the session's provider; session: its own model; fixed: `suggestionModelId`. */
+  suggestionModel: SuggestionModelMode;
+  /** provider/model id used by `suggestionModel: 'fixed'`; unavailable ids fall back to auto. */
+  suggestionModelId: string | null;
+  /** User/assistant messages sent with a prediction (tool output is never included). */
+  suggestionContext: number;
+  /** Send the whole conversation instead of the last `suggestionContext` messages. */
+  suggestionFullContext: boolean;
   defaultMode: SessionKind;
   sidebarCollapsed: boolean;
   /** The composer pet: shown or not, and which skin (see PET_SKINS in the renderer). */
@@ -401,6 +416,15 @@ export interface Settings {
 }
 export interface SettingsPayload extends Settings {
   resolvedTheme: 'light' | 'dark';
+}
+
+/** Options for one next-message prediction request. */
+export interface SuggestionOptions {
+  model: SuggestionModelMode;
+  /** provider/model id used when `model` is 'fixed'. */
+  modelId?: string | null;
+  /** User/assistant messages to include, or 'all' for the whole conversation. */
+  context: number | 'all';
 }
 export interface AppInfo {
   platform: string;
@@ -467,6 +491,8 @@ export interface Api {
   'sessions:setModel'(id: string, model: string): { levels: ThinkingLevel[]; thinking: ThinkingLevel };
   'sessions:setThinking'(id: string, level: ThinkingLevel): void;
   'sessions:commands'(id: string): SlashCommand[];
+  /** One tool-less request that guesses the user's next message; null when unavailable. */
+  'sessions:suggest'(id: string, options: SuggestionOptions): { text: string } | null;
   'sessions:bash'(id: string, command: string): { output: string; exitCode: number | undefined };
   'sessions:changes'(id: string): ChangeSet;
   'sessions:pr'(id: string): PrStatus | null;
@@ -503,7 +529,7 @@ export const HOST_CHANNELS = [
   'sessions:list', 'sessions:create', 'sessions:open', 'sessions:prompt', 'sessions:respond',
   'sessions:setMode', 'sessions:setStyle', 'sessions:update', 'sessions:archive', 'sessions:abort',
   'sessions:clearQueue', 'sessions:newContext', 'sessions:compact', 'sessions:stats', 'sessions:exportHtml',
-  'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:bash',
+  'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:bash',
   'sessions:changes', 'sessions:pr', 'sessions:files', 'sessions:readFile', 'sessions:readImage',
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
   'sessions:import', 'git:branch', 'models:list', 'models:levels',

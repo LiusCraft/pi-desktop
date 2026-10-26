@@ -10,7 +10,7 @@ import { DESKTOP_COMMANDS } from '@/lib/constants';
 import { fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { cycleMode, loadFiles, send } from '@/store/actions';
-import { currentSession, getApp } from '@/store/app';
+import { currentSession, getApp, useApp } from '@/store/app';
 import { drafts, getDraft, useDrafts } from '@/store/drafts';
 
 /** Extract clipboard text from a sanitized, detached fragment. */
@@ -86,24 +86,52 @@ export interface ComposerHandle {
   focus(): void;
 }
 
+/** The gray next-message guess drawn under the empty textarea. */
+function SuggestionGhost({ text, ghostRef }: { text: string; ghostRef: React.Ref<HTMLDivElement> }) {
+  return (
+    <div
+      ref={ghostRef}
+      aria-hidden
+      data-testid="composer-ghost"
+      // Same metrics as the textarea, but it only ever holds a guess.
+      className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words leading-relaxed"
+    >
+      <span className="text-muted-foreground/70">{text}</span>
+      <span className="ml-2 whitespace-nowrap text-[11px] text-muted-foreground/40">→ Tab</span>
+    </div>
+  );
+}
+
+/** → at the end of an empty box and Tab accept the guess; modified arrows keep their own job. */
+const acceptsGhost = (e: KeyboardEvent<HTMLTextAreaElement>) =>
+  (e.key === 'ArrowRight' || e.key === 'Tab') && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey;
+
 export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; className?: string; minRows?: number; maxHeight?: number; onDragState?: (over: boolean) => void }>(
   function ComposerInput({ placeholder, className, minRows = 1, maxHeight = 260, onDragState }, ref) {
     const key = useDrafts((s) => s.active);
     const draft = useDrafts((s) => (s.active ? s.drafts[s.active] : undefined));
+    const running = useApp((s) => (s.current ? s.sessions[s.current]?.running : false));
     const input = useRef<HTMLTextAreaElement>(null);
+    const ghost = useRef<HTMLDivElement>(null);
     const [items, setItems] = useState<Suggestion[]>([]);
     const [sel, setSel] = useState(0);
     const menu = useRef<HTMLDivElement>(null);
     const request = useRef(0);
     useImperativeHandle(ref, () => ({ focus: () => input.current?.focus() }));
 
-    // Grow with the text, up to a limit.
+    // The guess only makes sense while the session is idle and the draft is empty:
+    // typing or a new turn replaces it.
+    const suggestion = draft && !draft.text && !draft.sending && !running ? draft.suggestion : null;
+
+    // Grow with the text, up to a limit. A wrapped guess grows the box too, so the
+    // whole prediction is visible before it is accepted.
     useEffect(() => {
       const el = input.current;
       if (!el) return;
       el.style.height = 'auto';
-      el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
-    }, [draft?.text, maxHeight]);
+      const height = Math.max(el.scrollHeight, ghost.current?.scrollHeight ?? 0);
+      el.style.height = `${Math.min(height, maxHeight)}px`;
+    }, [draft?.text, suggestion, maxHeight]);
     useEffect(() => {
       input.current?.focus();
     }, [key]);
@@ -146,6 +174,18 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
       setItems([]);
     };
 
+    /** Promote the ghost text into a real draft, ready to edit or send. */
+    const acceptSuggestion = () => {
+      if (!key || !suggestion) return;
+      drafts.setText(key, suggestion);
+      requestAnimationFrame(() => {
+        const el = input.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(suggestion.length, suggestion.length);
+      });
+    };
+
     const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (items.length) {
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -165,6 +205,21 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
       if (e.key === 'Tab' && e.shiftKey) {
         e.preventDefault();
         return cycleMode();
+      }
+      // Ghost text: → at the end of an empty box and Tab have no other job here.
+      if (suggestion && !e.nativeEvent.isComposing) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          if (key) drafts.setSuggestion(key, null);
+          return;
+        }
+        const el = e.currentTarget;
+        const atEnd = el.selectionStart === el.value.length && el.selectionEnd === el.value.length;
+        if (atEnd && acceptsGhost(e)) {
+          e.preventDefault();
+          return acceptSuggestion();
+        }
       }
       if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault();
@@ -256,36 +311,40 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
             ))}
           </div>
         )}
-        <textarea
-          ref={input}
-          rows={minRows}
-          value={draft.text}
-          readOnly={draft.sending}
-          placeholder={placeholder}
-          onChange={(e) => {
-            drafts.setText(key, e.target.value);
-            void suggest();
-          }}
-          onClick={() => void suggest()}
-          onBlur={() => setTimeout(() => setItems([]), 120)}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
-          onDragOver={(e: DragEvent) => {
-            if ([...e.dataTransfer.types].includes('Files')) {
+        <div className="relative">
+          {suggestion && <SuggestionGhost text={suggestion} ghostRef={ghost} />}
+          <textarea
+            ref={input}
+            rows={minRows}
+            value={draft.text}
+            readOnly={draft.sending}
+            aria-label={placeholder}
+            placeholder={suggestion ? '' : placeholder}
+            onChange={(e) => {
+              drafts.setText(key, e.target.value);
+              void suggest();
+            }}
+            onClick={() => void suggest()}
+            onBlur={() => setTimeout(() => setItems([]), 120)}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+            onDragOver={(e: DragEvent) => {
+              if ([...e.dataTransfer.types].includes('Files')) {
+                e.preventDefault();
+                onDragState?.(true);
+              }
+            }}
+            onDragLeave={() => onDragState?.(false)}
+            onDrop={(e: DragEvent) => {
+              onDragState?.(false);
+              const files = [...e.dataTransfer.files];
+              if (!files.length || draft.sending) return;
               e.preventDefault();
-              onDragState?.(true);
-            }
-          }}
-          onDragLeave={() => onDragState?.(false)}
-          onDrop={(e: DragEvent) => {
-            onDragState?.(false);
-            const files = [...e.dataTransfer.files];
-            if (!files.length || draft.sending) return;
-            e.preventDefault();
-            void importFiles(key, files);
-          }}
-          className="block w-full resize-none bg-transparent leading-relaxed outline-none placeholder:text-muted-foreground"
-        />
+              void importFiles(key, files);
+            }}
+            className="relative block w-full resize-none bg-transparent leading-relaxed outline-none placeholder:text-muted-foreground"
+          />
+        </div>
       </div>
     );
   },

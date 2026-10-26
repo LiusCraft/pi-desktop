@@ -12,7 +12,7 @@ import { bridge, call, isMac } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 import { answerUi, bootstrap, cycleViewMode, fail, handleHostEvent, openSession, showWelcome, stop, toggleSidebar, togglePanel } from '@/store/actions';
 import { currentSession, getApp, setApp, useApp } from '@/store/app';
-import { activeDraft } from '@/store/drafts';
+import { activeDraft, drafts } from '@/store/drafts';
 import { useDialogs } from '@/store/dialogs';
 
 function useShortcuts() {
@@ -79,7 +79,11 @@ export function App() {
 
   useEffect(() => {
     const offHost = bridge.on('host:event', handleHostEvent);
-    const offSettings = bridge.on('settings:changed', (settings) => setApp((s) => void (s.settings = settings)));
+    const offSettings = bridge.on('settings:changed', (settings) => {
+      setApp((s) => void (s.settings = settings));
+      // Turning the feature off takes effect immediately, not after the next turn.
+      if (settings.suggestions === false) drafts.clearSuggestions();
+    });
     const offFocus = bridge.on('session:focus', (id) => void openSession(id));
     bootstrap().catch(fail);
     return () => {

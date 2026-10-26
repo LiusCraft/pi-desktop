@@ -67,6 +67,7 @@ const handlers: Record<HostMethod, Handler> = {
   'sessions:setModel': withHub((h, id, model) => h.setModel(id, model)),
   'sessions:setThinking': withHub((h, id, level) => h.setThinking(id, level)),
   'sessions:commands': withHub((h, id) => h.commands(id)),
+  'sessions:suggest': withHub((h, id, options) => h.suggest(id, options)),
   'sessions:bash': withHub((h, id, command) => h.bash(id, command)),
   'sessions:changes': withHub((h, id) => h.changes(id)),
   'sessions:pr': withHub((h, id) => h.prStatus(id)),

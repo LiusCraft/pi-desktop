@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, Notification, shell } from 'electron';
 import {
-  HOST_CHANNELS, MAIN_CHANNELS,
+  HOST_CHANNELS, MAIN_CHANNELS, SUGGESTION_DEFAULT_CONTEXT,
   type ApiArgs, type ApiResult, type BootPayload, type HostEvent, type Project, type PushChannel, type PushEvents,
   type Settings, type SettingsPayload,
 } from '@shared/protocol';
@@ -81,7 +81,11 @@ function ensureDemoProject() {
 
 // Preferences live in one place so every window reads the same values.
 // `theme: null` means "not chosen yet": follow the system.
-const DEFAULT_SETTINGS: Settings = { theme: null, notify: true, defaultMode: 'code', sidebarCollapsed: false, pet: true, petSkin: 'clawd' };
+const DEFAULT_SETTINGS: Settings = {
+  theme: null, notify: true, suggestions: true,
+  suggestionModel: 'auto', suggestionModelId: null, suggestionContext: SUGGESTION_DEFAULT_CONTEXT, suggestionFullContext: false,
+  defaultMode: 'code', sidebarCollapsed: false, pet: true, petSkin: 'clawd',
+};
 
 function settingsValue(): Settings {
   return { ...DEFAULT_SETTINGS, ...store.get<Partial<Settings>>('settings', {}) };
