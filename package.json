@@ -23,6 +23,9 @@
     "pack:mac": "npm run build && electron-builder --mac --dir",
     "dist:mac": "npm run build && electron-builder --mac dmg --publish never",
     "publish:mac": "npm run build && electron-builder --mac dmg --publish always",
+    "pack:win": "npm run build && electron-builder --win --dir",
+    "dist:win": "npm run build && electron-builder --win nsis --publish never",
+    "publish:win": "npm run build && electron-builder --win nsis --publish always",
     "dist": "npm run build && electron-builder"
   },
   "dependencies": {

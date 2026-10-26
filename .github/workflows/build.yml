@@ -46,3 +46,35 @@ jobs:
           codesign --verify --strict "dist/mac-arm64/Pi Desktop.app"
           size=$(du -sh "dist/mac-arm64/Pi Desktop.app" | cut -f1)
           echo "packaged app ok: $size"
+
+  pack-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck and test
+        run: npm run typecheck && npm test
+
+      - name: Pack
+        run: npm run pack:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Assert the packaged app can find pi and the extensions
+        shell: bash
+        run: |
+          app="dist/win-unpacked/resources/app"
+          test -f "$app/node_modules/@earendil-works/pi-coding-agent/package.json"
+          test -f "$app/out/main/index.mjs"
+          test -f "$app/out/main/agent.mjs"
+          test -f "$app/out/preload/index.js"
+          test -f "$app/out/renderer/index.html"
+          test -f "dist/win-unpacked/Pi Desktop.exe"
+          echo "packaged app ok: $(du -sh dist/win-unpacked | cut -f1)"

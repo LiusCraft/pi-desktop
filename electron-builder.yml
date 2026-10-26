@@ -1,4 +1,4 @@
-# macOS packaging. Run it through `make` (see Makefile) or electron-builder.
+# macOS + Windows packaging. Run it through `make` (see Makefile) or electron-builder.
 #
 # The pi SDK runs inside the agent host (an Electron utilityProcess). It loads its
 # own assets, user extensions (through jiti) and prebuilt .node binaries from
@@ -12,12 +12,19 @@ directories:
   buildResources: build
 
 # `npm run build` (electron-vite) must run first; the scripts in package.json do.
+# demo/ stays out of the package: the offline demo only runs unpackaged (dev, tests).
 files:
   - out/**
-  - demo/**
   - package.json
+  # Dependency leftovers nothing loads at runtime: sourcemaps and type declarations.
+  - '!**/node_modules/**/*.map'
+  - '!**/node_modules/**/*.d.{ts,mts,cts}'
 
 asar: false
+# Chromium locale packs are ~45 MB; the UI only ships zh-CN and en.
+electronLanguages:
+  - en-US
+  - zh-CN
 # No native modules are compiled at install time: pi-tui ships prebuilt .node
 # binaries and everything else is WASM, so a rebuild only adds node-gyp noise.
 npmRebuild: false
@@ -52,10 +59,23 @@ dmg:
       type: link
       path: /Applications
 
-# Not maintained right now (macOS only); kept so the config describes them.
 win:
-  target: nsis
+  # electron-builder converts the 1024px png into a multi-size .ico.
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch:
+        - x64
+  # No code signing by default; set CSC_LINK / CSC_KEY_PASSWORD (or WIN_CSC_*) to sign.
+  artifactName: Pi-Desktop-${version}-win-${arch}-setup.${ext}
 
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+
+# Not maintained right now; kept so the config describes it.
 linux:
   target: AppImage
 

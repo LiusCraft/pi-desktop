@@ -1,6 +1,10 @@
-# macOS build & release. CI runs the same npm scripts, so a local build and a
+# macOS build & release (win-* targets cover Windows). CI runs the same npm scripts, so a local build and a
 # released build differ only in signing credentials.
+# Windows: leave SHELL alone, make uses sh when it is on PATH (Git Bash) and cmd.exe otherwise,
+# so every recipe and $(shell) below sticks to node / npm instead of POSIX tools.
+ifneq ($(OS),Windows_NT)
 SHELL := /bin/sh
+endif
 
 NPM ?= npm
 PRODUCT := Pi Desktop
@@ -11,7 +15,7 @@ ARCH ?= $(shell node -p "process.arch")
 DIST := dist
 # electron-builder's macOS layout: arm64 builds land in dist/mac-arm64, x64 in
 # dist/mac. The suffix keeps the paths below free of make conditionals.
-ARCH_DIR_SUFFIX := $(shell [ "$(ARCH)" = "arm64" ] && echo -arm64)
+ARCH_DIR_SUFFIX := $(if $(filter arm64,$(ARCH)),-arm64)
 APP_DIR := $(DIST)/mac$(ARCH_DIR_SUFFIX)
 APP := $(APP_DIR)/$(PRODUCT).app
 DMG := $(DIST)/Pi-Desktop-$(CURRENT_VERSION)-$(ARCH).dmg
@@ -21,8 +25,7 @@ DMG := $(DIST)/Pi-Desktop-$(CURRENT_VERSION)-$(ARCH).dmg
 	release publish clean distclean
 
 help: ## Show this help
-	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) \
-		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
+	@node scripts/make-help.mjs $(MAKEFILE_LIST)
 
 check-darwin:
 	@[ "$$(uname -s)" = "Darwin" ] || { echo "error: macOS only"; exit 1; }
@@ -57,6 +60,14 @@ dmg: check-darwin ## Build a dmg for the host architecture
 dist: check-darwin ## Build dmgs for both arm64 and x64
 	$(NPM) run dist:mac -- --arm64 --x64
 	@ls -lh $(DIST)/Pi-Desktop-*.dmg
+
+win-app: ## Build an unpacked Windows app (dist/win-unpacked)
+	$(NPM) run pack:win
+	@echo Built $(DIST)/win-unpacked/$(PRODUCT).exe
+
+win-installer: ## Build the Windows NSIS installer (x64)
+	$(NPM) run dist:win
+	@echo Built $(DIST)/Pi-Desktop-$(CURRENT_VERSION)-win-x64-setup.exe
 
 release: check-darwin ## Bump version, commit, tag and push (CI publishes)
 	@test -n "$(VERSION)" || { echo "usage: make release VERSION=0.2.0"; exit 1; }

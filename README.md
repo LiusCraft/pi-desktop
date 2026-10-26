@@ -11,11 +11,11 @@
 npm install
 npm run dev        # electron-vite 开发模式（界面热更新）
 npm run build && npm start   # 构建后运行
-npm run build && npm run demo  # 打开内置演示项目，默认使用离线演示模型
+npm run build && npm run demo  # 打开内置演示项目，默认使用离线演示模型（仅未打包运行可用）
 ```
 
 - 需要 Node 22.12+（构建与测试用）；运行时 agent 跑在 Electron 自带的 Node 上。
-- 首次启动会把 `demo/todo-app`（Code 演示项目）和 `demo/cowork-workspace`（Cowork 演示文件夹：收件箱、日程、待办）复制到 `~/.pi-desktop/demo`。不配置任何 API Key 也能用 **Demo (offline)** 模型体验完整流程。
+- 离线 demo 只在未打包运行（`npm run dev` / `npm run demo` / 测试）时启用，打包产物不含 `demo/` 目录也不注册 demo 模型。启动时会把 `demo/todo-app`（Code 演示项目）和 `demo/cowork-workspace`（Cowork 演示文件夹：收件箱、日程、待办）复制到 `~/.pi-desktop/demo`。不配置任何 API Key 也能用 **Demo (offline)** 模型体验完整流程。
 - 接真实模型：打开设置（`Ctrl/⌘+,`）→ **模型管理**，和 pi CLI 用同一套配置：
   - **账号登录**：Anthropic（Claude Pro/Max）、OpenAI（ChatGPT）、GitHub Copilot、xAI、Meta、Kimi、OpenRouter、Radius 等 provider 的 OAuth 登录，浏览器授权或设备码，凭证写入 `~/.pi/agent/auth.json`。
   - **API 密钥**：所有支持密钥的 provider，交互流程和 pi 的 `/login` 完全一致（包括需要多个环境变量的 provider）。
@@ -177,9 +177,23 @@ npm run test:desktop # 构建后用项目自带的 Electron 运行 Playwright �
 - `test/tool-previews.test.ts` / `test/files.test.ts`：原生工具输出、行号 / 分页，以及文件边界、符号链接（需要系统允许创建符号链接）、二进制和大小限制。
 - `test/naming.test.ts`、`test/suggest.test.ts`、`test/side-model.test.ts`、`test/git-pr.test.ts`：命名规则、输入预测的上下文裁剪与回复清洗、小模型挑选、`gh pr view` 结果映射。
 
-## 打包与发布（macOS）
+## 打包与发布（macOS / Windows）
 
-只维护 macOS。构建走 `Makefile`（CI 调的是同一批 npm 脚本），需要 macOS + Xcode 命令行工具（`xcode-select --install`，`codesign` / `iconutil` / `sips` / `hdiutil` 都在里面）和 Node 22.19+。
+### Windows
+
+需要 Windows + Node 22.19+，不需要额外工具链（NSIS 由 electron-builder 自动下载）。
+
+```powershell
+npm ci
+npm run pack:win       # 只出 dist/win-unpacked/Pi Desktop.exe，最快
+npm run dist:win       # NSIS 安装包 dist/Pi-Desktop-<版本>-win-x64-setup.exe
+```
+
+默认未签名（安装时会有 SmartScreen 提示）。要签名就设 `CSC_LINK`（pfx 路径或 base64）和 `CSC_KEY_PASSWORD`；CI 里对应仓库 secret `WIN_CERT_PFX` / `WIN_CERT_PASSWORD`。tag 推送时 `release.yml` 的 `windows` job 会把安装包挂到同名 Release。
+
+### macOS
+
+构建走 `Makefile`（CI 调的是同一批 npm 脚本），需要 macOS + Xcode 命令行工具（`xcode-select --install`，`codesign` / `iconutil` / `sips` / `hdiutil` 都在里面）和 Node 22.19+。
 
 ```bash
 make help              # 列出所有目标
