@@ -58,6 +58,17 @@ describe('app paths', () => {
   it('expands only a leading ~', () => {
     expect(expandHome('~')).toBe(os.homedir());
     expect(expandHome('~/.pi-desktop')).toBe(path.join(os.homedir(), '.pi-desktop'));
-    expect(expandHome('/x/~/y')).toBe(path.join(path.sep, 'x', '~', 'y'));
+    // Both separators count as "the start of a path" after `~`, so a Windows-style value expands too.
+    expect(expandHome('~\\custom-agent')).toBe(path.join(os.homedir(), 'custom-agent'));
+
+    // Anything else comes back byte-identical: no normalization, no separator rewriting, no
+    // path.resolve. A `~` that is not the first character is just a literal path segment.
+    expect(expandHome('/x/~/y')).toBe('/x/~/y');
+    expect(expandHome('C:\\x\\~\\y')).toBe('C:\\x\\~\\y');
+    expect(expandHome('docs/~/notes.md')).toBe('docs/~/notes.md');
+    // `~user` is the shell's "some other home", not ours to guess at.
+    expect(expandHome('~user/docs')).toBe('~user/docs');
+    // Surrounding whitespace from a hand-edited settings.json is dropped; nothing else changes.
+    expect(expandHome('  /x/~/y  ')).toBe('/x/~/y');
   });
 });
