@@ -300,6 +300,16 @@
   font-size: 12px;
   line-height: 1.6;
 }
+/* Rows and transcript items far outside the viewport skip layout and paint; `auto` remembers
+   the real height once seen, so long diffs, files and threads scroll without re-laying out everything. */
+.code-lines > [data-code-entry] {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1.6lh;
+}
+.transcript-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 5rem;
+}
 .code-row {
   display: grid;
   grid-template-columns: 3.4em 1.2em minmax(0, 1fr);

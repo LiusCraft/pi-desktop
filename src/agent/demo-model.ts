@@ -9,7 +9,7 @@
  * model in the UI.
  *
  * One provider serves every session in the agent host, so it keeps no session
- * state: Cowork is recognised from the system prompt and plan mode from the
+ * state: Work is recognised from the system prompt and plan mode from the
  * marker message desktop-kit injects into the turn.
  */
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
@@ -20,7 +20,7 @@ import {
 	fauxThinking as think,
 	fauxToolCall as call,
 } from "@earendil-works/pi-ai";
-import { COWORK_MARKER, PLAN_MODE_MARKER } from "./desktop-kit";
+import { WORK_MARKER, PLAN_MODE_MARKER } from "./desktop-kit";
 
 type Block = ReturnType<typeof text> | ReturnType<typeof think> | ReturnType<typeof call>;
 type Step = (r: Run) => Block[];
@@ -264,7 +264,7 @@ const scenarios: Scenario[] = [
 ];
 
 
-// ---------------------------------------------------------------- cowork scenarios
+// ---------------------------------------------------------------- work scenarios
 const today = () => {
 	const d = new Date();
 	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -272,7 +272,7 @@ const today = () => {
 const INBOX = ["01-季度预算审批.txt", "02-周会改期.txt", "03-差旅发票.txt", "04-行业周刊.txt", "05-客户反馈.txt"];
 const INBOX_TODOS = ["读取收件箱里的邮件", "按紧急程度归类并起草回复", "写出整理结果", "归档不需要处理的邮件"];
 
-const coworkScenarios: Scenario[] = [
+const workScenarios: Scenario[] = [
 	{
 		match: (p) => /收件箱|inbox/i.test(p) || (/邮件/.test(p) && !/简报|briefing/i.test(p)),
 		steps: [
@@ -352,7 +352,7 @@ const coworkScenarios: Scenario[] = [
 
 最重要的两件事：**中午前补齐 Q4 预算的市场明细**，以及在 16:30 回访前准备好**星河科技导出问题的修复时间表**。
 
-每个工作日自动发送需要 Scheduled（定时任务）功能，Pi Desktop 里这个功能还没上线；现在可以每天早上对我说“生成今天的简报”。`),
+想每个工作日早上自动收到，可以在侧边栏的 Scheduled 里新建一个定时任务，指令写“生成今天的简报”。`),
 			],
 		],
 	},
@@ -361,12 +361,12 @@ const coworkScenarios: Scenario[] = [
 		steps: [
 			() => [call("ls", { path: "." }), call("read", { path: "README.md" }), call("read", { path: "todo.md" })],
 			() => [
-				text(`看了一下这个文件夹，你的工作主要是**邮件处理、日程安排和报表**。建议这样用 Cowork：
+				text(`看了一下这个文件夹，你的工作主要是**邮件处理、日程安排和报表**。建议这样用 Work：
 
-1. **把常用文件夹设为项目**：例如这个工作区，Cowork 每次都能直接读到收件箱和待办
+1. **把常用文件夹设为项目**：例如这个工作区，Work 每次都能直接读到收件箱和待办
 2. **每天早上**：“生成今天的简报”——汇总日程、待办和紧急邮件
 3. **处理邮件**：“整理收件箱并起草回复”——按紧急程度分类，草稿写进文件，不会自动发送
-4. **报表类工作**：把原始数据放进文件夹，让 Cowork 生成 CSV/Markdown 报表
+4. **报表类工作**：把原始数据放进文件夹，让 Work 生成 CSV/Markdown 报表
 
 想接入真实的日历和邮箱，可以给 pi 安装对应的 MCP 服务器或扩展（\`~/.pi/agent/mcp.json\`）。`),
 			],
@@ -374,11 +374,11 @@ const coworkScenarios: Scenario[] = [
 	},
 ];
 
-const COWORK_GREETING = `你好！这里是 **Cowork**，现在用的是离线演示模型，会用真实工具操作你选的文件夹。可以试试：
+const WORK_GREETING = `你好！这里是 **Work**，现在用的是离线演示模型，会用真实工具操作你选的文件夹。可以试试：
 
 - 「帮我整理收件箱：归类、标记需要回复的邮件，并起草回复」——移动文件前会请你确认
 - 「每个工作日早上给我发一份简报」——读取日程、待办和邮件，生成简报文件
-- 「根据我的工作方式，帮我定制 Cowork」
+- 「根据我的工作方式，帮我定制 Work」
 
 切换到真实模型后，就由真正的 LLM 来完成任务。`;
 
@@ -419,10 +419,10 @@ function respond(context: any) {
 	const denied = latest.find((m) => m.isError && /denied|Plan mode|blocked|no UI/i.test(contentText(m)));
 	if (denied) return msg("好的，这一步我不执行了。你希望我换一种做法，还是先停在这里？");
 
-	const cowork = messages.some((m) => m.role === "system" && JSON.stringify(m).includes(COWORK_MARKER)) && !prompt.startsWith(SUBAGENT_MARK);
+	const work = messages.some((m) => m.role === "system" && JSON.stringify(m).includes(WORK_MARKER)) && !prompt.startsWith(SUBAGENT_MARK);
 	const planMode = after.some((m) => m.role === "user" && contentText(m).startsWith(PLAN_MODE_MARKER));
-	const sc = (cowork ? coworkScenarios : scenarios).find((s) => s.match(prompt));
-	if (!sc) return msg(cowork ? COWORK_GREETING : GREETING);
+	const sc = (work ? workScenarios : scenarios).find((s) => s.match(prompt));
+	if (!sc) return msg(work ? WORK_GREETING : GREETING);
 
 	// Plan mode: insert an pidesk_exit_plan_mode call before the first editing step.
 	const planCalls = assistants.filter((a) => (a.content ?? []).some((c: any) => c.type === "toolCall" && c.name === "pidesk_exit_plan_mode")).length;

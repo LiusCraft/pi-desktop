@@ -16,7 +16,7 @@ export function CommandPalette() {
   const list = Object.values(sessions).filter((s) => !s.meta.archived).sort((a, b) => (b.meta.updatedAt || 0) - (a.meta.updatedAt || 0)).slice(0, 40);
   const actions: { label: string; hint?: string; run: () => unknown }[] = [
     { label: 'New session', hint: 'Code', run: () => { setView('code'); showWelcome(); } },
-    { label: 'New task', hint: 'Cowork', run: () => { setView('cowork'); showWelcome(); } },
+    { label: 'New task', hint: 'Work', run: () => { setView('work'); showWelcome(); } },
     { label: 'Open folder…', run: () => void addProject() },
     { label: 'Toggle diff', hint: `${modKey}D`, run: () => { const s = currentSession(); if (s) togglePanel(s.meta.id, 'diff'); } },
     { label: 'Toggle terminal', run: () => { const s = currentSession(); if (s) togglePanel(s.meta.id, 'terminal'); } },
@@ -34,7 +34,7 @@ export function CommandPalette() {
             {list.map((s) => (
               <CommandItem key={s.meta.id} value={`${s.meta.title} ${s.meta.id}`} onSelect={() => run(() => void openSession(s.meta.id))}>
                 <span className="truncate">{s.meta.title}</span>
-                <CommandShortcut>{s.meta.kind === 'cowork' ? 'Cowork' : fname(s.meta.projectPath)} · {ago(s.meta.updatedAt || Date.now())}</CommandShortcut>
+                <CommandShortcut>{s.meta.kind === 'work' ? 'Work' : fname(s.meta.projectPath)} · {ago(s.meta.updatedAt || Date.now())}</CommandShortcut>
               </CommandItem>
             ))}
           </CommandGroup>

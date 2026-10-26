@@ -1,6 +1,6 @@
 /**
  * Subagent identities for the `pidesk_task` tool: the built-in ones below plus any
- * `<app data>/agents/*.md` the user adds (Settings → 子代理 edits those files). An
+ * `<app data>/agents/*.md` the user adds (Customize → Subagents edits those files). An
  * identity is a system-prompt addendum, an optional model and an optional tool
  * allowlist; every subagent still runs in plan mode, so configuration can never widen
  * what it is allowed to change.

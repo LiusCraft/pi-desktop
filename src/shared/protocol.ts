@@ -6,8 +6,9 @@
 // forwarded unchanged to the agent host; the rest are handled by the main process.
 // Host → renderer traffic is a single stream of `HostEvent`s.
 import type { Attachment, DecodedUserContent, PromptSubmission } from './attachments';
+import type { ScheduledTask, TaskDraft } from './schedule';
 
-export type SessionKind = 'code' | 'cowork';
+export type SessionKind = 'code' | 'work';
 export type PermissionMode = 'auto' | 'default' | 'acceptEdits' | 'plan' | 'bypass';
 export type OutputStyle = 'default' | 'proactive' | 'concise' | 'explanatory' | 'learning';
 export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -44,7 +45,7 @@ export interface SessionMeta {
   nameAttempted: boolean;
   projectPath: string;
   cwd: string;
-  /** Cowork task running in a fresh temporary workspace. */
+  /** Work task running in a fresh temporary workspace. */
   scratch?: boolean;
   branch: string | null;
   baseBranch: string | null;
@@ -67,7 +68,7 @@ export interface SessionSummary extends SessionMeta {
 
 export interface CreateSessionOptions {
   kind: SessionKind;
-  /** Code: the project. Cowork: the folder, or null for a temporary workspace. */
+  /** Code: the project. Work: the folder, or null for a temporary workspace. */
   projectPath: string | null;
   worktree?: boolean;
   title?: string;
@@ -195,6 +196,87 @@ export interface AgentCatalog {
   dir: string;
 }
 
+// ---- Customize: skills, connectors (MCP servers) and plugins (pi packages)
+export type CustomizeScope = 'user' | 'project' | 'package';
+export interface SkillInfo {
+  name: string;
+  description: string;
+  /** The SKILL.md (or standalone .md) file. */
+  file: string;
+  scope: CustomizeScope;
+  /** Package source or folder it came from. */
+  origin: string;
+  /** Switched off in settings: it stays on disk but pi does not load it. */
+  disabled: boolean;
+  /** Frontmatter `disable-model-invocation`: only usable through /skill:name. */
+  manualOnly: boolean;
+}
+export interface ConnectorTool {
+  name: string;
+  description: string;
+}
+export interface ConnectorInfo {
+  name: string;
+  scope: 'user' | 'project';
+  transport: 'stdio' | 'http';
+  /** Command line or URL, for display. */
+  target: string;
+  /** What the edit form starts from. */
+  command?: string;
+  args?: string[];
+  url?: string;
+  /** `KEY=value` (stdio env) or `Header: value` (http headers). */
+  pairs: string[];
+  description?: string;
+  enabled: boolean;
+  /** Tools seen the last time the server connected (pi's mcp-cache). */
+  tools: ConnectorTool[];
+}
+export interface ConnectorDraft {
+  /** The name being edited, so a rename rewrites the entry. */
+  originalName?: string;
+  name: string;
+  scope: 'user' | 'project';
+  transport: 'stdio' | 'http';
+  command?: string;
+  args?: string[];
+  url?: string;
+  /** KEY=VALUE for stdio env, or Header: value pairs for http. */
+  pairs?: string[];
+  description?: string;
+}
+export interface PluginInfo {
+  source: string;
+  scope: 'user' | 'project';
+  installedPath?: string;
+  /** Resource filters are set on the entry, so some of it may not load. */
+  filtered: boolean;
+}
+export interface PromptInfo {
+  name: string;
+  description: string;
+  file: string;
+  scope: CustomizeScope;
+}
+export interface CustomizeCatalog {
+  skills: SkillInfo[];
+  connectors: ConnectorInfo[];
+  plugins: PluginInfo[];
+  prompts: PromptInfo[];
+  /** Folders for the "open folder" buttons. */
+  dirs: { agent: string; skills: string; prompts: string };
+  /** Project that project-level entries belong to; null when none is selected. */
+  project: string | null;
+  /** Project resources only load once the project is trusted. */
+  projectTrusted: boolean;
+}
+export interface SkillDraft {
+  name: string;
+  description: string;
+  body: string;
+  scope: 'user' | 'project';
+}
+
 /** Estimated split of the context window (like Claude Code's /context). */
 export interface ContextBreakdown {
   contextWindow: number;
@@ -304,6 +386,8 @@ export type HostEvent =
   | { type: 'meta'; sessionId: string; meta: SessionMeta }
   | { type: 'notify'; sessionId: string; message: string; level: 'info' | 'warning' | 'error' }
   | { type: 'task'; sessionId: string; update: TaskUpdate }
+  /** The scheduled tasks changed (edited, ran, or finished a one-off). */
+  | { type: 'tasks'; tasks: ScheduledTask[] }
   /** A login flow is waiting for an answer (settings window). */
   | { type: 'auth_prompt'; loginId: string; provider: string; providerName: string; requestId: string; prompt: AuthPrompt }
   /** Out-of-band login progress: browser URL, device code, status text. */
@@ -518,10 +602,10 @@ export interface Api {
   'projects:list'(): Project[];
   'projects:add'(): Project | null;
   'projects:remove'(path: string): Project[];
-  'cowork:folders'(): Project[];
-  'cowork:addFolder'(): Project | null;
-  'cowork:useFolder'(path: string): Project | null;
-  'cowork:removeFolder'(path: string): Project[];
+  'work:folders'(): Project[];
+  'work:addFolder'(): Project | null;
+  'work:useFolder'(path: string): Project | null;
+  'work:removeFolder'(path: string): Project[];
 
   'attachments:import'(sources: AttachmentSource[]): AttachmentImportResult;
   'attachments:pick'(): AttachmentImportResult;
@@ -570,6 +654,22 @@ export interface Api {
   'agents:tools'(): ToolOption[];
   'agents:save'(draft: AgentDraft): AgentCatalog;
   'agents:remove'(name: string): AgentCatalog;
+  'customize:list'(project: string | null): CustomizeCatalog;
+  'customize:readFile'(file: string): string;
+  'customize:skillSetDisabled'(file: string, disabled: boolean, project: string | null): CustomizeCatalog;
+  'customize:skillCreate'(draft: SkillDraft, project: string | null): CustomizeCatalog;
+  'customize:connectorSave'(draft: ConnectorDraft, project: string | null): CustomizeCatalog;
+  'customize:connectorSetEnabled'(name: string, scope: 'user' | 'project', enabled: boolean, project: string | null): CustomizeCatalog;
+  'customize:connectorRemove'(name: string, scope: 'user' | 'project', project: string | null): CustomizeCatalog;
+  'customize:pluginInstall'(source: string, scope: 'user' | 'project', project: string | null): CustomizeCatalog;
+  'customize:pluginRemove'(source: string, scope: 'user' | 'project', project: string | null): CustomizeCatalog;
+  'customize:pluginUpdate'(source: string | null, project: string | null): CustomizeCatalog;
+  'tasks:list'(): ScheduledTask[];
+  'tasks:save'(draft: TaskDraft): ScheduledTask[];
+  'tasks:setEnabled'(id: string, enabled: boolean): ScheduledTask[];
+  'tasks:remove'(id: string): ScheduledTask[];
+  /** Start a run now; resolves with the session it opened. */
+  'tasks:run'(id: string): SessionMeta;
   'models:list'(): { models: ModelInfo[]; defaultModel: string | null };
   'models:levels'(model: string | null): ThinkingLevel[];
   // ---- model management (pi's auth.json + models.json, shared with the CLI)
@@ -598,7 +698,11 @@ export const HOST_CHANNELS = [
   'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:bash',
   'sessions:changes', 'sessions:pr', 'sessions:files', 'sessions:readFile', 'sessions:readImage',
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
-  'sessions:import', 'git:branch', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove', 'models:list', 'models:levels',
+  'sessions:import', 'git:branch', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove',
+  'customize:list', 'customize:readFile', 'customize:skillSetDisabled', 'customize:skillCreate', 'customize:connectorSave',
+  'customize:connectorSetEnabled', 'customize:connectorRemove', 'customize:pluginInstall', 'customize:pluginRemove', 'customize:pluginUpdate',
+  'tasks:list', 'tasks:save', 'tasks:setEnabled', 'tasks:remove', 'tasks:run',
+  'models:list', 'models:levels',
   'models:catalog', 'models:login', 'models:loginRespond', 'models:loginCancel', 'models:logout',
   'models:endpointSave', 'models:endpointRemove', 'models:endpointDiscover', 'models:refresh',
 ] as const satisfies readonly ApiChannel[];
@@ -607,7 +711,7 @@ export const MAIN_CHANNELS = [
   'app:info', 'app:notify', 'app:openExternal', 'app:revealPath', 'app:pickFolder',
   'settings:open', 'settings:get', 'settings:set', 'settings:close', 'diagram:open', 'diagram:get',
   'projects:list', 'projects:add', 'projects:remove',
-  'cowork:folders', 'cowork:addFolder', 'cowork:useFolder', 'cowork:removeFolder',
+  'work:folders', 'work:addFolder', 'work:useFolder', 'work:removeFolder',
   'attachments:import', 'attachments:pick', 'attachments:clipboard',
   'sessions:openIn', 'sessions:openPath',
 ] as const satisfies readonly ApiChannel[];

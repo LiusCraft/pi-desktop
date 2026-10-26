@@ -1,9 +1,9 @@
 # Pi Desktop
 
-基于 [pi coding agent](https://github.com/badlogic/pi-mono) 的桌面端，界面仿照 Claude desktop，有 **Cowork** 和 **Code** 两种模式。界面用 React + TypeScript + [shadcn/ui](https://ui.shadcn.com) 构建；agent 直接复用 **pi SDK**（`createAgentSession`），所有会话跑在一个常驻的 Electron utilityProcess 里。Claude 风格界面里 pi 没有的能力（权限模式、计划审批、待办、子 agent）由内置的 desktop-kit 扩展补上。
+基于 [pi coding agent](https://github.com/badlogic/pi-mono) 的桌面端，界面仿照 Claude desktop，有 **Work** 和 **Code** 两种模式。界面用 React + TypeScript + [shadcn/ui](https://ui.shadcn.com) 构建；agent 直接复用 **pi SDK**（`createAgentSession`），所有会话跑在一个常驻的 Electron utilityProcess 里。Claude 风格界面里 pi 没有的能力（权限模式、计划审批、待办、子 agent）由内置的 desktop-kit 扩展补上。
 
 - **Code**：在项目的独立 git worktree 里写代码，配有 diff、PR / CI 状态、终端和预览。
-- **Cowork**：在你选的文件夹里做知识类工作，比如整理文件、写文档、做简报；不选文件夹时会新建一个临时工作区。右侧面板显示进度、Claude 生成的文件和任务上下文。
+- **Work**：在你选的文件夹里做知识类工作，比如整理文件、写文档、做简报；不选文件夹时会新建一个临时工作区。右侧面板显示进度、Pi Desktop 生成的文件和任务上下文。
 
 ## 快速开始
 
@@ -15,13 +15,13 @@ npm run build && npm run demo  # 打开内置演示项目，默认使用离线�
 ```
 
 - 需要 Node 22.12+（构建与测试用）；运行时 agent 跑在 Electron 自带的 Node 上。
-- 离线 demo 只在未打包运行（`npm run dev` / `npm run demo` / 测试）时启用，打包产物不含 `demo/` 目录也不注册 demo 模型。启动时会把 `demo/todo-app`（Code 演示项目）和 `demo/cowork-workspace`（Cowork 演示文件夹：收件箱、日程、待办）复制到 `~/.pi-desktop/demo`。不配置任何 API Key 也能用 **Demo (offline)** 模型体验完整流程。
+- 离线 demo 只在未打包运行（`npm run dev` / `npm run demo` / 测试）时启用，打包产物不含 `demo/` 目录也不注册 demo 模型。启动时会把 `demo/todo-app`（Code 演示项目）和 `demo/work-workspace`（Work 演示文件夹：收件箱、日程、待办）复制到 `~/.pi-desktop/demo`。不配置任何 API Key 也能用 **Demo (offline)** 模型体验完整流程。
 - 接真实模型：打开设置（`Ctrl/⌘+,`）→ **模型管理**，和 pi CLI 用同一套配置：
   - **账号登录**：Anthropic（Claude Pro/Max）、OpenAI（ChatGPT）、GitHub Copilot、xAI、Meta、Kimi、OpenRouter、Radius 等 provider 的 OAuth 登录，浏览器授权或设备码，凭证写入 `~/.pi/agent/auth.json`。
   - **API 密钥**：所有支持密钥的 provider，交互流程和 pi 的 `/login` 完全一致（包括需要多个环境变量的 provider）。
   - **自定义端点**：OpenAI Chat Completions / Responses、Anthropic Messages、Google Generative AI 兼容地址写入 `~/.pi/agent/models.json`；可以直接从端点的 `/models` 拉取模型列表。每个模型都能编辑名称、上下文大小、最大输出、四项每百万 token 价格、推理与图像输入能力；[models.dev](https://models.dev) 仅补充缺失值，手动值（包括免费价格 0）始终优先。保存不等待公开目录网络请求；目录中的 0 token 限制会忽略，重新保存端点也能清理旧配置里的无效 0 值。密钥仍只存 `auth.json`，本地端点自动写入 pi 的占位密钥。
   - 环境变量、`auth.json`、`models.json` 里已有的配置都会识别；你在 `~/.pi/agent` 里装的扩展、技能、提示模板和 MCP 服务器照常加载，和 CLI 一致。
-- 设置窗口（`Ctrl/⌘+,`）是独立窗口：外观（浅色 / 深色 / 跟随系统、侧边栏）、通用（通知、输入预测、默认分区）、模型管理、项目与文件夹（Code 项目、Cowork 文件夹、worktree 位置）、关于。偏好保存在 `~/.pi-desktop/settings.json`，修改后主窗口立即跟随；preload 用同步 IPC（`app:boot`）拿到首屏需要的值，不会先闪一下再变色。
+- 设置窗口（`Ctrl/⌘+,`）是独立窗口：外观（浅色 / 深色 / 跟随系统、侧边栏）、通用（通知、输入预测、默认分区）、模型管理、项目与文件夹（Code 项目、Work 文件夹、worktree 位置）、关于。偏好保存在 `~/.pi-desktop/settings.json`，修改后主窗口立即跟随；preload 用同步 IPC（`app:boot`）拿到首屏需要的值，不会先闪一下再变色。
 
 ## 数据目录
 
@@ -30,10 +30,10 @@ Pi Desktop 只把**自己的**数据放在 `~/.pi-desktop`（可用 `PI_DESKTOP_
 | 位置 | 内容 |
 |---|---|
 | `~/.pi-desktop/settings.json` | 应用偏好：主题、通知、输入预测、默认分区、worktree 位置… |
-| `~/.pi-desktop/sessions.json`、`projects.json`、`coworkFolders.json` | 会话元数据、Code 项目列表、Cowork 文件夹列表 |
+| `~/.pi-desktop/sessions.json`、`projects.json`、`workFolders.json` | 会话元数据、Code 项目列表、Work 文件夹列表 |
 | `~/.pi-desktop/cache/models-dev.json` | models.dev 目录缓存（按天刷新，可随时删除） |
-| `~/.pi-desktop/demo/` | 首次启动复制的演示项目和 Cowork 演示文件夹 |
-| `~/.pi-desktop/cowork/` | 没有选择文件夹时 Cowork 任务的临时工作区 |
+| `~/.pi-desktop/demo/` | 首次启动复制的演示项目和 Work 演示文件夹 |
+| `~/.pi-desktop/work/` | 没有选择文件夹时 Work 任务的临时工作区 |
 | `~/.pi-desktop/extensions/` | Pi Desktop 自己的扩展目录，和 pi 的扩展分开，不污染 `~/.pi` |
 | `~/.pi-desktop/.worktree/` | Code 会话 git worktree 的默认根目录；可在设置 → 项目与文件夹 → Worktree 位置改成任意本地文件夹，只影响之后新建的会话 |
 | `~/.pi/agent/` | pi 自己的配置：`auth.json`、`models.json`、`sessions/`、扩展 / 技能 / 提示模板、MCP。路径由 pi SDK 决定（`PI_CODING_AGENT_DIR` 可覆盖），Pi Desktop 只在原处读写，不搬家 |
@@ -68,7 +68,7 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 | `src/main/agent-client.ts` | 启动 / 重启 agent host，`call(method, ...args)` |
 | `src/renderer/src/store/transcript.ts` | pi 事件流 → transcript 条目的纯函数（流式文本 / 思考、工具组、权限卡片、计划、todo） |
 | `src/renderer/src/store/actions.ts` | 发送、插话 / 排队、停止、模式 / 模型 / 思考强度、面板、PR 轮询等界面逻辑 |
-| `src/renderer/src/components/` | 侧边栏、对话、输入框（附件、`/` 命令、`@` 文件）、右侧工作区（Diff / 预览 / 文件 / 终端 / 计划 / 子 agent / 文件查看器 / Cowork 进度） |
+| `src/renderer/src/components/` | 侧边栏、对话、输入框（附件、`/` 命令、`@` 文件）、右侧工作区（Diff / 预览 / 文件 / 终端 / 计划 / 子 agent / 文件查看器 / Work 进度） |
 
 为什么用一个常驻 utilityProcess：pi SDK 是 ESM、会执行工具和用户扩展，放在主进程里重负载时会拖慢窗口、崩溃会带走整个应用；而每会话一个进程又浪费资源。现在 agent host 崩溃只会让正在运行的会话中断，下一条消息会自动重启并从会话文件恢复。
 
@@ -97,7 +97,7 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 | **Thinking** | 工具调用仍折叠成摘要，额外显示 `Thought for 12s`（可展开） |
 | **Verbose** | 展开工具组，显示每次命令、读文件和思考内容 |
 
-`Output style` 在同一菜单里，和权限模式一样即时生效（直接改 desktop-kit 的会话状态）；它改变的是 Claude 的回答方式，不是界面，也不是权限。Normal 模式是默认值，选择保存在 localStorage；`Output style` 同时写入当前会话元数据，恢复会话后继续生效。
+`Output style` 在同一菜单里，和权限模式一样即时生效（直接改 desktop-kit 的会话状态）；它改变的是 Pi Desktop 的回答方式，不是界面，也不是权限。Normal 模式是默认值，选择保存在 localStorage；`Output style` 同时写入当前会话元数据，恢复会话后继续生效。
 
 > 提示：Claude desktop 里 `Thinking` 只在会话已经产生过思考后出现；这里也做了同样的处理。`Ctrl+O` 只在可用的模式之间循环。
 
@@ -129,19 +129,19 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 - **Read / Edit / Write**：展开工具行可查看带行号的读取片段、本次编辑的红绿 diff，或实际写入的内容快照。点击文件名会在现有右侧文件查看器打开**当前正文**并定位；历史快照不会被当前正文或累计 Git diff 替代。需要累计改动时使用独立的 **Diff** 入口。
 - **选区与评论**：在 Diff 或文件正文预览中选择代码，可以附加为上下文或添加评论；也可点击行号旁的 `+`，用 Shift 点击选择多行。评论编辑器显示在选区下方，引用和评论以可移除卡片加入当前会话草稿，随下一条消息发送；模型收到文件路径、行号、旧侧 / 新侧和选中代码的快照。最多 20 项引用，总内容最多 100,000 个字符。
 - **树列表右键菜单**：Diff 和 Files 中的文件、文件夹支持附加为上下文，复制绝对路径 / 相对路径 / 名称，用 VS Code / Cursor / Terminal / 默认应用打开，以及在 Finder（其他平台为文件管理器）中显示。Terminal 打开所选文件的所在目录；已删除的文件可从 Diff 快照引用。
-- **添加附件**：Code 和 Cowork 的输入框都支持粘贴截图、复制的本地文件、拖入文件，以及点击 **+** 多选文件；`@` 仍用于引用项目文件。发送前可以预览和移除，也可以只发附件。多行文字保留换行、制表符和缩进，富文本只提取纯文本，不加载其中的远程内容。
+- **添加附件**：Code 和 Work 的输入框都支持粘贴截图、复制的本地文件、拖入文件，以及点击 **+** 多选文件；`@` 仍用于引用项目文件。发送前可以预览和移除，也可以只发附件。多行文字保留换行、制表符和缩进，富文本只提取纯文本，不加载其中的远程内容。
 - **发送与恢复**：附件单独排列在文字气泡上方，图片可点击放大。图片使用 pi 原生 image blocks 传给支持图片的模型并随会话保存；普通文件是供 agent 读取的**本地路径引用**，不会自动解析 PDF / Office，也不会另存一份。移动或删除原文件后，该引用可能失效。
 - **草稿与取消**：会话间草稿互相隔离；导入失败或发送失败不会清空附件。停止运行时，已取消的排队消息可恢复为草稿；有新草稿时显示 Restore / Discard，避免覆盖。未发送草稿仅在本次应用运行期间保留。
 - **默认限制**：每条消息最多 10 个附件，单个源文件最多 20 MiB、源文件合计最多 50 MiB。图片会缩放至最长边 2000 px，单张输出 base64 最多 4.5 MiB、图片 base64 合计最多 20 MiB。不支持图片的模型会明确报错；带附件的 slash command 不会被静默执行并丢弃附件。
 
 历史恢复沿用 pi 会话里的 `session.messages`：可恢复当前会话上下文中的附件，不额外提供压缩前完整 transcript 或历史分支浏览器。文件正文预览限于当前会话工作目录内、最多 1 MiB 的文本文件；历史内联工具片段不受文件后来移动或删除影响。
 
-### Cowork 与 Code 的区别
+### Work 与 Code 的区别
 
-| | Code | Cowork |
+| | Code | Work |
 |---|---|---|
-| 工作目录 | 项目的独立 worktree（`claude/<名字>` 分支，默认在 `~/.pi-desktop/.worktree`，可在设置里改根目录） | 选定的文件夹，直接修改；或新建的临时工作区（`~/.pi-desktop/cowork`） |
-| 会话配置 | desktop-kit profile `code` | desktop-kit profile `cowork`，追加系统提示 `src/agent/cowork-prompt.md` |
+| 工作目录 | 项目的独立 worktree（`claude/<名字>` 分支，默认在 `~/.pi-desktop/.worktree`，可在设置里改根目录） | 选定的文件夹，直接修改；或新建的临时工作区（`~/.pi-desktop/work`） |
+| 会话配置 | desktop-kit profile `code` | desktop-kit profile `work`，追加系统提示 `src/agent/work-prompt.md` |
 | 右侧面板 | Diff、计划、子 agent、终端、预览 | 进度、生成的文件（可预览、打开、在文件夹中显示）、上下文 |
 | 底部 | PR 条 + CI 状态 | — |
 | 额外需要确认的命令 | — | 删除 / 移动文件（`rm` `mv` `del`…）、往外发数据（`scp` `rsync`、带 POST/上传参数的 `curl`/`wget`、`mail`） |
@@ -152,7 +152,7 @@ pi 本身不做权限确认。desktop-kit 在 `tool_call` 钩子里按模式决�
 
 | 模式 | 编辑项目内文件 | 只读命令 | 其他命令 | 高风险命令（push、发 PR、rm -r…） |
 |---|---|---|---|---|
-| Auto（默认） | 放行 | 放行 | 放行 | 询问（Cowork 中删除 / 移动文件也算高风险） |
+| Auto（默认） | 放行 | 放行 | 放行 | 询问（Work 中删除 / 移动文件也算高风险） |
 | Ask permissions | 询问 | 放行 | 询问 | 询问 |
 | Accept edits | 放行 | 放行 | 询问 | 询问 |
 | Plan | 拦截 | 放行 | 拦截 | 拦截 |
@@ -171,7 +171,7 @@ npm test            # vitest：真实的进程内 pi 会话 + desktop-kit + 演�
 npm run test:desktop # 构建后用项目自带的 Electron 运行 Playwright 窗口交互测试
 ```
 
-- `test/hub.e2e.test.ts`：Auto 模式在隔离 worktree 里修 bug（修复前测试真的失败，修复后真的通过，主工作区不被改动）、worktree 默认根目录与设置里的自定义根目录、Ask 模式拒绝、Plan 模式审批后自动切到 Accept edits、运行中切换模式、进程内子 agent、高风险命令仍需询问、带图片附件的会话关闭后从会话文件恢复、`/clear`、首条提示词命名与手动重命名；Cowork 整理收件箱时只有移动文件需要确认、拒绝后文件保持原样、生成简报文件、临时工作区。
+- `test/hub.e2e.test.ts`：Auto 模式在隔离 worktree 里修 bug（修复前测试真的失败，修复后真的通过，主工作区不被改动）、worktree 默认根目录与设置里的自定义根目录、Ask 模式拒绝、Plan 模式审批后自动切到 Accept edits、运行中切换模式、进程内子 agent、高风险命令仍需询问、带图片附件的会话关闭后从会话文件恢复、`/clear`、首条提示词命名与手动重命名；Work 整理收件箱时只有移动文件需要确认、拒绝后文件保持原样、生成简报文件、临时工作区。
 - `test/desktop/interactions.spec.ts`：临时配置目录（`PI_DESKTOP_HOME`）中的真实 Electron 窗口，覆盖模型元数据编辑、价格 0、token 限制校验、文件菜单、预览引用、Diff 评论、随消息发送及历史回退 / 分支；`test/context-reference.test.ts` 覆盖引用格式、草稿隔离与恢复、容量限制。
 - `test/attachment-message.test.ts` / `test/attachments-backend.test.ts`：附件消息往返、校验限制、剪贴板格式（macOS / Windows / Linux）和图片规范化。
 - `test/tool-previews.test.ts` / `test/files.test.ts`：原生工具输出、行号 / 分页，以及文件边界、符号链接（需要系统允许创建符号链接）、二进制和大小限制。
@@ -253,11 +253,11 @@ xattr -cr /Applications/Pi\ Desktop.app   # 只在你自己确认过来源的情
 
 ## 已知限制 / 下一步
 
-- Cowork 的 **Projects / Artifacts / Scheduled** 入口还是占位。简报类任务现在需要手动触发，定时任务还没做。
-- Cowork 还没接日历、邮箱这类连接器；可以通过 pi 的 MCP（`~/.pi/agent/mcp.json`）或扩展接入。
+- Work 的 **Projects / Artifacts / Scheduled** 入口还是占位。简报类任务现在需要手动触发，定时任务还没做。
+- Work 还没接日历、邮箱这类连接器；可以通过 pi 的 MCP（`~/.pi/agent/mcp.json`）或扩展接入。
 - **Cloud 环境**还没实现，菜单里是禁用状态。
 - pi 的 `find` 工具依赖 `fd`，pi 会自动下载；在离线环境下这一项会失败（`grep` 用系统里的 `rg`）。
 - **PR / CI 状态**依赖 `gh` CLI 已登录。
 - **预览**面板只允许 `localhost` 地址。
-- React 重写版已在 Windows 11 上用真实窗口跑通离线 demo（Code 修 bug + Diff 面板、Cowork 整理收件箱 + 权限确认），并加载了用户自己的 pi 扩展；macOS 打包版尚未在重写后重新验证。旧版的 Playwright 界面测试（`test/ui-*.js`）随旧界面一起移除，界面自动化测试待补。
+- React 重写版已在 Windows 11 上用真实窗口跑通离线 demo（Code 修 bug + Diff 面板、Work 整理收件箱 + 权限确认），并加载了用户自己的 pi 扩展；macOS 打包版尚未在重写后重新验证。旧版的 Playwright 界面测试（`test/ui-*.js`）随旧界面一起移除，界面自动化测试待补。
 - 没有自动更新：升级靠重新下载 dmg。要接 `electron-updater` 得再产一个 `zip` target（dmg 不能做增量更新），并加一个设置项。

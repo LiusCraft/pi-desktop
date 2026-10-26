@@ -1,11 +1,13 @@
 import { useRef, useState } from 'react';
 import { ArrowUpIcon, CircleStopIcon, CornerDownLeftIcon, FolderIcon, FolderPlusIcon, GitBranchIcon, InfoIcon, LaptopIcon, PlusIcon } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { modKey } from '@/lib/api';
 import { fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { addCoworkFolder, addProject, selectProject, send, setCoworkFolder, stop } from '@/store/actions';
+import { addWorkFolder, addProject, selectProject, send, setWorkFolder, stop } from '@/store/actions';
 import { modelName, setPref, useApp, useCurrent } from '@/store/app';
 import { useDrafts } from '@/store/drafts';
 import { Clawd, moodOf } from './Clawd';
@@ -72,10 +74,10 @@ function NewSessionChips() {
           {branch && (
             <>
               <span className="h-3.5 w-px bg-border" />
-              <label className="flex h-full cursor-pointer items-center gap-1.5 rounded-r-lg pr-2.5 pl-2 hover:bg-accent" title="在独立的 git worktree 和分支里工作，不影响当前工作区">
-                <input type="checkbox" checked={worktree} onChange={(e) => setPref('worktree', e.target.checked)} className="size-3.5 accent-[var(--info)]" />
+              <Label className="h-full cursor-pointer gap-1.5 rounded-r-lg pr-2.5 pl-2 font-normal hover:bg-accent" title="在独立的 git worktree 和分支里工作，不影响当前工作区">
+                <Checkbox checked={worktree} onCheckedChange={(v) => setPref('worktree', v === true)} className="size-3.5" />
                 worktree
-              </label>
+              </Label>
             </>
           )}
         </div>
@@ -87,7 +89,7 @@ function NewSessionChips() {
   );
 }
 
-/** The Code composer, also used inside every running thread (Code and Cowork). */
+/** The Code composer, also used inside every running thread (Code and Work). */
 export function CodeComposer() {
   const { s, ready, busy, stopMode } = useSendState();
   const prefs = useApp((st) => st.prefs);
@@ -96,7 +98,7 @@ export function CodeComposer() {
   const [drag, setDrag] = useState(false);
   const placeholder = s?.running
     ? `↵ to send, ${modKey}↵ to queue for later`
-    : s ? (s.meta.kind === 'cowork' ? 'Reply to Claude, or type / for commands' : 'Type / for commands') : 'Describe a task or ask a question';
+    : s ? (s.meta.kind === 'work' ? 'Reply to Pi Desktop, or type / for commands' : 'Type / for commands') : 'Describe a task or ask a question';
   return (
     <div className="mx-auto w-full max-w-3xl px-6 pb-3">
       {!s && <NewSessionChips />}
@@ -143,15 +145,15 @@ function ModelLabel({ id }: { id: string | null }) {
   return <span className="truncate">{models.length ? modelName(models, id) : '…'}</span>;
 }
 
-/** Cowork's welcome composer: bigger box, model chip inside, folder tray underneath. */
-export function CoworkComposer() {
+/** Work's welcome composer: bigger box, model chip inside, folder tray underneath. */
+export function WorkComposer() {
   const { ready, busy } = useSendState();
   const prefs = useApp((st) => st.prefs);
   const levels = useApp((st) => st.levels);
-  const folders = useApp((st) => st.coworkFolders);
+  const folders = useApp((st) => st.workFolders);
   const input = useRef<ComposerHandle>(null);
   const [drag, setDrag] = useState(false);
-  const folder = prefs.coworkFolder;
+  const folder = prefs.workFolder;
   return (
     <div className="w-full">
       <div className={cn('rounded-2xl border bg-card p-3 shadow-sm transition-shadow focus-within:shadow-md', drag && 'ring-2 ring-primary/50')} onClick={(e) => !(e.target as HTMLElement).closest('button') && input.current?.focus()}>
@@ -186,22 +188,22 @@ export function CoworkComposer() {
           <DropdownMenuContent align="start" className="w-64">
             <DropdownMenuLabel className="text-xs text-muted-foreground">Work in a folder</DropdownMenuLabel>
             {folders.map((f) => (
-              <DropdownMenuItem key={f.path} title={f.path} onSelect={() => setCoworkFolder(f.path)} className={cn(f.path === folder && 'font-medium')}>
+              <DropdownMenuItem key={f.path} title={f.path} onSelect={() => setWorkFolder(f.path)} className={cn(f.path === folder && 'font-medium')}>
                 <FolderIcon className="size-3.5" />{f.name}
               </DropdownMenuItem>
             ))}
-            <DropdownMenuItem onSelect={() => void addCoworkFolder()}>
+            <DropdownMenuItem onSelect={() => void addWorkFolder()}>
               <PlusIcon className="size-3.5" />Choose folder…
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => setCoworkFolder(null)} className={cn(folder === null && 'font-medium')}>Temporary workspace</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setWorkFolder(null)} className={cn(folder === null && 'font-medium')}>Temporary workspace</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <Tooltip>
           <TooltipTrigger asChild>
             <span className="p-1 text-muted-foreground"><InfoIcon className="size-4" /></span>
           </TooltipTrigger>
-          <TooltipContent className="max-w-72">Cowork 会在你选择的文件夹里读写文件；删除、移动或往外发送数据前都会先问你。不选文件夹时会新建一个临时工作区。</TooltipContent>
+          <TooltipContent className="max-w-72">Work 会在你选择的文件夹里读写文件；删除、移动或往外发送数据前都会先问你。不选文件夹时会新建一个临时工作区。</TooltipContent>
         </Tooltip>
       </div>
     </div>

@@ -53,23 +53,23 @@ function addProject(dir: string) {
   store.set('projects', [project, ...list]);
   return project;
 }
-/** Cowork folders the user has worked in, most recent first. */
-function coworkFolders() {
-  return store.get<Project[]>('coworkFolders', []).filter(exists);
+/** Work folders the user has worked in, most recent first. */
+function workFolders() {
+  return store.get<Project[]>('workFolders', []).filter(exists);
 }
-function addCoworkFolder(dir: string) {
-  const list = store.get<Project[]>('coworkFolders', []).filter((p) => p.path !== dir);
+function addWorkFolder(dir: string) {
+  const list = store.get<Project[]>('workFolders', []).filter((p) => p.path !== dir);
   const folder = { path: dir, name: path.basename(dir), addedAt: Date.now() };
-  store.set('coworkFolders', [folder, ...list].slice(0, 12));
+  store.set('workFolders', [folder, ...list].slice(0, 12));
   return folder;
 }
 const demoSource = (name: string) => path.join(app.getAppPath(), 'demo', name);
 /** Pi Desktop's own data folder; Electron's profile stays at the platform default. */
 const dataDir = () => appDataDir();
-function ensureDemoCowork() {
-  const dest = path.join(appDemoDir(dataDir()), 'cowork-workspace');
-  if (!fs.existsSync(dest)) fs.cpSync(demoSource('cowork-workspace'), dest, { recursive: true });
-  return addCoworkFolder(dest);
+function ensureDemoWork() {
+  const dest = path.join(appDemoDir(dataDir()), 'work-workspace');
+  if (!fs.existsSync(dest)) fs.cpSync(demoSource('work-workspace'), dest, { recursive: true });
+  return addWorkFolder(dest);
 }
 /** Copy the bundled demo project into the app data folder and make it a git repo. */
 function ensureDemoProject() {
@@ -243,14 +243,14 @@ function applyThemeToWindows() {
 
 // ------------------------------------------------------------ IPC
 
-/** Folders the app may open or reveal: its own data, pi's config, projects and Cowork folders. */
+/** Folders the app may open or reveal: its own data, pi's config, projects and Work folders. */
 function knownRoot(target: string) {
   const abs = path.resolve(String(target || ''));
   const dir = dataDir();
   const roots = [
     dir, appExtensionsDir(dir), piAgentDir(),
     worktreeDir(dir, settingsValue().worktreeDir), defaultWorktreeDir(dir),
-    ...projects().map((p) => p.path), ...coworkFolders().map((p) => p.path),
+    ...projects().map((p) => p.path), ...workFolders().map((p) => p.path),
   ];
   if (!roots.some((r) => abs === path.resolve(r) || abs.startsWith(path.resolve(r) + path.sep))) throw new Error('Path outside the app folders');
   return abs;
@@ -323,15 +323,15 @@ const handlers: MainHandlers = {
     store.set('projects', store.get<Project[]>('projects', []).filter((p) => p.path !== dir));
     return projects();
   },
-  'cowork:folders': () => coworkFolders(),
-  'cowork:addFolder': async () => {
+  'work:folders': () => workFolders(),
+  'work:addFolder': async () => {
     const dir = await pickFolder();
-    return dir ? addCoworkFolder(dir) : null;
+    return dir ? addWorkFolder(dir) : null;
   },
-  'cowork:useFolder': (dir) => (fs.existsSync(dir) ? addCoworkFolder(dir) : null),
-  'cowork:removeFolder': (dir) => {
-    store.set('coworkFolders', store.get<Project[]>('coworkFolders', []).filter((p) => p.path !== dir));
-    return coworkFolders();
+  'work:useFolder': (dir) => (fs.existsSync(dir) ? addWorkFolder(dir) : null),
+  'work:removeFolder': (dir) => {
+    store.set('workFolders', store.get<Project[]>('workFolders', []).filter((p) => p.path !== dir));
+    return workFolders();
   },
 
   'attachments:import': (sources) => importAttachments(sources),
@@ -403,7 +403,7 @@ void app.whenReady().then(async () => {
   );
   void agent.start().catch((err) => console.error('[main] agent host failed to start:', err));
   if (DEMO || (DEMO_ALLOWED && !projects().length)) ensureDemoProject();
-  if (DEMO || (DEMO_ALLOWED && !coworkFolders().length)) ensureDemoCowork();
+  if (DEMO || (DEMO_ALLOWED && !workFolders().length)) ensureDemoWork();
   registerIpc();
   nativeTheme.on('updated', () => {
     // Following the system: repaint both windows and tell the renderers.

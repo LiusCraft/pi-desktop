@@ -52,7 +52,7 @@ function useShortcuts() {
       }
       if (mod && key === 'd') {
         e.preventDefault();
-        return togglePanel(s.meta.id, s.meta.kind === 'cowork' ? 'progress' : 'diff');
+        return togglePanel(s.meta.id, s.meta.kind === 'work' ? 'progress' : 'diff');
       }
       // 1 / 2 / 3 answer a waiting permission card while the composer is empty.
       const waiting = s.waiting ? s.items.find((i) => i.key === s.waiting) : undefined;

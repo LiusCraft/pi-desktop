@@ -27,8 +27,8 @@ import {
 
 /** First words of the hidden message injected in plan mode (the demo model looks for it). */
 export const PLAN_MODE_MARKER = '[pi-desktop] You are in PLAN MODE.';
-/** Distinctive phrase of the Cowork system prompt (the demo model looks for it). */
-export const COWORK_MARKER = 'You are running in Cowork';
+/** Distinctive phrase of the Work system prompt (the demo model looks for it). */
+export const WORK_MARKER = 'You are running in Work';
 
 export interface KitState {
   mode: PermissionMode;
@@ -78,7 +78,7 @@ export interface KitHost {
   trackTask?(id: string, stop: AbortController): () => void;
 }
 
-// Appended to the system prompt for the current turn. These change how Claude talks,
+// Appended to the system prompt for the current turn. These change how Pi Desktop talks,
 // not what it is allowed to do (permission modes still decide that).
 export const STYLE_PROMPTS: Record<Exclude<OutputStyle, 'default'>, string> = {
   proactive: `# Output style: Proactive
@@ -106,9 +106,9 @@ const RISKY = [
   /\brm\s+-[a-z]*r/i, /\bsudo\b/, /\bgit\s+reset\s+--hard\b/, /\bgit\s+clean\b/, /\bchmod\s+(-R\s+)?777\b/,
   /\b(curl|wget)\b[^|]*\|\s*(ba|z)?sh\b/, /\bmkfs\b/, /\bdd\s+if=/, /\bgit\s+checkout\s+--\s/,
 ];
-// Cowork works in the user's own folders (documents, downloads…), so anything that
+// Work works in the user's own folders (documents, downloads…), so anything that
 // deletes, moves or sends data away also needs approval.
-const COWORK_RISKY = [
+const WORK_RISKY = [
   /\b(rm|rmdir|mv|del|erase|unlink|shred|truncate)\b/, /\bfind\b.*-delete\b/, /\b(scp|rsync|sftp|ftp)\b/,
   /\b(curl|wget)\b.*(-X\s*(POST|PUT|PATCH|DELETE)|--data|\s-d\s|\s-F\s|--upload-file|\s-T\s)/, /\b(sendmail|mail|mutt)\b/,
 ];
@@ -129,7 +129,7 @@ export function isReadOnlyCommand(command: string): boolean {
     });
 }
 export const isRiskyCommand = (command: string, profile: SessionKind = 'code') =>
-  RISKY.some((r) => r.test(command)) || (profile === 'cowork' && COWORK_RISKY.some((r) => r.test(command)));
+  RISKY.some((r) => r.test(command)) || (profile === 'work' && WORK_RISKY.some((r) => r.test(command)));
 export const commandKey = (command: string) => command.trim().split(/\s+/).slice(0, 2).join(' ');
 
 const DENIED = 'The user denied this tool call. Ask how they want to proceed.';

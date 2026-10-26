@@ -292,7 +292,7 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
         if (step && !step.done) finishThought(step, view);
         if (m.usage?.output) s.tokens += Number(m.usage.output) || 0;
         if (m.stopReason === 'error' && m.errorMessage) push(s, { kind: 'note', key: newKey(), level: 'error', text: `Error: ${m.errorMessage}` }, view);
-        if (m.stopReason === 'aborted') push(s, { kind: 'note', key: newKey(), text: 'Interrupted · 告诉 Claude 接下来该怎么做' }, view);
+        if (m.stopReason === 'aborted') push(s, { kind: 'note', key: newKey(), text: 'Interrupted · 告诉 Pi Desktop 接下来该怎么做' }, view);
         s.cur = null;
       } else if (m.role === 'custom' && m.display) push(s, { kind: 'note', key: newKey(), text: textOf(m.content) }, view);
       return {};
@@ -360,10 +360,10 @@ export function settle(s: SessionView, aborted: boolean, view: ViewMode): Effect
 
 export function permissionTitle(tool: ToolState | undefined, raw: string) {
   if (!tool) return raw;
-  if (tool.kind === 'bash') return 'Allow Claude to run this command?';
-  if (tool.kind === 'edit') return `Allow Claude to edit ${tool.path}?`;
-  if (tool.kind === 'write') return `Allow Claude to write ${tool.path}?`;
-  return `Allow Claude to use ${tool.name}?`;
+  if (tool.kind === 'bash') return 'Allow Pi Desktop to run this command?';
+  if (tool.kind === 'edit') return `Allow Pi Desktop to edit ${tool.path}?`;
+  if (tool.kind === 'write') return `Allow Pi Desktop to write ${tool.path}?`;
+  return `Allow Pi Desktop to use ${tool.name}?`;
 }
 
 export function addUiRequest(s: SessionView, req: UiRequest, view: ViewMode): { openPlan?: string } {

@@ -38,9 +38,9 @@ export const appCacheDir = (dataDir: string) => path.join(dataDir, 'cache');
 export const appExtensionsDir = (dataDir: string) => path.join(dataDir, 'extensions');
 /** User-defined subagents: one markdown file each (frontmatter + system prompt). */
 export const appAgentsDir = (dataDir: string) => path.join(dataDir, 'agents');
-/** Scratch workspaces for Cowork tasks started without a folder. */
-export const appCoworkDir = (dataDir: string) => path.join(dataDir, 'cowork');
-/** Copies of the bundled demo project and demo Cowork folder. */
+/** Scratch workspaces for Work tasks started without a folder. */
+export const appWorkDir = (dataDir: string) => path.join(dataDir, 'work');
+/** Copies of the bundled demo project and demo Work folder. */
 export const appDemoDir = (dataDir: string) => path.join(dataDir, 'demo');
 export const defaultWorktreeDir = (dataDir: string) => path.join(dataDir, WORKTREE_DIR_NAME);
 

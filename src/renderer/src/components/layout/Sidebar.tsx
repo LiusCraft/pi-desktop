@@ -7,11 +7,13 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { call, isMac, modKey } from '@/lib/api';
 import { ago, fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { archiveSession, openSession, selectProject, setView, showWelcome, toggleSidebar } from '@/store/actions';
+import { archiveSession, openSession, selectProject, setView, showCustomize, showScheduled, showWelcome, toggleSidebar } from '@/store/actions';
 import { setApp, useApp } from '@/store/app';
+import type { SessionKind } from '@shared/protocol';
 import type { SessionView } from '@/store/types';
 
 export function SidebarToggle({ className }: { className?: string }) {
@@ -63,13 +65,14 @@ function SessionRow({ s, active, onArchive }: { s: SessionView; active: boolean;
   );
 }
 
-function NavItem({ icon, children, onClick, hint, soon }: { icon: React.ReactNode; children: React.ReactNode; onClick?: () => void; hint?: string; soon?: boolean }) {
+function NavItem({ icon, children, onClick, hint, soon, active }: { icon: React.ReactNode; children: React.ReactNode; onClick?: () => void; hint?: string; soon?: boolean; active?: boolean }) {
   return (
     <button
       onClick={soon ? undefined : onClick}
       aria-disabled={soon || undefined}
+      aria-current={active ? 'page' : undefined}
       title={hint}
-      className={cn('flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm', soon ? 'cursor-default text-muted-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent')}
+      className={cn('flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm', soon ? 'cursor-default text-muted-foreground' : active ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent')}
     >
       <span className="flex size-4 items-center justify-center text-muted-foreground">{icon}</span>
       {children}
@@ -77,7 +80,11 @@ function NavItem({ icon, children, onClick, hint, soon }: { icon: React.ReactNod
   );
 }
 
+/** Which full-page view (if any) replaces the conversation. */
+const usePage = () => useApp((s) => (s.scheduled ? 'scheduled' : s.customize ? 'customize' : null));
+
 function CodeNav() {
+  const page = usePage();
   const projects = useApp((s) => s.projects);
   const sessions = useApp((s) => s.sessions);
   const current = useApp((s) => s.current);
@@ -93,8 +100,8 @@ function CodeNav() {
     <>
       <nav className="space-y-0.5 px-2">
         <NavItem icon={<PlusIcon className="size-4" />} onClick={showWelcome}>New</NavItem>
-        <NavItem icon={<ClockIcon className="size-4" />} soon hint="Routines 即将推出">Routines</NavItem>
-        <NavItem icon={<ShapesIcon className="size-4" />} soon hint="Customize：pi 的扩展、技能和提示模板在 ~/.pi/agent 下管理；Pi Desktop 自己的扩展放在 ~/.pi-desktop/extensions">Customize</NavItem>
+        <NavItem icon={<ClockIcon className="size-4" />} active={page === 'scheduled'} onClick={showScheduled} hint="Scheduled：按计划自动运行的任务">Scheduled</NavItem>
+        <NavItem icon={<ShapesIcon className="size-4" />} active={page === 'customize'} onClick={showCustomize} hint="Customize：技能、连接器与插件">Customize</NavItem>
         <NavItem icon={<MoreHorizontalIcon className="size-4" />} onClick={() => setMore((m) => !m)}>More</NavItem>
         {more && (
           <div className="pl-7">
@@ -116,7 +123,7 @@ function CodeNav() {
                   <PlusIcon className="size-3.5" />
                 </button>
               </div>
-              {(collapsed ? list.slice(0, LIMIT) : list).map((s) => <SessionRow key={s.meta.id} s={s} active={s.meta.id === current} />)}
+              {(collapsed ? list.slice(0, LIMIT) : list).map((s) => <SessionRow key={s.meta.id} s={s} active={!page && s.meta.id === current} />)}
               {collapsed && (
                 <button className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground" onClick={() => setExpanded((e) => new Set(e).add(path))}>Show more</button>
               )}
@@ -128,18 +135,19 @@ function CodeNav() {
   );
 }
 
-function CoworkNav() {
+function WorkNav() {
+  const page = usePage();
   const sessions = useApp((s) => s.sessions);
   const current = useApp((s) => s.current);
-  const tasks = Object.values(sessions).filter((s) => s.meta.kind === 'cowork' && !s.meta.archived).sort((a, b) => (b.meta.updatedAt || 0) - (a.meta.updatedAt || 0));
+  const tasks = Object.values(sessions).filter((s) => s.meta.kind === 'work' && !s.meta.archived).sort((a, b) => (b.meta.updatedAt || 0) - (a.meta.updatedAt || 0));
   return (
     <>
       <nav className="space-y-0.5 px-2">
         <NavItem icon={<PlusIcon className="size-4" />} onClick={showWelcome}>New</NavItem>
         <NavItem icon={<BoxIcon className="size-4" />} soon hint="Projects 即将推出">Projects</NavItem>
         <NavItem icon={<ShapesIcon className="size-4" />} soon hint="Artifacts 即将推出">Artifacts</NavItem>
-        <NavItem icon={<ClockIcon className="size-4" />} soon hint="Scheduled tasks 即将推出">Scheduled</NavItem>
-        <NavItem icon={<ArchiveIcon className="size-4" />} soon hint="Customize：技能、连接器与插件">Customize</NavItem>
+        <NavItem icon={<ClockIcon className="size-4" />} active={page === 'scheduled'} onClick={showScheduled} hint="Scheduled：按计划自动运行的任务">Scheduled</NavItem>
+        <NavItem icon={<ArchiveIcon className="size-4" />} active={page === 'customize'} onClick={showCustomize} hint="Customize：技能、连接器与插件">Customize</NavItem>
       </nav>
       <div className="mt-4 flex h-7 items-center px-4 text-xs font-medium text-muted-foreground">
         <span className="flex-1">Tasks</span>
@@ -148,7 +156,7 @@ function CoworkNav() {
         </button>
       </div>
       <div className="px-2">
-        {tasks.length ? tasks.map((s) => <SessionRow key={s.meta.id} s={s} active={s.meta.id === current} onArchive={() => void archiveSession(s.meta.id, true)} />) : (
+        {tasks.length ? tasks.map((s) => <SessionRow key={s.meta.id} s={s} active={!page && s.meta.id === current} onArchive={() => void archiveSession(s.meta.id, true)} />) : (
           <div className="px-2.5 py-2 text-sm text-muted-foreground">No tasks yet</div>
         )}
       </div>
@@ -189,19 +197,23 @@ export function Sidebar() {
           <SearchIcon className="size-4" />
         </button>
       </div>
-      <div className="mx-3 mb-3 grid grid-cols-2 rounded-lg bg-sidebar-accent p-0.5 text-sm">
-        {(['cowork', 'code'] as const).map((v) => (
-          <button
-            key={v}
-            onClick={() => setView(v)}
-            className={cn('flex h-7 items-center justify-center gap-1.5 rounded-md text-muted-foreground', view === v && 'bg-background text-foreground shadow-sm')}
-          >
-            {v === 'cowork' ? <ListChecksIcon className="size-3.5" /> : <CodeXmlIcon className="size-3.5" />}
-            {v === 'cowork' ? 'Cowork' : 'Code'}
-          </button>
-        ))}
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto pb-3">{view === 'cowork' ? <CoworkNav /> : <CodeNav />}</div>
+      <Tabs value={view} onValueChange={(v) => setView(v as SessionKind)} className="mx-3 mb-3">
+        <TabsList className="relative grid h-8 w-full grid-cols-2 bg-sidebar-accent p-0.5">
+          {/* The highlight slides between the two halves. */}
+          <span
+            aria-hidden
+            className={cn('pointer-events-none absolute inset-y-0.5 left-0.5 w-[calc(50%-2px)] rounded-md bg-background shadow-sm transition-transform duration-200 ease-out', view === 'code' && 'translate-x-full')}
+          />
+          {(['work', 'code'] as const).map((v) => (
+            <TabsTrigger key={v} value={v} className="relative z-10 h-full data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-background/40 data-[state=active]:hover:bg-transparent">
+              {v === 'work' ? <ListChecksIcon className="size-3.5" /> : <CodeXmlIcon className="size-3.5" />}
+              {v === 'work' ? 'Work' : 'Code'}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+      {/* Re-keyed so the list fades in when the tab changes. */}
+      <div key={view} className="min-h-0 flex-1 animate-in overflow-y-auto pb-3 duration-200 fade-in-0">{view === 'work' ? <WorkNav /> : <CodeNav />}</div>
       <div className="flex items-center gap-1 border-t border-sidebar-border p-2">
         <UserMenu />
         {view === 'code' && (

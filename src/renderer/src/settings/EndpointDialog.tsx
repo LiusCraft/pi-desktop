@@ -2,7 +2,7 @@
 // fetched from the endpoint itself, and every model id is matched against
 // models.dev so context window, output limit and prices are filled automatically.
 import { useMemo, useState } from 'react';
-import { CheckIcon, Loader2Icon, PencilIcon, PlusIcon, RefreshCwIcon, SearchIcon } from 'lucide-react';
+import { Loader2Icon, PencilIcon, PlusIcon, RefreshCwIcon, SearchIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { ENDPOINT_APIS, type EndpointDraft, type EndpointInfo, type EndpointModel, type ModelCatalogInfo } from '@shared/protocol';
 import { alignModel } from '@shared/model-metadata';
@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { call, errText } from '@/lib/api';
@@ -43,24 +44,11 @@ export function mergeModels(current: EndpointModel[], fetched: EndpointModel[]):
   return [...byId.values()];
 }
 
-function CheckBox({ checked }: { checked: boolean }) {
-  return (
-    <span
-      className={cn(
-        'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border transition-colors',
-        checked ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-transparent',
-      )}
-    >
-      {checked && <CheckIcon className="size-3" />}
-    </span>
-  );
-}
-
 function ModelRow({ model, selected, disabled, onToggle, onEdit }: { model: EndpointModel; selected: boolean; disabled: boolean; onToggle: () => void; onEdit: () => void }) {
   return (
     <div className="flex items-center gap-1">
-    <button type="button" aria-pressed={selected} disabled={disabled} onClick={onToggle} className="flex min-w-0 flex-1 items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-accent">
-      <CheckBox checked={selected} />
+    <Label className={cn('min-w-0 flex-1 items-start gap-2.5 rounded-md px-2 py-2 font-normal leading-normal hover:bg-accent', !disabled && 'cursor-pointer')}>
+      <Checkbox checked={selected} disabled={disabled} onCheckedChange={onToggle} className="mt-0.5" />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
           <span className="truncate font-mono text-xs">{model.id}</span>
@@ -69,7 +57,7 @@ function ModelRow({ model, selected, disabled, onToggle, onEdit }: { model: Endp
         {model.name && model.name !== model.id && <span className="mt-0.5 block truncate text-xs">{model.name}</span>}
         <span className="mt-0.5 block text-[11px] text-muted-foreground">{modelMetaLine(model)}</span>
       </span>
-    </button>
+    </Label>
     <Button type="button" variant="ghost" size="sm" disabled={disabled} aria-label={`编辑模型 ${model.id}`} onClick={onEdit}>
       <PencilIcon data-icon="inline-start" />编辑
     </Button>

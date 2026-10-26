@@ -3,6 +3,7 @@ import { immer } from 'zustand/middleware/immer';
 import type {
   AppInfo, ImportableSession, ModelInfo, OutputStyle, PermissionMode, Project, SessionKind, SettingsPayload, ThinkingLevel,
 } from '@shared/protocol';
+import type { ScheduledTask } from '@shared/schedule';
 import { bridge } from '@/lib/api';
 import type { ViewMode } from '@/lib/constants';
 import type { SessionView } from './types';
@@ -32,14 +33,14 @@ export interface Prefs {
   effort: ThinkingLevel;
   viewMode: ViewMode;
   outputStyle: OutputStyle;
-  /** Cowork: undefined = not chosen yet, null = temporary workspace. */
-  coworkFolder: string | null | undefined;
+  /** Work: undefined = not chosen yet, null = temporary workspace. */
+  workFolder: string | null | undefined;
   previewUrl: string;
 }
 
 const PREF_KEYS: Record<keyof Prefs, string> = {
   project: 'pd_project', worktree: 'pd_worktree', mode: 'pd_mode', model: 'pd_model', effort: 'pd_effort',
-  viewMode: 'pd_view_mode', outputStyle: 'pd_output_style', coworkFolder: 'pd_cowork_folder', previewUrl: 'pd_preview',
+  viewMode: 'pd_view_mode', outputStyle: 'pd_output_style', workFolder: 'pd_work_folder', previewUrl: 'pd_preview',
 };
 
 function loadPrefs(): Prefs {
@@ -51,7 +52,7 @@ function loadPrefs(): Prefs {
     effort: read('pd_effort', 'high'),
     viewMode: read('pd_view_mode', 'normal'),
     outputStyle: read('pd_output_style', 'default'),
-    coworkFolder: read<string | null | undefined>('pd_cowork_folder', undefined),
+    workFolder: read<string | null | undefined>('pd_work_folder', undefined),
     previewUrl: read('pd_preview', 'http://localhost:5173'),
   };
   if (!['normal', 'thinking', 'verbose'].includes(p.viewMode)) p.viewMode = 'normal';
@@ -68,7 +69,7 @@ export interface AppState {
   current: string | null;
   lastByView: Record<SessionKind, string | null>;
   projects: Project[];
-  coworkFolders: Project[];
+  workFolders: Project[];
   prefs: Prefs;
   models: ModelInfo[];
   /** Thinking levels of the default model (welcome screens). */
@@ -81,14 +82,19 @@ export interface AppState {
   /** A footer menu opened by a slash command (/model, /permissions, /context). */
   menu: 'model' | 'mode' | 'context' | null;
   sidebarCollapsed: boolean;
+  /** The Customize page replaces the conversation area while it is open. */
+  customize: boolean;
+  /** The Scheduled tasks page replaces the conversation area while it is open. */
+  scheduled: boolean;
+  tasks: ScheduledTask[];
 }
 
 const boot = bridge?.boot ?? {};
 const initialView = (): SessionKind => {
   const stored = read<string | null>('cc_mode', null);
-  if (stored === 'cowork' || stored === 'chat') return 'cowork';
+  if (stored === 'work' || stored === 'chat') return 'work';
   if (stored === 'code') return 'code';
-  return boot.settings?.defaultMode === 'cowork' ? 'cowork' : 'code';
+  return boot.settings?.defaultMode === 'work' ? 'work' : 'code';
 };
 
 export const useApp = create<AppState>()(
@@ -97,9 +103,9 @@ export const useApp = create<AppState>()(
     settings: boot.settings ?? {},
     view: initialView(),
     current: null,
-    lastByView: { code: null, cowork: null },
+    lastByView: { code: null, work: null },
     projects: [],
-    coworkFolders: [],
+    workFolders: [],
     prefs: loadPrefs(),
     models: [],
     levels: [],
@@ -108,6 +114,9 @@ export const useApp = create<AppState>()(
     sessions: {},
     paletteOpen: false,
     menu: null,
+    customize: false,
+    scheduled: false,
+    tasks: [],
     sidebarCollapsed: boot.settings?.sidebarCollapsed ?? read('cc_collapsed', false),
   })),
 );
@@ -135,7 +144,7 @@ export const currentSession = () => {
   const s = getApp();
   return s.current ? s.sessions[s.current] : undefined;
 };
-export const isCowork = (s: SessionView | undefined) => s?.meta.kind === 'cowork';
+export const isWork = (s: SessionView | undefined) => s?.meta.kind === 'work';
 
 export function modelName(models: ModelInfo[], id: string | null | undefined) {
   const m = models.find((x) => `${x.provider}/${x.id}` === id);

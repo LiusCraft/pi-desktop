@@ -4,8 +4,11 @@
 import type { HostMethod, HostToMain, MainToHost } from '@shared/protocol';
 import { importAttachments } from './attachments';
 import * as git from './git';
+import { readCustomizeFile } from './customize';
 import { applyChildPath } from './env';
 import { SessionHub } from './hub';
+import { Scheduler } from './scheduler';
+import { Store } from './store';
 
 interface ParentPort {
   on(event: 'message', listener: (e: { data: unknown }) => void): void;
@@ -27,6 +30,7 @@ function send(message: HostToMain) {
 }
 
 let hub: SessionHub | null = null;
+let scheduler: Scheduler | null = null;
 let resolveReady!: (hub: SessionHub) => void;
 const ready = new Promise<SessionHub>((resolve) => (resolveReady = resolve));
 
@@ -38,12 +42,15 @@ const handlers: Record<HostMethod, Handler> = {
     if (hub) return;
     hub = new SessionHub({ dataDir, agentDir, demoModel: demo, emit: (event) => send({ kind: 'event', event }) });
     await hub.init();
+    scheduler = new Scheduler(new Store(dataDir), hub, (tasks) => send({ kind: 'event', event: { type: 'tasks', tasks } }));
+    scheduler.start();
     resolveReady(hub);
   },
   'host:cancelLogins': withHub((h) => h.admin.cancelAll()),
   'host:meta': withHub((h, id) => ({ ...h.meta(id) })),
   'host:importAttachments': (sources) => importAttachments(sources),
   'host:shutdown': async () => {
+    scheduler?.stop();
     await hub?.shutdown();
   },
 
@@ -83,6 +90,21 @@ const handlers: Record<HostMethod, Handler> = {
   'agents:tools': withHub((h) => h.toolOptions()),
   'agents:save': withHub((h, draft) => h.saveAgent(draft)),
   'agents:remove': withHub((h, name) => h.removeAgent(name)),
+  'customize:list': withHub((h, project) => h.customize.list(project)),
+  'customize:readFile': (file) => readCustomizeFile(file),
+  'customize:skillSetDisabled': withHub((h, file, disabled, project) => h.customize.setSkillDisabled(file, disabled, project)),
+  'customize:skillCreate': withHub((h, draft, project) => h.customize.createSkill(draft, project)),
+  'customize:connectorSave': withHub((h, draft, project) => h.customize.saveConnector(draft, project)),
+  'customize:connectorSetEnabled': withHub((h, name, scope, enabled, project) => h.customize.setConnectorEnabled(name, scope, enabled, project)),
+  'customize:connectorRemove': withHub((h, name, scope, project) => h.customize.removeConnector(name, scope, project)),
+  'customize:pluginInstall': withHub((h, source, scope, project) => h.customize.installPlugin(source, scope, project)),
+  'customize:pluginRemove': withHub((h, source, scope, project) => h.customize.removePlugin(source, scope, project)),
+  'customize:pluginUpdate': withHub((h, source, project) => h.customize.updatePlugins(source, project)),
+  'tasks:list': withHub(() => scheduler!.list()),
+  'tasks:save': withHub((_h, draft) => scheduler!.save(draft)),
+  'tasks:setEnabled': withHub((_h, id, enabled) => scheduler!.setEnabled(id, enabled)),
+  'tasks:remove': withHub((_h, id) => scheduler!.remove(id)),
+  'tasks:run': withHub((_h, id) => scheduler!.runNow(id)),
   'models:list': withHub((h) => h.listModels()),
   'models:levels': withHub((h, model) => h.thinkingLevels(model)),
   'models:catalog': withHub((h) => h.admin.catalog()),

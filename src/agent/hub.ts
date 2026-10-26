@@ -14,13 +14,14 @@ import {
 import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import { buildMessage, decodeUserContent } from '@shared/attachments';
 import type {
-  AgentDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
+  AgentDraft, ConnectorDraft, SkillDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
   PrSummary, SessionMeta, SessionStats, Settings, SubagentProgress, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
 } from '@shared/protocol';
-import { appAgentsDir, appCoworkDir, appExtensionsDir, worktreeDir as resolveWorktreeDir } from './app-paths';
+import { appAgentsDir, appWorkDir, appExtensionsDir, worktreeDir as resolveWorktreeDir } from './app-paths';
 import { validatePromptPayload } from './attachments';
-import coworkPrompt from './cowork-prompt.md?raw';
+import workPrompt from './work-prompt.md?raw';
 import { registerDemoModel } from './demo-model';
+import * as customize from './customize';
 import { agentCatalog, agentPrompt, loadAgents, removeAgent, saveAgent } from './agents';
 import { createDesktopKit, type KitHost, type KitState, type SubagentRun } from './desktop-kit';
 import { toWireEvent } from './events';
@@ -156,6 +157,13 @@ export class SessionHub {
   private emitMeta(m: SessionMeta) {
     this.emit({ type: 'meta', sessionId: m.id, meta: { ...m } });
   }
+  /** A session made on the host's own initiative (a scheduled task run): tell the renderer it exists. */
+  announce(m: SessionMeta) {
+    this.emitMeta(m);
+  }
+  isRunning(id: string) {
+    return this.live.get(id)?.status === 'running';
+  }
   list(): SessionSummary[] {
     return this.metas.filter((m) => !m.archived).map((m) => ({ ...m, status: this.live.get(m.id)?.status ?? 'idle' }));
   }
@@ -210,15 +218,15 @@ export class SessionHub {
       sessionFile: null, createdAt: Date.now(), updatedAt: Date.now(), pr: null,
     } satisfies Partial<SessionMeta>;
     let meta: SessionMeta;
-    if (opts.kind === 'cowork') {
-      // Cowork tasks run directly in the chosen folder (or a fresh scratch workspace); no worktree, no diff base.
+    if (opts.kind === 'work') {
+      // Work tasks run directly in the chosen folder (or a fresh scratch workspace); no worktree, no diff base.
       let cwd = opts.projectPath;
       if (!cwd) {
-        cwd = path.join(appCoworkDir(this.opts.dataDir), `${new Date().toISOString().slice(0, 10)}-${slug}`);
+        cwd = path.join(appWorkDir(this.opts.dataDir), `${new Date().toISOString().slice(0, 10)}-${slug}`);
         fs.mkdirSync(cwd, { recursive: true });
       }
       meta = {
-        ...base, kind: 'cowork', ...this.titleState(opts.title, opts.autoName, 'New task'),
+        ...base, kind: 'work', ...this.titleState(opts.title, opts.autoName, 'New task'),
         projectPath: cwd, cwd, scratch: !opts.projectPath, branch: null, baseBranch: null, baseCommit: null, worktree: false,
       };
     } else {
@@ -301,7 +309,7 @@ export class SessionHub {
           ],
           // Pi Desktop's own extensions; pi's <agentDir>/extensions still load as before.
           additionalExtensionPaths: [appExtensionsDir(this.opts.dataDir)],
-          ...(m.kind === 'cowork' ? { appendSystemPrompt: [coworkPrompt] } : {}),
+          ...(m.kind === 'work' ? { appendSystemPrompt: [workPrompt] } : {}),
         },
       });
       const created = await createAgentSessionFromServices({
@@ -486,6 +494,23 @@ export class SessionHub {
   agentCatalog() { return agentCatalog(appAgentsDir(this.opts.dataDir)); }
   saveAgent(draft: AgentDraft) { return saveAgent(appAgentsDir(this.opts.dataDir), draft); }
   removeAgent(name: string) { return removeAgent(appAgentsDir(this.opts.dataDir), name); }
+
+  /** Where the Customize page reads and writes: pi's agent dir plus the selected project. */
+  customizeEnv(project: string | null): customize.CustomizeEnv {
+    const dir = project && fs.existsSync(project) ? project : null;
+    return { agentDir: this.agentDir, project: dir, projectTrusted: !!dir && (!hasTrustRequiringProjectResources(dir) || this.trust.get(dir) === true) };
+  }
+  customize = {
+    list: (project: string | null) => customize.catalog(this.customizeEnv(project)),
+    setSkillDisabled: (file: string, disabled: boolean, project: string | null) => customize.setSkillDisabled(this.customizeEnv(project), file, disabled),
+    createSkill: (draft: SkillDraft, project: string | null) => customize.createSkill(this.customizeEnv(project), draft),
+    saveConnector: (draft: ConnectorDraft, project: string | null) => customize.saveConnector(this.customizeEnv(project), draft),
+    setConnectorEnabled: (name: string, scope: 'user' | 'project', enabled: boolean, project: string | null) => customize.setConnectorEnabled(this.customizeEnv(project), name, scope, enabled),
+    removeConnector: (name: string, scope: 'user' | 'project', project: string | null) => customize.removeConnector(this.customizeEnv(project), name, scope),
+    installPlugin: (source: string, scope: 'user' | 'project', project: string | null) => customize.installPlugin(this.customizeEnv(project), source, scope),
+    removePlugin: (source: string, scope: 'user' | 'project', project: string | null) => customize.removePlugin(this.customizeEnv(project), source, scope),
+    updatePlugins: (source: string | null, project: string | null) => customize.updatePlugins(this.customizeEnv(project), source),
+  };
 
   /** A read-only, in-memory session with a fresh context (desktop-kit's `task` tool). */
   private async runSubagent(live: Live, run: SubagentRun) {

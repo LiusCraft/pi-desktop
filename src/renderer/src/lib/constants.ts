@@ -14,7 +14,7 @@ export const LEVEL_LABEL: Record<ThinkingLevel, string> = { off: 'Off', minimal:
 export type ViewMode = 'normal' | 'thinking' | 'verbose';
 export const VIEW_MODES: { id: ViewMode; name: string; desc: string }[] = [
   { id: 'normal', name: 'Normal', desc: 'Tool calls collapsed into summaries' },
-  { id: 'thinking', name: 'Thinking', desc: 'Summaries plus Claude’s thinking' },
+  { id: 'thinking', name: 'Thinking', desc: 'Summaries plus the model’s thinking' },
   { id: 'verbose', name: 'Verbose', desc: 'Every tool call, read, and step' },
 ];
 
@@ -37,8 +37,8 @@ export const DESKTOP_COMMANDS: [string, string][] = [
   ['/help', '查看命令与快捷键'],
 ];
 
-export const COWORK_IDEAS = [
+export const WORK_IDEAS = [
   { label: 'Send me a daily briefing', prompt: '每个工作日早上 8 点给我发一份简报：日程、待办和重要邮件' },
   { label: 'Organize my inbox', prompt: '帮我整理收件箱：归类、标记需要回复的邮件，并起草回复' },
-  { label: 'Customize Cowork for me', prompt: '根据我的工作方式，帮我定制 Cowork：推荐合适的技能和连接器' },
+  { label: 'Customize Work for me', prompt: '根据我的工作方式，帮我定制 Work：推荐合适的技能和连接器' },
 ];

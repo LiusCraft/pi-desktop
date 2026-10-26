@@ -190,3 +190,64 @@ test('edits model context and free prices without catalog replacement', async ()
   expect(catalog.endpoints[0].models.find((model) => model.id === 'my-private-model')).toMatchObject({ contextWindow: 128000, maxTokens: 16000, cost: { input: 0, output: 0 } });
   expect(errors).toEqual([]);
 });
+
+test('customize page: create a skill, switch it off, add and remove a connector', async () => {
+  await page.getByRole('button', { name: 'Customize', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Skills', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: '新建技能', exact: true }).click();
+  await page.getByPlaceholder('release-notes').fill('release-notes');
+  await page.getByPlaceholder(/Write release notes/).fill('Write release notes from merged PRs');
+  await page.getByPlaceholder(/List merged PRs/).fill('# Release notes\n\nList the merged PRs.');
+  await page.getByRole('button', { name: '创建', exact: true }).click();
+  const row = page.locator('div', { hasText: /^release-notes/ }).filter({ has: page.getByRole('switch') }).last();
+  await expect(row).toBeVisible();
+  await page.screenshot({ path: process.env.CUSTOMIZE_SHOT ?? path.join(temporary, 'customize.png') });
+  await page.getByRole('switch', { name: '停用 release-notes' }).click();
+  await expect(page.getByRole('switch', { name: '启用 release-notes' })).toBeVisible();
+
+  await page.getByRole('tab', { name: /^Connectors/ }).click();
+  await page.getByRole('button', { name: '添加连接器', exact: true }).click();
+  await page.getByPlaceholder('filesystem', { exact: true }).fill('docs');
+  await page.getByRole('radio', { name: '远程地址', exact: true }).click();
+  await page.getByPlaceholder('https://example.com/mcp').fill('https://example.com/mcp');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.getByText('https://example.com/mcp')).toBeVisible();
+  await page.getByRole('switch', { name: '停用' }).click();
+  await expect(page.getByRole('switch', { name: '启用' })).toBeVisible();
+  await page.getByText('docs', { exact: true }).click();
+  await page.getByRole('button', { name: '删除', exact: true }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: '删除', exact: true }).click();
+  await expect(page.getByText('还没有连接器')).toBeVisible();
+
+  await page.getByRole('tab', { name: /^Plugins/ }).click();
+  await expect(page.getByText('还没有安装插件')).toBeVisible();
+  await page.getByRole('tab', { name: /^Subagents/ }).click();
+  await expect(page.getByText('explore', { exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('scheduled tasks: pick a one-off date and time, then run it now', async () => {
+  await page.getByRole('button', { name: 'Scheduled', exact: true }).click();
+  await expect(page.getByText('还没有定时任务')).toBeVisible();
+  await page.getByRole('button', { name: '新建任务', exact: true }).click();
+  await page.getByPlaceholder('每日代码审查').fill('nightly');
+  await page.getByRole('textbox', { name: /指令/ }).fill('say hi from the schedule');
+
+  await page.getByRole('combobox', { name: /运行时间/ }).click();
+  await page.getByRole('option', { name: '只运行一次' }).click();
+  await page.getByRole('button', { name: /\d{4}\/\d+\/\d+|\d+\/\d+\/\d{4}|\d{4}-\d+-\d+/ }).click();
+  await expect(page.getByRole('grid')).toBeVisible();
+  await page.waitForTimeout(400); // let the popover finish fading in
+  await page.screenshot({ path: process.env.SCHEDULE_SHOT ?? path.join(temporary, 'schedule-calendar.png') });
+  await page.keyboard.press('Escape');
+  await page.getByRole('combobox', { name: '分钟' }).click();
+  await page.getByRole('option', { name: '07', exact: true }).click();
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+
+  await expect(page.getByText('nightly')).toBeVisible();
+  await page.getByText('nightly').click();
+  await page.getByRole('button', { name: '立即运行', exact: true }).click();
+  await expect(page.getByText('say hi from the schedule').first()).toBeVisible();
+  expect(errors).toEqual([]);
+});

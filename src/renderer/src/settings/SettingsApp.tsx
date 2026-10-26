@@ -1,29 +1,30 @@
 // Settings window. Every value comes from the main process (single source of
 // truth), so the main window and this one can never disagree.
 import { useEffect, useState, type ReactNode } from 'react';
-import { BotIcon, BrainIcon, FolderIcon, InfoIcon, MoonIcon, SettingsIcon } from 'lucide-react';
+import { BrainIcon, FolderIcon, InfoIcon, MoonIcon, SettingsIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AppInfo, Project, Settings, SettingsPayload, SuggestionModelMode } from '@shared/protocol';
 import { SUGGESTION_DEFAULT_CONTEXT, SUGGESTION_MAX_CONTEXT } from '@shared/protocol';
 import { useCopy } from '@/components/common/Copy';
+import { Segmented } from '@/components/common/Segmented';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Toaster } from 'sonner';
 import { bridge, call, errText, isMac } from '@/lib/api';
 import { applyTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import { PET_SKINS, PetSprite } from '@/components/composer/Clawd';
-import { AgentsSection } from './AgentsSection';
 import { ModelPicker } from './ModelPicker';
 import { ModelsSection } from './ModelsSection';
 
-type Section = 'appearance' | 'general' | 'models' | 'agents' | 'projects' | 'about';
+type Section = 'appearance' | 'general' | 'models' | 'projects' | 'about';
 const SECTIONS: { id: Section; label: string; icon: ReactNode }[] = [
   { id: 'appearance', label: '外观', icon: <MoonIcon className="size-4" /> },
   { id: 'general', label: '通用', icon: <SettingsIcon className="size-4" /> },
   { id: 'models', label: '模型管理', icon: <BrainIcon className="size-4" /> },
-  { id: 'agents', label: '子代理', icon: <BotIcon className="size-4" /> },
   { id: 'projects', label: '项目与文件夹', icon: <FolderIcon className="size-4" /> },
   { id: 'about', label: '关于', icon: <InfoIcon className="size-4" /> },
 ];
@@ -62,18 +63,6 @@ function Group({ title, sub, children }: { title: string; sub?: string; children
   );
 }
 
-function Segmented<T extends string>({ value, options, onPick }: { value: T; options: readonly { id: T; label: string; hint?: string }[]; onPick: (id: T) => void }) {
-  return (
-    <div className="flex shrink-0 rounded-lg bg-muted p-0.5 text-sm">
-      {options.map((o) => (
-        <button key={o.id} title={o.hint} onClick={() => onPick(o.id)} className={cn('rounded-md px-3 py-1', value === o.id ? 'bg-background shadow-sm' : 'text-muted-foreground')}>
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 const Heading = ({ title, sub }: { title: string; sub: string }) => (
   <div className="mb-5">
     <h2 className="text-xl font-semibold">{title}</h2>
@@ -81,15 +70,33 @@ const Heading = ({ title, sub }: { title: string; sub: string }) => (
   </div>
 );
 
-function ThemeOption({ id, label, current, onPick }: { id: 'light' | 'dark' | 'system'; label: string; current: string; onPick: () => void }) {
-  const swatch = { light: 'bg-[#faf9f5]', dark: 'bg-[#262624]', system: 'bg-gradient-to-r from-[#faf9f5] from-50% to-[#262624] to-50%' }[id];
+interface Swatch<T extends string> {
+  id: T;
+  label: string;
+  /** Classes for the preview tile. */
+  tile?: string;
+  preview?: ReactNode;
+}
+
+/** Pick one of a few previews, each a labelled tile (theme, pet skin). */
+function SwatchGroup<T extends string>({ value, onChange, options }: { value: T; onChange: (id: T) => void; options: readonly Swatch<T>[] }) {
   return (
-    <button onClick={onPick} aria-pressed={id === current} className="flex flex-col items-center gap-2">
-      <span className={cn('h-16 w-24 rounded-lg border-2', swatch, id === current ? 'border-primary' : 'border-border')} />
-      <span className={cn('text-xs', id === current ? 'font-medium' : 'text-muted-foreground')}>{label}</span>
-    </button>
+    <ToggleGroup type="single" value={value} onValueChange={(id) => id && onChange(id as T)} spacing={1} className="gap-4">
+      {options.map((o) => (
+        <ToggleGroupItem key={o.id} value={o.id} className="group/swatch h-auto flex-col gap-2 p-0 font-normal focus-visible:border-transparent focus-visible:ring-0 hover:bg-transparent data-[state=on]:bg-transparent">
+          <span className={cn('flex h-16 w-24 items-center justify-center rounded-lg border-2 border-border group-data-[state=on]/swatch:border-primary', o.tile)}>{o.preview}</span>
+          <span className="text-xs text-muted-foreground group-data-[state=on]/swatch:font-medium group-data-[state=on]/swatch:text-foreground">{o.label}</span>
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   );
 }
+
+const THEMES: readonly Swatch<'light' | 'dark' | 'system'>[] = [
+  { id: 'light', label: '浅色', tile: 'bg-[#faf9f5]' },
+  { id: 'dark', label: '深色', tile: 'bg-[#262624]' },
+  { id: 'system', label: '跟随系统', tile: 'bg-gradient-to-r from-[#faf9f5] from-50% to-[#262624] to-50%' },
+];
 
 /** Number input that commits on blur or Enter, so a half-typed count is never saved. */
 function CountInput({ value, disabled, onCommit }: { value: number; disabled?: boolean; onCommit: (value: number) => void }) {
@@ -130,7 +137,7 @@ export function SettingsApp() {
       applyTheme(s);
     });
     const offSection = bridge.on('settings:section', (s) => isSection(s) && setSection(normalizeSection(s)));
-    void Promise.all([call('settings:get'), call('app:info'), call('projects:list'), call('cowork:folders')]).then(([s, i, p, f]) => {
+    void Promise.all([call('settings:get'), call('app:info'), call('projects:list'), call('work:folders')]).then(([s, i, p, f]) => {
       setSettings(s);
       applyTheme(s);
       setInfo(i);
@@ -164,7 +171,7 @@ export function SettingsApp() {
   };
   const reloadLists = async () => {
     setProjects(await call('projects:list'));
-    setFolders(await call('cowork:folders'));
+    setFolders(await call('work:folders'));
   };
 
   const theme = settings.theme === 'light' || settings.theme === 'dark' ? settings.theme : 'system';
@@ -175,11 +182,7 @@ export function SettingsApp() {
         <Heading title="外观" sub="Pi Desktop 在这台电脑上的显示方式。" />
         <Panel>
           <Row title="主题" hint="跟随系统时会随 macOS / Windows 的外观自动切换。" col>
-            <div className="flex gap-4">
-              <ThemeOption id="light" label="浅色" current={theme} onPick={() => void patch({ theme: 'light' })} />
-              <ThemeOption id="dark" label="深色" current={theme} onPick={() => void patch({ theme: 'dark' })} />
-              <ThemeOption id="system" label="跟随系统" current={theme} onPick={() => void patch({ theme: 'system' })} />
-            </div>
+            <SwatchGroup value={theme} onChange={(id) => void patch({ theme: id })} options={THEMES} />
           </Row>
           <Row title="侧边栏" hint="启动时收起左侧导航。">
             <Switch checked={!!settings.sidebarCollapsed} onCheckedChange={(v) => void patch({ sidebarCollapsed: v })} />
@@ -189,19 +192,11 @@ export function SettingsApp() {
           </Row>
           {settings.pet !== false && (
             <Row title="宠物皮肤" col>
-              <div className="flex gap-4">
-                {PET_SKINS.map((p) => {
-                  const on = (settings.petSkin ?? 'clawd') === p.id;
-                  return (
-                    <button key={p.id} onClick={() => void patch({ petSkin: p.id })} aria-pressed={on} className="flex flex-col items-center gap-2">
-                      <span className={cn('flex h-16 w-24 items-center justify-center rounded-lg border-2 bg-muted/50', on ? 'border-primary' : 'border-border')}>
-                        <PetSprite skin={p.id} size={1.1} />
-                      </span>
-                      <span className={cn('text-xs', on ? 'font-medium' : 'text-muted-foreground')}>{p.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              <SwatchGroup
+                value={settings.petSkin ?? 'clawd'}
+                onChange={(id) => void patch({ petSkin: id })}
+                options={PET_SKINS.map((p) => ({ id: p.id, label: p.label, tile: 'bg-muted/50', preview: <PetSprite skin={p.id} size={1.1} /> }))}
+              />
             </Row>
           )}
         </Panel>
@@ -219,8 +214,8 @@ export function SettingsApp() {
             <Row title="默认分区" hint="第一次启动时打开的视图；之后会记住你最后切换到的分区。">
               <Segmented
                 value={settings.defaultMode ?? 'code'}
-                options={[{ id: 'code', label: 'Code' }, { id: 'cowork', label: 'Cowork' }]}
-                onPick={(m) => void patch({ defaultMode: m })}
+                options={[{ id: 'code', label: 'Code' }, { id: 'work', label: 'Work' }]}
+                onChange={(m) => void patch({ defaultMode: m })}
               />
             </Row>
           </Group>
@@ -238,7 +233,7 @@ export function SettingsApp() {
             {settings.suggestions !== false && (
               <>
                 <Row title="预测模型" hint="自动 = 同 provider 里最便宜的小模型；指定的模型不可用时回退到自动。离线 Demo 模型不参与预测。">
-                  <Segmented value={settings.suggestionModel ?? 'session'} options={SUGGESTION_MODES} onPick={(m) => void patch({ suggestionModel: m })} />
+                  <Segmented value={settings.suggestionModel ?? 'session'} options={SUGGESTION_MODES} onChange={(m) => void patch({ suggestionModel: m })} />
                 </Row>
                 {(settings.suggestionModel ?? 'session') === 'fixed' && (
                   <Row title="指定模型" hint="只列出当前可用（已配置凭据）的模型。">
@@ -256,7 +251,7 @@ export function SettingsApp() {
                     <Segmented
                       value={settings.suggestionFullContext ? 'all' : 'recent'}
                       options={[{ id: 'recent', label: '最近' }, { id: 'all', label: '全部对话' }]}
-                      onPick={(m) => void patch({ suggestionFullContext: m === 'all' })}
+                      onChange={(m) => void patch({ suggestionFullContext: m === 'all' })}
                     />
                   </div>
                 </Row>
@@ -268,8 +263,6 @@ export function SettingsApp() {
     );
   } else if (section === 'models') {
     body = <ModelsSection />;
-  } else if (section === 'agents') {
-    body = <AgentsSection />;
   } else if (section === 'projects') {
     const worktreePath = settings.worktreeDir || info?.defaultWorktreeDir || '';
     const pickWorktree = async () => {
@@ -293,7 +286,7 @@ export function SettingsApp() {
               variant="ghost"
               className="text-destructive"
               onClick={async () => {
-                await (kind === 'project' ? call('projects:remove', p.path) : call('cowork:removeFolder', p.path));
+                await (kind === 'project' ? call('projects:remove', p.path) : call('work:removeFolder', p.path));
                 await reloadLists();
               }}
             >
@@ -304,12 +297,12 @@ export function SettingsApp() {
       </Panel>
     );
     const add = async (kind: 'project' | 'folder') => {
-      await (kind === 'project' ? call('projects:add') : call('cowork:addFolder')).catch((e) => toast.error(errText(e)));
+      await (kind === 'project' ? call('projects:add') : call('work:addFolder')).catch((e) => toast.error(errText(e)));
       await reloadLists();
     };
     body = (
       <>
-        <Heading title="项目与文件夹" sub="Code 会话的项目、worktree 位置，以及 Cowork 可用的工作文件夹。" />
+        <Heading title="项目与文件夹" sub="Code 会话的项目、worktree 位置，以及 Work 可用的工作文件夹。" />
         <div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">Worktree 位置</h3></div>
         <Panel>
           <Row
@@ -332,7 +325,7 @@ export function SettingsApp() {
         </Panel>
         <div className="mt-6 mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">Code 项目</h3><Button size="sm" variant="outline" onClick={() => void add('project')}>添加…</Button></div>
         {list(projects, 'project')}
-        <div className="mt-6 mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">Cowork 文件夹</h3><Button size="sm" variant="outline" onClick={() => void add('folder')}>添加…</Button></div>
+        <div className="mt-6 mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">Work 文件夹</h3><Button size="sm" variant="outline" onClick={() => void add('folder')}>添加…</Button></div>
         {list(folders, 'folder')}
       </>
     );
@@ -364,19 +357,25 @@ export function SettingsApp() {
   return (
     <div className="flex h-screen flex-col bg-background" data-platform={bridge.platform}>
       <header className="app-drag titlebar-inset flex h-12 shrink-0 items-center justify-center border-b text-sm font-medium">Settings</header>
-      <div className="flex min-h-0 flex-1">
-        <nav className="w-52 shrink-0 space-y-0.5 border-r bg-sidebar p-3">
-          {SECTIONS.map((s) => (
-            <button key={s.id} onClick={() => setSection(s.id)} className={cn('flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm', section === s.id ? 'bg-sidebar-accent font-medium' : 'text-sidebar-foreground hover:bg-sidebar-accent/60')}>
-              <span className="text-muted-foreground">{s.icon}</span>
-              {s.label}
-            </button>
-          ))}
+      <Tabs value={section} onValueChange={(v) => setSection(v as Section)} orientation="vertical" className="min-h-0 flex-1 flex-row gap-0">
+        <nav className="w-52 shrink-0 border-r bg-sidebar p-3">
+          <TabsList className="h-auto w-full flex-col items-stretch gap-0.5 bg-transparent p-0">
+            {SECTIONS.map((s) => (
+              <TabsTrigger
+                key={s.id}
+                value={s.id}
+                className="h-8 flex-none justify-start gap-2.5 rounded-lg px-2.5 font-normal text-sidebar-foreground shadow-none hover:bg-sidebar-accent/60 data-[state=active]:bg-sidebar-accent data-[state=active]:font-medium data-[state=active]:shadow-none"
+              >
+                <span className="text-muted-foreground">{s.icon}</span>
+                {s.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
         </nav>
         <main className="min-w-0 flex-1 overflow-y-auto p-8">
-          <div className="mx-auto max-w-3xl">{body}</div>
+          <div key={section} className="mx-auto max-w-3xl animate-in duration-200 fade-in-0 slide-in-from-bottom-1">{body}</div>
         </main>
-      </div>
+      </Tabs>
       <Toaster position="bottom-right" theme={settings.resolvedTheme ?? 'light'} />
     </div>
   );

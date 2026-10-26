@@ -8,7 +8,7 @@ import { diffStats, positiveLine } from '@shared/tool-previews';
 import { call, errText, modKey } from '@/lib/api';
 import { DESKTOP_COMMANDS, MODES, VIEW_MODES, type ViewMode } from '@/lib/constants';
 import { fmtTok, relPath } from '@/lib/format';
-import { currentSession, getApp, isCowork, setApp, setPref, updateSession, type AppState } from './app';
+import { currentSession, getApp, isWork, setApp, setPref, updateSession, type AppState } from './app';
 import { dialogs } from './dialogs';
 import { activeDraft, drafts, getDraft, sessionDraftKey, useDrafts } from './drafts';
 import { primeSuggestion, resumeSuggestion } from './predict';
@@ -23,7 +23,7 @@ export const fail = (err: unknown) => toast.error(errText(err));
 
 export { sessionDraftKey };
 export function welcomeDraftKey(st: AppState = getApp()) {
-  return st.view === 'cowork' ? `welcome:cowork:${st.prefs.coworkFolder || 'scratch'}` : `welcome:code:${st.prefs.project || 'none'}`;
+  return st.view === 'work' ? `welcome:work:${st.prefs.workFolder || 'scratch'}` : `welcome:code:${st.prefs.project || 'none'}`;
 }
 const activateDraftFor = () => {
   const st = getApp();
@@ -59,6 +59,10 @@ function flushEvents() {
   setApp((st) => {
     const view = st.prefs.viewMode;
     for (const ev of events) {
+      if (ev.type === 'tasks') {
+        st.tasks = ev.tasks;
+        continue;
+      }
       if (ev.type === 'auth_prompt' || ev.type === 'auth_event' || ev.type === 'models_changed') continue;
       if (ev.type === 'host_exit') {
         for (const s of Object.values(st.sessions)) {
@@ -144,7 +148,7 @@ function runEffects(id: string, fx: Effects) {
   const away = !isCur || document.hidden || !document.hasFocus();
   if (fx.settled && away) {
     if (!isCur) updateSession(id, (x) => void (x.unread = true));
-    call('app:notify', { title: s.meta.title, body: fx.settled.aborted ? 'Interrupted' : 'Claude finished', sessionId: id }).catch(() => {});
+    call('app:notify', { title: s.meta.title, body: fx.settled.aborted ? 'Interrupted' : 'Pi Desktop finished', sessionId: id }).catch(() => {});
   }
   // A finished turn is the moment the user is likely to type again. An interrupted
   // run is not: there is no natural follow-up to guess.
@@ -158,8 +162,8 @@ function runEffects(id: string, fx: Effects) {
 // ------------------------------------------------------------ boot
 
 export async function bootstrap() {
-  const [info, projects, sessions, folders] = await Promise.all([
-    call('app:info'), call('projects:list'), call('sessions:list'), call('cowork:folders'),
+  const [info, projects, sessions, folders, tasks] = await Promise.all([
+    call('app:info'), call('projects:list'), call('sessions:list'), call('work:folders'), call('tasks:list'),
   ]);
   setApp((st) => {
     st.info = info;
@@ -169,9 +173,10 @@ export async function bootstrap() {
       st.sessions[meta.id] = emptySession(meta);
       st.sessions[meta.id].running = meta.status === 'running';
     }
-    st.coworkFolders = folders;
-    const f = st.prefs.coworkFolder;
-    if (f === undefined || (f && !folders.some((x) => x.path === f))) st.prefs.coworkFolder = folders[0]?.path ?? null;
+    st.workFolders = folders;
+    st.tasks = tasks;
+    const f = st.prefs.workFolder;
+    if (f === undefined || (f && !folders.some((x) => x.path === f))) st.prefs.workFolder = folders[0]?.path ?? null;
   });
   showWelcome();
   await loadModels();
@@ -199,10 +204,28 @@ export async function loadModels() {
 
 // ------------------------------------------------------------ navigation
 
+export function showCustomize() {
+  setApp((st) => {
+    st.customize = true;
+    st.scheduled = false;
+    st.menu = null;
+  });
+}
+
+export function showScheduled() {
+  setApp((st) => {
+    st.scheduled = true;
+    st.customize = false;
+    st.menu = null;
+  });
+}
+
 export function setView(view: SessionKind) {
   setApp((st) => {
     st.view = view;
     st.menu = null;
+    st.customize = false;
+    st.scheduled = false;
   });
   try {
     localStorage.setItem('cc_mode', JSON.stringify(view));
@@ -217,6 +240,8 @@ export function setView(view: SessionKind) {
 
 export function showWelcome() {
   setApp((st) => {
+    st.customize = false;
+    st.scheduled = false;
     st.current = null;
     st.lastByView[st.view] = null;
   });
@@ -229,6 +254,8 @@ export async function openSession(id: string, fresh = false) {
   if (!s) return;
   const view: SessionKind = s.meta.kind;
   setApp((st) => {
+    st.customize = false;
+    st.scheduled = false;
     st.current = id;
     st.view = view;
     st.lastByView[view] = id;
@@ -350,11 +377,11 @@ export async function exportHtml(id: string) {
 
 async function createSession(firstPrompt: string, draftKey: string) {
   const st = getApp();
-  const cowork = st.view === 'cowork';
+  const work = st.view === 'work';
   const meta = await call('sessions:create', {
-    kind: cowork ? 'cowork' : 'code',
-    projectPath: cowork ? st.prefs.coworkFolder || null : st.prefs.project,
-    worktree: !cowork && st.prefs.worktree,
+    kind: work ? 'work' : 'code',
+    projectPath: work ? st.prefs.workFolder || null : st.prefs.project,
+    worktree: !work && st.prefs.worktree,
     title: firstPrompt.replace(/@\S+/g, '').trim().slice(0, 60) || 'New session',
     autoName: true,
     model: st.prefs.model,
@@ -732,7 +759,7 @@ function scheduleChanges(id: string) {
 }
 export async function loadChanges(id: string) {
   const s = getApp().sessions[id];
-  if (!s || isCowork(s)) return;
+  if (!s || isWork(s)) return;
   try {
     const { files, state } = await call('sessions:changes', id);
     const changes = files.map((f) => ({ ...f, ...(f.binary ? { add: 0, del: 0 } : diffStats(f.before, f.status === 'D' ? null : f.after)) }));
@@ -775,7 +802,7 @@ const prState = new Map<string, { retries: number; request: number }>();
 export async function pollPr(id: string, retries = 0) {
   clearTimeout(prTimers.get(id));
   const s = getApp().sessions[id];
-  if (!s || isCowork(s) || s.meta.archived) return;
+  if (!s || isWork(s) || s.meta.archived) return;
   const st = prState.get(id) ?? { retries: 0, request: 0 };
   st.retries = Math.max(st.retries, retries);
   const request = ++st.request;
@@ -868,19 +895,19 @@ export async function importCliSession() {
   }
 }
 
-export function setCoworkFolder(folder: string | null) {
-  setPref('coworkFolder', folder);
-  if (folder) call('cowork:useFolder', folder).catch(() => {});
+export function setWorkFolder(folder: string | null) {
+  setPref('workFolder', folder);
+  if (folder) call('work:useFolder', folder).catch(() => {});
   if (!getApp().current) activateDraftFor();
 }
 
-export async function addCoworkFolder() {
+export async function addWorkFolder() {
   try {
-    const folder = await call('cowork:addFolder');
+    const folder = await call('work:addFolder');
     if (!folder) return;
-    const folders = await call('cowork:folders');
-    setApp((st) => void (st.coworkFolders = folders));
-    setCoworkFolder(folder.path);
+    const folders = await call('work:folders');
+    setApp((st) => void (st.workFolders = folders));
+    setWorkFolder(folder.path);
   } catch (err) {
     fail(err);
   }

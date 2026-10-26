@@ -7,6 +7,7 @@ import { CopyGlyph, useCopy } from '@/components/common/Copy';
 import { AttachmentTiles } from '@/components/common/Attachments';
 import { DiffRows, TermOutput, ToolPreviewView } from '@/components/common/CodeView';
 import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Kbd } from '@/components/ui/kbd';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -25,7 +26,7 @@ export const UserItem = memo(function UserItem({ sid, item }: { sid: string; ite
   const { copied, copy } = useCopy();
   const busy = useApp((state) => !!(state.sessions[sid]?.running || state.sessions[sid]?.historyBusy || state.sessions[sid]?.pendingUser.length));
   return (
-    <div className={cn('flex flex-col items-end gap-1.5', item.queued && 'opacity-60')} title={item.queued ? '排队中：Claude 完成当前步骤后处理' : undefined}>
+    <div className={cn('flex flex-col items-end gap-1.5', item.queued && 'opacity-60')} title={item.queued ? '排队中：Pi Desktop 完成当前步骤后处理' : undefined}>
       <AttachmentTiles attachments={item.attachments} />
       {item.text && (
         <div data-selectable className="max-w-[85%] rounded-2xl bg-user-bubble px-4 py-2.5 whitespace-pre-wrap break-words">
@@ -163,7 +164,7 @@ function ToolDetail({ sid, tool }: { sid: string; tool: ToolState }) {
   return <div className="px-3 py-2 text-xs text-muted-foreground">{tool.status === 'running' ? 'Running…' : 'No output'}</div>;
 }
 
-/** "Ran" + "npm test": the verb stays muted, the subject is brighter (like Claude Code's tool list). */
+/** "Ran" + "npm test": the verb stays muted, the subject is brighter (like Pi Desktop Code's tool list). */
 function splitLabel(tool: ToolState): [string, string] {
   if (tool.kind === 'agent') return [tool.status === 'running' ? 'Running agent' : 'Ran agent', tool.desc];
   if (tool.kind === 'other') return [toolLabel(tool), ''];
@@ -242,13 +243,15 @@ export const GroupItem = memo(function GroupItem({ sid, item, view }: { sid: str
   return (
     <div className="space-y-1">
       {thoughts.map((step, i) => (
-        <details key={i} open={step.open} onToggle={(e) => (e.currentTarget.open !== step.open ? toggleThought(sid, item.key, i, e.currentTarget.open) : undefined)} className="group/think">
-          <summary className="flex cursor-pointer list-none items-center gap-1 text-sm text-muted-foreground select-none hover:text-foreground">
+        <Collapsible key={i} open={!!step.open} onOpenChange={(open) => (open !== !!step.open ? toggleThought(sid, item.key, i, open) : undefined)} className="group/think">
+          <CollapsibleTrigger className="flex cursor-pointer items-center gap-1 text-sm text-muted-foreground select-none hover:text-foreground">
             {step.done ? <span>{step.secs ? `Thought for ${step.secs}s` : 'Thought'}</span> : <span className="shimmer">Thinking…</span>}
-            <ChevronRightIcon className="size-3.5 transition-transform group-open/think:rotate-90" />
-          </summary>
-          <div data-selectable className="mt-1 border-l-2 pl-3 text-sm whitespace-pre-wrap text-muted-foreground">{step.text}</div>
-        </details>
+            <ChevronRightIcon className="size-3.5 transition-transform group-data-[state=open]/think:rotate-90" />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div data-selectable className="mt-1 border-l-2 pl-3 text-sm whitespace-pre-wrap text-muted-foreground">{step.text}</div>
+          </CollapsibleContent>
+        </Collapsible>
       ))}
       {item.tools.length > 0 && (
         <>
@@ -321,10 +324,12 @@ export const AskItem = memo(function AskItem({ sid, item }: { sid: string; item:
       {extra.map((p, i) => {
         const nl = p.indexOf('\n');
         return (
-          <details key={i} className="mb-2 text-sm">
-            <summary className="cursor-pointer text-muted-foreground">{p.slice(0, nl).replace(/^--- | ---$/g, '')}</summary>
-            <pre className="mt-1 max-h-60 overflow-auto rounded bg-code p-2 font-mono text-xs">{p.slice(nl + 1)}</pre>
-          </details>
+          <Collapsible key={i} className="mb-2 text-sm">
+            <CollapsibleTrigger className="cursor-pointer text-left text-muted-foreground">{p.slice(0, nl).replace(/^--- | ---$/g, '')}</CollapsibleTrigger>
+            <CollapsibleContent>
+              <pre className="mt-1 max-h-60 overflow-auto rounded bg-code p-2 font-mono text-xs">{p.slice(nl + 1)}</pre>
+            </CollapsibleContent>
+          </Collapsible>
         );
       })}
       {r.kind === 'select' && (

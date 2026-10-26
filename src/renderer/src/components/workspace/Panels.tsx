@@ -162,8 +162,8 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
     </IconBtn>
   );
   let content: ReactNode;
-  if (!s.meta.baseCommit) content = <Empty>{'这个项目不是 git 仓库\n初始化 git 后即可查看 Claude 的改动'}</Empty>;
-  else if (!s.changes.length) content = <Empty>{'No changes yet\nClaude 修改的文件会出现在这里'}</Empty>;
+  if (!s.meta.baseCommit) content = <Empty>{'这个项目不是 git 仓库\n初始化 git 后即可查看 Pi Desktop 的改动'}</Empty>;
+  else if (!s.changes.length) content = <Empty>{'No changes yet\nPi Desktop 修改的文件会出现在这里'}</Empty>;
   else {
     const genTag = (path: string) => {
       const gen = generatedKind(path);
@@ -365,7 +365,7 @@ export function TerminalPanel({ s, ...card }: CardProps & { s: SessionView }) {
     >
       <div ref={body} className="min-h-0 flex-1 overflow-auto">
         {s.term.length ? s.term.map((t, i) => <TermOutput key={i} cmd={t.cmd} out={t.out} />) : (
-          <div className="p-3 text-xs text-muted-foreground">Claude 运行的命令会显示在这里。也可以在下面输入命令，输出会加入对话上下文。</div>
+          <div className="p-3 text-xs text-muted-foreground">Pi Desktop 运行的命令会显示在这里。也可以在下面输入命令，输出会加入对话上下文。</div>
         )}
       </div>
       <form
@@ -452,7 +452,7 @@ export function TasksPanel({ s, ...card }: CardProps & { s: SessionView }) {
       tools={<IconBtn title="Clear finished tasks" disabled={!done.length} className="disabled:opacity-40" onClick={() => setCleared(new Set(all.filter((t) => t.status !== 'running').map((t) => t.id)))}><Trash2Icon className="size-3.5" /></IconBtn>}
       onClose={() => togglePanel(id, 'tasks', false)}
     >
-      {!running.length && !done.length ? <Empty>{'No background tasks\nSubagents and shell commands Claude runs in the background show up here'}</Empty> : (
+      {!running.length && !done.length ? <Empty>{'No background tasks\nSubagents and shell commands Pi Desktop runs in the background show up here'}</Empty> : (
         <div className="space-y-4 p-3">
           {running.length > 0 && (
             <section className="space-y-2">
@@ -539,7 +539,7 @@ export function DetailPanel({ s, ...card }: CardProps & { s: SessionView }) {
       <Card {...card} title="Plan" onClose={close} tools={<IconBtn title={copied ? 'Copied' : 'Copy plan'} onClick={() => copy(plan.md)}><CopyGlyph copied={copied} /></IconBtn>}>
         <div className="space-y-4 p-4">
           <div className="flex items-start gap-2 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
-            <MessageSquareIcon className="mt-0.5 size-3.5 shrink-0" />Review the plan. Approve it to let Claude start, or keep planning and reply with changes.
+            <MessageSquareIcon className="mt-0.5 size-3.5 shrink-0" />Review the plan. Approve it to let Pi Desktop start, or keep planning and reply with changes.
           </div>
           <Markdown text={plan.md || '_Waiting for the plan…_'} />
           {plan.requestId && !plan.resolved && <PlanActions sid={id} itemKey={plan.key} />}
@@ -601,9 +601,9 @@ function FileViewer({ s, ...card }: CardProps & { s: SessionView }) {
   );
 }
 
-// ------------------------------------------------------------ cowork progress
+// ------------------------------------------------------------ work progress
 
-export function CoworkPanel({ s, ...card }: CardProps & { s: SessionView }) {
+export function WorkPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const models = useApp((st) => st.models);
   const todos = s.lastTodos;
   const done = todos.filter((t) => t.status === 'completed').length;
@@ -622,7 +622,7 @@ export function CoworkPanel({ s, ...card }: CardProps & { s: SessionView }) {
               <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${(done / todos.length) * 100}%` }} /></div>
               <TodoList items={todos} />
             </>
-          ) : <p className="text-sm text-muted-foreground">{s.running ? 'Claude 正在了解任务…' : '多步骤的任务会在这里显示进度。'}</p>}
+          ) : <p className="text-sm text-muted-foreground">{s.running ? 'Pi Desktop 正在了解任务…' : '多步骤的任务会在这里显示进度。'}</p>}
         </section>
         <section className="space-y-1 p-4">
           <h3 className="flex items-center justify-between text-xs font-semibold tracking-wide text-muted-foreground uppercase">Files{outputs.length > 0 && <span>{outputs.length}</span>}</h3>
@@ -638,7 +638,7 @@ export function CoworkPanel({ s, ...card }: CardProps & { s: SessionView }) {
               <IconBtn title="Open" onClick={() => call('sessions:openPath', id, o.path, false).catch(fail)}><ExternalLinkIcon className="size-3.5" /></IconBtn>
               <IconBtn title="Show in folder" onClick={() => call('sessions:openPath', id, o.path, true).catch(fail)}><FolderIcon className="size-3.5" /></IconBtn>
             </div>
-          )) : <p className="text-sm text-muted-foreground">Claude 创建或修改的文件会出现在这里。</p>}
+          )) : <p className="text-sm text-muted-foreground">Pi Desktop 创建或修改的文件会出现在这里。</p>}
         </section>
         <section className="space-y-1 p-4">
           <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Context</h3>

@@ -19,6 +19,10 @@ files:
   # Dependency leftovers nothing loads at runtime: sourcemaps and type declarations.
   - '!**/node_modules/**/*.map'
   - '!**/node_modules/**/*.d.{ts,mts,cts}'
+  # Uncompiled sources next to the built openai SDK, docs screenshots and the TUI-only mascot art.
+  - '!**/node_modules/openai/src/**'
+  - '!**/node_modules/@earendil-works/pi-coding-agent/docs/images/**'
+  - '!**/node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/assets/**'
 
 asar: false
 # Chromium locale packs are ~45 MB; the UI only ships zh-CN and en.

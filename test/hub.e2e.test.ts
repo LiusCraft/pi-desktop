@@ -299,17 +299,17 @@ describe('code sessions', { timeout: 120_000 }, () => {
   });
 });
 
-describe('cowork sessions', { timeout: 120_000 }, () => {
+describe('work sessions', { timeout: 120_000 }, () => {
   let dir: string;
   beforeEach(() => {
-    dir = path.join(tmp, `cowork-${Math.random().toString(36).slice(2, 8)}`);
-    fs.cpSync(path.join(ROOT, 'demo', 'cowork-workspace'), dir, { recursive: true });
+    dir = path.join(tmp, `work-${Math.random().toString(36).slice(2, 8)}`);
+    fs.cpSync(path.join(ROOT, 'demo', 'work-workspace'), dir, { recursive: true });
   });
-  const cowork = (projectPath: string | null) =>
-    driver.hub.create({ kind: 'cowork', projectPath, model: 'demo/demo-coder', title: 'task', autoName: false });
+  const work = (projectPath: string | null) =>
+    driver.hub.create({ kind: 'work', projectPath, model: 'demo/demo-coder', title: 'task', autoName: false });
 
   it('organizes the inbox; only moving files asks, even in auto mode', async () => {
-    const meta = await cowork(dir);
+    const meta = await work(dir);
     const r = await driver.run(meta.id, '帮我整理收件箱：归类、标记需要回复的邮件，并起草回复', () => ({ value: 'Allow' }));
     const asked = r.ui.filter((u) => u.kind === 'permission').map((u) => u.title);
     expect(asked).toHaveLength(1);
@@ -321,14 +321,14 @@ describe('cowork sessions', { timeout: 120_000 }, () => {
   });
 
   it('denying the move leaves the files in place', async () => {
-    const meta = await cowork(dir);
+    const meta = await work(dir);
     const r = await driver.run(meta.id, '帮我整理收件箱', () => ({ value: 'Deny' }));
     expect(fs.existsSync(path.join(dir, 'inbox/04-行业周刊.txt'))).toBe(true);
     expect(r.finalText).toMatch(/不执行/);
   });
 
   it('writes a daily briefing file from the folder contents', async () => {
-    const meta = await cowork(dir);
+    const meta = await work(dir);
     // The idea prompt also mentions 邮件; it must still be treated as a briefing.
     const r = await driver.run(meta.id, '每个工作日早上 8 点给我发一份简报：日程、待办和重要邮件');
     expect(r.ui).toHaveLength(0);
@@ -338,9 +338,9 @@ describe('cowork sessions', { timeout: 120_000 }, () => {
   });
 
   it('without a folder, works in a fresh temporary workspace', async () => {
-    const meta = await cowork(null);
+    const meta = await work(null);
     expect(meta.scratch).toBe(true);
-    expect(meta.cwd.startsWith(path.join(tmp, 'data', 'cowork'))).toBe(true);
+    expect(meta.cwd.startsWith(path.join(tmp, 'data', 'work'))).toBe(true);
     expect(fs.existsSync(meta.cwd)).toBe(true);
   });
 });

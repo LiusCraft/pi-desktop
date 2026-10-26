@@ -4,7 +4,7 @@ import {
   SquareTerminalIcon, TerminalSquareIcon,
 } from 'lucide-react';
 import type { OpenTarget } from '@shared/protocol';
-import { CodeComposer, CoworkComposer } from '@/components/composer/Composers';
+import { CodeComposer, WorkComposer } from '@/components/composer/Composers';
 import { copyText } from '@/components/common/Copy';
 import { Transcript } from '@/components/thread/Transcript';
 import { openCards, Workspace } from '@/components/workspace/Workspace';
@@ -15,7 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { call, isMac, modKey } from '@/lib/api';
-import { COWORK_IDEAS, OUTPUT_STYLE_INFO, VIEW_MODES, type ViewMode } from '@/lib/constants';
+import { WORK_IDEAS, OUTPUT_STYLE_INFO, VIEW_MODES, type ViewMode } from '@/lib/constants';
 import { fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
@@ -27,6 +27,8 @@ import { drafts } from '@/store/drafts';
 import { hasThinking } from '@/store/transcript';
 import type { SessionView } from '@/store/types';
 import type { OutputStyle } from '@shared/protocol';
+import { CustomizePage } from '@/customize/CustomizePage';
+import { ScheduledPage } from '@/scheduled/ScheduledPage';
 import { SidebarToggle } from './Sidebar';
 
 function HeaderButton({ on, children, ...props }: React.ComponentProps<'button'> & { on?: boolean }) {
@@ -72,9 +74,9 @@ const OPEN_IN: { id: OpenTarget; label: string; badge: string; color: string }[]
   { id: 'folder', label: isMac ? 'Finder' : 'File Explorer', badge: 'F', color: '#e3a21a' },
 ];
 
-function Header({ s }: { s?: SessionView }) {
+function Header({ s, title }: { s?: SessionView; title?: string }) {
   const collapsed = useApp((st) => st.sidebarCollapsed);
-  const cowork = s?.meta.kind === 'cowork';
+  const work = s?.meta.kind === 'work';
   const p = s?.panels;
   const hasTasks = !!s?.items.some((i) => i.kind === 'group' && i.tools.some((t) => t.kind === 'agent'));
   return (
@@ -86,18 +88,18 @@ function Header({ s }: { s?: SessionView }) {
             s={s}
             trigger={
               <button className="flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium hover:bg-accent">
-                {cowork ? <FolderIcon className="size-4 shrink-0 text-muted-foreground" /> : <LaptopIcon className="size-4 shrink-0 text-muted-foreground" />}
+                {work ? <FolderIcon className="size-4 shrink-0 text-muted-foreground" /> : <LaptopIcon className="size-4 shrink-0 text-muted-foreground" />}
                 <span className="truncate">{s.meta.title}</span>
                 <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
               </button>
             }
           />
           <span className="truncate rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-            {cowork ? (s.meta.scratch ? 'Temporary workspace' : fname(s.meta.projectPath)) : `${fname(s.meta.projectPath)}${s.meta.branch ? ` · ${s.meta.branch}` : ''}`}
+            {work ? (s.meta.scratch ? 'Temporary workspace' : fname(s.meta.projectPath)) : `${fname(s.meta.projectPath)}${s.meta.branch ? ` · ${s.meta.branch}` : ''}`}
           </span>
           <span className="flex-1" />
           {hasTasks && <HeaderButton on={p!.tasks} title="Background tasks" onClick={() => togglePanel(s.meta.id, 'tasks')}><BotIcon className="size-4" /></HeaderButton>}
-          {cowork ? (
+          {work ? (
             <HeaderButton on={p!.progress} title="Progress" onClick={() => togglePanel(s.meta.id, 'progress')}><PanelRightIcon className="size-4" /></HeaderButton>
           ) : (
             <>
@@ -124,7 +126,7 @@ function Header({ s }: { s?: SessionView }) {
           <SessionMenu s={s} trigger={<HeaderButton title="More"><MoreVerticalIcon className="size-4" /></HeaderButton>} />
         </>
       ) : (
-        <span className="px-2 text-sm text-muted-foreground">{useApp.getState().view === 'cowork' ? 'New task' : 'New session'}</span>
+        <span className="px-2 text-sm text-muted-foreground">{title ?? (useApp.getState().view === 'work' ? 'New task' : 'New session')}</span>
       )}
     </header>
   );
@@ -160,7 +162,7 @@ function CodeWelcome() {
   );
 }
 
-function CoworkWelcome() {
+function WorkWelcome() {
   const h = new Date().getHours();
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-6 pb-16">
@@ -169,11 +171,11 @@ function CoworkWelcome() {
           <span className="spark size-7!" aria-hidden />
           {h < 5 || h >= 22 ? 'Still up?' : 'You’re here!'}
         </h1>
-        <CoworkComposer />
+        <WorkComposer />
         <div className="mt-8">
           <div className="mb-2 text-sm text-muted-foreground">Ideas for you</div>
           <div className="grid gap-2 sm:grid-cols-3">
-            {COWORK_IDEAS.map((idea) => (
+            {WORK_IDEAS.map((idea) => (
               <button
                 key={idea.label}
                 onClick={() => drafts.setText(welcomeDraftKey(), idea.prompt)}
@@ -215,10 +217,12 @@ function Thread({ s }: { s: SessionView }) {
 export function Main() {
   const s = useCurrent();
   const view = useApp((st) => st.view);
+  const customize = useApp((st) => st.customize);
+  const scheduled = useApp((st) => st.scheduled);
   return (
     <main className="flex h-full min-w-0 flex-col bg-background">
-      <Header s={s} />
-      <div className="flex min-h-0 flex-1 flex-col">{s ? <Thread key={s.meta.id} s={s} /> : view === 'cowork' ? <CoworkWelcome /> : <CodeWelcome />}</div>
+      <Header s={customize || scheduled ? undefined : s} title={customize ? 'Customize' : scheduled ? 'Scheduled' : undefined} />
+      <div className="flex min-h-0 flex-1 flex-col">{customize ? <CustomizePage /> : scheduled ? <ScheduledPage /> : s ? <Thread key={s.meta.id} s={s} /> : view === 'work' ? <WorkWelcome /> : <CodeWelcome />}</div>
     </main>
   );
 }
