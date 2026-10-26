@@ -150,6 +150,51 @@ export interface SubagentProgress {
   steps: SubagentStep[];
 }
 
+/** A background task (subagent or shell command) that changed after its tool call returned. */
+export interface TaskUpdate {
+  /** The tool call that started the task. */
+  toolCallId: string;
+  state: 'running' | 'done' | 'err' | 'stopped';
+  progress: SubagentProgress;
+  summary: string;
+  /** Final report (subagent) once the task is over. */
+  text?: string;
+  /** Shell tasks: the command's output so far (tail). */
+  shell?: { output: string; exitCode?: number | null };
+}
+
+/** A subagent identity as the settings page edits it. */
+export interface AgentConfig {
+  name: string;
+  description: string;
+  /** The role instructions (system prompt addendum). */
+  body: string;
+  model?: string;
+  tools?: string[];
+  source: 'builtin' | 'user';
+  /** A user file replaces the built-in of the same name. */
+  overrides?: boolean;
+}
+export interface AgentDraft {
+  /** The name being edited, so a rename moves the file. */
+  originalName?: string;
+  name: string;
+  description: string;
+  body: string;
+  model?: string | null;
+  tools?: string[];
+}
+/** A tool a subagent allowlist can name. */
+export interface ToolOption {
+  name: string;
+  description: string;
+}
+export interface AgentCatalog {
+  agents: AgentConfig[];
+  /** The folder holding the user's agent files. */
+  dir: string;
+}
+
 /** Estimated split of the context window (like Claude Code's /context). */
 export interface ContextBreakdown {
   contextWindow: number;
@@ -258,6 +303,7 @@ export type HostEvent =
   | { type: 'status'; sessionId: string; status: 'idle' | 'running' }
   | { type: 'meta'; sessionId: string; meta: SessionMeta }
   | { type: 'notify'; sessionId: string; message: string; level: 'info' | 'warning' | 'error' }
+  | { type: 'task'; sessionId: string; update: TaskUpdate }
   /** A login flow is waiting for an answer (settings window). */
   | { type: 'auth_prompt'; loginId: string; provider: string; providerName: string; requestId: string; prompt: AuthPrompt }
   /** Out-of-band login progress: browser URL, device code, status text. */
@@ -513,6 +559,11 @@ export interface Api {
   'sessions:importable'(projectPath: string): ImportableSession[];
   'git:branch'(dir: string): string | null;
   'sessions:import'(file: string): SessionMeta;
+  'agents:list'(): AgentCatalog;
+  /** Tools worth suggesting in an allowlist: the built-ins plus whatever open sessions have loaded (MCP included). */
+  'agents:tools'(): ToolOption[];
+  'agents:save'(draft: AgentDraft): AgentCatalog;
+  'agents:remove'(name: string): AgentCatalog;
   'models:list'(): { models: ModelInfo[]; defaultModel: string | null };
   'models:levels'(model: string | null): ThinkingLevel[];
   // ---- model management (pi's auth.json + models.json, shared with the CLI)
@@ -541,7 +592,7 @@ export const HOST_CHANNELS = [
   'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:bash',
   'sessions:changes', 'sessions:pr', 'sessions:files', 'sessions:readFile', 'sessions:readImage',
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
-  'sessions:import', 'git:branch', 'models:list', 'models:levels',
+  'sessions:import', 'git:branch', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove', 'models:list', 'models:levels',
   'models:catalog', 'models:login', 'models:loginRespond', 'models:loginCancel', 'models:logout',
   'models:endpointSave', 'models:endpointRemove', 'models:endpointDiscover', 'models:refresh',
 ] as const satisfies readonly ApiChannel[];

@@ -100,7 +100,7 @@ describe('code sessions', { timeout: 120_000 }, () => {
     const r = await driver.run(meta.id, '日期显示少了一个月，帮我修一下');
     expect(r.ui).toHaveLength(0);
     const names = r.tools.map((t) => t.toolName);
-    for (const t of ['todo_write', 'grep', 'read', 'bash', 'edit']) expect(names).toContain(t);
+    for (const t of ['pidesk_todo_write', 'grep', 'read', 'bash', 'edit']) expect(names).toContain(t);
     const bash = r.tools.filter((t) => t.toolName === 'bash');
     expect(bash[0].isError, 'tests fail before the fix').toBe(true);
     expect(bash.at(-1)!.isError, 'tests pass after the fix').toBe(false);
@@ -156,12 +156,12 @@ describe('code sessions', { timeout: 120_000 }, () => {
   it('subagent: the task tool runs an in-process read-only session and returns its report', async () => {
     const { meta } = await codeSession();
     const r = await driver.run(meta.id, '解释一下项目结构');
-    const task = r.tools.find((t) => t.toolName === 'task')!;
+    const task = r.tools.find((t) => t.toolName === 'pidesk_task')!;
     expect(task, 'task tool ran').toBeTruthy();
     expect(task.isError, JSON.stringify(task.result).slice(0, 400)).toBe(false);
     expect(task.result.details.text).toMatch(/数据流/);
     expect(task.result.details.stats.reads).toBeGreaterThanOrEqual(2);
-    expect(r.pi.some((e) => e.type === 'tool_execution_update' && e.toolName === 'task'), 'progress updates').toBe(true);
+    expect(r.pi.some((e) => e.type === 'tool_execution_update' && e.toolName === 'pidesk_task'), 'progress updates').toBe(true);
   });
 
   it('auto mode: risky commands still ask (git push)', async () => {

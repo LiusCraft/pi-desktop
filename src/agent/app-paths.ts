@@ -36,6 +36,8 @@ export function piAgentDir(): string {
 export const appCacheDir = (dataDir: string) => path.join(dataDir, 'cache');
 /** Pi Desktop's own extensions (pi's extensions live under pi's agent dir). */
 export const appExtensionsDir = (dataDir: string) => path.join(dataDir, 'extensions');
+/** User-defined subagents: one markdown file each (frontmatter + system prompt). */
+export const appAgentsDir = (dataDir: string) => path.join(dataDir, 'agents');
 /** Scratch workspaces for Cowork tasks started without a folder. */
 export const appCoworkDir = (dataDir: string) => path.join(dataDir, 'cowork');
 /** Copies of the bundled demo project and demo Cowork folder. */

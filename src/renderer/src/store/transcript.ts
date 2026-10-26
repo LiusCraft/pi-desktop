@@ -1,10 +1,10 @@
 // pi session events → transcript items. Pure functions over an immer draft of a
 // SessionView; anything that needs IPC or global UI is returned as an Effect.
 import { decodeUserContent } from '@shared/attachments';
-import type { AgentMessage, PiEvent, PrSummary, SessionMeta, UiRequest } from '@shared/protocol';
+import type { AgentMessage, PiEvent, PrSummary, SessionMeta, TaskUpdate, UiRequest } from '@shared/protocol';
 import * as previews from '@shared/tool-previews';
 import { fmtDur, fmtTok, relPath } from '@/lib/format';
-import { toolFromArgs, toolLabel, type ToolState } from '@/lib/tools';
+import { bareName, toolFromArgs, toolLabel, type ToolState } from '@/lib/tools';
 import type { ViewMode } from '@/lib/constants';
 import type { Item, ItemOf, SessionView, ThinkStep, Todo } from './types';
 
@@ -77,8 +77,8 @@ function finishThought(step: ThinkStep, view: ViewMode) {
 // ------------------------------------------------------------ tools
 
 export function toolStart(s: SessionView, ev: { toolCallId: string; toolName: string; args?: any }, view: ViewMode, replay = false) {
-  if (ev.toolName === 'todo_write') return;
-  if (ev.toolName === 'exit_plan_mode') {
+  if (bareName(ev.toolName) === 'todo_write') return;
+  if (bareName(ev.toolName) === 'exit_plan_mode') {
     push(s, { kind: 'plan', key: newKey(), title: ev.args?.title || 'Plan', md: ev.args?.plan || '', toolCallId: ev.toolCallId, requestId: null, resolved: replay ? 'done' : null }, view);
     return;
   }
@@ -97,7 +97,7 @@ export function toolEnd(
 ): Effects {
   const fx: Effects = {};
   const text = textOf(ev.result?.content);
-  if (ev.toolName === 'todo_write') {
+  if (bareName(ev.toolName) === 'todo_write') {
     const items = ev.result?.details?.todos as Todo[] | undefined;
     if (!items) return fx;
     const current = findByKey(s, s.todosKey);
@@ -132,6 +132,12 @@ export function toolEnd(
       else s.outputs.push({ path: rel, kind: t.kind, t: Date.now() });
     }
     if (!replay) fx.scheduleChanges = true;
+  } else if (t.kind === 'agent' && ev.result?.details?.background) {
+    // The call only started the task; its real end arrives as a `task` event.
+    t.bg = true;
+    t.summary = '';
+    if (replay) t.sub = undefined;
+    else if (!blocked && !ev.isError) t.status = 'running';
   } else if (t.kind === 'agent') {
     t.md = ev.result?.details?.text || text;
     t.summary = ev.result?.details?.summary || '';
@@ -154,6 +160,22 @@ export function toolEnd(
     }
   }
   return fx;
+}
+
+/** A background subagent or shell command moved on after its tool call returned. */
+export function applyTaskUpdate(s: SessionView, u: TaskUpdate) {
+  const t = findTool(s, u.toolCallId)?.tool;
+  if (!t) return;
+  t.bg = true;
+  t.sub = u.progress;
+  t.summary = u.summary;
+  if (u.shell) t.sh = { command: t.sh?.command ?? t.cmd, ...u.shell };
+  if (u.state === 'running') {
+    t.status = 'running';
+    return;
+  }
+  t.status = u.state === 'done' ? 'done' : u.state === 'stopped' ? 'denied' : 'err';
+  if (u.text !== undefined) t.md = u.text;
 }
 
 // ------------------------------------------------------------ streaming
@@ -279,7 +301,7 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
       if (!ev.parentToolCallId) toolStart(s, ev as any, view);
       return {};
     case 'tool_execution_update':
-      if (ev.toolName === 'task') {
+      if (bareName(ev.toolName) === 'task') {
         const found = findTool(s, ev.toolCallId);
         if (found) {
           found.tool.summary = textOf(ev.partialResult?.content);
@@ -318,6 +340,7 @@ export function settle(s: SessionView, aborted: boolean, view: ViewMode): Effect
     if (item.kind === 'group') {
       for (const step of item.thoughts) if (!step.done) finishThought(step, view);
       for (const t of item.tools) {
+        if (t.bg) continue; // background tasks outlive the turn
         if (t.status === 'running') t.status = 'denied';
         if (t.sub && !t.sub.endedAt) t.sub = { ...t.sub, endedAt: Date.now(), activity: 'Stopped' };
       }

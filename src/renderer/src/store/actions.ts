@@ -13,7 +13,7 @@ import { dialogs } from './dialogs';
 import { activeDraft, drafts, getDraft, sessionDraftKey, useDrafts } from './drafts';
 import { primeSuggestion } from './predict';
 import {
-  addUiRequest, applyPiEvent, applyViewMode, emptySession, findByKey, hasThinking, newKey, push, replay, resolveUi, settle, type Effects,
+  addUiRequest, applyPiEvent, applyTaskUpdate, applyViewMode, emptySession, findByKey, hasThinking, newKey, push, replay, resolveUi, settle, type Effects,
 } from './transcript';
 import type { Item, Panels, SessionView } from './types';
 
@@ -95,6 +95,9 @@ function flushEvents() {
       switch (ev.type) {
         case 'pi':
           effects.push([s.meta.id, applyPiEvent(s, ev.event, view)]);
+          break;
+        case 'task':
+          applyTaskUpdate(s, ev.update);
           break;
         case 'ui_request': {
           const r = addUiRequest(s, ev.request, view);

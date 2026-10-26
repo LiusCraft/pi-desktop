@@ -14,13 +14,14 @@ import {
 import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import { buildMessage, decodeUserContent } from '@shared/attachments';
 import type {
-  ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
-  PrSummary, SessionMeta, SessionStats, Settings, SubagentProgress, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, UiRequest, UiRequestInput, UiResponse,
+  AgentDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
+  PrSummary, SessionMeta, SessionStats, Settings, SubagentProgress, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
 } from '@shared/protocol';
-import { appCoworkDir, appExtensionsDir, worktreeDir as resolveWorktreeDir } from './app-paths';
+import { appAgentsDir, appCoworkDir, appExtensionsDir, worktreeDir as resolveWorktreeDir } from './app-paths';
 import { validatePromptPayload } from './attachments';
 import coworkPrompt from './cowork-prompt.md?raw';
 import { registerDemoModel } from './demo-model';
+import { agentCatalog, agentPrompt, loadAgents, removeAgent, saveAgent } from './agents';
 import { createDesktopKit, type KitHost, type KitState, type SubagentRun } from './desktop-kit';
 import { toWireEvent } from './events';
 import { readSessionFile, readSessionImage, resolveInside } from './files';
@@ -34,7 +35,8 @@ import * as prediction from './suggest';
 const NAMES = ['trusting-maxwell', 'eager-lovelace', 'quiet-hopper', 'brave-turing', 'calm-knuth', 'swift-ritchie', 'bold-curie', 'keen-dijkstra'];
 /** Tools on top of pi's defaults (read, bash, edit, write). */
 const EXTRA_TOOLS = ['+grep', '+find', '+ls'];
-const SUBAGENT_TOOLS = ['read', 'grep', 'find', 'ls', 'bash'];
+/** Defaults minus editing; MCP and other extension tools stay (the plan-mode gate lets only read-only ones run). */
+const SUBAGENT_TOOLS = ['-edit', '-write', '+grep', '+find', '+ls'];
 
 interface PendingUi {
   request: UiRequest;
@@ -112,6 +114,7 @@ export class SessionHub {
   async init() {
     // Pi Desktop's own extension folder (distinct from pi's <agentDir>/extensions).
     fs.mkdirSync(appExtensionsDir(this.opts.dataDir), { recursive: true });
+    fs.mkdirSync(appAgentsDir(this.opts.dataDir), { recursive: true });
     this.models = await ModelRuntime.create({
       authPath: path.join(this.agentDir, 'auth.json'),
       modelsPath: path.join(this.agentDir, 'models.json'),
@@ -317,6 +320,14 @@ export class SessionHub {
       ask: (request, signal) => this.ask(live, request, signal),
       setMode: (mode) => this.applyMode(live.id, mode),
       runSubagent: (run) => this.runSubagent(live, run),
+      agents: () => loadAgents(appAgentsDir(this.opts.dataDir)),
+      taskUpdate: (update) => {
+        if (!live.disposed) this.emit({ type: 'task', sessionId: live.id, update });
+      },
+      trackTask: (id, stop) => {
+        live.tasks.set(id, stop);
+        return () => void live.tasks.delete(id);
+      },
     };
   }
 
@@ -459,6 +470,23 @@ export class SessionHub {
 
   // ------------------------------------------------------------ subagent
 
+  /** Suggestions for an agent's tool allowlist. */
+  toolOptions(): ToolOption[] {
+    const tools = new Map<string, string>([
+      ['read', '读取文件'], ['grep', '按内容搜索'], ['find', '按文件名查找'], ['ls', '列出目录'],
+      [process.platform === 'win32' ? 'powershell' : 'bash', '运行命令（子代理里只读）'],
+    ]);
+    for (const live of this.live.values()) {
+      for (const t of live.runtime.session.getAllTools()) {
+        if (!t.name.startsWith('pidesk_')) tools.set(t.name, tools.get(t.name) || (t.description ?? '').split('\n')[0].slice(0, 120));
+      }
+    }
+    return [...tools].map(([name, description]) => ({ name, description }));
+  }
+  agentCatalog() { return agentCatalog(appAgentsDir(this.opts.dataDir)); }
+  saveAgent(draft: AgentDraft) { return saveAgent(appAgentsDir(this.opts.dataDir), draft); }
+  removeAgent(name: string) { return removeAgent(appAgentsDir(this.opts.dataDir), name); }
+
   /** A read-only, in-memory session with a fresh context (desktop-kit's `task` tool). */
   private async runSubagent(live: Live, run: SubagentRun) {
     const cwd = run.ctx.cwd;
@@ -472,17 +500,24 @@ export class SessionHub {
     run.signal?.addEventListener('abort', onAbort, { once: true });
     let text = '';
     try {
+      const agents = loadAgents(appAgentsDir(this.opts.dataDir));
+      const agent = agents.find((a) => a.name === run.agent) ?? agents[0];
       const kit: KitState = { mode: 'plan', profile: live.kit.profile, outputStyle: 'default', allowed: new Set() };
       const settingsManager = SettingsManager.create(cwd, this.agentDir, { projectTrusted: !hasTrustRequiringProjectResources(cwd) || this.trust.get(cwd) === true });
       const resourceLoader = new DefaultResourceLoader({
         cwd, agentDir: this.agentDir, settingsManager,
         // Nobody answers prompts inside a subagent: plan mode blocks anything that would ask.
-        extensionFactories: [createDesktopKit({ state: kit, ask: async () => ({ cancelled: true }), setMode: () => {} })],
+        extensionFactories: [
+          createDesktopKit({ state: kit, ask: async () => ({ cancelled: true }), setMode: () => {} }),
+          createToolSearchExtension(),
+          createMcpExtension(),
+        ],
+        appendSystemPrompt: [agentPrompt(agent)],
       });
       await resourceLoader.reload();
       const { session } = await createAgentSession({
-        cwd, agentDir: this.agentDir, modelRuntime: this.models, model: run.ctx.model, resourceLoader, settingsManager,
-        sessionManager: SessionManager.inMemory(cwd), tools: SUBAGENT_TOOLS,
+        cwd, agentDir: this.agentDir, modelRuntime: this.models, model: (agent.model && this.findModel(agent.model)) || run.ctx.model, resourceLoader, settingsManager,
+        sessionManager: SessionManager.inMemory(cwd), tools: agent.tools ?? SUBAGENT_TOOLS,
       });
       const abortSession = () => void session.abort();
       stop.signal.addEventListener('abort', abortSession, { once: true });
@@ -856,6 +891,8 @@ export class SessionHub {
     live.generation++;
     this.live.delete(id);
     this.cancelPending(live);
+    // Background subagents and shells die with their session.
+    for (const stop of live.tasks.values()) stop.abort();
     live.unsubscribe?.();
     this.setStatus(live, 'idle');
     await live.runtime.dispose().catch(() => {});

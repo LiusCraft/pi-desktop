@@ -31,8 +31,19 @@ function StatusLine({ s }: { s: SessionView }) {
     const t = setInterval(() => tick((n) => n + 1), 500);
     return () => clearInterval(t);
   }, [s.running]);
-  if (!s.running) return s.items.length ? <span className="spark opacity-60" /> : null;
   const tasks = runningTasks(s).length;
+  // Between turns, background tasks keep going: say so instead of showing a sleeping spark.
+  if (!s.running && !tasks) return s.items.length ? <span className="spark opacity-60" /> : null;
+  if (!s.running) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <span className="spark opacity-60" />
+        <button className="rounded-md bg-info/15 px-1.5 py-0.5 text-info hover:bg-info/25" title="Show background tasks" onClick={() => togglePanel(s.meta.id, 'tasks', true)}>
+          {tasks} running task{tasks > 1 ? 's' : ''}
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap text-sm text-muted-foreground">
       <span className="spark spin shrink-0" />
@@ -71,7 +82,7 @@ export function Transcript({ s }: { s: SessionView }) {
     <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-6 pt-6 pb-4">
         {s.items.map((item, i) => (
-          <div key={item.key}>{renderItem(s.meta.id, item, s.items, i, view)}</div>
+          <div key={item.key} className="transcript-item">{renderItem(s.meta.id, item, s.items, i, view)}</div>
         ))}
         <StatusLine s={s} />
       </div>

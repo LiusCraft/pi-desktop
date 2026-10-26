@@ -29,15 +29,24 @@ export interface ToolState {
   summary?: string;
   /** Subagent transcript, tokens and current activity (Background tasks panel). */
   sub?: SubagentProgress;
+  /** Keeps running after its tool call returned (`run_in_background`, `bg_shell`). */
+  bg?: boolean;
+  /** Background shell command and its output so far. */
+  sh?: { command: string; output: string; exitCode?: number | null };
 }
 
-const KIND: Record<string, ToolKind> = { read: 'read', edit: 'edit', write: 'write', bash: 'bash', powershell: 'bash', grep: 'grep', find: 'glob', ls: 'ls', task: 'agent' };
+const KIND: Record<string, ToolKind> = { read: 'read', edit: 'edit', write: 'write', bash: 'bash', powershell: 'bash', bg_shell: 'agent', grep: 'grep', find: 'glob', ls: 'ls', task: 'agent' };
 
-export function toolFromArgs(id: string, name: string, args: Record<string, any> = {}): ToolState {
+/** Desktop-owned tools are named `pidesk_*`; older sessions recorded them without the prefix. */
+export const bareName = (name: string) => name.replace(/^pidesk_/, '');
+
+export function toolFromArgs(id: string, toolName: string, args: Record<string, any> = {}): ToolState {
+  const name = bareName(toolName);
   return {
-    id, name, kind: KIND[name] ?? 'other', args: args ?? {}, status: 'running', open: false,
+    id, name: toolName, kind: KIND[name] ?? 'other', args: args ?? {}, status: 'running', open: false,
     path: args?.path || args?.file_path, cmd: args?.command || '', q: args?.pattern || args?.path || '',
-    desc: args?.description || 'Subagent', prompt: args?.prompt,
+    desc: args?.description || (name === 'bg_shell' ? args?.command : '') || 'Subagent', prompt: args?.prompt ?? (name === 'bg_shell' ? args?.command : undefined),
+    ...(name === 'bg_shell' ? { sh: { command: args?.command ?? '', output: '' } } : {}),
   };
 }
 

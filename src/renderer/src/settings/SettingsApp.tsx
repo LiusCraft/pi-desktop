@@ -1,9 +1,9 @@
 // Settings window. Every value comes from the main process (single source of
 // truth), so the main window and this one can never disagree.
 import { useEffect, useState, type ReactNode } from 'react';
-import { BrainIcon, FolderIcon, InfoIcon, MoonIcon, SettingsIcon } from 'lucide-react';
+import { BotIcon, BrainIcon, FolderIcon, InfoIcon, MoonIcon, SettingsIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import type { AppInfo, ModelInfo, Project, Settings, SettingsPayload, SuggestionModelMode } from '@shared/protocol';
+import type { AppInfo, Project, Settings, SettingsPayload, SuggestionModelMode } from '@shared/protocol';
 import { SUGGESTION_DEFAULT_CONTEXT, SUGGESTION_MAX_CONTEXT } from '@shared/protocol';
 import { useCopy } from '@/components/common/Copy';
 import { Button } from '@/components/ui/button';
@@ -14,13 +14,16 @@ import { bridge, call, errText, isMac } from '@/lib/api';
 import { applyTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import { PET_SKINS, PetSprite } from '@/components/composer/Clawd';
+import { AgentsSection } from './AgentsSection';
+import { ModelPicker } from './ModelPicker';
 import { ModelsSection } from './ModelsSection';
 
-type Section = 'appearance' | 'general' | 'models' | 'projects' | 'about';
+type Section = 'appearance' | 'general' | 'models' | 'agents' | 'projects' | 'about';
 const SECTIONS: { id: Section; label: string; icon: ReactNode }[] = [
   { id: 'appearance', label: '外观', icon: <MoonIcon className="size-4" /> },
   { id: 'general', label: '通用', icon: <SettingsIcon className="size-4" /> },
   { id: 'models', label: '模型管理', icon: <BrainIcon className="size-4" /> },
+  { id: 'agents', label: '子代理', icon: <BotIcon className="size-4" /> },
   { id: 'projects', label: '项目与文件夹', icon: <FolderIcon className="size-4" /> },
   { id: 'about', label: '关于', icon: <InfoIcon className="size-4" /> },
 ];
@@ -85,38 +88,6 @@ function CountInput({ value, disabled, onCommit }: { value: number; disabled?: b
       onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
       className="h-8 w-16 text-center"
     />
-  );
-}
-
-/** Models that can be pinned for prediction; the list is the ones with working credentials. */
-function SuggestionModelSelect({ value, onChange }: { value: string | null; onChange: (id: string | null) => void }) {
-  const [models, setModels] = useState<ModelInfo[]>([]);
-  useEffect(() => {
-    const load = () => {
-      void call('models:list').then((r) => setModels(r.models.filter((m) => m.provider !== 'demo'))).catch(() => {});
-    };
-    load();
-    // A login or endpoint change in the models section refreshes this list too.
-    return bridge.on('host:event', (ev) => { if (ev.type === 'models_changed') load(); });
-  }, []);
-  const known = models.some((m) => `${m.provider}/${m.id}` === value);
-  return (
-    <select
-      value={value ?? ''}
-      onChange={(e) => onChange(e.target.value || null)}
-      aria-label="预测使用的模型"
-      className="h-8 w-64 shrink-0 rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-    >
-      <option value="">未指定（回退到自动）</option>
-      {value && !known && <option value={value}>{value}（不可用）</option>}
-      {[...new Set(models.map((m) => m.provider))].map((provider) => (
-        <optgroup key={provider} label={provider}>
-          {models.filter((m) => m.provider === provider).map((m) => (
-            <option key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>{m.name || m.id}</option>
-          ))}
-        </optgroup>
-      ))}
-    </select>
   );
 }
 
@@ -240,7 +211,7 @@ export function SettingsApp() {
               </Row>
               {(settings.suggestionModel ?? 'auto') === 'fixed' && (
                 <Row title="指定模型" hint="只列出当前可用（已配置凭据）的模型。">
-                  <SuggestionModelSelect value={settings.suggestionModelId ?? null} onChange={(id) => void patch({ suggestionModelId: id })} />
+                  <ModelPicker value={settings.suggestionModelId ?? null} onChange={(id) => void patch({ suggestionModelId: id })} emptyLabel="未指定（回退到自动）" label="预测使用的模型" className="w-64 shrink-0" />
                 </Row>
               )}
               <Row title="预测上下文" hint="带上最近多少条 user / assistant 消息（不含工具输出），最多 50 条。">
@@ -268,6 +239,8 @@ export function SettingsApp() {
     );
   } else if (section === 'models') {
     body = <ModelsSection />;
+  } else if (section === 'agents') {
+    body = <AgentsSection />;
   } else if (section === 'projects') {
     const worktreePath = settings.worktreeDir || info?.defaultWorktreeDir || '';
     const pickWorktree = async () => {

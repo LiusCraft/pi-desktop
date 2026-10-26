@@ -413,10 +413,10 @@ function TaskMeta({ tool, onTranscript }: { tool: ToolState; onTranscript?: () =
   const state = running ? sub?.activity || 'Working' : tool.status === 'err' ? 'Failed' : tool.status === 'denied' ? 'Stopped' : 'Completed';
   return (
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-muted-foreground">
-      {sub && <span><b className="font-medium text-foreground/80">{fmtTok(sub.tokens)}</b> tokens</span>}
-      {sub && <span><b className="font-medium text-foreground/80">{sub.toolUses}</b> tool use{sub.toolUses === 1 ? '' : 's'}</span>}
+      {sub && !tool.sh && <span><b className="font-medium text-foreground/80">{fmtTok(sub.tokens)}</b> tokens</span>}
+      {sub && !tool.sh && <span><b className="font-medium text-foreground/80">{sub.toolUses}</b> tool use{sub.toolUses === 1 ? '' : 's'}</span>}
       <span className={cn(running && 'shimmer', tool.status === 'err' && 'text-destructive')}>{state}</span>
-      {onTranscript && <button className="text-info hover:underline" onClick={onTranscript}>View transcript</button>}
+      {onTranscript && <button className="text-info hover:underline" onClick={onTranscript}>{tool.sh ? 'View output' : 'View transcript'}</button>}
     </div>
   );
 }
@@ -434,7 +434,7 @@ export function TasksPanel({ s, ...card }: CardProps & { s: SessionView }) {
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium" title={t.desc}>{t.desc}</div>
           <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1"><BotIcon className="size-3" />Agent</span>
+            <span className="flex items-center gap-1">{t.sh ? <SquareTerminalIcon className="size-3" /> : <BotIcon className="size-3" />}{t.sh ? 'Shell' : `Agent${t.args?.subagent_type ? ` · ${t.args.subagent_type}` : ''}`}</span>
             {t.sub && <span className="tabular-nums">{elapsed(t)}</span>}
           </div>
         </div>
@@ -452,7 +452,7 @@ export function TasksPanel({ s, ...card }: CardProps & { s: SessionView }) {
       tools={<IconBtn title="Clear finished tasks" disabled={!done.length} className="disabled:opacity-40" onClick={() => setCleared(new Set(all.filter((t) => t.status !== 'running').map((t) => t.id)))}><Trash2Icon className="size-3.5" /></IconBtn>}
       onClose={() => togglePanel(id, 'tasks', false)}
     >
-      {!running.length && !done.length ? <Empty>{'No background tasks\nSubagents Claude starts show up here'}</Empty> : (
+      {!running.length && !done.length ? <Empty>{'No background tasks\nSubagents and shell commands Claude runs in the background show up here'}</Empty> : (
         <div className="space-y-4 p-3">
           {running.length > 0 && (
             <section className="space-y-2">
@@ -496,7 +496,8 @@ function AgentTranscript({ s, tool, card, close }: { s: SessionView; tool: ToolS
       <div ref={body} className="h-full overflow-auto">
         <div className="space-y-3 p-4">
           <TaskMeta tool={tool} />
-          <div className="rounded-lg bg-muted px-3 py-2 text-xs whitespace-pre-wrap text-muted-foreground">{tool.prompt}</div>
+          <div className={cn('rounded-lg bg-muted px-3 py-2 text-xs whitespace-pre-wrap text-muted-foreground', tool.sh && 'font-mono')}>{tool.prompt}</div>
+          {tool.sh && <pre className="max-h-[60vh] overflow-auto rounded-lg border bg-card p-3 font-mono text-xs whitespace-pre-wrap">{tool.sh.output || (running ? 'Waiting for output…' : 'No output')}{!running && tool.sh.exitCode != null ? '\n[exit ' + tool.sh.exitCode + ']' : ''}</pre>}
           {shown.length > 0 && (
             <div className="space-y-1.5 border-l pl-3">
               {shown.map((step, i) => {
@@ -512,7 +513,7 @@ function AgentTranscript({ s, tool, card, close }: { s: SessionView; tool: ToolS
               })}
             </div>
           )}
-          {running ? <div className="text-sm"><span className="shimmer">{tool.sub?.activity || tool.summary || 'Working…'}</span></div> : (
+          {tool.sh ? null : running ? <div className="text-sm"><span className="shimmer">{tool.sub?.activity || tool.summary || 'Working…'}</span></div> : (
             <>
               {tool.summary && <div className="text-xs text-muted-foreground">{tool.summary}</div>}
               {tool.md ? <Markdown text={tool.md} /> : !steps.length && <div className="text-sm text-muted-foreground">No transcript was recorded for this task.</div>}

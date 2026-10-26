@@ -3,21 +3,26 @@
  * UI expects but pi does not ship by default:
  *   - Permission modes (auto / default / acceptEdits / plan / bypass) gated in `tool_call`
  *   - Output styles appended to the system prompt in `before_agent_start`
- *   - `todo_write`      task checklist the UI renders as a todo card
- *   - `exit_plan_mode`  plan approval when running in plan mode
- *   - `task`            read-only subagent with a fresh context
+ *   - `pidesk_todo_write`      task checklist the UI renders as a todo card
+ *   - `pidesk_exit_plan_mode`  plan approval when running in plan mode
+ *   - `task`            read-only subagent with a fresh context (optionally in the background)
+ *   - `pidesk_bg_shell`        long-running shell command in the background, with `pidesk_bg_output` / `pidesk_bg_kill`
  *
  * Each session gets its own instance through `createDesktopKit(host)`. The host owns
  * the state (so the UI can change the mode at any moment, even mid-run) and turns
  * `ask()` into a permission or plan card in the transcript.
  */
 import { isAbsolute, relative, resolve } from 'node:path';
-import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from '@earendil-works/pi-coding-agent';
+import {
+  createLocalBashOperations, createLocalPowerShellOperations,
+  type ExtensionAPI, type ExtensionContext, type ExtensionFactory,
+} from '@earendil-works/pi-coding-agent';
 import { StringEnum } from '@earendil-works/pi-ai';
 import { Type } from 'typebox';
+import { AGENT_TYPES, DEFAULT_AGENT, type AgentType } from './agents';
 import {
   PLAN_CHOICES,
-  type OutputStyle, type PermissionMode, type SessionKind, type SubagentProgress, type UiRequestInput, type UiResponse,
+  type OutputStyle, type PermissionMode, type SessionKind, type SubagentProgress, type TaskUpdate, type UiRequestInput, type UiResponse,
 } from '@shared/protocol';
 
 /** First words of the hidden message injected in plan mode (the demo model looks for it). */
@@ -49,7 +54,10 @@ export interface SubagentRun {
   /** The `task` tool call id, so the UI can stop this one subagent. */
   id: string;
   prompt: string;
-  ctx: ExtensionContext;
+  /** Identity from `agents.ts`. */
+  agent: string;
+  /** Only what the subagent needs, so a background run never touches a stale context. */
+  ctx: Pick<ExtensionContext, 'cwd' | 'model'>;
   signal: AbortSignal | undefined;
   onProgress: (stats: SubagentStats, progress: SubagentProgress) => void;
 }
@@ -62,6 +70,12 @@ export interface KitHost {
   setMode(mode: PermissionMode): void;
   /** Runs a subagent and returns its report; omit it to leave out the `task` tool. */
   runSubagent?(run: SubagentRun): Promise<string>;
+  /** The subagent identities to offer (built-in plus the user's); the built-ins when omitted. */
+  agents?(): AgentType[];
+  /** Pushes the progress of a background task to the UI (its tool call has already returned). */
+  taskUpdate?(update: TaskUpdate): void;
+  /** Lets the UI stop a background task by its tool call id; returns the untrack function. */
+  trackTask?(id: string, stop: AbortController): () => void;
 }
 
 // Appended to the system prompt for the current turn. These change how Claude talks,
@@ -77,9 +91,9 @@ While working, explain implementation choices and relevant codebase patterns in 
 Work collaboratively and teach as you go. Explain key concepts in plain language, and when a small piece of the work is a good learning exercise, leave a clearly scoped \`TODO(human)\` marker with instructions instead of completing that piece. Keep making progress on everything else; ask before handing over larger chunks.`,
 };
 
-const READ_ONLY_TOOLS = new Set(['read', 'grep', 'find', 'ls', 'todo_write', 'exit_plan_mode', 'task', 'tool_search', 'codemode']);
+const READ_ONLY_TOOLS = new Set(['read', 'grep', 'find', 'ls', 'pidesk_todo_write', 'pidesk_exit_plan_mode', 'pidesk_task', 'pidesk_bg_output', 'pidesk_bg_kill', 'tool_search', 'codemode']);
 const EDIT_TOOLS = new Set(['edit', 'write']);
-const SHELL_TOOLS = new Set(['bash', 'powershell']);
+const SHELL_TOOLS = new Set(['bash', 'powershell', 'pidesk_bg_shell']);
 
 // Commands that only inspect state. Anything else (including running tests) counts as execution.
 const SAFE_COMMANDS = new Set([
@@ -146,7 +160,7 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       if (READ_ONLY_TOOLS.has(name)) return undefined;
 
       if (EDIT_TOOLS.has(name)) {
-        if (mode === 'plan') return { block: true, reason: 'Plan mode is read-only. Present your plan with exit_plan_mode.' };
+        if (mode === 'plan') return { block: true, reason: 'Plan mode is read-only. Present your plan with pidesk_exit_plan_mode.' };
         const abs = resolve(ctx.cwd, String(input.path ?? ''));
         const rel = relative(ctx.cwd, abs);
         const outside = rel.startsWith('..') || isAbsolute(rel);
@@ -182,7 +196,7 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
               display: false,
               content:
                 `${PLAN_MODE_MARKER} Explore the code with read-only tools only. Do not edit files. ` +
-                'When you understand the change, call exit_plan_mode with a concise markdown plan ' +
+                'When you understand the change, call pidesk_exit_plan_mode with a concise markdown plan ' +
                 '(Context, Changes as a numbered list, Verification) and wait for approval.',
             }
           : null;
@@ -193,14 +207,14 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       };
     });
 
-    // ---------------------------------------------------------------- todo_write
+    // ---------------------------------------------------------------- pidesk_todo_write
     const TodoItem = Type.Object({
       content: Type.String({ description: "Imperative description, e.g. 'Fix the date formatter'" }),
       status: StringEnum(['pending', 'in_progress', 'completed'] as const),
       activeForm: Type.Optional(Type.String({ description: "Present continuous form, e.g. 'Fixing the date formatter'" })),
     });
     pi.registerTool({
-      name: 'todo_write',
+      name: 'pidesk_todo_write',
       label: 'Todos',
       description:
         'Create or update the task checklist shown to the user. Send the complete list every time. ' +
@@ -216,9 +230,9 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       },
     });
 
-    // ---------------------------------------------------------------- exit_plan_mode
+    // ---------------------------------------------------------------- pidesk_exit_plan_mode
     pi.registerTool({
-      name: 'exit_plan_mode',
+      name: 'pidesk_exit_plan_mode',
       label: 'Plan',
       description: 'In plan mode, present the implementation plan (markdown) to the user for approval.',
       parameters: Type.Object({
@@ -245,41 +259,207 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       },
     });
 
+    // ---------------------------------------------------------------- background tasks
+    /** Tell the model a background task is over; it wakes up unless the user stopped it. */
+    const notify = (id: string, title: string, state: TaskUpdate['state'], body: string) => {
+      try {
+        pi.sendMessage(
+          {
+            customType: 'pi-desktop-task-notification',
+            display: false,
+            content: `<task-notification id="${id}" status="${state}">\n${title}\n${body}\n</task-notification>`,
+          },
+          { triggerTurn: state !== 'stopped', deliverAs: 'followUp' },
+        );
+      } catch {
+        // The session this task belonged to is gone (/clear, fork); nobody is left to tell.
+      }
+    };
+    const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}\n…(truncated)` : text);
+    const ended = (progress: SubagentProgress, activity: string): SubagentProgress => ({ ...progress, endedAt: Date.now(), activity });
+
     // ---------------------------------------------------------------- task (subagent)
     const runSubagent = host.runSubagent;
-    if (!runSubagent) return;
+    if (runSubagent) {
+      const agents = host.agents?.() ?? AGENT_TYPES;
+      pi.registerTool({
+        name: 'pidesk_task',
+        label: 'Agent',
+        description:
+          'Delegate a focused, read-only investigation to a subagent with a fresh context. ' +
+          'Use it for broad searches or tracing code paths; it returns a written report. ' +
+          'Set run_in_background to keep working while it runs: the call returns at once and the report arrives later as a <task-notification> message.',
+        promptSnippet: 'Delegate read-only investigations to a subagent',
+        parameters: Type.Object({
+          description: Type.String({ description: '3-6 word summary shown to the user' }),
+          prompt: Type.String({ description: 'Complete, self-contained instructions for the subagent' }),
+          subagent_type: Type.Optional(StringEnum(agents.map((a) => a.name) as [string, ...string[]], { description: `Which subagent to use (default ${DEFAULT_AGENT}). ${agents.map((a) => `${a.name}: ${a.description}`).join(' ')}` })),
+          run_in_background: Type.Optional(Type.Boolean({ description: 'Return immediately and get the report in a later message' })),
+        }),
+        annotations: { readOnlyHint: true },
+        async execute(id, params, signal, onUpdate, ctx) {
+          let stats: SubagentStats = { commands: 0, reads: 0, searches: 0, failed: 0 };
+          let progress: SubagentProgress | undefined;
+          const { run_in_background: background, ...shown } = params;
+
+          if (background) {
+            const run = runSubagent({
+              id,
+              prompt: params.prompt,
+              agent: params.subagent_type ?? DEFAULT_AGENT,
+              ctx: { cwd: ctx.cwd, model: ctx.model },
+              signal: undefined,
+              onProgress: (next, live) => {
+                stats = next;
+                progress = live;
+                host.taskUpdate?.({ toolCallId: id, state: 'running', progress: live, summary: subagentSummary(next) });
+              },
+            });
+            void run.then(
+              (text) => {
+                const report = text || 'The subagent produced no report.';
+                const state = text ? 'done' : 'err';
+                const done = ended(progress ?? { startedAt: Date.now(), tokens: 0, toolUses: 0, activity: '', steps: [] }, text ? 'Done' : 'Failed');
+                host.taskUpdate?.({ toolCallId: id, state, progress: done, summary: subagentSummary(stats), text: report });
+                notify(id, `Background task "${params.description}" finished.`, state, clip(report, 20000));
+              },
+              (err: Error) => {
+                const stopped = /stopped this subagent/.test(err.message);
+                const state = stopped ? 'stopped' : 'err';
+                const end = ended(progress ?? { startedAt: Date.now(), tokens: 0, toolUses: 0, activity: '', steps: [] }, stopped ? 'Stopped' : 'Failed');
+                host.taskUpdate?.({ toolCallId: id, state, progress: end, summary: subagentSummary(stats), text: err.message });
+                notify(id, `Background task "${params.description}" ${stopped ? 'was stopped by the user' : 'failed'}.`, state, err.message);
+              },
+            );
+            return {
+              content: [{ type: 'text', text: `Started "${params.description}" in the background (task ${id}). Keep working; its report will arrive as a <task-notification> message. Do not poll or wait for it.` }],
+              details: { ...shown, background: true },
+            };
+          }
+
+          const text = await runSubagent({
+            id,
+            prompt: params.prompt,
+            agent: params.subagent_type ?? DEFAULT_AGENT,
+            ctx,
+            signal,
+            onProgress: (next, live) => {
+              stats = next;
+              progress = live;
+              onUpdate?.({ content: [{ type: 'text', text: subagentSummary(stats) }], details: { ...shown, stats, progress, text: '' } });
+            },
+          });
+          if (signal?.aborted) throw new Error('Subagent aborted');
+          if (!text) throw new Error('Subagent produced no report');
+          return {
+            content: [{ type: 'text', text: clip(text, 20000) }],
+            details: { ...shown, stats, progress, summary: subagentSummary(stats), text },
+          };
+        },
+      });
+    }
+
+    // ---------------------------------------------------------------- pidesk_bg_shell
+    interface ShellTask { command: string; output: string; state: TaskUpdate['state']; exitCode?: number | null; startedAt: number; stop: AbortController }
+    const shells = new Map<string, ShellTask>();
+    const OUTPUT_CAP = 200_000;
+    const SHOWN_TAIL = 16_000;
+    const ANSI = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
+    const shellOps = process.platform === 'win32' ? createLocalPowerShellOperations() : createLocalBashOperations();
+    const shellUpdate = (id: string, t: ShellTask): TaskUpdate => ({
+      toolCallId: id,
+      state: t.state,
+      summary: t.state === 'running' ? 'running' : `exit ${t.exitCode ?? '?'}`,
+      progress: {
+        startedAt: t.startedAt, endedAt: t.state === 'running' ? undefined : Date.now(), tokens: 0, toolUses: 0, steps: [],
+        activity: t.state === 'running' ? 'Running a command' : t.state === 'stopped' ? 'Stopped' : t.state === 'err' ? 'Failed' : 'Done',
+      },
+      shell: { output: t.output.slice(-SHOWN_TAIL), exitCode: t.exitCode },
+    });
+
     pi.registerTool({
-      name: 'task',
-      label: 'Agent',
+      name: 'pidesk_bg_shell',
+      label: 'Shell',
       description:
-        'Delegate a focused, read-only investigation to a subagent with a fresh context. ' +
-        'Use it for broad searches or tracing code paths; it returns a written report.',
-      promptSnippet: 'Delegate read-only investigations to a subagent',
+        'Start a long-running shell command (dev server, watcher, slow build or test run) in the background. ' +
+        'It returns at once with a task id; read output with pidesk_bg_output, stop it with pidesk_bg_kill. ' +
+        'When the command exits you get a <task-notification> message. Use the normal shell tool for short commands.',
+      promptSnippet: 'Run long-lived shell commands in the background',
       parameters: Type.Object({
-        description: Type.String({ description: '3-6 word summary shown to the user' }),
-        prompt: Type.String({ description: 'Complete, self-contained instructions for the subagent' }),
+        command: Type.String({ description: 'The command to run' }),
+        description: Type.Optional(Type.String({ description: '3-6 word summary shown to the user' })),
+      }),
+      async execute(id, params, _signal, _onUpdate, ctx) {
+        const task: ShellTask = { command: params.command, output: '', state: 'running', startedAt: Date.now(), stop: new AbortController() };
+        shells.set(id, task);
+        const untrack = host.trackTask?.(id, task.stop);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const push = () => {
+          timer = undefined;
+          host.taskUpdate?.(shellUpdate(id, task));
+        };
+        const title = params.description || params.command;
+        shellOps
+          .exec(params.command, ctx.cwd, {
+            signal: task.stop.signal,
+            onData: (chunk) => {
+              task.output = (task.output + chunk.toString('utf8').replace(ANSI, '')).slice(-OUTPUT_CAP);
+              timer ??= setTimeout(push, 400);
+            },
+          })
+          .then(
+            ({ exitCode }) => {
+              task.exitCode = exitCode;
+              task.state = task.stop.signal.aborted ? 'stopped' : exitCode === 0 ? 'done' : 'err';
+            },
+            (err: Error) => {
+              task.output += `\n${err.message}`;
+              task.state = task.stop.signal.aborted ? 'stopped' : 'err';
+            },
+          )
+          .then(() => {
+            untrack?.();
+            if (timer) clearTimeout(timer);
+            push();
+            const how = task.state === 'stopped' ? 'was stopped by the user' : `exited with code ${task.exitCode ?? 'unknown'}`;
+            notify(id, `Background command "${title}" ${how}.`, task.state, `Last output:\n${task.output.slice(-4000) || '(no output)'}`);
+          });
+        return {
+          content: [{ type: 'text', text: `Started \`${params.command}\` in the background (task ${id}). Use pidesk_bg_output to read its output and pidesk_bg_kill to stop it; you will be notified when it exits.` }],
+          details: { description: title, command: params.command, background: true },
+        };
+      },
+    });
+
+    pi.registerTool({
+      name: 'pidesk_bg_output',
+      label: 'Shell output',
+      description: 'Read the latest output of a background shell command started with pidesk_bg_shell.',
+      parameters: Type.Object({
+        id: Type.String({ description: 'The task id returned by pidesk_bg_shell' }),
+        tail: Type.Optional(Type.Number({ description: 'Characters from the end to return (default 8000)' })),
       }),
       annotations: { readOnlyHint: true },
-      async execute(id, params, signal, onUpdate, ctx) {
-        let stats: SubagentStats = { commands: 0, reads: 0, searches: 0, failed: 0 };
-        let progress: SubagentProgress | undefined;
-        const text = await runSubagent({
-          id,
-          prompt: params.prompt,
-          ctx,
-          signal,
-          onProgress: (next, live) => {
-            stats = next;
-            progress = live;
-            onUpdate?.({ content: [{ type: 'text', text: subagentSummary(stats) }], details: { ...params, stats, progress, text: '' } });
-          },
-        });
-        if (signal?.aborted) throw new Error('Subagent aborted');
-        if (!text) throw new Error('Subagent produced no report');
-        return {
-          content: [{ type: 'text', text: text.length > 20000 ? `${text.slice(0, 20000)}\n…(truncated)` : text }],
-          details: { ...params, stats, progress, summary: subagentSummary(stats), text },
-        };
+      async execute(_id, params) {
+        const task = shells.get(params.id);
+        if (!task) throw new Error(`No background shell with id ${params.id}`);
+        const status = task.state === 'running' ? 'running' : `finished (${task.state}, exit code ${task.exitCode ?? 'unknown'})`;
+        const out = task.output.slice(-Math.max(1, Math.min(params.tail ?? 8000, 50_000)));
+        return { content: [{ type: 'text', text: `Status: ${status}\n${out || '(no output yet)'}` }], details: {} };
+      },
+    });
+
+    pi.registerTool({
+      name: 'pidesk_bg_kill',
+      label: 'Stop shell',
+      description: 'Stop a background shell command started with pidesk_bg_shell.',
+      parameters: Type.Object({ id: Type.String({ description: 'The task id returned by pidesk_bg_shell' }) }),
+      async execute(_id, params) {
+        const task = shells.get(params.id);
+        if (!task) throw new Error(`No background shell with id ${params.id}`);
+        if (task.state !== 'running') return { content: [{ type: 'text', text: `Already finished (${task.state}).` }], details: {} };
+        task.stop.abort();
+        return { content: [{ type: 'text', text: 'Stopping the command.' }], details: {} };
       },
     });
   };

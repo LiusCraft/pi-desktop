@@ -2,8 +2,8 @@
  * demo-model — an offline, scripted model for Pi Desktop.
  *
  * Registers provider `demo` / model `demo-coder` built on pi-ai's faux provider.
- * It drives pi's real tools (grep, read, edit, write, bash, todo_write, task,
- * exit_plan_mode) against the bundled demo project, so the whole desktop
+ * It drives pi's real tools (grep, read, edit, write, bash, pidesk_todo_write, pidesk_task,
+ * pidesk_exit_plan_mode) against the bundled demo project, so the whole desktop
  * pipeline — streaming, tools, permissions, plan approval, diffs, subagents —
  * can be tried without an API key. Real models replace it by picking another
  * model in the UI.
@@ -35,7 +35,7 @@ interface Run {
 }
 
 const todos = (items: string[], states: string) =>
-	call("todo_write", {
+	call("pidesk_todo_write", {
 		todos: items.map((content, i) => ({
 			content,
 			status: ({ p: "pending", i: "in_progress", d: "completed" } as const)[states[i] as "p" | "i" | "d"],
@@ -68,7 +68,7 @@ const SUBAGENT_MARK = "只读、小范围探索";
 
 const scenarios: Scenario[] = [
 	{
-		// subagent run (child process started by the `task` tool)
+		// subagent run (child process started by the `pidesk_task` tool)
 		match: (p) => p.startsWith(SUBAGENT_MARK),
 		steps: [
 			() => [call("ls", { path: "src" }), call("read", { path: "src/App.jsx" }), call("read", { path: "src/components/TodoList.jsx" })],
@@ -242,7 +242,7 @@ const scenarios: Scenario[] = [
 		steps: [
 			() => [think("先看目录和依赖；组件间的数据流交给子 agent 梳理。"), call("ls", { path: "." }), call("read", { path: "package.json" })],
 			() => [
-				call("task", {
+				call("pidesk_task", {
 					description: "Trace data flow between components",
 					prompt: `${SUBAGENT_MARK}。梳理 App → TodoList → utils/date 之间的数据流与调用关系：todos 状态在哪里定义、如何更新、哪些函数参与渲染。给出文件与行号证据，不要修改任何文件。`,
 				}),
@@ -424,11 +424,11 @@ function respond(context: any) {
 	const sc = (cowork ? coworkScenarios : scenarios).find((s) => s.match(prompt));
 	if (!sc) return msg(cowork ? COWORK_GREETING : GREETING);
 
-	// Plan mode: insert an exit_plan_mode call before the first editing step.
-	const planCalls = assistants.filter((a) => (a.content ?? []).some((c: any) => c.type === "toolCall" && c.name === "exit_plan_mode")).length;
+	// Plan mode: insert an pidesk_exit_plan_mode call before the first editing step.
+	const planCalls = assistants.filter((a) => (a.content ?? []).some((c: any) => c.type === "toolCall" && c.name === "pidesk_exit_plan_mode")).length;
 	const step = assistants.length - planCalls;
 	if (sc.plan && step === sc.plan.at && planMode && planCalls === 0) {
-		return msg([text(sc.plan.lead), call("exit_plan_mode", { title: sc.plan.title, plan: sc.plan.md })], { stopReason: "toolUse" });
+		return msg([text(sc.plan.lead), call("pidesk_exit_plan_mode", { title: sc.plan.title, plan: sc.plan.md })], { stopReason: "toolUse" });
 	}
 	const fn = sc.steps[step];
 	if (!fn) return msg("完成。");
