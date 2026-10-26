@@ -5,6 +5,7 @@ import {
   Trash2Icon, XIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { generatedKind, isGeneratedFile, type GeneratedKind } from '@shared/generated';
 import { lineWindow, WINDOW_LINES } from '@shared/tool-previews';
 import { CodeLines, DiffRows, TermOutput } from '@/components/common/CodeView';
 import { CopyGlyph, useCopy } from '@/components/common/Copy';
@@ -70,8 +71,23 @@ const Empty = ({ children }: { children: ReactNode }) => <div className="flex h-
 
 // ------------------------------------------------------------ diff
 
+const GENERATED_LABEL: Record<GeneratedKind, string> = { lockfile: 'lockfile', minified: 'minified bundle', sourcemap: 'source map' };
+
+/** Shown instead of diff rows for a generated file the user has not asked to see. */
+function GeneratedNote({ kind, onReveal }: { kind: GeneratedKind; onReveal: () => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 text-xs text-muted-foreground">
+      <FileIcon className="size-3.5 shrink-0" />
+      <span>Generated {GENERATED_LABEL[kind]} · diff hidden by default</span>
+      <Button size="xs" variant="outline" onClick={onReveal}>Show diff</Button>
+    </div>
+  );
+}
+
 export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Generated files start collapsed; `flipped` holds the user's per-file overrides.
+  const [flipped, setFlipped] = useState<Set<string>>(new Set());
+  const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [closedDirs, setClosedDirs] = useState<Set<string>>(new Set());
   const [gaps, setGaps] = useState<Set<string>>(new Set());
   const [showTree, setShowTree] = useState(true);
@@ -85,12 +101,14 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
     setActive(el.dataset.path!);
     return true;
   };
+  const isCollapsed = (path: string) => isGeneratedFile(path) !== flipped.has(path);
+  const toggle = (path: string) => setFlipped((c) => { const n = new Set(c); if (n.has(path)) n.delete(path); else n.add(path); return n; });
+  // "View diff" on a tool row is an explicit request, so it expands and reveals.
   const open = (p: string) => {
-    setCollapsed((c) => {
-      const n = new Set(c);
-      n.delete(p);
-      return n;
-    });
+    if (isGeneratedFile(p)) {
+      setFlipped((c) => new Set(c).add(p));
+      setRevealed((r) => new Set(r).add(p));
+    } else setFlipped((c) => { const n = new Set(c); n.delete(p); return n; });
     requestAnimationFrame(() => scrollTo(p));
   };
   // "View diff" on a tool row jumps here.
@@ -134,7 +152,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const tools = (
     <>
       <IconBtn title="Search files" onClick={() => togglePanel(id, 'files', true)}><SearchIcon className="size-3.5" /></IconBtn>
-      <IconBtn title="Refresh" onClick={() => { setGaps(new Set()); setCollapsed(new Set()); void loadChanges(id); }}><RefreshCwIcon className="size-3.5" /></IconBtn>
+      <IconBtn title="Refresh" onClick={() => { setGaps(new Set()); setFlipped(new Set()); setRevealed(new Set()); void loadChanges(id); }}><RefreshCwIcon className="size-3.5" /></IconBtn>
       <IconBtn title="Open in VS Code" onClick={() => call('sessions:openIn', id, 'vscode').catch(fail)}><ExternalLinkIcon className="size-3.5" /></IconBtn>
     </>
   );
@@ -147,6 +165,10 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   if (!s.meta.baseCommit) content = <Empty>{'这个项目不是 git 仓库\n初始化 git 后即可查看 Claude 的改动'}</Empty>;
   else if (!s.changes.length) content = <Empty>{'No changes yet\nClaude 修改的文件会出现在这里'}</Empty>;
   else {
+    const genTag = (path: string) => {
+      const gen = generatedKind(path);
+      return gen ? <span title={`Generated ${GENERATED_LABEL[gen]}`} className="shrink-0 text-[10px] font-medium tracking-wide text-muted-foreground/70">gen</span> : null;
+    };
     const fileRow = (f: (typeof s.changes)[number]) => (
       <FileContextMenu key={f.path} meta={s.meta} path={f.path} snapshot={f.status === 'D' ? f.before ?? '' : undefined}>
       <button
@@ -156,6 +178,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
       >
         <FileCodeIcon className="size-3.5 shrink-0 text-muted-foreground" />
         <span className={cn('min-w-0 flex-1 truncate', f.status === 'D' && 'line-through opacity-70')}>{fname(f.path)}</span>
+        {genTag(f.path)}
         <span className="shrink-0 font-mono text-xs"><span className="text-success">+{f.add}</span> <span className="text-destructive">−{f.del}</span></span>
       </button>
       </FileContextMenu>
@@ -183,28 +206,31 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
         )}
         <div ref={body} onScroll={onScroll} className="relative min-w-0 flex-1 overflow-auto">
           {s.changes.map((f) => {
-            const isCollapsed = collapsed.has(f.path);
+            const gen = generatedKind(f.path);
             return (
               <section key={f.path} data-path={f.path}>
                 <div className="group sticky top-0 z-10 flex items-center gap-2 border-b bg-card px-3 py-2 text-[13px]">
                   <button
                     className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                    aria-expanded={!isCollapsed}
-                    onClick={() => setCollapsed((c) => { const n = new Set(c); if (n.has(f.path)) n.delete(f.path); else n.add(f.path); return n; })}
+                    aria-expanded={!isCollapsed(f.path)}
+                    onClick={() => toggle(f.path)}
                   >
-                    {isCollapsed ? <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" /> : <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />}
+                    {isCollapsed(f.path) ? <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" /> : <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />}
                     <FileCodeIcon className="size-3.5 shrink-0 text-muted-foreground" />
                     <span className="shrink-0 font-medium">{fname(f.path)}</span>
                     {fdir(f.path) && <span className="truncate text-muted-foreground">{fdir(f.path)}</span>}
                     <span className="shrink-0 font-mono text-xs"><span className="text-success">+{f.add}</span> <span className="text-destructive">−{f.del}</span></span>
                     {f.status === 'A' && <span className="shrink-0 text-[10px] font-semibold text-success">NEW</span>}
                     {f.status === 'D' && <span className="shrink-0 text-[10px] font-semibold text-destructive">DELETED</span>}
+                    {genTag(f.path)}
                   </button>
                   {f.status !== 'D' && (
                     <IconBtn title="Open file" className="size-6 opacity-0 group-hover:opacity-100" onClick={() => void openFileRef(f.path)}><CodeIcon className="size-3.5" /></IconBtn>
                   )}
                 </div>
-                {!isCollapsed && (f.binary ? <div className="px-3 py-2 text-xs text-muted-foreground">Binary or large file</div> : (
+                {!isCollapsed(f.path) && (f.binary ? <div className="px-3 py-2 text-xs text-muted-foreground">Binary or large file</div> : gen && !revealed.has(f.path) ? (
+                  <GeneratedNote kind={gen} onReveal={() => setRevealed((r) => new Set(r).add(f.path))} />
+                ) : (
                   <DiffRows sid={id} wrap before={f.before} after={f.status === 'D' ? null : f.after} path={f.path} openGaps={gaps} onOpenGap={(g) => setGaps((x) => new Set(x).add(g))} />
                 ))}
               </section>
