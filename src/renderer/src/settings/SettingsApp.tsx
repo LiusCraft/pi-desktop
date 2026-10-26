@@ -269,6 +269,14 @@ export function SettingsApp() {
   } else if (section === 'models') {
     body = <ModelsSection />;
   } else if (section === 'projects') {
+    const worktreePath = settings.worktreeDir || info?.defaultWorktreeDir || '';
+    const pickWorktree = async () => {
+      const dir = await call('app:pickFolder').catch((e) => {
+        toast.error(errText(e));
+        return null;
+      });
+      if (dir) await patch({ worktreeDir: dir });
+    };
     const list = (items: Project[], kind: 'project' | 'folder') => (
       <Panel>
         {items.length ? items.map((p) => (
@@ -299,8 +307,28 @@ export function SettingsApp() {
     };
     body = (
       <>
-        <Heading title="项目与文件夹" sub="Code 会话的项目，以及 Cowork 可用的工作文件夹。" />
-        <div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">Code 项目</h3><Button size="sm" variant="outline" onClick={() => void add('project')}>添加…</Button></div>
+        <Heading title="项目与文件夹" sub="Code 会话的项目、worktree 位置，以及 Cowork 可用的工作文件夹。" />
+        <div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">Worktree 位置</h3></div>
+        <Panel>
+          <Row
+            title="Code 会话的 worktree 根目录"
+            hint={<span className="break-all font-mono">{worktreePath}{settings.worktreeDir ? '' : '（默认）'}</span>}
+          >
+            <Button size="sm" variant="outline" onClick={() => void pickWorktree()}>修改…</Button>
+            {settings.worktreeDir && (
+              <Button size="sm" variant="ghost" onClick={() => void patch({ worktreeDir: null })}>恢复默认</Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!worktreePath}
+              onClick={() => worktreePath && call('app:revealPath', worktreePath).catch((e) => toast.error(errText(e)))}
+            >
+              打开
+            </Button>
+          </Row>
+        </Panel>
+        <div className="mt-6 mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">Code 项目</h3><Button size="sm" variant="outline" onClick={() => void add('project')}>添加…</Button></div>
         {list(projects, 'project')}
         <div className="mt-6 mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">Cowork 文件夹</h3><Button size="sm" variant="outline" onClick={() => void add('folder')}>添加…</Button></div>
         {list(folders, 'folder')}
@@ -314,11 +342,15 @@ export function SettingsApp() {
         <Heading title="关于" sub="基于 pi coding agent SDK 的桌面客户端。" />
         <Panel>
           <Row title={`Pi Desktop${info?.demo ? '（演示模式）' : ''}`} hint={ver} />
-          <Row title="数据目录" hint={<span className="font-mono">{info?.userData}</span>}>
-            <Button size="sm" variant="outline" onClick={() => info && call('app:revealPath', info.userData).catch((e) => toast.error(errText(e)))}>打开</Button>
-            <Button size="sm" variant="outline" onClick={() => copy(info?.userData ?? '')}>{copied ? '已复制' : '复制路径'}</Button>
+          <Row title="数据目录" hint={<span className="break-all font-mono">{info?.dataDir}</span>}>
+            <Button size="sm" variant="outline" onClick={() => info && call('app:revealPath', info.dataDir).catch((e) => toast.error(errText(e)))}>打开</Button>
+            <Button size="sm" variant="outline" onClick={() => copy(info?.dataDir ?? '')}>{copied ? '已复制' : '复制路径'}</Button>
           </Row>
-          <Row title="pi 配置目录" hint={<span className="font-mono">{info?.agentDir}</span>}>
+          <Row title="Pi Desktop 扩展目录" hint={<span className="break-all font-mono">{info?.extensionsDir}</span>}>
+            <Button size="sm" variant="outline" onClick={() => info && call('app:revealPath', info.extensionsDir).catch((e) => toast.error(errText(e)))}>打开</Button>
+            <Button size="sm" variant="outline" onClick={() => copy(info?.extensionsDir ?? '')}>{copied ? '已复制' : '复制路径'}</Button>
+          </Row>
+          <Row title="pi 配置目录" hint={<span className="break-all font-mono">{info?.agentDir}</span>}>
             <Button size="sm" variant="outline" onClick={() => info && call('app:revealPath', info.agentDir).catch((e) => toast.error(errText(e)))}>打开</Button>
             <Button size="sm" variant="outline" onClick={() => copy(info?.agentDir ?? '')}>{copied ? '已复制' : '复制路径'}</Button>
           </Row>

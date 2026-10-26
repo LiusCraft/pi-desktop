@@ -6,6 +6,7 @@ import path from 'node:path';
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import type { AuthEvent, AuthPrompt, AuthType, EndpointDraft, HostEvent, ModelCatalogInfo } from '@shared/protocol';
 import { discoverModels, EndpointStore, validProviderId } from './endpoints';
+import { appCacheDir } from './app-paths';
 import { ModelsDevCatalog } from './models-dev';
 import { alignModel } from '@shared/model-metadata';
 export { alignModel } from '@shared/model-metadata';
@@ -21,7 +22,8 @@ interface PendingLogin {
 
 export interface ModelAdminOptions {
   agentDir: string;
-  userData: string;
+  /** Pi Desktop's own data folder, used only for the disposable models.dev cache. */
+  dataDir: string;
   /** The hub's runtime, which owns credentials and the composed providers. */
   models: () => ModelRuntime;
   /** Serialized catalog refresh: two concurrent refreshes can drop a freshly added provider. */
@@ -75,7 +77,7 @@ export class ModelAdmin {
 
   constructor(private readonly opts: ModelAdminOptions) {
     this.endpoints = new EndpointStore(path.join(opts.agentDir, 'models.json'));
-    this.dev = new ModelsDevCatalog(path.join(opts.userData, 'models-dev.json'));
+    this.dev = new ModelsDevCatalog(path.join(appCacheDir(opts.dataDir), 'models-dev.json'));
   }
 
   private run<T>(fn: () => Promise<T>): Promise<T> {

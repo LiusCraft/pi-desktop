@@ -15,13 +15,29 @@ npm run build && npm run demo  # 打开内置演示项目，默认使用离线�
 ```
 
 - 需要 Node 22.12+（构建与测试用）；运行时 agent 跑在 Electron 自带的 Node 上。
-- 首次启动会把 `demo/todo-app`（Code 演示项目）和 `demo/cowork-workspace`（Cowork 演示文件夹：收件箱、日程、待办）复制到用户数据目录。不配置任何 API Key 也能用 **Demo (offline)** 模型体验完整流程。
+- 首次启动会把 `demo/todo-app`（Code 演示项目）和 `demo/cowork-workspace`（Cowork 演示文件夹：收件箱、日程、待办）复制到 `~/.pi-desktop/demo`。不配置任何 API Key 也能用 **Demo (offline)** 模型体验完整流程。
 - 接真实模型：打开设置（`Ctrl/⌘+,`）→ **模型管理**，和 pi CLI 用同一套配置：
   - **账号登录**：Anthropic（Claude Pro/Max）、OpenAI（ChatGPT）、GitHub Copilot、xAI、Meta、Kimi、OpenRouter、Radius 等 provider 的 OAuth 登录，浏览器授权或设备码，凭证写入 `~/.pi/agent/auth.json`。
   - **API 密钥**：所有支持密钥的 provider，交互流程和 pi 的 `/login` 完全一致（包括需要多个环境变量的 provider）。
   - **自定义端点**：OpenAI Chat Completions / Responses、Anthropic Messages、Google Generative AI 兼容地址写入 `~/.pi/agent/models.json`；可以直接从端点的 `/models` 拉取模型列表。每个模型都能编辑名称、上下文大小、最大输出、四项每百万 token 价格、推理与图像输入能力；[models.dev](https://models.dev) 仅补充缺失值，手动值（包括免费价格 0）始终优先。保存不等待公开目录网络请求；目录中的 0 token 限制会忽略，重新保存端点也能清理旧配置里的无效 0 值。密钥仍只存 `auth.json`，本地端点自动写入 pi 的占位密钥。
   - 环境变量、`auth.json`、`models.json` 里已有的配置都会识别；你在 `~/.pi/agent` 里装的扩展、技能、提示模板和 MCP 服务器照常加载，和 CLI 一致。
-- 设置窗口（`Ctrl/⌘+,`）是独立窗口：外观（浅色 / 深色 / 跟随系统、侧边栏）、通用（通知、输入预测、默认分区）、模型管理、项目与文件夹、关于。偏好保存在用户数据目录的 `settings.json`，修改后主窗口立即跟随；preload 用同步 IPC（`app:boot`）拿到首屏需要的值，不会先闪一下再变色。
+- 设置窗口（`Ctrl/⌘+,`）是独立窗口：外观（浅色 / 深色 / 跟随系统、侧边栏）、通用（通知、输入预测、默认分区）、模型管理、项目与文件夹（Code 项目、Cowork 文件夹、worktree 位置）、关于。偏好保存在 `~/.pi-desktop/settings.json`，修改后主窗口立即跟随；preload 用同步 IPC（`app:boot`）拿到首屏需要的值，不会先闪一下再变色。
+
+## 数据目录
+
+Pi Desktop 只把**自己的**数据放在 `~/.pi-desktop`（可用 `PI_DESKTOP_HOME` 指向别的位置，测试就靠它隔离）。pi 的配置留在 pi 自己的默认位置，Electron 的 Chromium 数据留在系统默认目录，互不混用。
+
+| 位置 | 内容 |
+|---|---|
+| `~/.pi-desktop/settings.json` | 应用偏好：主题、通知、输入预测、默认分区、worktree 位置… |
+| `~/.pi-desktop/sessions.json`、`projects.json`、`coworkFolders.json` | 会话元数据、Code 项目列表、Cowork 文件夹列表 |
+| `~/.pi-desktop/cache/models-dev.json` | models.dev 目录缓存（按天刷新，可随时删除） |
+| `~/.pi-desktop/demo/` | 首次启动复制的演示项目和 Cowork 演示文件夹 |
+| `~/.pi-desktop/cowork/` | 没有选择文件夹时 Cowork 任务的临时工作区 |
+| `~/.pi-desktop/extensions/` | Pi Desktop 自己的扩展目录，和 pi 的扩展分开，不污染 `~/.pi` |
+| `~/.pi-desktop/.worktree/` | Code 会话 git worktree 的默认根目录；可在设置 → 项目与文件夹 → Worktree 位置改成任意本地文件夹，只影响之后新建的会话 |
+| `~/.pi/agent/` | pi 自己的配置：`auth.json`、`models.json`、`sessions/`、扩展 / 技能 / 提示模板、MCP。路径由 pi SDK 决定（`PI_CODING_AGENT_DIR` 可覆盖），Pi Desktop 只在原处读写，不搬家 |
+| Electron 的 Chromium 数据 | 仍在系统默认位置（macOS 为 `~/Library/Application Support/Pi Desktop`），和上面的应用配置无关 |
 
 ## 架构
 
@@ -39,6 +55,7 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 | 目录 / 文件 | 作用 |
 |---|---|
 | `src/shared/protocol.ts` | 三个进程之间的契约：渲染进程能调用的每个通道（`Api`）、哪些转发给 agent host（`HOST_CHANNELS`）、host 推回的事件流（`HostEvent`）、交互请求（`UiRequest`） |
+| `src/agent/app-paths.ts` | 应用自己的数据目录（`~/.pi-desktop`、`PI_DESKTOP_HOME`）、worktree 根目录、扩展目录；pi 的配置目录只读解析，不搬家 |
 | `src/agent/hub.ts` | 会话元数据、worktree、`createAgentSessionRuntime` 创建 / 恢复会话、事件转发、交互请求（权限 / 计划 / 扩展对话框）、子 agent、会话命名、CLI 会话导入 |
 | `src/agent/desktop-kit.ts` | 每个会话一个实例的 pi 扩展：权限模式、output style、`todo_write`、`exit_plan_mode`、`task`（子 agent） |
 | `src/agent/model-admin.ts` | 模型管理：provider / 登录方式枚举、OAuth 与 API key 登录事件桥接、登出、自定义端点保存与热加载 |
@@ -123,7 +140,7 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 
 | | Code | Cowork |
 |---|---|---|
-| 工作目录 | 项目的独立 worktree（`claude/<名字>` 分支） | 选定的文件夹，直接修改；或新建的临时工作区 |
+| 工作目录 | 项目的独立 worktree（`claude/<名字>` 分支，默认在 `~/.pi-desktop/.worktree`，可在设置里改根目录） | 选定的文件夹，直接修改；或新建的临时工作区（`~/.pi-desktop/cowork`） |
 | 会话配置 | desktop-kit profile `code` | desktop-kit profile `cowork`，追加系统提示 `src/agent/cowork-prompt.md` |
 | 右侧面板 | Diff、计划、子 agent、终端、预览 | 进度、生成的文件（可预览、打开、在文件夹中显示）、上下文 |
 | 底部 | PR 条 + CI 状态 | — |
@@ -154,8 +171,8 @@ npm test            # vitest：真实的进程内 pi 会话 + desktop-kit + 演�
 npm run test:desktop # 构建后用项目自带的 Electron 运行 Playwright 窗口交互测试
 ```
 
-- `test/hub.e2e.test.ts`：Auto 模式在隔离 worktree 里修 bug（修复前测试真的失败，修复后真的通过，主工作区不被改动）、Ask 模式拒绝、Plan 模式审批后自动切到 Accept edits、运行中切换模式、进程内子 agent、高风险命令仍需询问、带图片附件的会话关闭后从会话文件恢复、`/clear`、首条提示词命名与手动重命名；Cowork 整理收件箱时只有移动文件需要确认、拒绝后文件保持原样、生成简报文件、临时工作区。
-- `test/desktop/interactions.spec.ts`：临时配置目录中的真实 Electron 窗口，覆盖模型元数据编辑、价格 0、token 限制校验、文件菜单、预览引用、Diff 评论、随消息发送及历史回退 / 分支；`test/context-reference.test.ts` 覆盖引用格式、草稿隔离与恢复、容量限制。
+- `test/hub.e2e.test.ts`：Auto 模式在隔离 worktree 里修 bug（修复前测试真的失败，修复后真的通过，主工作区不被改动）、worktree 默认根目录与设置里的自定义根目录、Ask 模式拒绝、Plan 模式审批后自动切到 Accept edits、运行中切换模式、进程内子 agent、高风险命令仍需询问、带图片附件的会话关闭后从会话文件恢复、`/clear`、首条提示词命名与手动重命名；Cowork 整理收件箱时只有移动文件需要确认、拒绝后文件保持原样、生成简报文件、临时工作区。
+- `test/desktop/interactions.spec.ts`：临时配置目录（`PI_DESKTOP_HOME`）中的真实 Electron 窗口，覆盖模型元数据编辑、价格 0、token 限制校验、文件菜单、预览引用、Diff 评论、随消息发送及历史回退 / 分支；`test/context-reference.test.ts` 覆盖引用格式、草稿隔离与恢复、容量限制。
 - `test/attachment-message.test.ts` / `test/attachments-backend.test.ts`：附件消息往返、校验限制、剪贴板格式（macOS / Windows / Linux）和图片规范化。
 - `test/tool-previews.test.ts` / `test/files.test.ts`：原生工具输出、行号 / 分页，以及文件边界、符号链接（需要系统允许创建符号链接）、二进制和大小限制。
 - `test/naming.test.ts`、`test/suggest.test.ts`、`test/side-model.test.ts`、`test/git-pr.test.ts`：命名规则、输入预测的上下文裁剪与回复清洗、小模型挑选、`gh pr view` 结果映射。

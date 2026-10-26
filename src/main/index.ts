@@ -12,10 +12,14 @@ import {
   type Settings, type SettingsPayload,
 } from '@shared/protocol';
 import { childEnv } from '../agent/env';
+import {
+  appDataDir, appDemoDir, appExtensionsDir, defaultWorktreeDir, expandHome, piAgentDir, worktreeDir,
+} from '../agent/app-paths';
 import { resolveInside } from '../agent/files';
+import { localPath } from '../agent/local-path';
 import { Store } from '../agent/store';
 import { AgentClient } from './agent-client';
-import { agentDir, migrateLegacyKeys } from './agent-auth';
+import { migrateLegacyKeys } from './agent-auth';
 import { clipboardAttachments, type ClipboardItemLike } from './clipboard';
 import { openIn } from './open-in';
 
@@ -57,14 +61,16 @@ function addCoworkFolder(dir: string) {
   return folder;
 }
 const demoSource = (name: string) => path.join(app.getAppPath(), 'demo', name);
+/** Pi Desktop's own data folder; Electron's profile stays at the platform default. */
+const dataDir = () => appDataDir();
 function ensureDemoCowork() {
-  const dest = path.join(app.getPath('userData'), 'demo', 'cowork-workspace');
+  const dest = path.join(appDemoDir(dataDir()), 'cowork-workspace');
   if (!fs.existsSync(dest)) fs.cpSync(demoSource('cowork-workspace'), dest, { recursive: true });
   return addCoworkFolder(dest);
 }
-/** Copy the bundled demo project into userData and make it a git repo. */
+/** Copy the bundled demo project into the app data folder and make it a git repo. */
 function ensureDemoProject() {
-  const dest = path.join(app.getPath('userData'), 'demo', 'todo-app');
+  const dest = path.join(appDemoDir(dataDir()), 'todo-app');
   if (!fs.existsSync(dest)) {
     fs.cpSync(demoSource('todo-app'), dest, { recursive: true });
     try {
@@ -84,7 +90,7 @@ function ensureDemoProject() {
 const DEFAULT_SETTINGS: Settings = {
   theme: null, notify: true, suggestions: true,
   suggestionModel: 'auto', suggestionModelId: null, suggestionContext: SUGGESTION_DEFAULT_CONTEXT, suggestionFullContext: false,
-  defaultMode: 'code', sidebarCollapsed: false, pet: true, petSkin: 'clawd',
+  defaultMode: 'code', sidebarCollapsed: false, worktreeDir: null, pet: true, petSkin: 'clawd',
 };
 
 function settingsValue(): Settings {
@@ -98,8 +104,18 @@ function settingsPayload(): SettingsPayload {
 function broadcast<K extends PushChannel>(channel: K, payload: PushEvents[K]) {
   for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(channel, payload);
 }
+/** A worktree root must be one absolute local folder; null/empty restores the default. */
+function normalizeWorktreeDir(value: unknown): string | null {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw) return null;
+  const abs = localPath(expandHome(raw));
+  fs.mkdirSync(abs, { recursive: true });
+  return abs;
+}
 function saveSettings(patch: Partial<Settings>) {
-  const next = { ...settingsValue(), ...patch };
+  const clean: Partial<Settings> = { ...patch };
+  if ('worktreeDir' in patch) clean.worktreeDir = normalizeWorktreeDir(patch.worktreeDir);
+  const next = { ...settingsValue(), ...clean };
   store.set('settings', next);
   // Native chrome (title bar, menus, dialogs) follows the app's appearance.
   nativeTheme.themeSource = next.theme === 'light' || next.theme === 'dark' ? next.theme : 'system';
@@ -199,10 +215,15 @@ function applyThemeToWindows() {
 
 // ------------------------------------------------------------ IPC
 
-/** Folders the app may open or reveal: its data dir, projects and Cowork folders. */
+/** Folders the app may open or reveal: its own data, pi's config, projects and Cowork folders. */
 function knownRoot(target: string) {
   const abs = path.resolve(String(target || ''));
-  const roots = [app.getPath('userData'), agentDir(), ...projects().map((p) => p.path), ...coworkFolders().map((p) => p.path)];
+  const dir = dataDir();
+  const roots = [
+    dir, appExtensionsDir(dir), piAgentDir(),
+    worktreeDir(dir, settingsValue().worktreeDir), defaultWorktreeDir(dir),
+    ...projects().map((p) => p.path), ...coworkFolders().map((p) => p.path),
+  ];
   if (!roots.some((r) => abs === path.resolve(r) || abs.startsWith(path.resolve(r) + path.sep))) throw new Error('Path outside the app folders');
   return abs;
 }
@@ -229,8 +250,10 @@ const handlers: MainHandlers = {
     platform: process.platform,
     version: app.getVersion(),
     demo: DEMO,
-    userData: app.getPath('userData'),
-    agentDir: agentDir(),
+    dataDir: dataDir(),
+    agentDir: piAgentDir(),
+    extensionsDir: appExtensionsDir(dataDir()),
+    defaultWorktreeDir: defaultWorktreeDir(dataDir()),
     versions: { electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node },
   }),
   'app:notify': ({ title, body, sessionId }) => {
@@ -248,6 +271,7 @@ const handlers: MainHandlers = {
   'app:openExternal': (url) => {
     if (/^https?:/.test(url)) void shell.openExternal(url);
   },
+  'app:pickFolder': () => pickFolder(),
   // Reveal or open a folder the app already knows about; anything else is refused.
   'app:revealPath': (target, reveal) => {
     const abs = knownRoot(target);
@@ -313,7 +337,7 @@ function registerIpc() {
   ipcMain.on('app:boot', (e) => {
     e.returnValue = {
       settings: settingsPayload(),
-      info: { platform: process.platform, version: app.getVersion(), demo: DEMO, agentDir: agentDir() },
+      info: { platform: process.platform, version: app.getVersion(), demo: DEMO, agentDir: piAgentDir() },
     } satisfies BootPayload;
   });
   for (const channel of MAIN_CHANNELS) {
@@ -331,12 +355,20 @@ if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', showMainWindow);
 
 void app.whenReady().then(async () => {
-  store = new Store(app.getPath('userData'));
+  store = new Store(dataDir());
   migrateLegacyKeys(store);
+  // Own folders only; Electron's Chromium profile is left to its platform default.
+  fs.mkdirSync(appExtensionsDir(dataDir()), { recursive: true });
+  try {
+    fs.mkdirSync(worktreeDir(dataDir(), settingsValue().worktreeDir), { recursive: true });
+  } catch (err) {
+    // An unmounted custom worktree volume must not keep the app from starting.
+    console.error('[main] cannot create the worktree folder:', err);
+  }
   nativeTheme.themeSource = ['light', 'dark'].includes(String(settingsValue().theme)) ? (settingsValue().theme as 'light' | 'dark') : 'system';
   agent = new AgentClient(
     path.join(here, 'agent.mjs'),
-    () => ({ userData: app.getPath('userData'), demo: DEMO }),
+    () => ({ dataDir: dataDir(), agentDir: piAgentDir(), demo: DEMO }),
     (event: HostEvent) => broadcast('host:event', event),
   );
   void agent.start().catch((err) => console.error('[main] agent host failed to start:', err));

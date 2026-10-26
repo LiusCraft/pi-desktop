@@ -3,6 +3,7 @@
 // pi otherwise defaults to 128K/16K and zero cost. The catalog is cached in the
 // app data directory for a day; a failure to refresh keeps the previous copy.
 import fs from 'node:fs';
+import path from 'node:path';
 import type { ModelMeta } from '@shared/protocol';
 import { positiveLimit } from '@shared/model-metadata';
 
@@ -184,6 +185,7 @@ export class ModelsDevCatalog {
   private write(providers: Record<string, CachedModel[]>) {
     const body: CacheFile = { fetchedAt: this.fetchedAt ?? Date.now(), providers };
     try {
+      fs.mkdirSync(path.dirname(this.file), { recursive: true });
       fs.writeFileSync(this.file, JSON.stringify(body));
     } catch {
       // The cache is an optimization: the in-memory index still serves this run.

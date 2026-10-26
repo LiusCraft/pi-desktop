@@ -1,4 +1,4 @@
-// Small JSON store in the app's userData directory (atomic writes).
+// Small JSON store in Pi Desktop's own data directory (atomic writes).
 import fs from 'node:fs';
 import path from 'node:path';
 

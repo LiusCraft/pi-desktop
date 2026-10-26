@@ -11,7 +11,7 @@ import { SessionHub } from '../src/agent/hub';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-desktop-model-admin-'));
 const agentDir = path.join(tmp, 'agent');
-const userData = path.join(tmp, 'userData');
+const dataDir = path.join(tmp, 'data');
 process.env.PI_OFFLINE = '1';
 process.env.PI_CODING_AGENT_DIR = agentDir;
 
@@ -34,10 +34,10 @@ const authJson = () => JSON.parse(fs.readFileSync(path.join(agentDir, 'auth.json
 const modelsJson = () => JSON.parse(fs.readFileSync(path.join(agentDir, 'models.json'), 'utf8'));
 
 beforeAll(async () => {
-  fs.mkdirSync(path.join(userData), { recursive: true });
+  fs.mkdirSync(path.join(dataDir, 'cache'), { recursive: true });
   // Seed the models.dev cache so alignment never reaches the network.
   fs.writeFileSync(
-    path.join(userData, 'models-dev.json'),
+    path.join(dataDir, 'cache', 'models-dev.json'),
     JSON.stringify({ fetchedAt: Date.now(), providers: { openai: [{ id: 'test-model', name: 'Test Model', context: 12345, output: 6789, cost: { input: 1, output: 2 } }] } }),
   );
   server = http.createServer((req, res) => {
@@ -53,7 +53,7 @@ beforeAll(async () => {
   if (!address || typeof address === 'string') throw new Error('No test server address');
   baseUrl = `http://127.0.0.1:${address.port}/v1`;
 
-  hub = new SessionHub({ userData, agentDir, emit: (event) => events.push(event) });
+  hub = new SessionHub({ dataDir, agentDir, emit: (event) => events.push(event) });
   await hub.init();
 });
 

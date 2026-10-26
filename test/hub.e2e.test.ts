@@ -34,7 +34,7 @@ class Driver {
   answer: Answer = () => ({ cancelled: true });
   hub: SessionHub;
   constructor() {
-    this.hub = new SessionHub({ userData: path.join(tmp, 'userData'), agentDir, emit: (e) => this.onEvent(e) });
+    this.hub = new SessionHub({ dataDir: path.join(tmp, 'data'), agentDir, emit: (e) => this.onEvent(e) });
   }
   private waiters: { id: string; resolve: () => void }[] = [];
   private onEvent(e: HostEvent) {
@@ -93,6 +93,7 @@ describe('code sessions', { timeout: 120_000 }, () => {
     const { project, meta } = await codeSession('auto', true);
     expect(meta.branch).toMatch(/^claude\//);
     expect(meta.cwd).not.toBe(project);
+    expect(meta.cwd.startsWith(path.join(tmp, 'data', '.worktree') + path.sep), 'default worktree root').toBe(true);
     const opened = await driver.hub.open(meta.id);
     expect(opened.model).toBe('demo/demo-coder');
 
@@ -277,6 +278,25 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect(await driver.hub.suggest(meta.id, { model: 'session', context: 'all' })).toBeNull();
     expect(await driver.hub.suggest(meta.id, { model: 'fixed', modelId: 'demo/demo-coder', context: 6 })).toBeNull();
   });
+
+  it('uses the worktree folder from settings, and the default when it is unset', async () => {
+    const project = makeProject('worktree-root');
+    const custom = path.join(tmp, 'custom-worktrees');
+    const create = (title: string) =>
+      driver.hub.create({ kind: 'code', projectPath: project, worktree: true, model: 'demo/demo-coder', title, autoName: false });
+    const settingsFile = path.join(tmp, 'data', 'settings.json');
+
+    const fallback = await create('default root');
+    expect(fallback.cwd.startsWith(path.join(tmp, 'data', '.worktree') + path.sep)).toBe(true);
+
+    fs.writeFileSync(settingsFile, JSON.stringify({ worktreeDir: custom }));
+    try {
+      const configured = await create('configured root');
+      expect(configured.cwd.startsWith(custom + path.sep)).toBe(true);
+    } finally {
+      fs.rmSync(settingsFile, { force: true });
+    }
+  });
 });
 
 describe('cowork sessions', { timeout: 120_000 }, () => {
@@ -320,7 +340,7 @@ describe('cowork sessions', { timeout: 120_000 }, () => {
   it('without a folder, works in a fresh temporary workspace', async () => {
     const meta = await cowork(null);
     expect(meta.scratch).toBe(true);
-    expect(meta.cwd.startsWith(path.join(tmp, 'userData', 'cowork'))).toBe(true);
+    expect(meta.cwd.startsWith(path.join(tmp, 'data', 'cowork'))).toBe(true);
     expect(fs.existsSync(meta.cwd)).toBe(true);
   });
 });

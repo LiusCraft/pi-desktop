@@ -13,19 +13,24 @@ const errors: string[] = [];
 test.beforeEach(async () => {
   previousClipboard = undefined;
   temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-desktop-ui-'));
-  const userData = path.join(temporary, 'userData');
-  fs.mkdirSync(userData, { recursive: true });
-  fs.writeFileSync(path.join(userData, 'models-dev.json'), JSON.stringify({ fetchedAt: Date.now(), providers: { openai: [
+  const dataDir = path.join(temporary, 'data');
+  // Electron's own Chromium profile is isolated for tests only; the app's data is PI_DESKTOP_HOME.
+  const electronProfile = path.join(temporary, 'electron-profile');
+  fs.mkdirSync(electronProfile, { recursive: true });
+  fs.mkdirSync(path.join(dataDir, 'cache'), { recursive: true });
+  fs.writeFileSync(path.join(dataDir, 'cache', 'models-dev.json'), JSON.stringify({ fetchedAt: Date.now(), providers: { openai: [
     { id: 'editable-model', context: 200000, output: 32000, cost: { input: 5, output: 10 } },
     { id: 'gpt-image-1', context: 0, output: 0 },
   ] } }));
   app = await electron.launch({
     executablePath: createRequire(path.resolve('package.json'))('electron') as string,
-    args: [path.resolve('.'), '--demo', `--user-data-dir=${userData}`],
-    env: { ...process.env, PI_CODING_AGENT_DIR: path.join(temporary, 'agent'), PI_OFFLINE: '1' },
+    args: [path.resolve('.'), '--demo', `--user-data-dir=${electronProfile}`],
+    env: { ...process.env, PI_DESKTOP_HOME: dataDir, PI_CODING_AGENT_DIR: path.join(temporary, 'agent'), PI_OFFLINE: '1' },
   });
   const actualUserData = await app.evaluate(({ app: application }) => application.getPath('userData'));
-  expect(fs.realpathSync(actualUserData)).toBe(fs.realpathSync(userData));
+  expect(fs.realpathSync(actualUserData)).toBe(fs.realpathSync(electronProfile));
+  // App data lives in PI_DESKTOP_HOME; Electron's Chromium profile is only for the browser internals.
+  await expect.poll(() => fs.existsSync(path.join(dataDir, 'demo', 'todo-app'))).toBe(true);
   previousClipboard = await app.evaluate(({ clipboard }) => clipboard.readText());
   errors.length = 0;
   page = await app.firstWindow();

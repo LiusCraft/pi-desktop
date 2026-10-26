@@ -94,7 +94,7 @@ function CodeNav() {
       <nav className="space-y-0.5 px-2">
         <NavItem icon={<PlusIcon className="size-4" />} onClick={showWelcome}>New</NavItem>
         <NavItem icon={<ClockIcon className="size-4" />} soon hint="Routines 即将推出">Routines</NavItem>
-        <NavItem icon={<ShapesIcon className="size-4" />} soon hint="Customize：在 ~/.pi/agent 下管理扩展、技能和提示模板">Customize</NavItem>
+        <NavItem icon={<ShapesIcon className="size-4" />} soon hint="Customize：pi 的扩展、技能和提示模板在 ~/.pi/agent 下管理；Pi Desktop 自己的扩展放在 ~/.pi-desktop/extensions">Customize</NavItem>
         <NavItem icon={<MoreHorizontalIcon className="size-4" />} onClick={() => setMore((m) => !m)}>More</NavItem>
         {more && (
           <div className="pl-7">

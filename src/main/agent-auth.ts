@@ -2,20 +2,14 @@
 // store move into pi's auth.json, so this build and the pi CLI share one
 // credential store. Nothing is deleted until auth.json was written successfully.
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { safeStorage } from 'electron';
+import { piAgentDir } from '../agent/app-paths';
 import type { Store } from '../agent/store';
 
 interface Saved {
   enc: boolean;
   value: string;
-}
-
-export function agentDir(): string {
-  const env = process.env.PI_CODING_AGENT_DIR;
-  if (env) return env.startsWith('~') ? path.join(os.homedir(), env.slice(1)) : path.resolve(env);
-  return path.join(os.homedir(), '.pi', 'agent');
 }
 
 function decrypt(saved: Saved): string | null {
@@ -28,7 +22,7 @@ function decrypt(saved: Saved): string | null {
 }
 
 /** Move legacy `keys` from the app store into auth.json; returns the moved provider ids. */
-export function migrateLegacyKeys(store: Store, authPath = path.join(agentDir(), 'auth.json')): string[] {
+export function migrateLegacyKeys(store: Store, authPath = path.join(piAgentDir(), 'auth.json')): string[] {
   const legacy = store.get<Record<string, Saved>>('keys', {});
   const entries = Object.entries(legacy ?? {}).filter(([, saved]) => saved && typeof saved.value === 'string');
   if (!entries.length) return [];

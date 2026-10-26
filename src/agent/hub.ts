@@ -15,8 +15,9 @@ import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import { buildMessage, decodeUserContent } from '@shared/attachments';
 import type {
   ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
-  PrSummary, SessionMeta, SessionStats, SubagentProgress, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, UiRequest, UiRequestInput, UiResponse,
+  PrSummary, SessionMeta, SessionStats, Settings, SubagentProgress, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, UiRequest, UiRequestInput, UiResponse,
 } from '@shared/protocol';
+import { appCoworkDir, appExtensionsDir, worktreeDir as resolveWorktreeDir } from './app-paths';
 import { validatePromptPayload } from './attachments';
 import coworkPrompt from './cowork-prompt.md?raw';
 import { registerDemoModel } from './demo-model';
@@ -73,7 +74,8 @@ function subagentStepLabel(name: string, args: any) {
 }
 
 export interface HubOptions {
-  userData: string;
+  /** Pi Desktop's own data folder (`~/.pi-desktop` unless `PI_DESKTOP_HOME` is set). */
+  dataDir: string;
   emit: (event: HostEvent) => void;
   /** pi's config directory (auth.json, models.json, settings, extensions). Default ~/.pi/agent. */
   agentDir?: string;
@@ -100,12 +102,14 @@ export class SessionHub {
 
   constructor(private readonly opts: HubOptions) {
     this.agentDir = opts.agentDir ?? getAgentDir();
-    this.store = new Store(opts.userData);
+    this.store = new Store(opts.dataDir);
     this.metas = this.store.get<SessionMeta[]>('sessions', []);
     this.trust = new ProjectTrustStore(this.agentDir);
   }
 
   async init() {
+    // Pi Desktop's own extension folder (distinct from pi's <agentDir>/extensions).
+    fs.mkdirSync(appExtensionsDir(this.opts.dataDir), { recursive: true });
     this.models = await ModelRuntime.create({
       authPath: path.join(this.agentDir, 'auth.json'),
       modelsPath: path.join(this.agentDir, 'models.json'),
@@ -115,7 +119,7 @@ export class SessionHub {
     this.settings = SettingsManager.create(os.homedir(), this.agentDir);
     this.admin = new ModelAdmin({
       agentDir: this.agentDir,
-      userData: this.opts.userData,
+      dataDir: this.opts.dataDir,
       models: () => this.models,
       refresh: (options) => this.refreshModels(options),
       deviceId: () => this.settings.getOrCreateDeviceId(),
@@ -205,7 +209,7 @@ export class SessionHub {
       // Cowork tasks run directly in the chosen folder (or a fresh scratch workspace); no worktree, no diff base.
       let cwd = opts.projectPath;
       if (!cwd) {
-        cwd = path.join(this.opts.userData, 'cowork', `${new Date().toISOString().slice(0, 10)}-${slug}`);
+        cwd = path.join(appCoworkDir(this.opts.dataDir), `${new Date().toISOString().slice(0, 10)}-${slug}`);
         fs.mkdirSync(cwd, { recursive: true });
       }
       meta = {
@@ -222,7 +226,8 @@ export class SessionHub {
       const baseBranch = branch;
       if (root && baseCommit && opts.worktree !== false) {
         branch = `claude/${slug}`;
-        cwd = path.join(this.opts.userData, 'worktrees', `${path.basename(root)}-${slug}`);
+        // The root is configurable in Settings; existing sessions keep their recorded cwd.
+        cwd = path.join(this.worktreeRoot(), `${path.basename(root)}-${slug}`);
         await git.addWorktree(root, cwd, branch, baseCommit);
       }
       meta = {
@@ -245,6 +250,12 @@ export class SessionHub {
       this.opening.set(id, opening);
     }
     return opening;
+  }
+
+  /** Where new Code-session worktrees go: the setting, or `<dataDir>/.worktree`. */
+  private worktreeRoot() {
+    const settings = this.store.get<Partial<Settings>>('settings', {});
+    return resolveWorktreeDir(this.opts.dataDir, settings.worktreeDir);
   }
 
   private async start(id: string): Promise<Live> {
@@ -283,6 +294,8 @@ export class SessionHub {
             createToolSearchExtension(),
             createMcpExtension(),
           ],
+          // Pi Desktop's own extensions; pi's <agentDir>/extensions still load as before.
+          additionalExtensionPaths: [appExtensionsDir(this.opts.dataDir)],
           ...(m.kind === 'cowork' ? { appendSystemPrompt: [coworkPrompt] } : {}),
         },
       });

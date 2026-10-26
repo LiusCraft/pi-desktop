@@ -410,6 +410,8 @@ export interface Settings {
   suggestionFullContext: boolean;
   defaultMode: SessionKind;
   sidebarCollapsed: boolean;
+  /** Root folder for Code-session git worktrees; null/empty uses `<dataDir>/.worktree`. */
+  worktreeDir: string | null;
   /** The composer pet: shown or not, and which skin (see PET_SKINS in the renderer). */
   pet: boolean;
   petSkin: string;
@@ -430,9 +432,14 @@ export interface AppInfo {
   platform: string;
   version: string;
   demo: boolean;
-  userData: string;
-  /** pi's config directory (auth.json, models.json, extensions): shared with the pi CLI. */
+  /** Pi Desktop's own data folder (`~/.pi-desktop` unless `PI_DESKTOP_HOME` is set). */
+  dataDir: string;
+  /** pi's config directory (auth.json, models.json, extensions): shared with the pi CLI, never relocated. */
   agentDir: string;
+  /** Pi Desktop's own extensions folder (`<dataDir>/extensions`). */
+  extensionsDir: string;
+  /** Fallback worktree root when `settings.worktreeDir` is unset (`<dataDir>/.worktree`). */
+  defaultWorktreeDir: string;
   versions: { electron?: string; chrome?: string; node?: string };
 }
 export interface BootPayload {
@@ -448,6 +455,8 @@ export interface Api {
   'app:notify'(n: { title: string; body: string; sessionId?: string }): void;
   'app:openExternal'(url: string): void;
   'app:revealPath'(target: string, reveal?: boolean): void;
+  /** Native folder picker (the only way the renderer can name an arbitrary folder). */
+  'app:pickFolder'(): string | null;
 
   'settings:open'(section?: string): void;
   'settings:get'(): SettingsPayload;
@@ -538,7 +547,7 @@ export const HOST_CHANNELS = [
 ] as const satisfies readonly ApiChannel[];
 
 export const MAIN_CHANNELS = [
-  'app:info', 'app:notify', 'app:openExternal', 'app:revealPath',
+  'app:info', 'app:notify', 'app:openExternal', 'app:revealPath', 'app:pickFolder',
   'settings:open', 'settings:get', 'settings:set', 'settings:close',
   'projects:list', 'projects:add', 'projects:remove',
   'cowork:folders', 'cowork:addFolder', 'cowork:useFolder', 'cowork:removeFolder',
@@ -570,7 +579,10 @@ export interface HostInternal {
   'host:shutdown'(): void;
 }
 export interface HostInitOptions {
-  userData: string;
+  /** Pi Desktop's own data folder (`~/.pi-desktop` unless `PI_DESKTOP_HOME` is set). */
+  dataDir: string;
+  /** pi's config directory, resolved by the main process so host and UI agree. */
+  agentDir: string;
   demo: boolean;
 }
 export type HostMethod = (typeof HOST_CHANNELS)[number] | keyof HostInternal;
