@@ -444,6 +444,8 @@ export const SUGGESTION_MAX_CONTEXT = 50;
 export interface Settings {
   theme: ThemeSetting | null;
   notify: boolean;
+  /** Draw ```mermaid blocks in replies as diagrams; off shows them as plain code. */
+  renderMermaid: boolean;
   /** After a turn settles, predict the user's next message as ghost text in the composer. */
   suggestions: boolean;
   /** auto: cheapest model of the session's provider; session: its own model; fixed: `suggestionModelId`. */
@@ -508,6 +510,10 @@ export interface Api {
   'settings:get'(): SettingsPayload;
   'settings:set'(patch: Partial<Settings>): SettingsPayload;
   'settings:close'(): void;
+  /** Show a rendered diagram (SVG markup) in its own pan/zoom window. */
+  'diagram:open'(svg: string): void;
+  /** The SVG a diagram window was opened with, looked up by the token in its URL. */
+  'diagram:get'(token: string): string | null;
 
   'projects:list'(): Project[];
   'projects:add'(): Project | null;
@@ -599,7 +605,7 @@ export const HOST_CHANNELS = [
 
 export const MAIN_CHANNELS = [
   'app:info', 'app:notify', 'app:openExternal', 'app:revealPath', 'app:pickFolder',
-  'settings:open', 'settings:get', 'settings:set', 'settings:close',
+  'settings:open', 'settings:get', 'settings:set', 'settings:close', 'diagram:open', 'diagram:get',
   'projects:list', 'projects:add', 'projects:remove',
   'cowork:folders', 'cowork:addFolder', 'cowork:useFolder', 'cowork:removeFolder',
   'attachments:import', 'attachments:pick', 'attachments:clipboard',

@@ -7,6 +7,7 @@ import { call } from '@/lib/api';
 import { highlight, langOfFence } from '@/lib/highlight';
 import { cn } from '@/lib/utils';
 import { openFileRef } from '@/store/actions';
+import { MermaidBlock } from './MermaidBlock';
 
 // Paths may contain non-ASCII names (e.g. 收件箱整理.md:1).
 const FILE_REF = /((?:[\p{L}\p{N}_.-]+\/)*[\p{L}\p{N}_.-]+\.(?:[a-z]{1,5})):(\d+)/gu;
@@ -45,7 +46,7 @@ function remarkFileRefs() {
   return (tree: any) => visit(tree);
 }
 
-function CodeBlock({ lang, code }: { lang: string; code: string }) {
+function CodeBlock({ lang, code, extra }: { lang: string; code: string; extra?: ReactNode }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
     void navigator.clipboard?.writeText(code).then(() => {
@@ -57,10 +58,13 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
     <div className="my-2 overflow-hidden rounded-lg border bg-code">
       <div className="flex items-center justify-between border-b px-3 py-1 text-xs text-muted-foreground">
         <span className="font-mono">{lang || 'text'}</span>
-        <button onClick={copy} className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent hover:text-foreground">
-          {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
-          {copied ? '已复制' : '复制'}
-        </button>
+        <div className="flex items-center gap-1">
+          {extra}
+          <button onClick={copy} className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent hover:text-foreground">
+            {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
+            {copied ? '已复制' : '复制'}
+          </button>
+        </div>
       </div>
       <pre className="overflow-x-auto px-3 py-2.5 font-mono text-[12.5px] leading-relaxed">
         <code dangerouslySetInnerHTML={{ __html: highlight(code, langOfFence(lang)) }} />
@@ -95,7 +99,9 @@ const components: Components = {
   pre({ children }) {
     const code = (children as any)?.props;
     const lang = /language-([\w+-]+)/.exec(code?.className ?? '')?.[1] ?? '';
-    return <CodeBlock lang={lang} code={String(code?.children ?? '').replace(/\n$/, '')} />;
+    const text = String(code?.children ?? '').replace(/\n$/, '');
+    if (lang !== 'mermaid') return <CodeBlock lang={lang} code={text} />;
+    return <MermaidBlock code={text} fallback={(extra) => <CodeBlock lang={lang} code={text} extra={extra} />} />;
   },
   table({ children }) {
     return (

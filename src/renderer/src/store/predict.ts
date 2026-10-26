@@ -9,6 +9,8 @@ import { drafts, getDraft, sessionDraftKey } from './drafts';
 
 /** Newest request per session, so a reply from an older turn is dropped. */
 const requests = new Map<string, number>();
+/** Sessions whose turn settled while nobody was looking; they get their guess once seen. */
+const deferred = new Set<string>();
 
 export async function primeSuggestion(id: string) {
   const key = sessionDraftKey(id);
@@ -17,12 +19,16 @@ export async function primeSuggestion(id: string) {
   drafts.setSuggestion(key, null);
   if (getApp().settings.suggestions === false) return;
   // A hidden window is not going to type in the next seconds; skip the request.
-  if (getApp().current !== id || document.hidden) return;
+  if (getApp().current !== id || document.hidden) {
+    deferred.add(id);
+    return;
+  }
+  deferred.delete(id);
   const d = getDraft(key);
   if (d.text || d.sending || d.preparing || getApp().sessions[id]?.running) return;
   const settings = getApp().settings;
   const options: SuggestionOptions = {
-    model: settings.suggestionModel ?? 'auto',
+    model: settings.suggestionModel ?? 'session',
     modelId: settings.suggestionModelId ?? null,
     context: settings.suggestionFullContext ? 'all' : settings.suggestionContext ?? SUGGESTION_DEFAULT_CONTEXT,
   };
@@ -33,4 +39,21 @@ export async function primeSuggestion(id: string) {
   const now = getDraft(key);
   if (now.text || now.sending || getApp().sessions[id]?.running) return;
   if (result?.text) drafts.setSuggestion(key, result.text);
+}
+
+/** The user is looking at a session whose turn ended unseen: predict now. */
+export function resumeSuggestion() {
+  const id = getApp().current;
+  if (!id || document.hidden || !deferred.has(id)) return;
+  const d = getDraft(sessionDraftKey(id));
+  if (d.text || d.suggestion) {
+    deferred.delete(id);
+    return;
+  }
+  void primeSuggestion(id);
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', resumeSuggestion);
+  window.addEventListener('focus', resumeSuggestion);
 }

@@ -802,33 +802,42 @@ export class SessionHub {
     if (!live) return null;
     const session = live.runtime.session;
     const current = session.model ? `${session.model.provider}/${session.model.id}` : this.meta(id).model;
-    const model = this.sideModel(current, options);
-    if (!model) return null;
-    const excerpt = prediction.transcriptExcerpt(session.messages, { context: options?.context, contextWindow: model.contextWindow });
-    if (!excerpt) return null;
-    const controller = new AbortController();
+    const side = this.sideModel(current, options);
+    // The cheap model comes first; if it fails or says nothing, the session's own model gets a turn.
+    const own = current ? this.findModel(current) : null;
+    const candidates = [side, own && own.provider !== 'demo' && own !== side ? own : null].filter((m): m is NonNullable<typeof side> => !!m);
+    if (!candidates.length) return null;
     const generation = live.generation;
-    this.suggesters.set(id, controller);
-    const timeout = options?.context === 'all' ? prediction.FULL_TIMEOUT_MS : prediction.TIMEOUT_MS;
-    const timer = setTimeout(() => controller.abort(), timeout);
-    try {
-      const reply = await this.models.completeSimple(model, {
-        systemPrompt: prediction.SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: excerpt.text, timestamp: Date.now() }],
-      }, { signal: controller.signal, maxTokens: 256 });
-      // A new turn, a replaced session or a closed one makes the reply stale.
-      const now = this.live.get(id);
-      if (!now || now !== live || now.disposed || now.generation !== generation) return null;
-      if (now.status === 'running' || now.runtime.session.isStreaming) return null;
-      if (reply.stopReason === 'error' || reply.stopReason === 'aborted') return null;
-      const text = prediction.cleanSuggestion(prediction.contentText(reply.content), excerpt.lastAssistant);
-      return text ? { text } : null;
-    } catch {
-      return null;
-    } finally {
-      clearTimeout(timer);
-      if (this.suggesters.get(id) === controller) this.suggesters.delete(id);
+    for (const model of candidates) {
+      const excerpt = prediction.transcriptExcerpt(session.messages, { context: options?.context, contextWindow: model.contextWindow });
+      if (!excerpt) return null;
+      const controller = new AbortController();
+      this.suggesters.set(id, controller);
+      const timeout = options?.context === 'all' ? prediction.FULL_TIMEOUT_MS : prediction.TIMEOUT_MS;
+      const timer = setTimeout(() => controller.abort(), timeout);
+      try {
+        const reply = await this.models.completeSimple(model, {
+          systemPrompt: prediction.SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: excerpt.text, timestamp: Date.now() }],
+        }, { signal: controller.signal, maxTokens: 256 });
+        // A new turn, a replaced session or a closed one makes the reply stale.
+        const now = this.live.get(id);
+        if (!now || now !== live || now.disposed || now.generation !== generation) return null;
+        if (now.status === 'running' || now.runtime.session.isStreaming) return null;
+        if (controller.signal.aborted && this.suggesters.get(id) !== controller) return null; // superseded
+        if (reply.stopReason === 'error' || reply.stopReason === 'aborted') continue;
+        const text = prediction.cleanSuggestion(prediction.contentText(reply.content), excerpt.lastAssistant);
+        if (text) return { text };
+      } catch {
+        // fall through to the next candidate
+      } finally {
+        clearTimeout(timer);
+        if (this.suggesters.get(id) === controller) this.suggesters.delete(id);
+      }
+      if (this.live.get(id) !== live || live.disposed) return null;
     }
+    // Every model failed: a generic nudge in the user's language still beats an empty composer.
+    return { text: prediction.fallbackSuggestion(session.messages) };
   }
 
   /** Persist a title, tell pi (it records session_info) and tell the UI. */

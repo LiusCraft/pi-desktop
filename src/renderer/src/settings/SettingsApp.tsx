@@ -32,8 +32,8 @@ const normalizeSection = (s: string): Section => (s === 'keys' ? 'models' : (s a
 const isSection = (s: string): s is Section => SECTIONS.some((x) => x.id === s || (x.id === 'models' && s === 'keys'));
 const revealLabel = isMac ? '在 Finder 中显示' : '在资源管理器中显示';
 const SUGGESTION_MODES: { id: SuggestionModelMode; label: string; hint: string }[] = [
+  { id: 'session', label: '跟随会话', hint: '用会话当前的模型（默认），更好但可能更贵' },
   { id: 'auto', label: '自动', hint: '同 provider 里单价最低的小模型' },
-  { id: 'session', label: '跟随会话', hint: '用会话当前的模型，更好但可能更贵' },
   { id: 'fixed', label: '指定', hint: '固定使用下面选择的模型' },
 ];
 
@@ -49,6 +49,31 @@ function Row({ title, hint, children, col }: { title: ReactNode; hint?: ReactNod
   );
 }
 const Panel = ({ children }: { children: ReactNode }) => <div className="divide-y rounded-xl border bg-card">{children}</div>;
+/** A titled settings group: a small heading (and optional note) above its own panel. */
+function Group({ title, sub, children }: { title: string; sub?: string; children: ReactNode }) {
+  return (
+    <section>
+      <h3 className="px-1 text-sm font-semibold">{title}</h3>
+      {sub && <p className="mt-0.5 px-1 text-xs text-muted-foreground">{sub}</p>}
+      <div className="mt-2">
+        <Panel>{children}</Panel>
+      </div>
+    </section>
+  );
+}
+
+function Segmented<T extends string>({ value, options, onPick }: { value: T; options: readonly { id: T; label: string; hint?: string }[]; onPick: (id: T) => void }) {
+  return (
+    <div className="flex shrink-0 rounded-lg bg-muted p-0.5 text-sm">
+      {options.map((o) => (
+        <button key={o.id} title={o.hint} onClick={() => onPick(o.id)} className={cn('rounded-md px-3 py-1', value === o.id ? 'bg-background shadow-sm' : 'text-muted-foreground')}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 const Heading = ({ title, sub }: { title: string; sub: string }) => (
   <div className="mb-5">
     <h2 className="text-xl font-semibold">{title}</h2>
@@ -185,56 +210,60 @@ export function SettingsApp() {
   } else if (section === 'general') {
     body = (
       <>
-        <Heading title="通用" sub="通知、输入预测与默认视图。" />
-        <Panel>
-          <Row title="任务通知" hint="任务跑完且窗口不在最前面时，发送系统通知。">
-            <Switch checked={settings.notify !== false} onCheckedChange={(v) => void patch({ notify: v })} />
-          </Row>
-          <Row title="输入预测" hint="每轮任务结束后用一个模型猜你下一句想说什么，以灰色文字显示在空输入框里。按 → 或 Tab 采用，Esc 忽略。">
-            <Switch checked={settings.suggestions !== false} onCheckedChange={(v) => void patch({ suggestions: v })} />
-          </Row>
-          {settings.suggestions !== false && (
-            <>
-              <Row title="预测模型" hint="自动 = 同 provider 里最便宜的小模型，跟随会话 = 会话当前模型，指定 = 固定一个模型；不可用时都回退到自动。离线 Demo 模型不参与预测。">
-                <div className="flex shrink-0 rounded-lg bg-muted p-0.5 text-sm">
-                  {SUGGESTION_MODES.map((m) => (
-                    <button
-                      key={m.id}
-                      title={m.hint}
-                      onClick={() => void patch({ suggestionModel: m.id })}
-                      className={cn('rounded-md px-3 py-1', (settings.suggestionModel ?? 'auto') === m.id ? 'bg-background shadow-sm' : 'text-muted-foreground')}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
-              </Row>
-              {(settings.suggestionModel ?? 'auto') === 'fixed' && (
-                <Row title="指定模型" hint="只列出当前可用（已配置凭据）的模型。">
-                  <ModelPicker value={settings.suggestionModelId ?? null} onChange={(id) => void patch({ suggestionModelId: id })} emptyLabel="未指定（回退到自动）" label="预测使用的模型" className="w-64 shrink-0" />
+        <Heading title="通用" sub="通知、默认视图、回复渲染与输入预测。" />
+        <div className="space-y-6">
+          <Group title="基础">
+            <Row title="任务通知" hint="任务跑完且窗口不在最前面时，发送系统通知。">
+              <Switch checked={settings.notify !== false} onCheckedChange={(v) => void patch({ notify: v })} />
+            </Row>
+            <Row title="默认分区" hint="第一次启动时打开的视图；之后会记住你最后切换到的分区。">
+              <Segmented
+                value={settings.defaultMode ?? 'code'}
+                options={[{ id: 'code', label: 'Code' }, { id: 'cowork', label: 'Cowork' }]}
+                onPick={(m) => void patch({ defaultMode: m })}
+              />
+            </Row>
+          </Group>
+
+          <Group title="回复渲染">
+            <Row title="渲染 Mermaid 图表" hint="回复里的 mermaid 代码块默认画成图表（可缩放、可在新窗口查看）。关闭后显示为普通代码，单个图表仍可手动渲染。">
+              <Switch checked={settings.renderMermaid !== false} onCheckedChange={(v) => void patch({ renderMermaid: v })} />
+            </Row>
+          </Group>
+
+          <Group title="输入预测" sub="每轮任务结束后用一个模型猜你下一句想说什么，以灰色文字显示在空输入框里。按 → 或 Tab 采用，Esc 忽略。">
+            <Row title="启用输入预测">
+              <Switch checked={settings.suggestions !== false} onCheckedChange={(v) => void patch({ suggestions: v })} />
+            </Row>
+            {settings.suggestions !== false && (
+              <>
+                <Row title="预测模型" hint="自动 = 同 provider 里最便宜的小模型；指定的模型不可用时回退到自动。离线 Demo 模型不参与预测。">
+                  <Segmented value={settings.suggestionModel ?? 'session'} options={SUGGESTION_MODES} onPick={(m) => void patch({ suggestionModel: m })} />
                 </Row>
-              )}
-              <Row title="预测上下文" hint="带上最近多少条 user / assistant 消息（不含工具输出），最多 50 条。">
-                <div className="flex shrink-0 items-center gap-2">
-                  <CountInput value={settings.suggestionContext ?? SUGGESTION_DEFAULT_CONTEXT} disabled={!!settings.suggestionFullContext} onCommit={(n) => void patch({ suggestionContext: n })} />
-                  <span className="text-sm text-muted-foreground">条</span>
-                </div>
-              </Row>
-              <Row title="全部上下文" hint="发送整段 user / assistant 对话，并按预测模型的上下文窗口截断。">
-                <Switch checked={!!settings.suggestionFullContext} onCheckedChange={(v) => void patch({ suggestionFullContext: v })} />
-              </Row>
-            </>
-          )}
-          <Row title="默认分区" hint="第一次启动时打开的视图；之后会记住你最后切换到的分区。">
-            <div className="flex rounded-lg bg-muted p-0.5 text-sm">
-              {(['code', 'cowork'] as const).map((m) => (
-                <button key={m} onClick={() => void patch({ defaultMode: m })} className={cn('rounded-md px-3 py-1', (settings.defaultMode ?? 'code') === m ? 'bg-background shadow-sm' : 'text-muted-foreground')}>
-                  {m === 'code' ? 'Code' : 'Cowork'}
-                </button>
-              ))}
-            </div>
-          </Row>
-        </Panel>
+                {(settings.suggestionModel ?? 'session') === 'fixed' && (
+                  <Row title="指定模型" hint="只列出当前可用（已配置凭据）的模型。">
+                    <ModelPicker value={settings.suggestionModelId ?? null} onChange={(id) => void patch({ suggestionModelId: id })} emptyLabel="未指定（回退到自动）" label="预测使用的模型" className="w-64 shrink-0" />
+                  </Row>
+                )}
+                <Row title="上下文范围" hint="发给预测模型的 user / assistant 消息（不含工具输出）。全部对话会按预测模型的上下文窗口截断。">
+                  <div className="flex shrink-0 items-center gap-2">
+                    {!settings.suggestionFullContext && (
+                      <>
+                        <CountInput value={settings.suggestionContext ?? SUGGESTION_DEFAULT_CONTEXT} onCommit={(n) => void patch({ suggestionContext: n })} />
+                        <span className="text-sm text-muted-foreground">条</span>
+                      </>
+                    )}
+                    <Segmented
+                      value={settings.suggestionFullContext ? 'all' : 'recent'}
+                      options={[{ id: 'recent', label: '最近' }, { id: 'all', label: '全部对话' }]}
+                      onPick={(m) => void patch({ suggestionFullContext: m === 'all' })}
+                    />
+                  </div>
+                </Row>
+              </>
+            )}
+          </Group>
+        </div>
       </>
     );
   } else if (section === 'models') {

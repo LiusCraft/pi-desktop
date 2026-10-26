@@ -11,7 +11,7 @@ import { fmtTok, relPath } from '@/lib/format';
 import { currentSession, getApp, isCowork, setApp, setPref, updateSession, type AppState } from './app';
 import { dialogs } from './dialogs';
 import { activeDraft, drafts, getDraft, sessionDraftKey, useDrafts } from './drafts';
-import { primeSuggestion } from './predict';
+import { primeSuggestion, resumeSuggestion } from './predict';
 import {
   addUiRequest, applyPiEvent, applyTaskUpdate, applyViewMode, emptySession, findByKey, hasThinking, newKey, push, replay, resolveUi, settle, type Effects,
 } from './transcript';
@@ -241,6 +241,7 @@ export async function openSession(id: string, fresh = false) {
     // Storage can be unavailable; the in-memory preference still applies.
   }
   activateDraftFor();
+  resumeSuggestion();
   if (s.loaded && !fresh) {
     void pollPr(id);
     return;

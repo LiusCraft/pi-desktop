@@ -2,6 +2,7 @@
 // session lives in the agent host (a utilityProcess); session calls are
 // forwarded to it unchanged and its events are relayed to the windows.
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -90,8 +91,8 @@ function ensureDemoProject() {
 // Preferences live in one place so every window reads the same values.
 // `theme: null` means "not chosen yet": follow the system.
 const DEFAULT_SETTINGS: Settings = {
-  theme: null, notify: true, suggestions: true,
-  suggestionModel: 'auto', suggestionModelId: null, suggestionContext: SUGGESTION_DEFAULT_CONTEXT, suggestionFullContext: false,
+  theme: null, notify: true, renderMermaid: true, suggestions: true,
+  suggestionModel: 'session', suggestionModelId: null, suggestionContext: SUGGESTION_DEFAULT_CONTEXT, suggestionFullContext: false,
   defaultMode: 'code', sidebarCollapsed: false, worktreeDir: null, pet: true, petSkin: 'clawd',
 };
 
@@ -136,7 +137,7 @@ function overlay(dark: boolean) {
 }
 const isDark = () => settingsPayload().resolvedTheme === 'dark';
 
-function load(w: BrowserWindow, page: 'index' | 'settings', hash?: string) {
+function load(w: BrowserWindow, page: 'index' | 'settings' | 'diagram', hash?: string) {
   if (DEV_URL) void w.loadURL(`${DEV_URL}/${page}.html${hash ? `#${hash}` : ''}`);
   else void w.loadFile(path.join(RENDERER, `${page}.html`), hash ? { hash } : undefined);
 }
@@ -204,6 +205,31 @@ function openSettings(section?: string) {
     return;
   }
   createSettingsWindow(section);
+}
+
+/** SVGs waiting for (or shown in) a diagram window, keyed by the token in its URL. */
+const diagrams = new Map<string, string>();
+
+/** A diagram opens in a window of its own, so it can be moved aside, resized and zoomed freely. */
+function openDiagram(svg: string) {
+  if (typeof svg !== 'string' || !svg.includes('<svg')) return;
+  const token = randomUUID();
+  diagrams.set(token, svg);
+  const w = new BrowserWindow({
+    width: 1100,
+    height: 760,
+    minWidth: 480,
+    minHeight: 360,
+    title: '图表',
+    backgroundColor: isDark() ? BG.dark : BG.light,
+    autoHideMenuBar: true,
+    show: false,
+    webPreferences: { preload: PRELOAD, contextIsolation: true, sandbox: true, nodeIntegration: false },
+  });
+  load(w, 'diagram', token);
+  w.once('ready-to-show', () => w.show());
+  harden(w);
+  w.on('closed', () => diagrams.delete(token));
 }
 
 function applyThemeToWindows() {
@@ -285,6 +311,8 @@ const handlers: MainHandlers = {
   'settings:get': () => settingsPayload(),
   'settings:set': (patch) => saveSettings(patch || {}),
   'settings:close': () => settingsWin?.close(),
+  'diagram:open': (svg) => openDiagram(svg),
+  'diagram:get': (token) => diagrams.get(token) ?? null,
 
   'projects:list': () => projects(),
   'projects:add': async () => {

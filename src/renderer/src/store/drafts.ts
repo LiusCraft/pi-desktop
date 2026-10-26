@@ -19,7 +19,7 @@ export interface Draft {
   references: ContextReference[];
   /** Bumped by every edit; a paste that lands after the user typed must not clobber the text. */
   revision: number;
-  /** Ghost text guessed after the last turn; shown only while the composer is empty. */
+  /** Ghost text guessed after the last turn; shown whenever the composer is empty, so deleting an accepted guess brings it back. */
   suggestion: string | null;
   preparing: number;
   sending: boolean;
@@ -64,7 +64,6 @@ export const drafts = {
       if (d.text === text) return;
       d.text = text;
       d.revision++;
-      d.suggestion = null;
     });
   },
   setSuggestion(key: string, suggestion: string | null) {
@@ -82,7 +81,6 @@ export const drafts = {
       const [start, end] = selection ?? [d.text.length, d.text.length];
       d.text = d.text.slice(0, start) + text + d.text.slice(end);
       d.revision++;
-      d.suggestion = null;
     });
   },
   error(key: string, err: unknown) {
