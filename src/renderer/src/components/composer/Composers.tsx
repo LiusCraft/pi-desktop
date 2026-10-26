@@ -105,7 +105,7 @@ export function CodeComposer() {
       <Clawd mood={moodOf(s)} from={s ? 0 : 0.6} />
       {s && <PrBar s={s} />}
       <div
-        className={cn('relative rounded-xl border bg-card px-4 py-2.5 transition-colors focus-within:border-muted-foreground/50', drag && 'ring-2 ring-primary/50')}
+        className={cn('relative rounded-xl border bg-card px-3.5 py-2 transition-colors focus-within:border-muted-foreground/50', drag && 'ring-2 ring-primary/50')}
         onClick={(e) => !(e.target as HTMLElement).closest('button') && input.current?.focus()}
       >
         <div className="flex items-end gap-2">

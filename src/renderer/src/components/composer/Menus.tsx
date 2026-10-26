@@ -21,7 +21,7 @@ function useMenu(name: 'model' | 'mode' | 'context') {
 
 export function FootButton({ children, className, ...props }: React.ComponentProps<'button'>) {
   return (
-    <button {...props} className={cn('flex h-7 max-w-56 items-center gap-1.5 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground data-[state=open]:bg-accent', className)}>
+    <button {...props} className={cn('flex h-8 max-w-56 items-center gap-1.5 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground data-[state=open]:bg-accent', className)}>
       {children}
     </button>
   );

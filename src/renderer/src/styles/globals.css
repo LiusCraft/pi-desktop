@@ -153,6 +153,67 @@
   }
 }
 
+/* ---------------------------------------------------------------- density
+   One knob for the spacing rhythm: every padding, margin and flex/grid gap is
+   multiplied by --space-scale, so 0.9 = 10% tighter without touching type,
+   icons or control sizes. Set it back to 1 for Tailwind's default spacing.
+   Fractional values (p-1.5) and negatives (-mt-1, -mx-1) are scaled too; only
+   arbitrary values (p-[3px]) and keywords (auto, px) keep Tailwind's own
+   declaration. */
+:root {
+  --space-scale: 0.9;
+  --spacing-scaled: calc(var(--spacing) * var(--space-scale));
+}
+
+@utility p-* { padding: calc(var(--spacing-scaled) * --value(number)); }
+@utility px-* { padding-inline: calc(var(--spacing-scaled) * --value(number)); }
+@utility py-* { padding-block: calc(var(--spacing-scaled) * --value(number)); }
+@utility ps-* { padding-inline-start: calc(var(--spacing-scaled) * --value(number)); }
+@utility pe-* { padding-inline-end: calc(var(--spacing-scaled) * --value(number)); }
+@utility pt-* { padding-top: calc(var(--spacing-scaled) * --value(number)); }
+@utility pr-* { padding-right: calc(var(--spacing-scaled) * --value(number)); }
+@utility pb-* { padding-bottom: calc(var(--spacing-scaled) * --value(number)); }
+@utility pl-* { padding-left: calc(var(--spacing-scaled) * --value(number)); }
+@utility m-* { margin: calc(var(--spacing-scaled) * --value(number)); }
+@utility mx-* { margin-inline: calc(var(--spacing-scaled) * --value(number)); }
+@utility my-* { margin-block: calc(var(--spacing-scaled) * --value(number)); }
+@utility ms-* { margin-inline-start: calc(var(--spacing-scaled) * --value(number)); }
+@utility me-* { margin-inline-end: calc(var(--spacing-scaled) * --value(number)); }
+@utility mt-* { margin-top: calc(var(--spacing-scaled) * --value(number)); }
+@utility mr-* { margin-right: calc(var(--spacing-scaled) * --value(number)); }
+@utility mb-* { margin-bottom: calc(var(--spacing-scaled) * --value(number)); }
+@utility ml-* { margin-left: calc(var(--spacing-scaled) * --value(number)); }
+@utility gap-* { gap: calc(var(--spacing-scaled) * --value(number)); }
+@utility gap-x-* { column-gap: calc(var(--spacing-scaled) * --value(number)); }
+@utility gap-y-* { row-gap: calc(var(--spacing-scaled) * --value(number)); }
+/* Space-between is written without :where() on purpose: that gives it the class's
+   own specificity, so it outranks Tailwind's zero-specificity default regardless
+   of the order the two rules are emitted in. */
+@utility space-y-* {
+  & > :not(:last-child) {
+    --tw-space-y-reverse: 0;
+    margin-block-start: calc(var(--spacing-scaled) * --value(number) * var(--tw-space-y-reverse));
+    margin-block-end: calc(var(--spacing-scaled) * --value(number) * calc(1 - var(--tw-space-y-reverse)));
+  }
+}
+@utility space-x-* {
+  & > :not(:last-child) {
+    --tw-space-x-reverse: 0;
+    margin-inline-start: calc(var(--spacing-scaled) * --value(number) * var(--tw-space-x-reverse));
+    margin-inline-end: calc(var(--spacing-scaled) * --value(number) * calc(1 - var(--tw-space-x-reverse)));
+  }
+}
+/* Negatives are separate utility names in Tailwind, so they need their own rule. */
+@utility -m-* { margin: calc(var(--spacing-scaled) * -1 * --value(number)); }
+@utility -mx-* { margin-inline: calc(var(--spacing-scaled) * -1 * --value(number)); }
+@utility -my-* { margin-block: calc(var(--spacing-scaled) * -1 * --value(number)); }
+@utility -ms-* { margin-inline-start: calc(var(--spacing-scaled) * -1 * --value(number)); }
+@utility -me-* { margin-inline-end: calc(var(--spacing-scaled) * -1 * --value(number)); }
+@utility -mt-* { margin-top: calc(var(--spacing-scaled) * -1 * --value(number)); }
+@utility -mr-* { margin-right: calc(var(--spacing-scaled) * -1 * --value(number)); }
+@utility -mb-* { margin-bottom: calc(var(--spacing-scaled) * -1 * --value(number)); }
+@utility -ml-* { margin-left: calc(var(--spacing-scaled) * -1 * --value(number)); }
+
 /* ---------------------------------------------------------------- window chrome */
 .app-drag {
   -webkit-app-region: drag;
