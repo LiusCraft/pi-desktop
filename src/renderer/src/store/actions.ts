@@ -783,6 +783,8 @@ export async function pollPr(id: string, retries = 0) {
       st.retries = 0;
       const prevCi = getApp().sessions[id]?.pr?.ci;
       updateSession(id, (v) => {
+        // A PR that did not exist when the bar was hidden is news: show the bar again.
+        if (v.pr?.num !== pr.num) v.prHidden = false;
         v.pr = pr;
         v.meta.pr = { num: pr.num, url: pr.url, state: pr.state, draft: pr.draft };
       });
