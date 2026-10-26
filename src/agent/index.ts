@@ -11,6 +11,7 @@ interface ParentPort {
   on(event: 'message', listener: (e: { data: unknown }) => void): void;
   postMessage(message: unknown): void;
 }
+// SAFETY: Electron utilityProcess adds parentPort to process; its presence is checked below.
 const port = (process as unknown as { parentPort?: ParentPort }).parentPort;
 if (!port) throw new Error('The agent host must run as an Electron utilityProcess');
 
@@ -62,6 +63,7 @@ const handlers: Record<HostMethod, Handler> = {
   'sessions:stats': withHub((h, id) => h.stats(id)),
   'sessions:exportHtml': withHub((h, id) => h.exportHtml(id)),
   'sessions:clone': withHub((h, id) => h.clone(id)),
+  'sessions:messageAction': withHub((h, id, entryId, action) => h.messageAction(id, entryId, action)),
   'sessions:setModel': withHub((h, id, model) => h.setModel(id, model)),
   'sessions:setThinking': withHub((h, id, level) => h.setThinking(id, level)),
   'sessions:commands': withHub((h, id) => h.commands(id)),

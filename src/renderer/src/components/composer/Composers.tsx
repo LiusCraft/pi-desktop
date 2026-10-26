@@ -16,8 +16,8 @@ import { PrBar } from './PrBar';
 function useSendState() {
   const s = useCurrent();
   const draft = useDrafts((st) => (st.active ? st.drafts[st.active] : undefined));
-  const ready = !!(draft?.text.trim() || draft?.attachments.length);
-  return { s, ready, busy: !!(draft?.sending || draft?.preparing || s?.stopping), stopMode: !!s?.running && !ready };
+  const ready = !!(draft?.text.trim() || draft?.attachments.length || draft?.references.length);
+  return { s, ready, busy: !!(draft?.sending || draft?.preparing || s?.stopping || s?.historyBusy), stopMode: !!s?.running && !ready };
 }
 
 function Chip({ children, className, ...props }: React.ComponentProps<'button'>) {

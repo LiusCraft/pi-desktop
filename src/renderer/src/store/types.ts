@@ -1,8 +1,9 @@
-import type { Attachment, DecodedAttachment, PromptSubmission } from '@shared/attachments';
+import type { Attachment, DecodedAttachment } from '@shared/attachments';
 import type {
   FileChange, PrStatus, PrSummary, SessionMeta, SlashCommand, ThinkingLevel, UiRequest,
 } from '@shared/protocol';
 import type { ToolState } from '@/lib/tools';
+import type { DraftSubmission } from './drafts';
 
 export interface Todo {
   content: string;
@@ -26,6 +27,8 @@ export type Item =
       text: string;
       attachments: (Attachment | DecodedAttachment)[];
       clientId?: string;
+      entryId?: string;
+      timestamp?: number;
       notice?: string;
       queued?: boolean;
       delivered?: boolean;
@@ -33,7 +36,7 @@ export type Item =
       failed?: boolean;
       exited?: boolean;
       /** What was sent, so a failed delivery can be restored as a draft. */
-      submission?: PromptSubmission;
+      submission?: DraftSubmission;
       wire?: string;
     }
   | { kind: 'text'; key: string; text: string; live: boolean; msgTs?: number }
@@ -101,6 +104,7 @@ export interface SessionView {
   /** User items not yet confirmed by pi. */
   pendingUser: string[];
   stopping: boolean;
+  historyBusy: boolean;
   /** Bumped when the agent host exits; in-flight work from before must not apply. */
   hostEpoch: number;
   /** Streaming message state. */

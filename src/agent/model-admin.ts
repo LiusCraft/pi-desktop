@@ -4,9 +4,11 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent';
-import type { AuthEvent, AuthPrompt, AuthType, EndpointDraft, EndpointModel, HostEvent, ModelCatalogInfo, ModelMeta } from '@shared/protocol';
+import type { AuthEvent, AuthPrompt, AuthType, EndpointDraft, HostEvent, ModelCatalogInfo } from '@shared/protocol';
 import { discoverModels, EndpointStore, validProviderId } from './endpoints';
 import { ModelsDevCatalog } from './models-dev';
+import { alignModel } from '@shared/model-metadata';
+export { alignModel } from '@shared/model-metadata';
 
 /** A login flow waiting for answers from the settings window. */
 interface PendingLogin {
@@ -61,22 +63,6 @@ function wireEvent(event: { type: string; message?: string; links?: readonly { u
     default:
       return { type: 'progress', message: String(event.message ?? '') };
   }
-}
-
-/** Fill whatever the model entry does not declare from models.dev. */
-export function alignModel(model: EndpointModel, meta: ModelMeta | undefined): EndpointModel {
-  if (!meta) return model;
-  const hasCost = Boolean(model.cost && Object.values(model.cost).some((v) => v !== undefined));
-  return {
-    ...model,
-    name: model.name ?? meta.name,
-    contextWindow: model.contextWindow ?? meta.contextWindow,
-    maxTokens: model.maxTokens ?? meta.maxTokens,
-    reasoning: model.reasoning ?? meta.reasoning,
-    input: model.input ?? meta.input,
-    cost: hasCost ? model.cost : meta.cost,
-    source: model.contextWindow || model.maxTokens || hasCost ? (model.source ?? 'manual') : 'models.dev',
-  };
 }
 
 export class ModelAdmin {
@@ -312,7 +298,8 @@ export class ModelAdmin {
     if (!draft.api.trim() && !builtinIds.has(id)) throw new Error('请选择 API 类型');
     if (!builtinIds.has(id) && !draft.models.length && !this.endpoints.ids().has(id)) throw new Error('请至少添加一个模型');
     if (draft.apiKey?.trim() && builtinIds.has(id)) throw new Error('内置 provider 的密钥请在“账号与密钥”里设置');
-    await this.dev.ready();
+    // Saving manual values must work immediately even without a public catalog.
+    this.dev.ensure();
     const aligned = draft.models.map((model) => alignModel(model, this.dev.lookup(model.id, id)));
     this.endpoints.save({ ...draft, id, models: aligned });
     await this.opts.refresh({ allowNetwork: false, signal: AbortSignal.timeout(15_000) }).catch(() => {});

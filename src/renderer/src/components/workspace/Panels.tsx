@@ -23,6 +23,7 @@ import {
 import { modelName, setPref, updateSession, useApp } from '@/store/app';
 import { findByKey, findTool } from '@/store/transcript';
 import type { SessionView } from '@/store/types';
+import { FileContextMenu } from './FileContextMenu';
 
 // ------------------------------------------------------------ card chrome
 
@@ -147,8 +148,8 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   else if (!s.changes.length) content = <Empty>{'No changes yet\nClaude 修改的文件会出现在这里'}</Empty>;
   else {
     const fileRow = (f: (typeof s.changes)[number]) => (
+      <FileContextMenu key={f.path} meta={s.meta} path={f.path} snapshot={f.status === 'D' ? f.before ?? '' : undefined}>
       <button
-        key={f.path}
         title={f.path}
         onClick={() => open(f.path)}
         className={cn('flex w-full items-center gap-2 rounded-md py-1 pr-2 pl-2 text-left text-[13px] hover:bg-accent', active === f.path && 'bg-accent')}
@@ -157,6 +158,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
         <span className={cn('min-w-0 flex-1 truncate', f.status === 'D' && 'line-through opacity-70')}>{fname(f.path)}</span>
         <span className="shrink-0 font-mono text-xs"><span className="text-success">+{f.add}</span> <span className="text-destructive">−{f.del}</span></span>
       </button>
+      </FileContextMenu>
     );
     content = (
       <div className="flex h-full min-h-0">
@@ -164,6 +166,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
           <nav className="w-[38%] max-w-72 min-w-44 shrink-0 overflow-y-auto border-r p-1.5" aria-label="Changed files">
             {dirs.map(([dir, files]) => dir === '' ? files.map((f) => fileRow(f)) : (
               <div key={dir}>
+                <FileContextMenu meta={s.meta} path={dir} directory>
                 <button
                   className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] hover:bg-accent"
                   title={dir}
@@ -172,6 +175,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
                   {closedDirs.has(dir) ? <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" /> : <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />}
                   <span className="truncate">{dir}</span>
                 </button>
+                </FileContextMenu>
                 {!closedDirs.has(dir) && <div className="ml-3.5 border-l">{files.map((f) => fileRow(f))}</div>}
               </div>
             ))}
@@ -201,7 +205,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
                   )}
                 </div>
                 {!isCollapsed && (f.binary ? <div className="px-3 py-2 text-xs text-muted-foreground">Binary or large file</div> : (
-                  <DiffRows wrap before={f.before} after={f.status === 'D' ? null : f.after} path={f.path} openGaps={gaps} onOpenGap={(g) => setGaps((x) => new Set(x).add(g))} />
+                  <DiffRows sid={id} wrap before={f.before} after={f.status === 'D' ? null : f.after} path={f.path} openGaps={gaps} onOpenGap={(g) => setGaps((x) => new Set(x).add(g))} />
                 ))}
               </section>
             );
@@ -298,8 +302,8 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
         {!s.files ? <Empty>Loading files…</Empty> : !rows.length ? <Empty>No matching files</Empty> : rows.map((node) => {
           const expanded = !!filter || open.has(node.path);
           return (
+            <FileContextMenu key={node.path} meta={s.meta} path={node.path} directory={node.folder}>
             <button
-              key={node.path}
               title={node.path}
               aria-expanded={node.folder ? expanded : undefined}
               style={{ paddingLeft: 8 + node.depth * 14 }}
@@ -310,6 +314,7 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
               {node.folder ? (expanded ? <FolderOpenIcon className="size-3.5 shrink-0 text-muted-foreground" /> : <FolderIcon className="size-3.5 shrink-0 text-muted-foreground" />) : <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />}
               <span className="truncate">{node.name}</span>
             </button>
+            </FileContextMenu>
           );
         })}
       </div>
@@ -561,7 +566,7 @@ function FileViewer({ s, ...card }: CardProps & { s: SessionView }) {
           {nav}
           <div ref={body} className="relative min-h-0 flex-1 overflow-auto">
             {d.line > view.totalLines && <div className="px-3 py-1.5 text-xs text-muted-foreground">Requested line {d.line} is beyond the current file ({view.totalLines} lines). Showing the last line.</div>}
-            <CodeLines lines={view.lines} path={d.path} startLine={view.startLine} target={view.targetLine} limit={WINDOW_LINES} />
+            <CodeLines sid={s.meta.id} lines={view.lines} path={d.path} startLine={view.startLine} target={view.targetLine} limit={WINDOW_LINES} />
           </div>
         </>
       )}

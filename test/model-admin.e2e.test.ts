@@ -136,6 +136,24 @@ describe('SessionHub model admin', () => {
     expect(endpoint.keySource).toBe('models.json');
   });
 
+  it('loads manual overrides and recovers endpoints with old zero limits', async () => {
+    await hub.admin.saveEndpoint({ id: 'editable', baseUrl, api: 'openai-completions', models: [{
+      id: 'test-model', name: 'My Model', contextWindow: 64000, maxTokens: 4000,
+      reasoning: false, input: ['text'], cost: { input: 0, output: 0.25, cacheRead: 0, cacheWrite: 0 },
+    }] });
+    const overridden = (await hub.admin.catalog()).endpoints.find((item) => item.id === 'editable')!.models[0];
+    expect(overridden).toMatchObject({ name: 'My Model', contextWindow: 64000, maxTokens: 4000, cost: { input: 0, output: 0.25 } });
+    const data = modelsJson();
+    data.providers.editable.models.push({ id: 'image-model', contextWindow: 0, maxTokens: 0 });
+    fs.writeFileSync(path.join(agentDir, 'models.json'), JSON.stringify(data));
+    const endpoint = (await hub.admin.catalog()).endpoints.find((item) => item.id === 'editable')!;
+    const saved = await hub.admin.saveEndpoint(endpoint);
+    expect(saved.errors).toEqual([]);
+    expect(modelsJson().providers.editable.models[1]).toEqual({ id: 'image-model' });
+    const available = (await hub.listModels()).models.find((model) => model.provider === 'editable' && model.id === 'test-model');
+    expect(available).toBeDefined();
+  });
+
   it('removes an endpoint and its credential', async () => {
     await hub.admin.saveEndpoint({ id: 'gone', baseUrl, api: 'openai-completions', apiKey: 'x', models: [{ id: 'test-model' }] });
     expect(authJson().gone).toMatchObject({ key: 'x' });

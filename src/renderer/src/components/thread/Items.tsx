@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { BookmarkIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, GitForkIcon, XIcon } from 'lucide-react';
+import { BookmarkIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, GitForkIcon, RotateCcwIcon, XIcon } from 'lucide-react';
 import { PLAN_CHOICES } from '@shared/protocol';
 import * as previews from '@shared/tool-previews';
 import { Markdown } from '@/components/common/Markdown';
@@ -9,11 +9,12 @@ import { DiffRows, TermOutput, ToolPreviewView } from '@/components/common/CodeV
 import { Button } from '@/components/ui/button';
 import { Kbd } from '@/components/ui/kbd';
 import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ago, fmtTok } from '@/lib/format';
 import { groupStats, groupSummary, isFileTool, toolLabel, type ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
 import { useApp, updateSession } from '@/store/app';
-import { answerUi, forkSession, openAgent, openDiffRef, openFileRef, openPlan, sessionDraftKey } from '@/store/actions';
+import { answerUi, forkSession, openAgent, openDiffRef, openFileRef, openPlan, sessionDraftKey, userMessageAction } from '@/store/actions';
 import { drafts } from '@/store/drafts';
 import { findByKey, findTool, permissionTitle } from '@/store/transcript';
 import type { ItemOf } from '@/store/types';
@@ -21,12 +22,34 @@ import type { ItemOf } from '@/store/types';
 // ------------------------------------------------------------ user
 
 export const UserItem = memo(function UserItem({ sid, item }: { sid: string; item: ItemOf<'user'> }) {
+  const { copied, copy } = useCopy();
+  const busy = useApp((state) => !!(state.sessions[sid]?.running || state.sessions[sid]?.historyBusy || state.sessions[sid]?.pendingUser.length));
   return (
     <div className={cn('flex flex-col items-end gap-1.5', item.queued && 'opacity-60')} title={item.queued ? '排队中：Claude 完成当前步骤后处理' : undefined}>
       <AttachmentTiles attachments={item.attachments} />
       {item.text && (
         <div data-selectable className="max-w-[85%] rounded-2xl bg-user-bubble px-4 py-2.5 whitespace-pre-wrap break-words">
           {item.text.split(/(@[\w./-]+)/g).map((part, i) => (part.startsWith('@') ? <span key={i} className="text-primary">{part}</span> : part))}
+        </div>
+      )}
+      {item.delivered && !item.queued && (
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          {item.timestamp && <span className="mr-1" title={new Date(item.timestamp).toLocaleString()}>{ago(item.timestamp, true)}</span>}
+          <Button type="button" variant="ghost" size="icon" className="size-7" aria-label={copied ? '已复制消息' : '复制消息'} title={copied ? '已复制' : '复制消息'} onClick={() => copy(item.text)}>
+            <CopyGlyph copied={copied} />
+          </Button>
+          {item.entryId && <>
+            <Tooltip><TooltipTrigger asChild>
+              <Button type="button" variant="ghost" size="icon" className="size-7" disabled={busy} aria-label="回退到这里" onClick={() => void userMessageAction(sid, item.entryId!, 'rewind')}>
+                <RotateCcwIcon data-icon="inline-start" />
+              </Button>
+            </TooltipTrigger><TooltipContent>回退到这里：移除此消息及后续对话，原文放回输入框。文件改动会保留。</TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild>
+              <Button type="button" variant="ghost" size="icon" className="size-7" disabled={busy} aria-label="从这里创建分支" onClick={() => void userMessageAction(sid, item.entryId!, 'fork')}>
+                <GitForkIcon data-icon="inline-start" />
+              </Button>
+            </TooltipTrigger><TooltipContent>从此消息之前创建新会话，原文放入新会话输入框，保留当前对话。</TooltipContent></Tooltip>
+          </>}
         </div>
       )}
       {item.notice && <div className="text-xs text-muted-foreground">{item.notice}</div>}

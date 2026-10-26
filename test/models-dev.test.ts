@@ -85,6 +85,16 @@ describe('ModelsDevCatalog', () => {
     expect(catalog.lookup('gpt-5', 'azure')?.contextWindow).toBe(200000);
   });
 
+  it('ignores zero token limits in older caches but keeps zero prices', async () => {
+    const file = catalogFile({ openai: [{ id: 'image-model', context: 0, output: 0, cost: { input: 0, output: 0 } }] });
+    const cached = JSON.parse(fs.readFileSync(file, 'utf8'));
+    cached.fetchedAt = Date.now();
+    fs.writeFileSync(file, JSON.stringify(cached));
+    const catalog = new ModelsDevCatalog(file);
+    await catalog.ready();
+    expect(catalog.lookup('image-model')).toMatchObject({ contextWindow: undefined, maxTokens: undefined, cost: { input: 0, output: 0 } });
+  });
+
   it('keeps working with a missing cache file', () => {
     const catalog = new ModelsDevCatalog(path.join(tmp, 'does-not-exist.json'));
     expect(catalog.lookup('gpt-5')).toBeUndefined();

@@ -4,7 +4,7 @@ import { shell } from 'electron';
 import type { OpenTarget } from '@shared/protocol';
 import { childEnv } from '../agent/env';
 
-export function openIn(target: OpenTarget, cwd: string) {
+export function openIn(target: OpenTarget, cwd: string, resource = cwd) {
   // .cmd shims (code.cmd, cursor.cmd) only resolve through the command
   // processor; everywhere else we exec the binary directly.
   const winQuote = (s: string) => (/[\s"]/.test(s) ? `"${s.split('"').join('""')}"` : s);
@@ -17,9 +17,9 @@ export function openIn(target: OpenTarget, cwd: string) {
     p.unref();
   };
   switch (target) {
-    case 'vscode': return detached('code', [cwd]);
-    case 'cursor': return detached('cursor', [cwd]);
-    case 'folder': return void shell.openPath(cwd);
+    case 'vscode': return detached('code', [resource]);
+    case 'cursor': return detached('cursor', [resource]);
+    case 'folder': return void shell.openPath(resource);
     case 'terminal':
       if (process.platform === 'darwin') return detached('open', ['-a', 'Terminal', cwd]);
       if (process.platform === 'win32') return detached('wt', ['-d', cwd]);

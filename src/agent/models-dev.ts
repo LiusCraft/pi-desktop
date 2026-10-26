@@ -4,6 +4,7 @@
 // app data directory for a day; a failure to refresh keeps the previous copy.
 import fs from 'node:fs';
 import type { ModelMeta } from '@shared/protocol';
+import { positiveLimit } from '@shared/model-metadata';
 
 const API_URL = 'https://models.dev/api.json';
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -78,8 +79,8 @@ export function lookupKeys(id: string): string[] {
 function metaOf(model: RawModel, fallbackId: string): CachedModel | null {
   const id = str(model.id) ?? fallbackId;
   if (!id) return null;
-  const context = num(model.limit?.context);
-  const output = num(model.limit?.output);
+  const context = positiveLimit(model.limit?.context);
+  const output = positiveLimit(model.limit?.output);
   const input = Array.isArray(model.modalities?.input) ? model.modalities.input : [];
   const image = model.attachment === true || input.includes('image');
   const cost = {
@@ -88,7 +89,7 @@ function metaOf(model: RawModel, fallbackId: string): CachedModel | null {
     cacheRead: num(model.cost?.cache_read),
     cacheWrite: num(model.cost?.cache_write),
   };
-  const hasCost = Object.values(cost).some((v) => v !== undefined) && Object.values(cost).some((v) => (v ?? 0) > 0);
+  const hasCost = Object.values(cost).some((v) => v !== undefined);
   return {
     id,
     name: str(model.name),
@@ -224,8 +225,8 @@ export class ModelsDevCatalog {
       for (const model of providers[providerId] ?? []) {
         const meta: ModelMeta = {
           name: model.name,
-          contextWindow: model.context,
-          maxTokens: model.output,
+          contextWindow: positiveLimit(model.context),
+          maxTokens: positiveLimit(model.output),
           reasoning: model.reasoning,
           input: model.image ? ['text', 'image'] : undefined,
           cost: model.cost && {

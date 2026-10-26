@@ -12,7 +12,7 @@ import {
   type AgentSession, type AgentSessionRuntime, type CreateAgentSessionRuntimeFactory, type ExtensionUIContext,
 } from '@earendil-works/pi-coding-agent';
 import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
-import { buildMessage } from '@shared/attachments';
+import { buildMessage, decodeUserContent } from '@shared/attachments';
 import type {
   ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
   PrSummary, SessionMeta, SessionStats, SubagentProgress, SessionSummary, SlashCommand, StreamingBehavior, ThinkingLevel, UiRequest, UiRequestInput, UiResponse,
@@ -48,6 +48,7 @@ interface Live {
   status: 'idle' | 'running';
   /** Bumped on dispose: prompts still preparing must not reach a new session. */
   generation: number;
+  historyBusy: boolean;
   disposed: boolean;
   /** Running `task` subagents by tool call id, so one can be stopped on its own. */
   tasks: Map<string, AbortController>;
@@ -247,9 +248,11 @@ export class SessionHub {
     if (m.archived) throw new Error('This session is archived');
     if (!fs.existsSync(m.cwd)) throw new Error(`The session folder no longer exists: ${m.cwd}`);
     const live: Live = {
-      id, runtime: null as unknown as AgentSessionRuntime,
+      id,
+      // SAFETY: runtime is assigned immediately below before live is published or used.
+      runtime: null as unknown as AgentSessionRuntime,
       kit: { mode: m.mode, profile: m.kind, outputStyle: m.outputStyle, allowed: new Set() },
-      pending: new Map(), status: 'idle', generation: 0, disposed: false, tasks: new Map(),
+      pending: new Map(), status: 'idle', generation: 0, historyBusy: false, disposed: false, tasks: new Map(),
     };
     const resumed = m.sessionFile && fs.existsSync(m.sessionFile);
     const sessionManager = resumed ? SessionManager.open(m.sessionFile!, undefined, m.cwd) : SessionManager.create(m.cwd);
@@ -338,6 +341,17 @@ export class SessionHub {
       this.save();
       this.emitMeta(m);
     }
+    // pi persists message_end after notifying listeners. Defer user messages so
+    // the UI receives their durable entry IDs along with the delivery event.
+    if (event.type === 'message_end' && event.message.role === 'user') {
+      queueMicrotask(() => {
+        if (live.disposed) return;
+        const entry = live.runtime.session.sessionManager.getLeafEntry();
+        const entryId = entry?.type === 'message' && entry.message === event.message ? entry.id : undefined;
+        this.emit({ type: 'pi', sessionId: live.id, event: { ...event, message: { ...event.message, entryId } } });
+      });
+      return;
+    }
     const wire = toWireEvent(event);
     if (wire) this.emit({ type: 'pi', sessionId: live.id, event: wire });
   }
@@ -420,6 +434,7 @@ export class SessionHub {
       getToolsExpanded: () => false,
       setToolsExpanded: () => {},
     };
+    // SAFETY: RPC implements the supported UI callbacks above; TUI-only callbacks are inert.
     return ui as unknown as ExtensionUIContext;
   }
 
@@ -512,7 +527,7 @@ export class SessionHub {
     const session = live.runtime.session;
     return {
       meta: { ...this.meta(id) },
-      messages: session.messages as any,
+      messages: this.messagesWithIds(session),
       model: session.model ? `${session.model.provider}/${session.model.id}` : null,
       thinking: session.thinkingLevel as ThinkingLevel,
       levels: session.getAvailableThinkingLevels() as ThinkingLevel[],
@@ -522,8 +537,73 @@ export class SessionHub {
     };
   }
 
+  private messagesWithIds(session: AgentSession) {
+    const ids = new Map<number, string[]>();
+    for (const projected of session.sessionManager.buildSessionProjection().entries) {
+      if (projected.sourceEntry.type !== 'message' || projected.sourceEntry.message.role !== 'user') continue;
+      for (const message of projected.messages) {
+        if (message.role !== 'user') continue;
+        const list = ids.get(message.timestamp) ?? [];
+        list.push(projected.sourceEntry.id);
+        ids.set(message.timestamp, list);
+      }
+    }
+    // SAFETY: the wire contract reads a subset of SDK messages; their content
+    // blocks are structured-cloneable despite SDK interfaces lacking index signatures.
+    return session.messages.map((message) => message.role === 'user'
+      ? { ...message, entryId: ids.get(message.timestamp)?.shift() }
+      : message) as unknown as OpenSessionResult['messages'];
+  }
+
+  async messageAction(id: string, entryId: string, action: 'rewind' | 'fork') {
+    if (action !== 'rewind' && action !== 'fork') throw new Error('Unknown history action');
+    const live = await this.ensure(id);
+    const session = live.runtime.session;
+    if (live.historyBusy || live.status === 'running' || !session.isIdle || live.tasks.size) {
+      throw new Error('请等待当前任务完成后再调整对话历史');
+    }
+    const projected = session.sessionManager.buildSessionProjection().entries.find((item) => item.sourceEntry.id === entryId);
+    const entry = projected?.sourceEntry;
+    const message = projected?.messages.find((item) => item.role === 'user');
+    if (entry?.type !== 'message' || entry.message.role !== 'user' || !message) throw new Error('这条用户消息已不在当前对话中，请重新打开会话');
+    const draft = decodeUserContent(message.content);
+    live.historyBusy = true;
+    live.generation++;
+    try {
+      if (action === 'rewind') {
+        const result = await session.navigateTree(entryId, { summarize: false });
+        if (result.cancelled) throw new Error('回退已取消');
+        // Branch navigation alone only changes memory. A state-only entry makes
+        // the new leaf survive reopening, even before another prompt is sent.
+        session.sessionManager.appendCustomEntry('pi-desktop-rewind', { entryId });
+        this.meta(id).updatedAt = Date.now();
+        this.save();
+        return { session: await this.open(id), draft };
+      }
+      const original = this.meta(id);
+      const sourceFile = session.sessionFile;
+      if (!sourceFile || !fs.existsSync(sourceFile)) throw new Error('请等待这条消息保存后再创建分支');
+      const manager = SessionManager.open(sourceFile, undefined, original.cwd);
+      if (entry.parentId) manager.createBranchedSession(entry.parentId);
+      else manager.newSession({ parentSession: sourceFile });
+      const meta: SessionMeta = {
+        ...original, id: crypto.randomUUID(), title: `${original.title} · 分支`,
+        autoName: false, titleLocked: true, autoNamed: false, nameAttempted: true,
+        sessionFile: manager.getSessionFile() ?? null, createdAt: Date.now(), updatedAt: Date.now(),
+      };
+      manager.appendSessionInfo(meta.title);
+      this.metas.unshift(meta);
+      this.save();
+      this.emitMeta(meta);
+      return { session: await this.open(meta.id), draft };
+    } finally {
+      live.historyBusy = false;
+    }
+  }
+
   async prompt(id: string, payload: unknown, behavior: StreamingBehavior): Promise<{ disposition: string }> {
     const live = await this.ensure(id);
+    if (live.historyBusy) throw new Error('正在调整对话历史，请稍后发送');
     const generation = live.generation;
     const normalized = await validatePromptPayload(payload);
     const { message, images } = buildMessage(normalized);

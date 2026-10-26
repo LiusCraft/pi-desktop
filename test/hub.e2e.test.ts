@@ -213,6 +213,51 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect(driver.hub.meta(meta.id).sessionFile).not.toBe(first);
   });
 
+  it('rewinds an exact user message and persists the new leaf before resending', async () => {
+    const { meta } = await codeSession();
+    const firstRun = await driver.run(meta.id, '你好');
+    expect(firstRun.pi.find((event) => event.type === 'message_end' && event.message.role === 'user')?.message.entryId).toBeTruthy();
+    await driver.run(meta.id, '你好');
+    const before = await driver.hub.open(meta.id);
+    const users = before.messages.filter((message) => message.role === 'user');
+    expect(users[0].entryId).toBeTruthy();
+    expect(users[1].entryId).not.toBe(users[0].entryId);
+    const result = await driver.hub.messageAction(meta.id, users[1].entryId!, 'rewind');
+    expect(result.draft.text).toBe('你好');
+    expect(result.session.messages.filter((message) => message.role === 'user')).toHaveLength(1);
+    await driver.hub.archive(meta.id);
+    driver.hub.meta(meta.id).archived = false;
+    const reopened = await driver.hub.open(meta.id);
+    expect(reopened.messages.filter((message) => message.role === 'user')).toHaveLength(1);
+    await expect(driver.hub.messageAction(meta.id, users[1].entryId!, 'rewind')).rejects.toThrow(/不在当前对话/);
+    const root = await driver.hub.messageAction(meta.id, users[0].entryId!, 'rewind');
+    expect(root.session.messages.filter((message) => message.role === 'user')).toHaveLength(0);
+    await driver.hub.archive(meta.id);
+    driver.hub.meta(meta.id).archived = false;
+    expect((await driver.hub.open(meta.id)).messages.filter((message) => message.role === 'user')).toHaveLength(0);
+    await driver.run(meta.id, '重新开始');
+    expect((await driver.hub.open(meta.id)).messages.filter((message) => message.role === 'user')).toHaveLength(1);
+  });
+
+  it('forks into a separate desktop session while retaining the original history', async () => {
+    const { meta } = await codeSession();
+    await driver.run(meta.id, '第一条消息');
+    await driver.run(meta.id, '第二条消息');
+    const before = await driver.hub.open(meta.id);
+    const users = before.messages.filter((message) => message.role === 'user');
+    const forked = await driver.hub.messageAction(meta.id, users[1].entryId!, 'fork');
+    expect(forked.session.meta.id).not.toBe(meta.id);
+    expect(forked.session.meta.sessionFile).not.toBe(before.meta.sessionFile);
+    expect(forked.session.messages.filter((message) => message.role === 'user')).toHaveLength(1);
+    expect(forked.draft.text).toBe('第二条消息');
+    expect(driver.hub.list().some((session) => session.id === forked.session.meta.id)).toBe(true);
+    expect((await driver.hub.open(meta.id)).messages).toEqual(before.messages);
+    const rootFork = await driver.hub.messageAction(meta.id, users[0].entryId!, 'fork');
+    expect(rootFork.session.messages.filter((message) => message.role === 'user')).toHaveLength(0);
+    await driver.run(rootFork.session.meta.id, '新的分支');
+    expect((await driver.hub.open(meta.id)).messages).toEqual(before.messages);
+  });
+
   it('names a session from its first prompt, and a rename locks the title', async () => {
     const project = makeProject('naming');
     const meta = await driver.hub.create({ kind: 'code', projectPath: project, worktree: false, model: 'demo/demo-coder', title: 'placeholder', autoName: true });

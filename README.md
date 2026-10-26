@@ -19,7 +19,7 @@ npm run build && npm run demo  # 打开内置演示项目，默认使用离线�
 - 接真实模型：打开设置（`Ctrl/⌘+,`）→ **模型管理**，和 pi CLI 用同一套配置：
   - **账号登录**：Anthropic（Claude Pro/Max）、OpenAI（ChatGPT）、GitHub Copilot、xAI、Meta、Kimi、OpenRouter、Radius 等 provider 的 OAuth 登录，浏览器授权或设备码，凭证写入 `~/.pi/agent/auth.json`。
   - **API 密钥**：所有支持密钥的 provider，交互流程和 pi 的 `/login` 完全一致（包括需要多个环境变量的 provider）。
-  - **自定义端点**：OpenAI Chat Completions / Responses、Anthropic Messages、Google Generative AI 兼容地址写入 `~/.pi/agent/models.json`；可以直接从端点的 `/models` 拉取模型列表，并按模型 ID 从 [models.dev](https://models.dev) 自动对齐上下文大小、输出上限和每百万 token 价格。密钥仍只存 `auth.json`，本地端点自动写入 pi 的占位密钥。
+  - **自定义端点**：OpenAI Chat Completions / Responses、Anthropic Messages、Google Generative AI 兼容地址写入 `~/.pi/agent/models.json`；可以直接从端点的 `/models` 拉取模型列表。每个模型都能编辑名称、上下文大小、最大输出、四项每百万 token 价格、推理与图像输入能力；[models.dev](https://models.dev) 仅补充缺失值，手动值（包括免费价格 0）始终优先。保存不等待公开目录网络请求；目录中的 0 token 限制会忽略，重新保存端点也能清理旧配置里的无效 0 值。密钥仍只存 `auth.json`，本地端点自动写入 pi 的占位密钥。
   - 环境变量、`auth.json`、`models.json` 里已有的配置都会识别；你在 `~/.pi/agent` 里装的扩展、技能、提示模板和 MCP 服务器照常加载，和 CLI 一致。
 - 设置窗口（`Ctrl/⌘+,`）是独立窗口：外观（浅色 / 深色 / 跟随系统、侧边栏）、通用（通知、默认分区）、模型管理、项目与文件夹、关于。偏好保存在用户数据目录的 `settings.json`，修改后主窗口立即跟随；preload 用同步 IPC（`app:boot`）拿到首屏需要的值，不会先闪一下再变色。
 
@@ -82,6 +82,10 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 
 > 提示：Claude desktop 里 `Thinking` 只在会话已经产生过思考后出现；这里也做了同样的处理。`Ctrl+O` 只在可用的模式之间循环。
 
+### 历史消息操作
+
+历史用户消息下方提供复制、回退和创建分支。回退移除当前上下文中的该消息和后续对话，并把文字与可恢复的附件放回输入框；新分支创建独立会话、保留原对话，从所选消息之前开始并恢复原文。消息使用 pi 的稳定 entry ID 定位，重复文字不会定位错；回退位置会立即持久化。任务运行时暂时禁用历史操作；这些操作只改变对话，已经产生的文件改动会保留。
+
 ### 会话命名
 
 新会话的名字来自用户的第一条提示词，但分两步：
@@ -94,6 +98,8 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 ### 文件工具预览与附件
 
 - **Read / Edit / Write**：展开工具行可查看带行号的读取片段、本次编辑的红绿 diff，或实际写入的内容快照。点击文件名会在现有右侧文件查看器打开**当前正文**并定位；历史快照不会被当前正文或累计 Git diff 替代。需要累计改动时使用独立的 **Diff** 入口。
+- **选区与评论**：在 Diff 或文件正文预览中选择代码，可以附加为上下文或添加评论；也可点击行号旁的 `+`，用 Shift 点击选择多行。评论编辑器显示在选区下方，引用和评论以可移除卡片加入当前会话草稿，随下一条消息发送；模型收到文件路径、行号、旧侧 / 新侧和选中代码的快照。最多 20 项引用，总内容最多 100,000 个字符。
+- **树列表右键菜单**：Diff 和 Files 中的文件、文件夹支持附加为上下文，复制绝对路径 / 相对路径 / 名称，用 VS Code / Cursor / Terminal / 默认应用打开，以及在 Finder（其他平台为文件管理器）中显示。Terminal 打开所选文件的所在目录；已删除的文件可从 Diff 快照引用。
 - **添加附件**：Code 和 Cowork 的输入框都支持粘贴截图、复制的本地文件、拖入文件，以及点击 **+** 多选文件；`@` 仍用于引用项目文件。发送前可以预览和移除，也可以只发附件。多行文字保留换行、制表符和缩进，富文本只提取纯文本，不加载其中的远程内容。
 - **发送与恢复**：附件单独排列在文字气泡上方，图片可点击放大。图片使用 pi 原生 image blocks 传给支持图片的模型并随会话保存；普通文件是供 agent 读取的**本地路径引用**，不会自动解析 PDF / Office，也不会另存一份。移动或删除原文件后，该引用可能失效。
 - **草稿与取消**：会话间草稿互相隔离；导入失败或发送失败不会清空附件。停止运行时，已取消的排队消息可恢复为草稿；有新草稿时显示 Restore / Discard，避免覆盖。未发送草稿仅在本次应用运行期间保留。
@@ -133,9 +139,11 @@ pi 本身不做权限确认。desktop-kit 在 `tool_call` 钩子里按模式决�
 ```bash
 npm run typecheck   # main / agent / preload 与渲染进程两套 tsconfig
 npm test            # vitest：真实的进程内 pi 会话 + desktop-kit + 演示模型，无需 API Key
+npm run test:desktop # 构建后用项目自带的 Electron 运行 Playwright 窗口交互测试
 ```
 
 - `test/hub.e2e.test.ts`：Auto 模式在隔离 worktree 里修 bug（修复前测试真的失败，修复后真的通过，主工作区不被改动）、Ask 模式拒绝、Plan 模式审批后自动切到 Accept edits、运行中切换模式、进程内子 agent、高风险命令仍需询问、带图片附件的会话关闭后从会话文件恢复、`/clear`、首条提示词命名与手动重命名；Cowork 整理收件箱时只有移动文件需要确认、拒绝后文件保持原样、生成简报文件、临时工作区。
+- `test/desktop/interactions.spec.ts`：临时配置目录中的真实 Electron 窗口，覆盖模型元数据编辑、价格 0、token 限制校验、文件菜单、预览引用、Diff 评论、随消息发送及历史回退 / 分支；`test/context-reference.test.ts` 覆盖引用格式、草稿隔离与恢复、容量限制。
 - `test/attachment-message.test.ts` / `test/attachments-backend.test.ts`：附件消息往返、校验限制、剪贴板格式（macOS / Windows / Linux）和图片规范化。
 - `test/tool-previews.test.ts` / `test/files.test.ts`：原生工具输出、行号 / 分页，以及文件边界、符号链接（需要系统允许创建符号链接）、二进制和大小限制。
 - `test/naming.test.ts`、`test/git-pr.test.ts`：命名规则、`gh pr view` 结果映射。

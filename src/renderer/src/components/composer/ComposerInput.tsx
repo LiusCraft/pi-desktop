@@ -1,5 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { XIcon } from 'lucide-react';
+import DOMPurify from 'dompurify';
+import { ContextCards } from './ContextCards';
 import { LIMITS } from '@shared/attachments';
 import type { AttachmentSource } from '@shared/protocol';
 import { AttachmentTiles } from '@/components/common/Attachments';
@@ -11,11 +13,12 @@ import { cycleMode, loadFiles, send } from '@/store/actions';
 import { currentSession, getApp } from '@/store/app';
 import { drafts, getDraft, useDrafts } from '@/store/drafts';
 
-/** Plain text of pasted HTML. A template stays inert: it cannot load images or run scripts. */
+/** Extract clipboard text from a sanitized, detached fragment. */
 export function plainHTML(html: string) {
-  const template = document.createElement('template');
-  template.innerHTML = html;
-  template.content.querySelectorAll('script,style,iframe,object,embed,link,meta').forEach((e) => e.remove());
+  const fragment = DOMPurify.sanitize(html, {
+    RETURN_DOM_FRAGMENT: true,
+    FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'img', 'audio', 'video', 'source'],
+  });
   const block = new Set(['P', 'DIV', 'LI', 'TR', 'H1', 'H2', 'H3', 'H4', 'PRE', 'BLOCKQUOTE']);
   const text = (node: Node): string => {
     if (node.nodeType === Node.TEXT_NODE) return (node as Text).data;
@@ -26,7 +29,7 @@ export function plainHTML(html: string) {
     if (block.has(node.nodeName) && !s.endsWith('\n')) s += '\n';
     return s;
   };
-  return text(template.content);
+  return text(fragment);
 }
 
 async function sourcesOf(files: File[]): Promise<AttachmentSource[]> {
@@ -203,7 +206,7 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
     };
 
     if (!key || !draft) return null;
-    const rack = draft.attachments.length || draft.preparing || draft.errors.length || draft.recoveries.length;
+    const rack = draft.references.length || draft.attachments.length || draft.preparing || draft.errors.length || draft.recoveries.length;
     return (
       <div className={cn('relative', className)}>
         {items.length > 0 && (
@@ -235,6 +238,7 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
         )}
         {!!rack && (
           <div className="mb-2 space-y-2">
+            <ContextCards references={draft.references} disabled={draft.sending} onRemove={(id) => drafts.removeReference(key, id)} />
             <AttachmentTiles attachments={draft.attachments} disabled={draft.sending} onRemove={(i) => drafts.removeAttachment(key, i)} />
             {draft.preparing > 0 && <div className="text-xs text-muted-foreground" role="status">Preparing attachments…</div>}
             {draft.errors.length > 0 && (
@@ -245,7 +249,7 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
             )}
             {draft.recoveries.map((r, i) => (
               <div key={i} className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs">
-                <span className="flex-1 truncate">{r.label || r.text.trim().slice(0, 65) || r.attachments[0]?.name || 'Unsent message'}</span>
+                <span className="flex-1 truncate">{r.label || r.text.trim().slice(0, 65) || r.attachments[0]?.name || r.references?.[0]?.path || 'Unsent message'}</span>
                 <button className="text-primary hover:underline" disabled={draft.sending} onClick={() => drafts.restore(key, i)}>Restore</button>
                 <button className="text-muted-foreground hover:underline" onClick={() => drafts.discard(key, i)}>Discard</button>
               </div>

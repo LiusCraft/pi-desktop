@@ -1,8 +1,9 @@
 // Everything the UI does: navigation, sending, session settings, panels. State lives
 // in the app store; pi events are folded in by transcript.ts.
 import { toast } from 'sonner';
-import { buildMessage, decodeUserContent } from '@shared/attachments';
+import { buildMessage, decodeUserContent, type Attachment } from '@shared/attachments';
 import type { HostEvent, OutputStyle, PermissionMode, SessionKind, SessionMeta, ThinkingLevel, UiResponse } from '@shared/protocol';
+import { referencePrompt } from '@shared/context-reference';
 import { diffStats, positiveLine } from '@shared/tool-previews';
 import { call, errText, modKey } from '@/lib/api';
 import { DESKTOP_COMMANDS, MODES, VIEW_MODES, type ViewMode } from '@/lib/constants';
@@ -373,14 +374,15 @@ export async function send(queueOnly = false) {
   if (draft.preparing) return void toast.warning('等待附件处理完成后再发送');
   const text = draft.text;
   const files = draft.attachments.slice();
+  const references = draft.references.slice();
   let s = currentSession();
-  if (s?.stopping) return;
-  if (!text.trim() && !files.length) {
+  if (s?.stopping || s?.historyBusy) return;
+  if (!text.trim() && !files.length && !references.length) {
     if (s?.running) void stop(s.meta.id);
     return;
   }
   const head = text.trim().split(/\s+/)[0];
-  if (files.length && head.startsWith('/')) return void toast.warning('斜杠命令不能携带附件；请先移除附件或使用普通消息');
+  if ((files.length || references.length) && head.startsWith('/')) return void toast.warning('斜杠命令不能携带附件或上下文；请先移除或使用普通消息');
   if (await slashCommand(s, head, text)) return;
 
   const st = getApp();
@@ -400,10 +402,11 @@ export async function send(queueOnly = false) {
   const id = s!.meta.id;
   const epoch = s!.hostEpoch;
   const clientId = crypto.randomUUID();
-  const submission = { text, attachments: files, clientId };
+  const submission = { text, attachments: files, references, clientId };
+  const payload = { text: referencePrompt(text, references), attachments: files, clientId };
   let wire: string;
   try {
-    wire = buildMessage(submission).message;
+    wire = buildMessage(payload).message;
   } catch (err) {
     drafts.lock(key, false);
     return void drafts.error(key, err);
@@ -414,7 +417,7 @@ export async function send(queueOnly = false) {
   setApp((x) => {
     const v = x.sessions[id];
     if (!v) return;
-    push(v, { kind: 'user', key: itemKey, text, attachments: files, clientId, submission, wire, queued: wasRunning, acknowledged: false }, x.prefs.viewMode);
+    push(v, { kind: 'user', key: itemKey, text: payload.text, attachments: files, clientId, submission, wire, queued: wasRunning, acknowledged: false }, x.prefs.viewMode);
     v.pendingUser.push(itemKey);
     if (optimistic) {
       v.running = true;
@@ -430,7 +433,7 @@ export async function send(queueOnly = false) {
     v.items = v.items.filter((i) => i.key !== itemKey);
   });
   try {
-    const r = await call('sessions:prompt', id, submission, queueOnly ? 'followUp' : 'steer');
+    const r = await call('sessions:prompt', id, payload, queueOnly ? 'followUp' : 'steer');
     if (item()?.exited || getApp().sessions[id]?.hostEpoch !== epoch) {
       drafts.error(key, '进程已退出，发送状态未确认；草稿已保留，请核对历史后再发送');
       return;
@@ -598,6 +601,36 @@ export async function archiveSession(id: string, confirm = false) {
     if (getApp().current === id) showWelcome();
   } catch (err) {
     fail(err);
+  }
+}
+
+export async function userMessageAction(id: string, entryId: string, action: 'rewind' | 'fork') {
+  const s = getApp().sessions[id];
+  if (!s || s.running || s.historyBusy || s.pendingUser.length) return;
+  updateSession(id, (view) => void (view.historyBusy = true));
+  try {
+    const result = await call('sessions:messageAction', id, entryId, action);
+    const { session, draft } = result;
+    setApp((st) => {
+      const target = st.sessions[session.meta.id] ??= emptySession(session.meta);
+      target.meta = session.meta;
+      replay(target, session.messages, st.prefs.viewMode);
+      target.loaded = true;
+      target.running = session.isStreaming;
+      target.model = session.model;
+      target.thinking = session.thinking;
+      target.levels = session.levels;
+      target.ctxPct = session.stats?.contextUsage?.percent ?? null;
+    });
+    const attachments = draft.attachments.filter((attachment): attachment is Attachment => attachment.kind === 'file' || typeof attachment.data === 'string');
+    drafts.recover(sessionDraftKey(session.meta.id), { text: draft.text, attachments, label: action === 'rewind' ? '回退的消息' : '分支起点' });
+    if (draft.notice) drafts.error(sessionDraftKey(session.meta.id), draft.notice);
+    // Navigate only if the user has stayed on the source session during the request.
+    if (getApp().current === id) await openSession(session.meta.id);
+  } catch (err) {
+    fail(err);
+  } finally {
+    updateSession(id, (view) => void (view.historyBusy = false));
   }
 }
 

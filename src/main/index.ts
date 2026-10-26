@@ -282,15 +282,24 @@ const handlers: MainHandlers = {
     const r = win ? await dialog.showOpenDialog(win, { ...options, properties: [...options.properties] }) : await dialog.showOpenDialog({ ...options, properties: [...options.properties] });
     return r.canceled ? { attachments: [], errors: [] } : importAttachments(r.filePaths.map((p) => ({ path: p })));
   },
+  // SAFETY: Electron's async clipboard.read is available at runtime but absent from its bundled type declarations.
   'attachments:clipboard': () =>
     clipboardAttachments(() => (clipboard as unknown as { read(): Promise<ClipboardItemLike[]> }).read(), importAttachments),
 
-  'sessions:openIn': async (id, target) => openIn(target, await sessionCwd(id)),
+  'sessions:openIn': async (id, target, rel) => {
+    const cwd = await sessionCwd(id);
+    const resource = rel ? resolveInside(cwd, rel) : cwd;
+    const directory = fs.statSync(resource).isDirectory() ? resource : path.dirname(resource);
+    return openIn(target, directory, resource);
+  },
   // Open or reveal a file the agent produced, constrained to the session folder.
   'sessions:openPath': async (id, rel, reveal) => {
     const abs = resolveInside(await sessionCwd(id), rel || '.');
     if (reveal) shell.showItemInFolder(abs);
-    else void shell.openPath(abs);
+    else {
+      const error = await shell.openPath(abs);
+      if (error) throw new Error(error);
+    }
   },
 };
 

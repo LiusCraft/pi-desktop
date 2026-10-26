@@ -28,7 +28,7 @@ export function emptySession(meta: SessionMeta): SessionView {
     model: meta.model ?? null, thinking: meta.thinking ?? null, levels: [], commands: [], waiting: null, unread: false,
     todosKey: null, lastTodos: [], outputs: [], term: [], changes: [], pr: meta.pr, prHidden: false, files: null,
     panels: { diff: false, preview: false, files: false, terminal: false, progress: true, tasks: false }, detail: null, previewUrl: null,
-    pendingUser: [], stopping: false, hostEpoch: 0, cur: null,
+    pendingUser: [], stopping: false, historyBusy: false, hostEpoch: 0, cur: null,
   };
 }
 
@@ -227,9 +227,9 @@ function userFromMessage(s: SessionView, m: AgentMessage, view: ViewMode) {
     : pending.find((p) => !p.attachments.length && p.text === user.text);
   if (match) {
     s.pendingUser = s.pendingUser.filter((k) => k !== match.key);
-    Object.assign(match, user, { queued: false, delivered: true, failed: false });
+    Object.assign(match, user, { entryId: m.entryId, timestamp: m.timestamp, queued: false, delivered: true, failed: false });
   } else if (!user.clientId || !s.items.some((i) => i.kind === 'user' && i.clientId === user.clientId)) {
-    push(s, { kind: 'user', key: newKey(), ...user, delivered: true }, view);
+    push(s, { kind: 'user', key: newKey(), ...user, entryId: m.entryId, timestamp: m.timestamp, delivered: true }, view);
   }
 }
 
@@ -374,6 +374,12 @@ export function resolveUi(s: SessionView, requestId: string, label: string) {
 export function replay(s: SessionView, messages: AgentMessage[], view: ViewMode) {
   s.items = [];
   s.todosKey = null;
+  s.lastTodos = [];
+  s.outputs = [];
+  s.term = [];
+  s.cur = null;
+  s.waiting = null;
+  s.detail = null;
   s.pendingUser = [];
   let sawAssistant = false;
   for (const m of messages) {
@@ -383,7 +389,7 @@ export function replay(s: SessionView, messages: AgentMessage[], view: ViewMode)
       if (sawAssistant) s.items.push({ kind: 'foot', key: newKey(), t: m.timestamp || Date.now() });
       sawAssistant = false;
       s.todosKey = null;
-      s.items.push({ kind: 'user', key: newKey(), ...user, delivered: true });
+      s.items.push({ kind: 'user', key: newKey(), ...user, entryId: m.entryId, timestamp: m.timestamp, delivered: true });
     } else if (m.role === 'assistant') {
       sawAssistant = true;
       for (const b of Array.isArray(m.content) ? m.content : []) {

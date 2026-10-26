@@ -379,7 +379,7 @@ export function ModelsSection() {
       <div className="mt-6 mb-2 flex items-end justify-between">
         <div>
           <h3 className="text-sm font-semibold">自定义端点</h3>
-          <p className="text-xs text-muted-foreground">OpenAI / Anthropic / Google 兼容地址，模型元数据按 ID 从 models.dev 对齐</p>
+          <p className="text-xs text-muted-foreground">OpenAI / Anthropic / Google 兼容地址，支持手动设置模型上下文、输出上限和价格</p>
         </div>
         <Button size="sm" variant="outline" onClick={() => setEditor({ endpoint: null })}>
           <PlusIcon className="size-3.5" />
@@ -462,7 +462,7 @@ export function ModelsSection() {
           </Button>
         </div>
         <p className="pt-1">
-          models.dev 元数据：{catalog?.catalogAt ? `${agoZh(catalog.catalogAt)}更新` : '尚未获取'} · 上下文与价格仅用于展示和计费估算，可在 models.json 里覆盖。
+          models.dev 元数据：{catalog?.catalogAt ? `${agoZh(catalog.catalogAt)}更新` : '尚未获取'} · 参考值可在端点编辑器中覆盖。上下文与输出上限影响模型运行，价格用于费用估算。
         </p>
       </div>
 

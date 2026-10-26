@@ -5,7 +5,7 @@
 // Every renderer call is one entry of `Api`. Channels listed in HOST_CHANNELS are
 // forwarded unchanged to the agent host; the rest are handled by the main process.
 // Host → renderer traffic is a single stream of `HostEvent`s.
-import type { Attachment, PromptSubmission } from './attachments';
+import type { Attachment, DecodedUserContent, PromptSubmission } from './attachments';
 
 export type SessionKind = 'code' | 'cowork';
 export type PermissionMode = 'auto' | 'default' | 'acceptEdits' | 'plan' | 'bypass';
@@ -96,12 +96,14 @@ export interface ContentBlock {
   thinking?: string;
   id?: string;
   name?: string;
-  arguments?: Record<string, any>;
+  arguments?: Record<string, unknown>;
   data?: string;
   mimeType?: string;
   [key: string]: unknown;
 }
 export interface AgentMessage {
+  /** Stable pi entry ID for history actions; never sent to the model. */
+  entryId?: string;
   role: 'user' | 'assistant' | 'toolResult' | 'custom' | 'bashExecution' | string;
   content?: string | ContentBlock[];
   timestamp?: number;
@@ -424,7 +426,7 @@ export interface Api {
   'attachments:clipboard'(): ClipboardImportResult;
 
 
-  'sessions:openIn'(id: string, target: OpenTarget): void;
+  'sessions:openIn'(id: string, target: OpenTarget, rel?: string): void;
   'sessions:openPath'(id: string, rel: string, reveal: boolean): void;
 
   // ---- forwarded to the agent host
@@ -444,6 +446,7 @@ export interface Api {
   'sessions:stats'(id: string): SessionStats | null;
   'sessions:exportHtml'(id: string): { path: string };
   'sessions:clone'(id: string): void;
+  'sessions:messageAction'(id: string, entryId: string, action: 'rewind' | 'fork'): { session: OpenSessionResult; draft: DecodedUserContent };
   'sessions:setModel'(id: string, model: string): { levels: ThinkingLevel[]; thinking: ThinkingLevel };
   'sessions:setThinking'(id: string, level: ThinkingLevel): void;
   'sessions:commands'(id: string): SlashCommand[];
@@ -483,7 +486,7 @@ export const HOST_CHANNELS = [
   'sessions:list', 'sessions:create', 'sessions:open', 'sessions:prompt', 'sessions:respond',
   'sessions:setMode', 'sessions:setStyle', 'sessions:update', 'sessions:archive', 'sessions:abort',
   'sessions:clearQueue', 'sessions:newContext', 'sessions:compact', 'sessions:stats', 'sessions:exportHtml',
-  'sessions:clone', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:bash',
+  'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:bash',
   'sessions:changes', 'sessions:pr', 'sessions:files', 'sessions:readFile', 'sessions:readImage',
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
   'sessions:import', 'git:branch', 'models:list', 'models:levels',

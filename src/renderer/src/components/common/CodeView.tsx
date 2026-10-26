@@ -1,11 +1,13 @@
 // Line-numbered code and diffs (tool previews, the file viewer, the Diff panel).
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState, type ReactNode } from 'react';
+import DOMPurify from 'dompurify';
 import { ChevronDownIcon, ChevronsUpDownIcon, ChevronUpIcon, ImageOffIcon } from 'lucide-react';
 import { lineDiff, PREVIEW_LINES, type DiffRow, type PreviewRow, type ToolPreview } from '@shared/tool-previews';
 import { call } from '@/lib/api';
 import { highlight, langOfPath } from '@/lib/highlight';
 import { fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { CodeSelection } from './CodeSelection';
 
 function lineHtml(r: DiffRow, lang: string) {
   if (!r.wd) return highlight(r.s, lang) || ' ';
@@ -13,13 +15,31 @@ function lineHtml(r: DiffRow, lang: string) {
   return `${highlight(r.s.slice(0, x), lang)}<span class="wd">${highlight(r.s.slice(x, y), lang)}</span>${highlight(r.s.slice(y), lang)}`;
 }
 
-/** One diff row: the line number (old for removals, new otherwise), the +/− sign, then the highlighted line. */
-export const DiffLine = memo(function DiffLine({ row, lang }: { row: DiffRow; lang: string }) {
+/** Only text and span nodes from the highlighter become React children. */
+function highlightedNodes(html: string): ReactNode[] {
+  const fragment = DOMPurify.sanitize(html, { RETURN_DOM_FRAGMENT: true, ALLOWED_TAGS: ['span'], ALLOWED_ATTR: ['class'] });
+  const render = (node: ChildNode, index: number): ReactNode => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent;
+    if (!(node instanceof HTMLElement)) return null;
+    return <span key={index} className={node.getAttribute('class') ?? undefined}>{[...node.childNodes].map(render)}</span>;
+  };
+  return [...fragment.childNodes].map(render);
+}
+
+/** The gutter's plus button selects a line for a comment. */
+function LineNumber({ number, selectable }: { number?: number; selectable?: boolean }) {
+  return selectable ? <button type="button" data-select-line title="点击添加行评论，Shift 点击选择多行" aria-label={`评论第 ${number} 行`} className="group/line relative w-full cursor-pointer hover:text-info">
+    <span className="group-hover/line:opacity-0">{number}</span>
+    <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/line:opacity-100">+</span>
+  </button> : <>{number}</>;
+}
+
+export const DiffLine = memo(function DiffLine({ row, lang, selectable }: { row: DiffRow; lang: string; selectable?: boolean }) {
   return (
-    <div className={cn('code-row diff', row.t === '+' && 'add', row.t === '-' && 'del')}>
-      <span className="ln">{row.t === '-' ? row.o : row.n}</span>
+    <div data-source-line={row.t === '-' ? row.o : row.n} data-side={row.t === '-' ? 'old' : 'new'} className={cn('code-row diff', row.t === '+' && 'add', row.t === '-' && 'del')}>
+      <span className="ln"><LineNumber number={row.t === '-' ? row.o : row.n} selectable={selectable} /></span>
       <span className="sign">{row.t === ' ' ? '' : row.t === '-' ? '−' : '+'}</span>
-      <span dangerouslySetInnerHTML={{ __html: lineHtml(row, lang) }} />
+      <span data-code-text>{highlightedNodes(lineHtml(row, lang))}</span>
     </div>
   );
 });
@@ -38,9 +58,10 @@ export function HunkGap({ count, edge, onClick }: { count?: number; edge?: 'top'
   );
 }
 
-export function CodeLines({ lines, path, startLine = 1, target, limit = PREVIEW_LINES, className }: {
+export function CodeLines({ lines, path, sid, startLine = 1, target, limit = PREVIEW_LINES, className }: {
   lines: string[];
   path: string;
+  sid?: string;
   startLine?: number;
   target?: number | null;
   limit?: number;
@@ -48,25 +69,26 @@ export function CodeLines({ lines, path, startLine = 1, target, limit = PREVIEW_
 }) {
   const lang = langOfPath(path);
   return (
-    <div className={cn('code-lines overflow-x-auto', className)}>
+    <CodeSelection key={`${sid}:${path}:${startLine}`} sid={sid} path={path} className={cn('code-lines overflow-x-auto', className)}>
       {lines.slice(0, limit).map((l, i) => {
         const n = startLine + i;
         return (
-          <div key={n} data-line={n} className={cn('code-row', target === n && 'target')} style={{ gridTemplateColumns: '3.4em minmax(0,1fr)' }}>
-            <span className="ln">{n}</span>
-            <span dangerouslySetInnerHTML={{ __html: highlight(l, lang) || ' ' }} />
+          <div key={n} data-line={n} data-source-line={n} data-side="new" className={cn('code-row', target === n && 'target')} style={{ gridTemplateColumns: '3.4em minmax(0,1fr)' }}>
+            <span className="ln"><LineNumber number={n} selectable={!!sid} /></span>
+            <span data-code-text>{highlightedNodes(highlight(l, lang) || ' ')}</span>
           </div>
         );
       })}
-    </div>
+    </CodeSelection>
   );
 }
 
 /** Rows of a diff with unchanged stretches folded into expandable gaps. */
-export function DiffRows({ before, after, path, openGaps, onOpenGap, context = 3, wrap }: {
+export function DiffRows({ before, after, path, sid, openGaps, onOpenGap, context = 3, wrap }: {
   before: string | null;
   after: string | null;
   path: string;
+  sid?: string;
   openGaps?: Set<string> | string[];
   onOpenGap?: (id: string) => void;
   context?: number;
@@ -83,18 +105,18 @@ export function DiffRows({ before, after, path, openGaps, onOpenGap, context = 3
   const out: React.ReactNode[] = [];
   for (let k = 0; k < rows.length;) {
     if (keep[k]) {
-      out.push(<DiffLine key={k} row={rows[k]} lang={lang} />);
+      out.push(<DiffLine key={k} row={rows[k]} lang={lang} selectable={!!sid} />);
       k++;
       continue;
     }
     let e = k;
     while (e < rows.length && !keep[e]) e++;
     const id = `${path}:${k}`;
-    if (open.has(id)) for (let x = k; x < e; x++) out.push(<DiffLine key={x} row={rows[x]} lang={lang} />);
+    if (open.has(id)) for (let x = k; x < e; x++) out.push(<DiffLine key={x} row={rows[x]} lang={lang} selectable={!!sid} />);
     else out.push(<HunkGap key={id} count={e - k} edge={k === 0 ? 'top' : e === rows.length ? 'bottom' : undefined} onClick={() => onOpenGap?.(id)} />);
     k = e;
   }
-  return <div className={cn('code-lines', wrap ? 'wrap' : 'overflow-x-auto')}>{out}</div>;
+  return <CodeSelection key={`${sid}:${path}`} sid={sid} path={path} className={cn('code-lines', wrap ? 'wrap' : 'overflow-x-auto')}>{out}</CodeSelection>;
 }
 
 const Note = ({ children, className }: { children: React.ReactNode; className?: string }) => (

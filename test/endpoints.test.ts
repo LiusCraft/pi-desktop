@@ -139,12 +139,46 @@ describe('EndpointStore', () => {
       id: 'proxy',
       baseUrl: 'https://proxy.example.com/v1',
       api: 'openai-completions',
-      models: [{ id: 'gpt-5', name: 'GPT-5', maxTokens: 128000 }],
+      models: [{ id: 'gpt-5', name: 'GPT-5', contextWindow: 400000, maxTokens: 128000 }],
     });
     const provider = JSON.parse(fs.readFileSync(store.file, 'utf8')).providers.proxy;
     expect(provider.headers).toEqual({ 'x-team': 'mine' });
     expect(provider.apiKey).toBe('$PROXY_KEY');
     expect(provider.models).toEqual([{ id: 'gpt-5', samplingParams: { temperature: 0.2 }, contextWindow: 400000, name: 'GPT-5', maxTokens: 128000 }]);
+  });
+
+  it('repairs old zero limits when resaving and preserves free prices', () => {
+    const store = storeAt('zero-limits');
+    fs.writeFileSync(store.file, JSON.stringify({ providers: { proxy: {
+      baseUrl: 'https://proxy.example.com/v1', api: 'openai-completions',
+      models: [{ id: 'image-model', contextWindow: 0, maxTokens: 0, samplingParams: { temperature: 0.2 }, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
+    } } }));
+    const endpoint = store.list(new Set(), () => ({ keySet: true }), () => ({ contextWindow: 0, maxTokens: 0, cost: { input: 9, output: 10 } }))[0];
+    expect(endpoint.models[0].contextWindow).toBeUndefined();
+    expect(endpoint.models[0].cost).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+    store.save(endpoint);
+    const written = JSON.parse(fs.readFileSync(store.file, 'utf8')).providers.proxy.models[0];
+    expect(written.contextWindow).toBeUndefined();
+    expect(written.maxTokens).toBeUndefined();
+    expect(written.samplingParams).toEqual({ temperature: 0.2 });
+    expect(written.cost.input).toBe(0);
+  });
+
+  it('rejects invalid manual values before changing the file', () => {
+    const store = storeAt('validation');
+    const draft = { id: 'proxy', baseUrl: 'https://proxy.example.com/v1', api: 'openai-completions', models: [{ id: 'model' }] };
+    store.save(draft);
+    const before = fs.readFileSync(store.file, 'utf8');
+    for (const model of [{ id: 'model', contextWindow: 0 }, { id: 'model', maxTokens: -1 }, { id: 'model', cost: { input: -0.5 } }]) {
+      expect(() => store.save({ ...draft, models: [model] })).toThrow(/模型 model/);
+      expect(fs.readFileSync(store.file, 'utf8')).toBe(before);
+    }
+  });
+
+  it('aligns costs field by field without replacing zero or false overrides', () => {
+    expect(alignModel({ id: 'model', reasoning: false, contextWindow: 1000, cost: { input: 0, cacheRead: 0 } }, {
+      contextWindow: 200000, maxTokens: 32000, reasoning: true, cost: { input: 4, output: 8, cacheRead: 1, cacheWrite: 2 },
+    })).toMatchObject({ contextWindow: 1000, maxTokens: 32000, reasoning: false, cost: { input: 0, output: 8, cacheRead: 0, cacheWrite: 2 } });
   });
 
   it('refuses to overwrite a malformed file', () => {
@@ -180,7 +214,7 @@ describe('EndpointStore', () => {
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject({ id: 'gateway', name: 'Gateway', builtin: false, keySet: true, keySource: 'auth.json' });
     expect(list[0].models[0]).toMatchObject({ name: 'Claude Sonnet 4.5', contextWindow: 200000, maxTokens: 64000, source: 'models.dev' });
-    expect(list[0].models[1].cost).toEqual({ input: 1, output: 2 });
+    expect(list[0].models[1].cost).toEqual({ input: 1, output: 2, cacheRead: 0, cacheWrite: 0 });
 
     store.remove('gateway');
     expect(JSON.parse(fs.readFileSync(store.file, 'utf8')).providers).toEqual({});

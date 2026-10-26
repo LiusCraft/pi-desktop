@@ -4,19 +4,25 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { validateAttachments, type Attachment, type PromptSubmission } from '@shared/attachments';
+import { MAX_CONTEXT_CHARS, MAX_CONTEXT_ITEMS, type ContextReference } from '@shared/context-reference';
 import type { AttachmentImportResult } from '@shared/protocol';
 import { errText } from '@/lib/api';
+
+export interface DraftSubmission extends PromptSubmission {
+  references?: ContextReference[];
+}
 
 export interface Draft {
   key: string;
   text: string;
   attachments: Attachment[];
+  references: ContextReference[];
   /** Bumped by every edit; a paste that lands after the user typed must not clobber the text. */
   revision: number;
   preparing: number;
   sending: boolean;
   errors: string[];
-  recoveries: { text: string; attachments: Attachment[]; label?: string }[];
+  recoveries: { text: string; attachments: Attachment[]; references?: ContextReference[]; label?: string }[];
 }
 
 interface DraftState {
@@ -26,7 +32,7 @@ interface DraftState {
 
 export const useDrafts = create<DraftState>()(immer(() => ({ drafts: {}, active: null })));
 
-const blank = (key: string): Draft => ({ key, text: '', attachments: [], revision: 0, preparing: 0, sending: false, errors: [], recoveries: [] });
+const blank = (key: string): Draft => ({ key, text: '', attachments: [], references: [], revision: 0, preparing: 0, sending: false, errors: [], recoveries: [] });
 
 function edit(key: string, fn: (d: Draft) => void) {
   useDrafts.setState((st) => {
@@ -75,6 +81,28 @@ export const drafts = {
       d.revision++;
     });
   },
+  addReference(key: string, reference: ContextReference): boolean {
+    let added = false;
+    edit(key, (d) => {
+      if (d.sending) return;
+      const size = [...d.references, reference].reduce((total, item) => total + (item.text?.length ?? 0) + (item.comment?.length ?? 0) + item.path.length, 0);
+      if (d.references.length >= MAX_CONTEXT_ITEMS || size > MAX_CONTEXT_CHARS) {
+        d.errors.push(`最多附加 ${MAX_CONTEXT_ITEMS} 项上下文，总内容不能超过 ${MAX_CONTEXT_CHARS.toLocaleString()} 个字符`);
+        return;
+      }
+      d.references.push(reference);
+      d.revision++;
+      added = true;
+    });
+    return added;
+  },
+  removeReference(key: string, id: string) {
+    edit(key, (d) => {
+      if (d.sending) return;
+      d.references = d.references.filter((reference) => reference.id !== id);
+      d.revision++;
+    });
+  },
   /** Add imported attachments, skipping duplicates and anything over the limits. */
   accept(key: string, result: AttachmentImportResult | undefined) {
     edit(key, (d) => {
@@ -117,6 +145,7 @@ export const drafts = {
     edit(key, (d) => {
       d.text = '';
       d.attachments = [];
+      d.references = [];
       d.errors = [];
       d.revision++;
     });
@@ -132,22 +161,24 @@ export const drafts = {
     });
   },
   /** Bring back an unsent message: straight into an empty draft, otherwise as Restore / Discard. */
-  recover(key: string, s: Pick<PromptSubmission, 'text' | 'attachments'> & { label?: string }) {
+  recover(key: string, s: Pick<DraftSubmission, 'text' | 'attachments' | 'references'> & { label?: string }) {
     edit(key, (d) => {
-      if (!d.text.trim() && !d.attachments.length && !d.sending && !d.preparing) {
+      if (!d.text.trim() && !d.attachments.length && !d.references.length && !d.sending && !d.preparing) {
         d.text = s.text;
         d.attachments = s.attachments.slice();
+        d.references = s.references?.slice() ?? [];
         d.revision++;
-      } else d.recoveries.push({ text: s.text, attachments: s.attachments.slice(), label: s.label });
+      } else d.recoveries.push({ text: s.text, attachments: s.attachments.slice(), references: s.references?.slice(), label: s.label });
     });
   },
   restore(key: string, index: number) {
     edit(key, (d) => {
-      if (d.text.trim() || d.attachments.length) return;
+      if (d.text.trim() || d.attachments.length || d.references.length) return;
       const [s] = d.recoveries.splice(index, 1);
       if (!s) return;
       d.text = s.text;
       d.attachments = s.attachments.slice();
+      d.references = s.references?.slice() ?? [];
       d.revision++;
     });
   },

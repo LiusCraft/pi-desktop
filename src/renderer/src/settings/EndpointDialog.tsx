@@ -2,15 +2,17 @@
 // fetched from the endpoint itself, and every model id is matched against
 // models.dev so context window, output limit and prices are filled automatically.
 import { useMemo, useState } from 'react';
-import { CheckIcon, Loader2Icon, PlusIcon, RefreshCwIcon, SearchIcon } from 'lucide-react';
+import { CheckIcon, Loader2Icon, PencilIcon, PlusIcon, RefreshCwIcon, SearchIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { ENDPOINT_APIS, type EndpointDraft, type EndpointInfo, type EndpointModel, type ModelCatalogInfo } from '@shared/protocol';
+import { alignModel } from '@shared/model-metadata';
+import { ModelEditor } from './ModelEditor';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { call, errText } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { API_LABELS, agoZh, modelMetaLine } from './model-format';
@@ -32,7 +34,7 @@ export function mergeModels(current: EndpointModel[], fetched: EndpointModel[]):
             maxTokens: existing.maxTokens ?? model.maxTokens,
             reasoning: existing.reasoning ?? model.reasoning,
             input: existing.input ?? model.input,
-            cost: existing.cost ?? model.cost,
+            cost: alignModel(existing, model).cost,
             source: existing.source ?? model.source,
           }
         : model,
@@ -54,9 +56,10 @@ function CheckBox({ checked }: { checked: boolean }) {
   );
 }
 
-function ModelRow({ model, selected, onToggle }: { model: EndpointModel; selected: boolean; onToggle: () => void }) {
+function ModelRow({ model, selected, disabled, onToggle, onEdit }: { model: EndpointModel; selected: boolean; disabled: boolean; onToggle: () => void; onEdit: () => void }) {
   return (
-    <button type="button" onClick={onToggle} className="flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-accent">
+    <div className="flex items-center gap-1">
+    <button type="button" aria-pressed={selected} disabled={disabled} onClick={onToggle} className="flex min-w-0 flex-1 items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-accent">
       <CheckBox checked={selected} />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
@@ -67,6 +70,10 @@ function ModelRow({ model, selected, onToggle }: { model: EndpointModel; selecte
         <span className="mt-0.5 block text-[11px] text-muted-foreground">{modelMetaLine(model)}</span>
       </span>
     </button>
+    <Button type="button" variant="ghost" size="sm" disabled={disabled} aria-label={`编辑模型 ${model.id}`} onClick={onEdit}>
+      <PencilIcon data-icon="inline-start" />编辑
+    </Button>
+    </div>
   );
 }
 
@@ -92,6 +99,7 @@ export function EndpointDialog({
   const [models, setModels] = useState<EndpointModel[]>(endpoint?.models ?? []);
   const [selected, setSelected] = useState<Set<string>>(() => new Set(endpoint?.models.map((model) => model.id) ?? []));
   const [newModel, setNewModel] = useState('');
+  const [editingModel, setEditingModel] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<'discover' | 'save' | null>(null);
@@ -144,14 +152,17 @@ export function EndpointDialog({
 
   const addModel = () => {
     const modelId = newModel.trim();
-    if (!modelId) return;
+    if (!modelId || busy || editingModel) return;
     setModels((prev) => (prev.some((model) => model.id === modelId) ? prev : [...prev, { id: modelId, source: 'manual' }]));
     setSelected((prev) => new Set(prev).add(modelId));
     setNewModel('');
+    setQuery('');
+    setEditingModel(modelId);
   };
 
   const save = async () => {
     setError(null);
+    if (editingModel) return setError('请先应用或取消模型修改');
     if (!id.trim()) return setError('请填写 Provider ID');
     if (!baseUrl.trim()) return setError('请填写 API 地址');
     setBusy('save');
@@ -223,13 +234,13 @@ export function EndpointDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>API 类型</Label>
-              <Select value={api} onValueChange={setApi}>
+              <Select value={api || 'provider-default'} onValueChange={(value) => setApi(value === 'provider-default' ? '' : value)}>
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
+                <SelectContent><SelectGroup>
                   {apiOptions.map((value) => (
-                    <SelectItem key={value || 'default'} value={value}>{value ? API_LABELS[value] ?? value : '跟随 provider 默认'}</SelectItem>
+                    <SelectItem key={value || 'default'} value={value || 'provider-default'}>{value ? API_LABELS[value] ?? value : '跟随 provider 默认'}</SelectItem>
                   ))}
-                </SelectContent>
+                </SelectGroup></SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
@@ -281,10 +292,10 @@ export function EndpointDialog({
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium">模型</div>
                 <p className="text-[11px] text-muted-foreground">
-                  已选 {selected.size} / {models.length} · 上下文与价格按模型 ID 从 models.dev 自动对齐{catalogAt ? `（${agoZh(catalogAt)}更新）` : ''}
+                  已选 {selected.size} / {models.length} · 每个模型均可编辑，models.dev 提供参考值{catalogAt ? `（${agoZh(catalogAt)}更新）` : ''}
                 </p>
               </div>
-              <Button size="sm" variant="outline" disabled={!!busy || !baseUrl.trim()} onClick={() => void discover()}>
+              <Button size="sm" variant="outline" disabled={!!busy || !!editingModel || !baseUrl.trim()} onClick={() => void discover()}>
                 {busy === 'discover' ? <Loader2Icon className="size-3.5 animate-spin" /> : <RefreshCwIcon className="size-3.5" />}
                 获取模型列表
               </Button>
@@ -293,7 +304,7 @@ export function EndpointDialog({
             {models.length > 8 && (
               <div className="relative">
                 <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="筛选模型" className="h-8 pl-8 text-xs" />
+                <Input value={query} disabled={!!editingModel || !!busy} onChange={(e) => setQuery(e.target.value)} placeholder="筛选模型" className="h-8 pl-8 text-xs" />
               </div>
             )}
 
@@ -310,7 +321,17 @@ export function EndpointDialog({
             <div className="max-h-64 overflow-y-auto">
               {visibleModels.length ? (
                 visibleModels.map((model) => (
-                  <ModelRow key={model.id} model={model} selected={selected.has(model.id)} onToggle={() => toggle(model.id)} />
+                  <div key={model.id}>
+                    <ModelRow model={model} selected={selected.has(model.id)} disabled={!!busy || (!!editingModel && editingModel !== model.id)} onToggle={() => toggle(model.id)} onEdit={() => setEditingModel(model.id)} />
+                    {editingModel === model.id && (
+                      <ModelEditor model={model} onCancel={() => setEditingModel(null)} onApply={(updated) => {
+                        setModels((previous) => previous.map((item) => item.id === updated.id ? updated : item));
+                        setSelected((previous) => new Set(previous).add(updated.id));
+                        setEditingModel(null);
+                        setError(null);
+                      }} />
+                    )}
+                  </div>
                 ))
               ) : (
                 <p className="px-2 py-3 text-xs text-muted-foreground">
@@ -326,15 +347,15 @@ export function EndpointDialog({
                 addModel();
               }}
             >
-              <Input value={newModel} onChange={(e) => setNewModel(e.target.value)} placeholder="手动添加模型 ID" className="h-8 text-xs" spellCheck={false} />
-              <Button type="submit" size="sm" variant="outline" disabled={!newModel.trim()}>
+              <Input value={newModel} disabled={!!editingModel || !!busy} onChange={(e) => setNewModel(e.target.value)} placeholder="手动添加模型 ID" className="h-8 text-xs" spellCheck={false} />
+              <Button type="submit" size="sm" variant="outline" disabled={!newModel.trim() || !!editingModel || !!busy}>
                 <PlusIcon className="size-3.5" />
                 添加
               </Button>
             </form>
 
             {models.some((model) => selected.has(model.id) && model.source === 'models.dev') && (
-              <p className="text-[11px] text-muted-foreground">带 models.dev 标记的模型会用公开目录里的上下文大小与价格写入 models.json。</p>
+              <p className="text-[11px] text-muted-foreground">models.dev 仅补充缺失值；点击模型旁的“编辑”可覆盖上下文、最大输出、价格和能力。</p>
             )}
           </div>
 
@@ -346,7 +367,7 @@ export function EndpointDialog({
 
         <DialogFooter>
           <Button type="button" variant="outline" disabled={!!busy} onClick={onClose}>取消</Button>
-          <Button type="button" disabled={!!busy} onClick={() => void save()}>
+          <Button type="button" disabled={!!busy || !!editingModel} onClick={() => void save()}>
             {busy === 'save' && <Loader2Icon className="size-3.5 animate-spin" />}
             保存
           </Button>

@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { EndpointDiscovery, EndpointDraft, EndpointInfo, EndpointModel, ModelMeta } from '@shared/protocol';
+import { alignModel, COST_FIELDS, nonNegativePrice, positiveLimit } from '@shared/model-metadata';
 
 /** pi's documented placeholder for endpoints that ignore the key (Ollama, llama.cpp, vLLM…). */
 export const LOCAL_KEY = 'local';
@@ -76,7 +77,7 @@ export function stripJsonComments(text: string): string {
 }
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
-const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined);
+const num = positiveLimit;
 
 /** A loopback or private-network URL almost never needs a real credential. */
 export function isLocalUrl(baseUrl: string): boolean {
@@ -118,9 +119,11 @@ function modelEntry(model: EndpointModel, previous: Json | undefined): Json {
   for (const key of ['name', 'contextWindow', 'maxTokens', 'reasoning', 'input'] as const) {
     const value = model[key];
     if (value !== undefined) out[key] = value;
+    else delete out[key];
   }
   const cost = costEntry(model.cost);
-  if (cost) out.cost = cost;
+  if (cost) out.cost = { ...(previous?.cost as Json | undefined), ...cost };
+  else delete out.cost;
   return out;
 }
 
@@ -140,10 +143,10 @@ function cleanModels(list: unknown): EndpointModel[] {
       input: Array.isArray(model.input) ? model.input.filter((v): v is string => typeof v === 'string') : undefined,
       cost: model.cost && typeof model.cost === 'object'
         ? {
-            input: num((model.cost as Json).input),
-            output: num((model.cost as Json).output),
-            cacheRead: num((model.cost as Json).cacheRead),
-            cacheWrite: num((model.cost as Json).cacheWrite),
+            input: nonNegativePrice((model.cost as Json).input),
+            output: nonNegativePrice((model.cost as Json).output),
+            cacheRead: nonNegativePrice((model.cost as Json).cacheRead),
+            cacheWrite: nonNegativePrice((model.cost as Json).cacheWrite),
           }
         : undefined,
       source: 'manual',
@@ -186,21 +189,7 @@ export class EndpointStore {
     for (const [id, raw] of Object.entries(data.providers ?? {})) {
       if (!raw || typeof raw !== 'object') continue;
       const provider = raw as ModelsJsonProvider;
-      const models = cleanModels(provider.models).map((model) => {
-        const aligned = model.contextWindow && model.cost?.input !== undefined ? undefined : align(model.id, id);
-        if (!aligned) return model;
-        return {
-          ...aligned,
-          ...model,
-          name: model.name ?? aligned.name,
-          contextWindow: model.contextWindow ?? aligned.contextWindow,
-          maxTokens: model.maxTokens ?? aligned.maxTokens,
-          reasoning: model.reasoning ?? aligned.reasoning,
-          input: model.input ?? aligned.input,
-          cost: model.cost?.input !== undefined || model.cost?.output !== undefined ? model.cost : aligned.cost,
-          source: model.contextWindow || model.cost ? 'manual' : 'models.dev',
-        } satisfies EndpointModel;
-      });
+      const models = cleanModels(provider.models).map((model) => alignModel(model, align(model.id, id)));
       const { keySet, keySource } = status(id);
       out.push({
         id,
@@ -241,6 +230,16 @@ export class EndpointStore {
     for (const model of draft.models) {
       const modelId = model.id.trim();
       if (!modelId || seen.has(modelId)) continue;
+      for (const key of ['contextWindow', 'maxTokens'] as const) {
+        if (model[key] !== undefined && positiveLimit(model[key]) === undefined) {
+          throw new Error(`模型 ${modelId} 的 ${key} 必须大于 0，或留空使用默认值`);
+        }
+      }
+      for (const key of COST_FIELDS) {
+        if (model.cost?.[key] !== undefined && nonNegativePrice(model.cost[key]) === undefined) {
+          throw new Error(`模型 ${modelId} 的价格 ${key} 必须是大于或等于 0 的数字`);
+        }
+      }
       seen.add(modelId);
       models.push(modelEntry({ ...model, id: modelId }, existing.get(modelId)));
     }

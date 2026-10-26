@@ -4,6 +4,9 @@ out/
 out/
 *.log
 home/
+.vitest/
+test-results/
+playwright-report/
 
 # macOS
 .DS_Store
