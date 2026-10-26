@@ -726,9 +726,11 @@ export async function loadChanges(id: string) {
   const s = getApp().sessions[id];
   if (!s || isCowork(s)) return;
   try {
-    const changes = (await call('sessions:changes', id)).map((f) => ({ ...f, ...(f.binary ? { add: 0, del: 0 } : diffStats(f.before, f.status === 'D' ? null : f.after)) }));
+    const { files, state } = await call('sessions:changes', id);
+    const changes = files.map((f) => ({ ...f, ...(f.binary ? { add: 0, del: 0 } : diffStats(f.before, f.status === 'D' ? null : f.after)) }));
     updateSession(id, (v) => {
       v.changes = changes;
+      v.gitState = state;
       // The first change opens the Diff panel once, on wide windows.
       if (changes.length && !(v as any).autoOpened && window.innerWidth > 1180 && getApp().current === id) {
         (v as any).autoOpened = true;

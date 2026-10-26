@@ -1,4 +1,4 @@
-import { GitBranchIcon, GitMergeIcon, GitPullRequestIcon, MessageSquareIcon, XIcon } from 'lucide-react';
+import { CheckIcon, GitBranchIcon, GitMergeIcon, GitPullRequestIcon, MessageSquareIcon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { call } from '@/lib/api';
@@ -13,20 +13,37 @@ const DOT: Record<string, string> = { pass: 'bg-success', fail: 'bg-destructive'
 
 /** Branch / PR status above the Code composer, with shortcuts that become prompts. */
 export function PrBar({ s }: { s: SessionView }) {
-  const ch = s.changes;
-  if (s.meta.kind === 'cowork' || s.prHidden || !s.meta.branch || (!ch.length && !s.pr)) return null;
-  const add = ch.reduce((a, f) => a + f.add, 0), del = ch.reduce((a, f) => a + f.del, 0);
+  if (s.meta.kind === 'cowork' || s.prHidden || !s.meta.branch) return null;
   const id = s.meta.id;
+  // This bar reports live working-tree state, not the session-base diff the Diff panel shows,
+  // so committing no longer looks like pending work.
+  const st = s.gitState;
+  const dirty = new Set(st?.dirty ?? []);
+  const pending = s.changes.filter((f) => dirty.has(f.path));
+  const ahead = st?.ahead ?? 0;
+  // A PR needs a branch of its own and something to put in it.
+  const canPr = !s.pr && s.meta.branch !== s.meta.baseBranch && (!st || st.dirty.length > 0 || ahead > 0);
   const draft = (text: string, go = false) => {
     drafts.setText(sessionDraftKey(id), text);
     if (go) void send(false);
   };
-  const stat = (
-    <span className="flex gap-1 font-mono text-xs">
-      <span className="text-success">+{add}</span>
-      <span className="text-destructive">−{del}</span>
-    </span>
-  );
+  const sync = () => {
+    if (!st) return null;
+    if (pending.length) {
+      const add = pending.reduce((a, f) => a + f.add, 0), del = pending.reduce((a, f) => a + f.del, 0);
+      return (
+        <span className="flex gap-1 font-mono text-xs">
+          <span className="text-success">+{add}</span>
+          <span className="text-destructive">−{del}</span>
+        </span>
+      );
+    }
+    // Files that were already dirty before this session are not in `changes`; count them instead.
+    if (st.dirty.length) return <span className="font-mono text-xs text-muted-foreground">{st.dirty.length} uncommitted</span>;
+    if (ahead) return <span className="font-mono text-xs text-warning">{ahead} to push</span>;
+    if (!st.upstream) return <span className="font-mono text-xs text-muted-foreground">not pushed</span>;
+    return <span className="flex items-center gap-1 font-mono text-xs text-muted-foreground"><CheckIcon className="size-3" />synced</span>;
+  };
   if (!s.pr) {
     return (
       <div className="mb-2 flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-xs">
@@ -34,10 +51,12 @@ export function PrBar({ s }: { s: SessionView }) {
         <span className="font-medium">{fname(s.meta.projectPath)}</span>
         <span className="truncate font-mono text-muted-foreground" title={s.meta.branch}>{s.meta.branch}</span>
         <span className="flex-1" />
-        {stat}
-        <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={s.running} onClick={() => draft(`提交当前所有改动（写一个清晰的 commit message），把分支 ${s.meta.branch} 推送到 origin，然后用 gh pr create 创建 PR，最后告诉我 PR 链接。`, true)}>
-          Create PR
-        </Button>
+        {sync()}
+        {canPr && (
+          <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={s.running} onClick={() => draft(`提交当前所有改动（写一个清晰的 commit message），把分支 ${s.meta.branch} 推送到 origin，然后用 gh pr create 创建 PR，最后告诉我 PR 链接。`, true)}>
+            Create PR
+          </Button>
+        )}
       </div>
     );
   }
@@ -53,7 +72,7 @@ export function PrBar({ s }: { s: SessionView }) {
       </button>
       <span className="truncate text-muted-foreground" title={`${s.meta.projectPath} · ${s.meta.branch}`}>{fname(s.meta.projectPath)}</span>
       <span className="flex-1" />
-      {stat}
+      {sync()}
       {!!pr.comments && (
         <button className="flex items-center gap-1 text-muted-foreground hover:text-foreground" title="Review comments" onClick={() => draft(`用 gh pr view ${pr.num} --comments 读取 PR #${pr.num} 的评审意见，逐条处理后提交并推送。`)}>
           <MessageSquareIcon className="size-3.5" />{pr.comments}

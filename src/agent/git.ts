@@ -2,7 +2,7 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { FileChange, PrStatus } from '@shared/protocol';
+import type { FileChange, GitState, PrStatus } from '@shared/protocol';
 import { childEnv } from './env';
 
 const MAX_FILE = 512 * 1024;
@@ -66,6 +66,16 @@ export async function changes(cwd: string, base: string | null): Promise<FileCha
   return out;
 }
 
+/** Uncommitted paths plus upstream tracking: what the composer's branch bar reports. */
+export async function workState(cwd: string): Promise<GitState> {
+  const status = (await gitSafe(cwd, 'status', '--porcelain', '-z', '--no-renames')) || '';
+  const dirty: string[] = [];
+  for (const entry of status.split('\0')) if (entry.length > 3) dirty.push(entry.slice(3));
+  const upstream = (await gitSafe(cwd, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'))?.trim() || null;
+  const ahead = upstream ? Number((await gitSafe(cwd, 'rev-list', '--count', '@{u}..HEAD'))?.trim()) || 0 : 0;
+  return { dirty, ahead, upstream };
+}
+
 export async function listFiles(cwd: string, limit = 3000): Promise<string[]> {
   const out = await gitSafe(cwd, 'ls-files', '--cached', '--others', '--exclude-standard');
   if (out) return out.split('\n').filter(Boolean).slice(0, limit);
@@ -78,7 +88,12 @@ export async function listFiles(cwd: string, limit = 3000): Promise<string[]> {
       else res.push(r);
     }
   };
-  try { walk(cwd, ''); } catch {}
+  // Best effort: a directory that cannot be read still leaves the rest of the listing usable.
+  try {
+    walk(cwd, '');
+  } catch {
+    /* unreadable directory or symlink loop */
+  }
   return res;
 }
 

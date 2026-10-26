@@ -1,6 +1,6 @@
 import type { Attachment, DecodedAttachment } from '@shared/attachments';
 import type {
-  FileChange, PrStatus, PrSummary, SessionMeta, SlashCommand, ThinkingLevel, UiRequest,
+  FileChange, GitState, PrStatus, PrSummary, SessionMeta, SlashCommand, ThinkingLevel, UiRequest,
 } from '@shared/protocol';
 import type { ToolState } from '@/lib/tools';
 import type { DraftSubmission } from './drafts';
@@ -95,6 +95,8 @@ export interface SessionView {
   outputs: { path: string; kind: 'write' | 'edit'; t: number }[];
   term: { cmd: string; out: string }[];
   changes: ChangedFile[];
+  /** Live git state for the branch bar: uncommitted paths and unpushed commits. */
+  gitState: GitState | null;
   pr: PrStatus | (PrSummary & Partial<PrStatus>) | null;
   prHidden: boolean;
   files: string[] | null;

@@ -187,6 +187,23 @@ export interface FileChange {
   binary: boolean;
 }
 
+/** Live working-tree state: what the composer's branch bar reports (never the session base). */
+export interface GitState {
+  /** Paths with uncommitted changes, untracked files included. */
+  dirty: string[];
+  /** Commits HEAD has that its upstream branch does not. */
+  ahead: number;
+  /** Upstream ref, or null when the branch tracks nothing yet. */
+  upstream: string | null;
+}
+
+/** Everything the Diff panel and branch bar need, in one round trip. */
+export interface ChangeSet {
+  /** Files changed since the session's base commit (the Diff panel's view). */
+  files: FileChange[];
+  state: GitState;
+}
+
 export interface ImportableSession {
   file: string;
   cwd: string;
@@ -451,7 +468,7 @@ export interface Api {
   'sessions:setThinking'(id: string, level: ThinkingLevel): void;
   'sessions:commands'(id: string): SlashCommand[];
   'sessions:bash'(id: string, command: string): { output: string; exitCode: number | undefined };
-  'sessions:changes'(id: string): FileChange[];
+  'sessions:changes'(id: string): ChangeSet;
   'sessions:pr'(id: string): PrStatus | null;
   'sessions:files'(id: string): string[];
   'sessions:readFile'(id: string, rel: string): string | null;

@@ -107,8 +107,11 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect(read(project, 'src/utils/date.js'), 'main checkout untouched').not.toMatch(/getMonth\(\) \+ 1/);
     expect(r.finalText).toMatch(/测试全部通过/);
 
-    const changes = await driver.hub.changes(meta.id);
-    expect(changes.map((c) => c.path).sort()).toEqual(['src/utils/date.js', 'tests/date.test.js']);
+    const { files, state } = await driver.hub.changes(meta.id);
+    expect(files.map((c) => c.path).sort()).toEqual(['src/utils/date.js', 'tests/date.test.js']);
+    // The worktree starts clean but the agent left the edits uncommitted.
+    expect(state.dirty.sort()).toEqual(['src/utils/date.js', 'tests/date.test.js']);
+    expect(state.ahead).toBe(0);
     const status = r.events.filter((e) => e.type === 'status').map((e) => (e as any).status);
     expect(status).toEqual(['running', 'idle']);
   });

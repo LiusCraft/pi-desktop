@@ -26,7 +26,7 @@ export function emptySession(meta: SessionMeta): SessionView {
   return {
     meta, items: [], loaded: false, running: false, t0: 0, tokens: 0, statusText: '', ctxPct: null,
     model: meta.model ?? null, thinking: meta.thinking ?? null, levels: [], commands: [], waiting: null, unread: false,
-    todosKey: null, lastTodos: [], outputs: [], term: [], changes: [], pr: meta.pr, prHidden: false, files: null,
+    todosKey: null, lastTodos: [], outputs: [], term: [], changes: [], gitState: null, pr: meta.pr, prHidden: false, files: null,
     panels: { diff: false, preview: false, files: false, terminal: false, progress: true, tasks: false }, detail: null, previewUrl: null,
     pendingUser: [], stopping: false, historyBusy: false, hostEpoch: 0, cur: null,
   };

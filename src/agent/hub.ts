@@ -14,7 +14,7 @@ import {
 import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import { buildMessage, decodeUserContent } from '@shared/attachments';
 import type {
-  ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
+  ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
   PrSummary, SessionMeta, SessionStats, SubagentProgress, SessionSummary, SlashCommand, StreamingBehavior, ThinkingLevel, UiRequest, UiRequestInput, UiResponse,
 } from '@shared/protocol';
 import { validatePromptPayload } from './attachments';
@@ -888,9 +888,11 @@ export class SessionHub {
 
   // ------------------------------------------------------------ files / git
 
-  changes(id: string) {
+  async changes(id: string): Promise<ChangeSet> {
     const m = this.meta(id);
-    return git.changes(m.cwd, m.baseCommit);
+    // Session-base diff for the Diff panel, plus live working-tree state for the branch bar.
+    const [files, state] = await Promise.all([git.changes(m.cwd, m.baseCommit), git.workState(m.cwd)]);
+    return { files, state };
   }
   async prStatus(id: string) {
     const m = this.meta(id);
@@ -941,9 +943,10 @@ export class SessionHub {
     const info = readSessionHeader(file);
     if (!info) throw new Error('Not a pi session file');
     const root = await git.repoRoot(info.cwd);
+    const branch = root ? await git.currentBranch(root) : null;
     const meta: SessionMeta = {
       id: crypto.randomUUID(), kind: 'code', ...this.titleState(info.name || info.firstPrompt?.slice(0, 60) || 'Imported session', false, 'Imported session'),
-      projectPath: info.cwd, cwd: info.cwd, branch: root ? await git.currentBranch(root) : null, baseBranch: null,
+      projectPath: info.cwd, cwd: info.cwd, branch, baseBranch: branch,
       baseCommit: root ? await git.head(root) : null, worktree: false, mode: 'auto', outputStyle: 'default', sessionFile: file,
       createdAt: info.mtime, updatedAt: info.mtime, pr: null, imported: true,
     };
