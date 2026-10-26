@@ -583,6 +583,7 @@ export interface HostInitOptions {
   dataDir: string;
   /** pi's config directory, resolved by the main process so host and UI agree. */
   agentDir: string;
+  /** Register the offline demo model; only unpackaged (dev / test) runs set it. */
   demo: boolean;
 }
 export type HostMethod = (typeof HOST_CHANNELS)[number] | keyof HostInternal;

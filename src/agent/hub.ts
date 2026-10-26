@@ -81,6 +81,8 @@ export interface HubOptions {
   agentDir?: string;
   /** Where CLI sessions are discovered for import. Default <agentDir>/sessions. */
   cliSessionsDir?: string;
+  /** Register the offline demo model (dev and tests only; packaged builds leave it off). */
+  demoModel?: boolean;
 }
 
 export class SessionHub {
@@ -115,7 +117,7 @@ export class SessionHub {
       modelsPath: path.join(this.agentDir, 'models.json'),
       signal: AbortSignal.timeout(15_000),
     });
-    registerDemoModel(this.models);
+    if (this.opts.demoModel) registerDemoModel(this.models);
     this.settings = SettingsManager.create(os.homedir(), this.agentDir);
     this.admin = new ModelAdmin({
       agentDir: this.agentDir,

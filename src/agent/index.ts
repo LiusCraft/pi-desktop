@@ -34,9 +34,9 @@ type Handler = (...args: any[]) => unknown;
 const withHub = (fn: (hub: SessionHub, ...args: any[]) => unknown): Handler => async (...args) => fn(await ready, ...args);
 
 const handlers: Record<HostMethod, Handler> = {
-  'host:init': async ({ dataDir, agentDir }) => {
+  'host:init': async ({ dataDir, agentDir, demo }) => {
     if (hub) return;
-    hub = new SessionHub({ dataDir, agentDir, emit: (event) => send({ kind: 'event', event }) });
+    hub = new SessionHub({ dataDir, agentDir, demoModel: demo, emit: (event) => send({ kind: 'event', event }) });
     await hub.init();
     resolveReady(hub);
   },

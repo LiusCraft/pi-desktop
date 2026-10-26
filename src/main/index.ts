@@ -31,7 +31,9 @@ const DEV_URL = process.env.ELECTRON_RENDERER_URL;
 app.setName('Pi Desktop');
 // Windows only shows (and groups) toasts for a registered app id.
 if (process.platform === 'win32') app.setAppUserModelId('dev.pi-desktop.app');
-const DEMO = process.argv.includes('--demo');
+// The offline demo (scripted model + sample workspaces) is a dev / test aid: packaged builds never enable it.
+const DEMO_ALLOWED = !app.isPackaged;
+const DEMO = DEMO_ALLOWED && process.argv.includes('--demo');
 const isMac = process.platform === 'darwin';
 let win: BrowserWindow | null = null;
 let settingsWin: BrowserWindow | null = null;
@@ -368,12 +370,12 @@ void app.whenReady().then(async () => {
   nativeTheme.themeSource = ['light', 'dark'].includes(String(settingsValue().theme)) ? (settingsValue().theme as 'light' | 'dark') : 'system';
   agent = new AgentClient(
     path.join(here, 'agent.mjs'),
-    () => ({ dataDir: dataDir(), agentDir: piAgentDir(), demo: DEMO }),
+    () => ({ dataDir: dataDir(), agentDir: piAgentDir(), demo: DEMO_ALLOWED }),
     (event: HostEvent) => broadcast('host:event', event),
   );
   void agent.start().catch((err) => console.error('[main] agent host failed to start:', err));
-  if (DEMO || !projects().length) ensureDemoProject();
-  if (DEMO || !coworkFolders().length) ensureDemoCowork();
+  if (DEMO || (DEMO_ALLOWED && !projects().length)) ensureDemoProject();
+  if (DEMO || (DEMO_ALLOWED && !coworkFolders().length)) ensureDemoCowork();
   registerIpc();
   nativeTheme.on('updated', () => {
     // Following the system: repaint both windows and tell the renderers.

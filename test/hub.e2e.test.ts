@@ -34,7 +34,7 @@ class Driver {
   answer: Answer = () => ({ cancelled: true });
   hub: SessionHub;
   constructor() {
-    this.hub = new SessionHub({ dataDir: path.join(tmp, 'data'), agentDir, emit: (e) => this.onEvent(e) });
+    this.hub = new SessionHub({ dataDir: path.join(tmp, 'data'), agentDir, demoModel: true, emit: (e) => this.onEvent(e) });
   }
   private waiters: { id: string; resolve: () => void }[] = [];
   private onEvent(e: HostEvent) {
