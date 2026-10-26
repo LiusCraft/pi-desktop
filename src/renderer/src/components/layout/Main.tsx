@@ -1,9 +1,8 @@
-import type { ReactNode } from 'react';
+import { useState, type MouseEvent, type ReactNode } from 'react';
 import {
-  BotIcon, ChevronDownIcon, FileTextIcon, FolderIcon, GlobeIcon, LaptopIcon, MoreVerticalIcon, PanelRightIcon, PlusIcon,
+  BotIcon, ChevronDownIcon, ExternalLinkIcon, FileTextIcon, FolderIcon, GlobeIcon, LaptopIcon, PanelRightIcon, PlusIcon,
   SquareTerminalIcon, TerminalSquareIcon,
 } from 'lucide-react';
-import type { OpenTarget } from '@shared/protocol';
 import { CodeComposer, WorkComposer } from '@/components/composer/Composers';
 import { copyText } from '@/components/common/Copy';
 import { Transcript } from '@/components/thread/Transcript';
@@ -17,9 +16,11 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/componen
 import { call, isMac, modKey } from '@/lib/api';
 import { WORK_IDEAS, OUTPUT_STYLE_INFO, VIEW_MODES, type ViewMode } from '@/lib/constants';
 import { fname } from '@/lib/format';
+import { OpenTargetIcon } from '@/components/common/OpenTargetIcon';
+import { OPEN_TARGET_INFO, refreshOpenTargets, useOpenTargets } from '@/lib/open-targets';
 import { cn } from '@/lib/utils';
 import {
-  addProject, archiveSession, exportHtml, fail, importCliSession, renameSession, setOutputStyle, setViewMode,
+  addProject, archiveSession, deleteSession, exportHtml, fail, importCliSession, renameSession, setOutputStyle, setViewMode,
   togglePanel, welcomeDraftKey,
 } from '@/store/actions';
 import { useApp, useCurrent } from '@/store/app';
@@ -29,6 +30,7 @@ import type { SessionView } from '@/store/types';
 import type { OutputStyle } from '@shared/protocol';
 import { CustomizePage } from '@/customize/CustomizePage';
 import { ScheduledPage } from '@/scheduled/ScheduledPage';
+import { ArchivedPage } from '@/archived/ArchivedPage';
 import { SidebarToggle } from './Sidebar';
 
 function HeaderButton({ on, children, ...props }: React.ComponentProps<'button'> & { on?: boolean }) {
@@ -39,14 +41,30 @@ function HeaderButton({ on, children, ...props }: React.ComponentProps<'button'>
   );
 }
 
-/** Rename, transcript view, output style, export, archive. */
-function SessionMenu({ s, trigger }: { s: SessionView; trigger: ReactNode }) {
+/**
+ * Rename, transcript view, output style, export, archive.
+ * Opens where the user clicked: the menu hangs off an invisible anchor placed at
+ * the pointer (or under the button, for a keyboard activation).
+ */
+function SessionMenu({ s, children }: { s: SessionView; children: (props: { onClick: (e: MouseEvent<HTMLElement>) => void }) => ReactNode }) {
   const view = useApp((st) => st.prefs.viewMode);
   const views = VIEW_MODES.filter((m) => m.id !== 'thinking' || hasThinking(s));
+  const [open, setOpen] = useState(false);
+  const [at, setAt] = useState({ x: 0, y: 0 });
+  const onClick = (e: MouseEvent<HTMLElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    // A keyboard "click" has no pointer position.
+    setAt(e.detail === 0 ? { x: rect.left, y: rect.bottom } : { x: e.clientX, y: e.clientY });
+    setOpen(true);
+  };
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-60">
+    <>
+      {children({ onClick })}
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger asChild>
+          <span aria-hidden className="pointer-events-none fixed size-0" style={{ left: at.x, top: at.y }} />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" sideOffset={0} className="w-60" onCloseAutoFocus={(e) => e.preventDefault()}>
         <DropdownMenuItem onSelect={() => void renameSession(s.meta.id)}>Rename</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => void copyText(s.meta.cwd)}>Copy {s.meta.worktree ? 'worktree' : 'folder'} path</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => void exportHtml(s.meta.id)}>Export as HTML</DropdownMenuItem>
@@ -61,18 +79,34 @@ function SessionMenu({ s, trigger }: { s: SessionView; trigger: ReactNode }) {
           {OUTPUT_STYLE_INFO.map((o) => <DropdownMenuRadioItem key={o.id} value={o.id} title={o.desc}>{o.name}</DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" onSelect={() => void archiveSession(s.meta.id)}>Archive</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => void archiveSession(s.meta.id)}>Archive</DropdownMenuItem>
+        <DropdownMenuItem variant="destructive" onSelect={() => void deleteSession(s.meta.id)}>Delete…</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
+  );
+}
+
+/** Editors that are installed, plus terminal and file manager. */
+function OpenInMenu({ id }: { id: string }) {
+  const targets = useOpenTargets();
+  return (
+    <DropdownMenu onOpenChange={(o) => o && refreshOpenTargets()}>
+      <DropdownMenuTrigger asChild>
+        <HeaderButton title="Open in…"><ExternalLinkIcon className="size-4" /></HeaderButton>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuLabel className="text-xs text-muted-foreground">Open in</DropdownMenuLabel>
+        {targets.map((t) => (
+          <DropdownMenuItem key={t.id} onSelect={() => call('sessions:openIn', id, t.id).catch(fail)}>
+            <OpenTargetIcon target={t} />
+            {OPEN_TARGET_INFO[t.id].label}
+          </DropdownMenuItem>
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
-
-const OPEN_IN: { id: OpenTarget; label: string; badge: string; color: string }[] = [
-  { id: 'vscode', label: 'VS Code', badge: 'VS', color: '#2f80ed' },
-  { id: 'cursor', label: 'Cursor', badge: 'Cu', color: '#3a3a3a' },
-  { id: 'terminal', label: 'Terminal', badge: '>_', color: '#444' },
-  { id: 'folder', label: isMac ? 'Finder' : 'File Explorer', badge: 'F', color: '#e3a21a' },
-];
 
 function Header({ s, title }: { s?: SessionView; title?: string }) {
   const collapsed = useApp((st) => st.sidebarCollapsed);
@@ -84,16 +118,15 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
       {collapsed && <SidebarToggle />}
       {s ? (
         <>
-          <SessionMenu
-            s={s}
-            trigger={
-              <button className="flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium hover:bg-accent">
+          <SessionMenu s={s}>
+            {(trigger) => (
+              <button {...trigger} className="flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium hover:bg-accent">
                 {work ? <FolderIcon className="size-4 shrink-0 text-muted-foreground" /> : <LaptopIcon className="size-4 shrink-0 text-muted-foreground" />}
                 <span className="truncate">{s.meta.title}</span>
                 <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
               </button>
-            }
-          />
+            )}
+          </SessionMenu>
           <span className="truncate rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
             {work ? (s.meta.scratch ? 'Temporary workspace' : fname(s.meta.projectPath)) : `${fname(s.meta.projectPath)}${s.meta.branch ? ` · ${s.meta.branch}` : ''}`}
           </span>
@@ -109,21 +142,7 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
               <HeaderButton on={p!.files} title="Files" onClick={() => togglePanel(s.meta.id, 'files')}><FolderIcon className="size-4" /></HeaderButton>
             </>
           )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <HeaderButton title="Open in…"><TerminalSquareIcon className="size-4" /></HeaderButton>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel className="text-xs text-muted-foreground">Open in</DropdownMenuLabel>
-              {OPEN_IN.map((o) => (
-                <DropdownMenuItem key={o.id} onSelect={() => call('sessions:openIn', s.meta.id, o.id).catch(fail)}>
-                  <span className="flex size-5 items-center justify-center rounded text-[9px] font-bold text-white" style={{ background: o.color }}>{o.badge}</span>
-                  {o.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <SessionMenu s={s} trigger={<HeaderButton title="More"><MoreVerticalIcon className="size-4" /></HeaderButton>} />
+          <OpenInMenu id={s.meta.id} />
         </>
       ) : (
         <span className="px-2 text-sm text-muted-foreground">{title ?? (useApp.getState().view === 'work' ? 'New task' : 'New session')}</span>
@@ -219,10 +238,11 @@ export function Main() {
   const view = useApp((st) => st.view);
   const customize = useApp((st) => st.customize);
   const scheduled = useApp((st) => st.scheduled);
+  const archived = useApp((st) => st.archived);
   return (
     <main className="flex h-full min-w-0 flex-col bg-background">
-      <Header s={customize || scheduled ? undefined : s} title={customize ? 'Customize' : scheduled ? 'Scheduled' : undefined} />
-      <div className="flex min-h-0 flex-1 flex-col">{customize ? <CustomizePage /> : scheduled ? <ScheduledPage /> : s ? <Thread key={s.meta.id} s={s} /> : view === 'work' ? <WorkWelcome /> : <CodeWelcome />}</div>
+      <Header s={customize || scheduled || archived ? undefined : s} title={customize ? 'Customize' : scheduled ? 'Scheduled' : archived ? 'Archived sessions' : undefined} />
+      <div className="flex min-h-0 flex-1 flex-col">{customize ? <CustomizePage /> : scheduled ? <ScheduledPage /> : archived ? <ArchivedPage /> : s ? <Thread key={s.meta.id} s={s} /> : view === 'work' ? <WorkWelcome /> : <CodeWelcome />}</div>
     </main>
   );
 }

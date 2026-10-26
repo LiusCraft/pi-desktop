@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type {
-  AppInfo, ImportableSession, ModelInfo, OutputStyle, PermissionMode, Project, SessionKind, SettingsPayload, ThinkingLevel,
+  AppInfo, ImportableSession, ModelInfo, OutputStyle, PermissionMode, Project, SessionKind, SettingsPayload, ThinkingLevel, WorktreeInfo,
 } from '@shared/protocol';
 import type { ScheduledTask } from '@shared/schedule';
 import { bridge } from '@/lib/api';
@@ -86,6 +86,10 @@ export interface AppState {
   customize: boolean;
   /** The Scheduled tasks page replaces the conversation area while it is open. */
   scheduled: boolean;
+  /** The Archived sessions page replaces the conversation area while it is open. */
+  archived: boolean;
+  /** An existing worktree of the selected project that the next new session will run in. */
+  adopt: WorktreeInfo | null;
   tasks: ScheduledTask[];
 }
 
@@ -116,6 +120,8 @@ export const useApp = create<AppState>()(
     menu: null,
     customize: false,
     scheduled: false,
+    archived: false,
+    adopt: null,
     tasks: [],
     sidebarCollapsed: boot.settings?.sidebarCollapsed ?? read('cc_collapsed', false),
   })),

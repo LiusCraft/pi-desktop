@@ -61,6 +61,14 @@ export interface SessionMeta {
   pr: PrSummary | null;
   archived?: boolean;
   imported?: boolean;
+  /** The session this one was spun off from (a suggested task), for the sidebar. */
+  parentId?: string;
+  /** Runs in a worktree the user made themselves: Pi Desktop never deletes it. */
+  external?: boolean;
+  /** The worktree still has to be created; the first start does it (so creating a session never waits for git). */
+  worktreeSetup?: { root: string; base: string };
+  /** What the user did with each suggested task, keyed `<toolCallId>:<index>`. */
+  suggestions?: Record<string, { state: 'started' | 'here' | 'dismissed'; sessionId?: string }>;
 }
 export interface SessionSummary extends SessionMeta {
   status: 'idle' | 'running';
@@ -77,7 +85,53 @@ export interface CreateSessionOptions {
   thinking?: ThinkingLevel | null;
   mode?: PermissionMode;
   outputStyle?: OutputStyle;
+  /** Code: use this existing worktree of the project instead of creating one. */
+  adoptPath?: string;
+  parentId?: string;
 }
+
+/** What deleting a session would throw away, for the confirmation. */
+export interface SessionCleanup {
+  /** A worktree Pi Desktop made for the session, removed with it. */
+  worktree: string | null;
+  branch: string | null;
+  dirty: number;
+  /** Commits only this session's branch has (not pushed, not in the base). */
+  unpushed: number;
+}
+export interface SessionRemoval {
+  worktreeRemoved: boolean;
+  /** The branch stays when it holds commits that exist nowhere else. */
+  branchKept: string | null;
+}
+
+/** A task the agent suggests; the user decides where it runs. */
+export interface SpawnTask {
+  title: string;
+  prompt: string;
+}
+
+/** One stage of getting a session ready, shown while it starts. */
+export interface SetupStep {
+  id: 'worktree' | 'agent';
+  label: string;
+  state: 'pending' | 'running' | 'done' | 'error';
+  detail?: string;
+}
+
+/** A folder that is a linked git worktree of another repository. */
+export interface WorktreeInfo {
+  /** This worktree's own folder. */
+  path: string;
+  /** The main checkout of the repository it belongs to. */
+  mainRoot: string;
+  branch: string | null;
+}
+export type AddProjectResult =
+  | { kind: 'added'; project: Project }
+  /** The folder is a worktree: ask the user how to treat it, then call `projects:adoptWorktree`. */
+  | { kind: 'worktree'; info: WorktreeInfo; known: boolean }
+  | null;
 
 export interface ModelInfo {
   provider: string;
@@ -384,6 +438,8 @@ export type HostEvent =
   | { type: 'ui_resolved'; sessionId: string; requestId: string; label: string }
   | { type: 'status'; sessionId: string; status: 'idle' | 'running' }
   | { type: 'meta'; sessionId: string; meta: SessionMeta }
+  /** Start-up progress of a session; null once it is ready. */
+  | { type: 'setup'; sessionId: string; steps: SetupStep[] | null }
   | { type: 'notify'; sessionId: string; message: string; level: 'info' | 'warning' | 'error' }
   | { type: 'task'; sessionId: string; update: TaskUpdate }
   /** The scheduled tasks changed (edited, ran, or finished a one-off). */
@@ -578,7 +634,12 @@ export interface BootPayload {
   settings: SettingsPayload;
   info: Pick<AppInfo, 'platform' | 'version' | 'demo' | 'agentDir'>;
 }
-export type OpenTarget = 'vscode' | 'cursor' | 'terminal' | 'folder';
+export type OpenTarget =
+  | 'vscode' | 'vscode-insiders' | 'cursor' | 'windsurf' | 'trae' | 'antigravity' | 'vscodium' | 'zed' | 'sublime'
+  | 'idea' | 'webstorm' | 'pycharm' | 'goland' | 'rustrover' | 'clion' | 'phpstorm'
+  | 'terminal' | 'folder';
+/** An "Open in" choice; `icon` is the installed app's own icon as a data URL, when it could be read. */
+export interface OpenTargetEntry { id: OpenTarget; icon?: string }
 
 // ------------------------------------------------------------ the renderer API
 
@@ -600,7 +661,9 @@ export interface Api {
   'diagram:get'(token: string): string | null;
 
   'projects:list'(): Project[];
-  'projects:add'(): Project | null;
+  'projects:add'(): AddProjectResult;
+  /** After `projects:add` found a worktree: add its repository and use it as a session, or add the folder as its own project. */
+  'projects:adoptWorktree'(choice: 'session' | 'project'): { project: Project; adopt: WorktreeInfo | null } | null;
   'projects:remove'(path: string): Project[];
   'work:folders'(): Project[];
   'work:addFolder'(): Project | null;
@@ -612,6 +675,8 @@ export interface Api {
   'attachments:clipboard'(): ClipboardImportResult;
 
 
+  /** Editors found on this machine, plus the terminal and file manager. */
+  'app:openTargets'(): OpenTargetEntry[];
   'sessions:openIn'(id: string, target: OpenTarget, rel?: string): void;
   'sessions:openPath'(id: string, rel: string, reveal: boolean): void;
 
@@ -623,8 +688,13 @@ export interface Api {
   'sessions:respond'(id: string, requestId: string, response: UiResponse): void;
   'sessions:setMode'(id: string, mode: PermissionMode): void;
   'sessions:setStyle'(id: string, style: OutputStyle): void;
-  'sessions:update'(id: string, patch: { title?: string; pr?: PrSummary | null }): SessionMeta;
+  'sessions:update'(id: string, patch: { title?: string; pr?: PrSummary | null; suggestion?: { key: string; state: 'here' | 'dismissed' } }): SessionMeta;
   'sessions:archive'(id: string): void;
+  'sessions:unarchive'(id: string): SessionMeta;
+  'sessions:inspect'(id: string): SessionCleanup;
+  'sessions:remove'(id: string): SessionRemoval;
+  /** Start a suggested task in a new session of the same project; `key` records the choice on the suggesting session. */
+  'sessions:spawn'(fromId: string, task: SpawnTask, key?: string): SessionMeta;
   'sessions:abort'(id: string): void;
   'sessions:clearQueue'(id: string): { steering: string[]; followUp: string[] };
   'sessions:newContext'(id: string): void;
@@ -693,7 +763,7 @@ export type ApiResult<K extends ApiChannel> = Awaited<ReturnType<Api[K]>>;
 /** Calls the agent host serves; main forwards these without looking at them. */
 export const HOST_CHANNELS = [
   'sessions:list', 'sessions:create', 'sessions:open', 'sessions:prompt', 'sessions:respond',
-  'sessions:setMode', 'sessions:setStyle', 'sessions:update', 'sessions:archive', 'sessions:abort',
+  'sessions:setMode', 'sessions:setStyle', 'sessions:update', 'sessions:archive', 'sessions:unarchive', 'sessions:inspect', 'sessions:remove', 'sessions:spawn', 'sessions:abort',
   'sessions:clearQueue', 'sessions:newContext', 'sessions:compact', 'sessions:stats', 'sessions:exportHtml',
   'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:bash',
   'sessions:changes', 'sessions:pr', 'sessions:files', 'sessions:readFile', 'sessions:readImage',
@@ -710,10 +780,10 @@ export const HOST_CHANNELS = [
 export const MAIN_CHANNELS = [
   'app:info', 'app:notify', 'app:openExternal', 'app:revealPath', 'app:pickFolder',
   'settings:open', 'settings:get', 'settings:set', 'settings:close', 'diagram:open', 'diagram:get',
-  'projects:list', 'projects:add', 'projects:remove',
+  'projects:list', 'projects:add', 'projects:adoptWorktree', 'projects:remove',
   'work:folders', 'work:addFolder', 'work:useFolder', 'work:removeFolder',
   'attachments:import', 'attachments:pick', 'attachments:clipboard',
-  'sessions:openIn', 'sessions:openPath',
+  'app:openTargets', 'sessions:openIn', 'sessions:openPath',
 ] as const satisfies readonly ApiChannel[];
 
 export const API_CHANNELS: readonly ApiChannel[] = [...MAIN_CHANNELS, ...HOST_CHANNELS];
@@ -737,6 +807,7 @@ export interface HostInternal {
   'host:cancelLogins'(): void;
   'host:meta'(id: string): SessionMeta;
   'host:importAttachments'(sources: AttachmentSource[]): AttachmentImportResult;
+  'host:worktree'(dir: string): WorktreeInfo | null;
   'host:shutdown'(): void;
 }
 export interface HostInitOptions {

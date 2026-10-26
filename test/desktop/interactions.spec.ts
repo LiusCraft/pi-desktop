@@ -82,7 +82,7 @@ test('file menus, preview excerpts, diff comments, send, fork and rewind', async
   expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe('src/utils/date.js');
   await date.click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Open in', exact: true }).hover();
-  await expect(page.getByRole('menuitem', { name: 'VS Code', exact: true })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Terminal', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await date.click();

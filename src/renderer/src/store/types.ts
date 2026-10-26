@@ -1,6 +1,6 @@
 import type { Attachment, DecodedAttachment } from '@shared/attachments';
 import type {
-  FileChange, GitState, PrStatus, PrSummary, SessionMeta, SlashCommand, ThinkingLevel, UiRequest,
+  FileChange, GitState, PrStatus, PrSummary, SessionMeta, SetupStep, SlashCommand, SpawnTask, ThinkingLevel, UiRequest,
 } from '@shared/protocol';
 import type { ToolState } from '@/lib/tools';
 import type { DraftSubmission } from './drafts';
@@ -46,6 +46,8 @@ export type Item =
   | { kind: 'perm'; key: string; requestId: string | null; toolCallId: string; title: string; resolved: string | null }
   | { kind: 'ask'; key: string; requestId: string | null; request: UiRequest; resolved: string | null }
   | { kind: 'plan'; key: string; toolCallId: string | null; title: string; md: string; requestId: string | null; resolved: string | null }
+  /** Tasks the agent suggests; what the user did with each lives in `meta.suggestions`. */
+  | { kind: 'suggest'; key: string; toolCallId: string; tasks: SpawnTask[] }
   | { kind: 'foot'; key: string; t: number; usage?: string };
 
 export type ItemOf<K extends Item['kind']> = Extract<Item, { kind: K }>;
@@ -107,6 +109,8 @@ export interface SessionView {
   pendingUser: string[];
   stopping: boolean;
   historyBusy: boolean;
+  /** Start-up progress while the session is being made ready; null once it is. */
+  setup: SetupStep[] | null;
   /** Bumped when the agent host exits; in-flight work from before must not apply. */
   hostEpoch: number;
   /** Streaming message state. */

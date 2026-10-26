@@ -297,7 +297,13 @@ export function SettingsApp() {
       </Panel>
     );
     const add = async (kind: 'project' | 'folder') => {
-      await (kind === 'project' ? call('projects:add') : call('work:addFolder')).catch((e) => toast.error(errText(e)));
+      try {
+        const added = await (kind === 'project' ? call('projects:add') : call('work:addFolder'));
+        // A worktree is asked about in the main window's flow; here it simply becomes a project of its own.
+        if (added && 'kind' in added && added.kind === 'worktree') await call('projects:adoptWorktree', 'project');
+      } catch (e) {
+        toast.error(errText(e));
+      }
       await reloadLists();
     };
     body = (

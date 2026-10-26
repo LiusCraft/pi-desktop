@@ -15,8 +15,9 @@ import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import { buildMessage, decodeUserContent } from '@shared/attachments';
 import type {
   AgentDraft, ConnectorDraft, SkillDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
-  PrSummary, SessionMeta, SessionStats, Settings, SubagentProgress, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
+  PrSummary, SessionCleanup, SessionMeta, SessionRemoval, SessionStats, SetupStep, Settings, SpawnTask, SubagentProgress, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
 } from '@shared/protocol';
+import { decodePeerMessage, encodePeerMessage, isPeerMessage } from '@shared/peer-message';
 import { appAgentsDir, appWorkDir, appExtensionsDir, worktreeDir as resolveWorktreeDir } from './app-paths';
 import { validatePromptPayload } from './attachments';
 import workPrompt from './work-prompt.md?raw';
@@ -164,8 +165,9 @@ export class SessionHub {
   isRunning(id: string) {
     return this.live.get(id)?.status === 'running';
   }
+  /** Every session, archived ones included: the UI decides what to show. */
   list(): SessionSummary[] {
-    return this.metas.filter((m) => !m.archived).map((m) => ({ ...m, status: this.live.get(m.id)?.status ?? 'idle' }));
+    return this.metas.map((m) => ({ ...m, status: this.live.get(m.id)?.status ?? 'idle' }));
   }
 
   // ------------------------------------------------------------ models
@@ -216,6 +218,7 @@ export class SessionHub {
     const base = {
       id, model: opts.model ?? null, thinking: opts.thinking ?? null, mode: opts.mode || 'auto', outputStyle: opts.outputStyle || 'default',
       sessionFile: null, createdAt: Date.now(), updatedAt: Date.now(), pr: null,
+      ...(opts.parentId ? { parentId: opts.parentId } : {}),
     } satisfies Partial<SessionMeta>;
     let meta: SessionMeta;
     if (opts.kind === 'work') {
@@ -233,23 +236,37 @@ export class SessionHub {
       const projectPath = opts.projectPath;
       if (!projectPath) throw new Error('Choose a project first');
       const root = await git.repoRoot(projectPath);
-      const baseCommit = root ? await git.head(root) : null;
+      const headCommit = root ? await git.head(root) : null;
+      let baseCommit = headCommit;
       let cwd = projectPath;
       let branch = root ? await git.currentBranch(root) : null;
       const baseBranch = branch;
-      if (root && baseCommit && opts.worktree !== false) {
+      let external = false;
+      let worktreeSetup: SessionMeta['worktreeSetup'];
+      if (root && headCommit && opts.adoptPath) {
+        // The user's own worktree: work in it as it is, and diff against where it left the main branch.
+        if (!fs.existsSync(opts.adoptPath)) throw new Error(`The worktree no longer exists: ${opts.adoptPath}`);
+        cwd = opts.adoptPath;
+        branch = await git.currentBranch(cwd);
+        baseCommit = (await git.mergeBase(cwd, headCommit)) ?? (await git.head(cwd)) ?? headCommit;
+        external = true;
+      } else if (root && headCommit && opts.worktree !== false) {
         branch = `claude/${slug}`;
         // The root is configurable in Settings; existing sessions keep their recorded cwd.
         cwd = path.join(this.worktreeRoot(), `${path.basename(root)}-${slug}`);
-        await git.addWorktree(root, cwd, branch, baseCommit);
+        // git is slow here: the first start makes the worktree, so creating the session returns at once.
+        worktreeSetup = { root, base: headCommit };
       }
       meta = {
         ...base, kind: 'code', ...this.titleState(opts.title, opts.autoName, 'New session'),
         projectPath, cwd, branch, baseBranch, baseCommit, worktree: cwd !== projectPath,
+        ...(external ? { external } : {}), ...(worktreeSetup ? { worktreeSetup } : {}),
       };
     }
     this.metas.unshift(meta);
     this.save();
+    // Warm up in the background so the agent is ready by the time the first message is sent.
+    void this.ensure(id).catch(() => {});
     return meta;
   }
 
@@ -271,9 +288,46 @@ export class SessionHub {
     return resolveWorktreeDir(this.opts.dataDir, settings.worktreeDir);
   }
 
+  /** Getting a session ready is slow (worktree, extensions, MCP): report each stage so the UI can show it. */
   private async start(id: string): Promise<Live> {
     const m = this.meta(id);
     if (m.archived) throw new Error('This session is archived');
+    const steps: SetupStep[] = [];
+    if (m.worktreeSetup) steps.push({ id: 'worktree', label: `创建 git worktree（${m.branch}）`, state: 'running' });
+    steps.push({ id: 'agent', label: '启动 Agent，加载扩展与工具', state: m.worktreeSetup ? 'pending' : 'running' });
+    const send = () => this.emit({ type: 'setup', sessionId: id, steps: steps.map((x) => ({ ...x })) });
+    const report = (stage: SetupStep['id'], state: SetupStep['state'], detail?: string) => {
+      const step = steps.find((x) => x.id === stage);
+      if (step) Object.assign(step, { state, detail });
+      send();
+    };
+    send();
+    try {
+      if (m.worktreeSetup) {
+        await this.createWorktree(m);
+        report('worktree', 'done');
+        report('agent', 'running');
+      }
+      const live = await this.startRuntime(id, m);
+      this.emit({ type: 'setup', sessionId: id, steps: null });
+      return live;
+    } catch (err) {
+      const stage = steps.find((x) => x.state === 'running');
+      if (stage) report(stage.id, 'error', err instanceof Error ? err.message : String(err));
+      throw err;
+    }
+  }
+
+  private async createWorktree(m: SessionMeta) {
+    const setup = m.worktreeSetup;
+    if (!setup || !m.branch) return;
+    // A folder with its own .git is a worktree an earlier, interrupted start already made.
+    if (!fs.existsSync(path.join(m.cwd, '.git'))) await git.addWorktree(setup.root, m.cwd, m.branch, setup.base);
+    delete m.worktreeSetup;
+    this.save();
+  }
+
+  private async startRuntime(id: string, m: SessionMeta): Promise<Live> {
     if (!fs.existsSync(m.cwd)) throw new Error(`The session folder no longer exists: ${m.cwd}`);
     const live: Live = {
       id,
@@ -289,6 +343,11 @@ export class SessionHub {
     live.runtime.setRebindSession(() => this.bind(live));
     await this.bind(live);
     this.live.set(id, live);
+    // Archived or deleted while it was starting: do not leave an agent behind.
+    if (m.archived || !this.metas.includes(m)) {
+      await this.dispose(id);
+      throw new Error('This session was closed while it was starting');
+    }
     return live;
   }
 
@@ -328,6 +387,11 @@ export class SessionHub {
       ask: (request, signal) => this.ask(live, request, signal),
       setMode: (mode) => this.applyMode(live.id, mode),
       runSubagent: (run) => this.runSubagent(live, run),
+      peers: {
+        list: () => this.peerList(live.id),
+        read: (id, limit) => this.peerRead(live.id, id, limit),
+        send: (id, text) => this.peerSend(live.id, id, text),
+      },
       agents: () => loadAgents(appAgentsDir(this.opts.dataDir)),
       taskUpdate: (update) => {
         if (!live.disposed) this.emit({ type: 'task', sessionId: live.id, update });
@@ -728,7 +792,7 @@ export class SessionHub {
   private maybeNameFromPrompt(id: string, message: string) {
     const m = this.meta(id);
     const text = message.trim();
-    if (!m.autoName || m.titleLocked || m.nameAttempted || !text || text.startsWith('/')) return;
+    if (!m.autoName || m.titleLocked || m.nameAttempted || !text || text.startsWith('/') || isPeerMessage(text)) return;
     const placeholder = naming.titleFromPrompt(text);
     if (!placeholder) return;
     m.nameAttempted = true;
@@ -898,9 +962,10 @@ export class SessionHub {
     this.emitMeta(m);
   }
 
-  update(id: string, patch: { title?: string; pr?: PrSummary | null }) {
+  update(id: string, patch: { title?: string; pr?: PrSummary | null; suggestion?: { key: string; state: 'here' | 'dismissed' } }) {
     const m = this.meta(id);
     if (patch.pr !== undefined) m.pr = patch.pr;
+    if (patch.suggestion) m.suggestions = { ...m.suggestions, [patch.suggestion.key]: { state: patch.suggestion.state } };
     if (patch.title?.trim()) {
       // A title set by the user is final: stop the placeholder/auto-naming path.
       Object.assign(m, { title: patch.title.trim(), titleLocked: true, autoName: false });
@@ -911,10 +976,127 @@ export class SessionHub {
     return { ...m };
   }
 
+  /** Closes the agent but keeps everything on disk (worktree included), so unarchiving restores the session as it was. */
   async archive(id: string) {
     await this.dispose(id);
-    this.meta(id).archived = true;
+    const m = this.meta(id);
+    m.archived = true;
     this.save();
+    this.emitMeta(m);
+  }
+  unarchive(id: string) {
+    const m = this.meta(id);
+    m.archived = false;
+    this.save();
+    this.emitMeta(m);
+    return { ...m };
+  }
+
+  /** The worktree Pi Desktop made for a session; one the user made themselves is never touched. */
+  private ownsWorktree(m: SessionMeta) {
+    return m.kind === 'code' && m.worktree && !m.external && m.cwd !== m.projectPath;
+  }
+
+  /** What deleting would lose, so the confirmation can say so. */
+  async inspect(id: string): Promise<SessionCleanup> {
+    const m = this.meta(id);
+    if (!this.ownsWorktree(m)) return { worktree: null, branch: null, dirty: 0, unpushed: 0 };
+    let dirty = 0, unpushed = 0;
+    if (fs.existsSync(m.cwd)) {
+      dirty = (await git.workState(m.cwd)).dirty.length;
+      unpushed = await git.unpushedCommits(m.cwd, 'HEAD', m.baseCommit);
+    }
+    return { worktree: m.cwd, branch: m.branch, dirty, unpushed };
+  }
+
+  /** Delete the session from Pi Desktop: its record, its conversation file and the worktree it made. The project itself is untouched. */
+  async remove(id: string): Promise<SessionRemoval> {
+    const m = this.meta(id);
+    await this.dispose(id);
+    const result: SessionRemoval = { worktreeRemoved: false, branchKept: null };
+    if (this.ownsWorktree(m)) {
+      const root = await git.repoRoot(m.projectPath);
+      if (root) {
+        await git.removeWorktree(root, m.cwd);
+        result.worktreeRemoved = true;
+        // Commits that exist nowhere else outlive the session on their branch.
+        if (m.branch && !(await git.deleteBranch(root, m.branch, m.baseCommit))) result.branchKept = m.branch;
+      }
+    }
+    // A session imported from the pi CLI points at the user's own file.
+    if (m.sessionFile && !m.imported) fs.rmSync(m.sessionFile, { force: true });
+    this.metas = this.metas.filter((x) => x.id !== id);
+    for (const child of this.metas) if (child.parentId === id) delete child.parentId;
+    this.save();
+    return result;
+  }
+
+  /** Start a suggested task in a new session beside this one, and send it the task. */
+  async spawn(fromId: string, task: SpawnTask, key?: string): Promise<SessionMeta> {
+    const from = this.meta(fromId);
+    const prompt = task.prompt.trim();
+    if (!prompt) throw new Error('The task has no instructions');
+    const meta = await this.create({
+      kind: from.kind,
+      projectPath: from.kind === 'work' ? from.cwd : from.projectPath,
+      worktree: from.kind === 'code' ? from.worktree : false,
+      title: task.title.trim().slice(0, 80) || 'New session',
+      model: from.model, thinking: from.thinking, outputStyle: from.outputStyle, parentId: from.id,
+      // A suggestion the user accepts must not silently inherit "bypass".
+      mode: from.mode === 'bypass' ? 'auto' : from.mode,
+    });
+    if (key) {
+      from.suggestions = { ...from.suggestions, [key]: { state: 'started', sessionId: meta.id } };
+      this.save();
+      this.emitMeta(from);
+    }
+    this.emitMeta(meta);
+    void this.prompt(meta.id, { text: prompt, attachments: [], clientId: crypto.randomUUID() }, 'steer').catch((err: Error) =>
+      this.emit({ type: 'notify', sessionId: meta.id, message: err.message, level: 'error' }));
+    return { ...meta };
+  }
+
+  // ------------------------------------------------------------ talking to other sessions
+
+  private peer(fromId: string, toId: string) {
+    const from = this.meta(fromId);
+    const to = this.metas.find((x) => x.id === toId);
+    if (!to || to.id === from.id) throw new Error(`No other session ${toId}. Use pidesk_list_sessions to see the ids.`);
+    if (to.kind !== from.kind || to.projectPath !== from.projectPath) throw new Error('That session belongs to a different project.');
+    if (to.archived) throw new Error('That session is archived.');
+    return { from, to };
+  }
+
+  /** The other open sessions of this session's project, most recently active first. */
+  peerList(fromId: string) {
+    const from = this.meta(fromId);
+    return this.metas
+      .filter((m) => m.id !== from.id && !m.archived && m.kind === from.kind && m.projectPath === from.projectPath)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, 20)
+      .map((m) => ({ id: m.id, title: m.title, status: this.live.get(m.id)?.status ?? 'idle', branch: m.branch, updatedAt: m.updatedAt }));
+  }
+
+  /** The last few user and assistant messages of another session of the project. */
+  peerRead(fromId: string, toId: string, limit = 10) {
+    const { to } = this.peer(fromId, toId);
+    return to.sessionFile && fs.existsSync(to.sessionFile) ? readTranscript(to.sessionFile, Math.max(1, Math.min(limit, 30))) : [];
+  }
+
+  private peerSent = new Map<string, number[]>();
+  /** Deliver a message to another session: it starts a turn there, or waits until the one in progress ends. */
+  async peerSend(fromId: string, toId: string, text: string): Promise<'delivered' | 'queued'> {
+    const { from, to } = this.peer(fromId, toId);
+    const body = text.trim();
+    if (!body) throw new Error('The message is empty');
+    // Two sessions answering each other would never stop: cap what one session may send to another.
+    const key = `${from.id}>${to.id}`;
+    const recent = (this.peerSent.get(key) ?? []).filter((t) => Date.now() - t < 10 * 60_000);
+    if (recent.length >= 8) throw new Error('Too many messages to that session in a short time. Wait for it, or tell the user.');
+    this.peerSent.set(key, [...recent, Date.now()]);
+    const queued = this.isRunning(to.id);
+    await this.prompt(to.id, { text: encodePeerMessage({ id: from.id, title: from.title }, body.slice(0, 20_000)), attachments: [], clientId: crypto.randomUUID() }, 'followUp');
+    return queued ? 'queued' : 'delivered';
   }
 
   private async dispose(id: string) {
@@ -1143,6 +1325,40 @@ export class SessionHub {
     this.suggesters.clear();
     await Promise.all([...this.live.keys()].map((id) => this.dispose(id)));
   }
+}
+
+export interface TranscriptLine {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
+/** The text of the last `limit` user and assistant messages in a pi session file; tool traffic is left out. */
+export function readTranscript(file: string, limit: number): TranscriptLine[] {
+  const out: TranscriptLine[] = [];
+  try {
+    for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+      if (!line) continue;
+      const entry = JSON.parse(line);
+      const message = entry.type === 'message' ? entry.message : null;
+      if (message?.role !== 'user' && message?.role !== 'assistant') continue;
+      const blocks: any[] = Array.isArray(message.content) ? message.content : [];
+      let text = typeof message.content === 'string' ? message.content : blocks.filter((b) => b.type === 'text').map((b) => b.text).join('');
+      if (message.role === 'user') {
+        text = decodeUserContent(message.content).text;
+        if (text.startsWith('[pi-desktop]')) continue;
+        const peer = decodePeerMessage(text);
+        if (peer) text = `(message from session "${peer.fromTitle}") ${peer.text}`;
+      } else if (!text) {
+        const tools = blocks.filter((b) => b.type === 'toolCall').map((b) => b.name);
+        if (!tools.length) continue;
+        text = `[used tools: ${[...new Set(tools)].join(', ')}]`;
+      }
+      out.push({ role: message.role, text: text.length > 2000 ? `${text.slice(0, 2000)}…` : text });
+    }
+  } catch {
+    // A file that is half-written or gone simply has no readable history.
+  }
+  return out.slice(-limit);
 }
 
 export function readSessionHeader(file: string): Omit<ImportableSession, 'file'> | null {

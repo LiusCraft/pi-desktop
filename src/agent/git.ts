@@ -2,7 +2,7 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { FileChange, GitState, PrStatus } from '@shared/protocol';
+import type { FileChange, GitState, PrStatus, WorktreeInfo } from '@shared/protocol';
 import { childEnv } from './env';
 
 const MAX_FILE = 512 * 1024;
@@ -34,6 +34,48 @@ export async function currentBranch(dir: string) {
 export async function addWorktree(repo: string, dest: string, branch: string, base = 'HEAD') {
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   await git(repo, 'worktree', 'add', '-b', branch, dest, base);
+}
+
+const samePath = (a: string, b: string) => {
+  const x = path.resolve(a), y = path.resolve(b);
+  return process.platform === 'win32' || process.platform === 'darwin' ? x.toLowerCase() === y.toLowerCase() : x === y;
+};
+
+/** Set when `dir` is a linked worktree (not the main checkout) of a repository with a normal `.git` folder. */
+export async function worktreeInfo(dir: string): Promise<WorktreeInfo | null> {
+  const top = await repoRoot(dir);
+  if (!top) return null;
+  const common = (await gitSafe(top, 'rev-parse', '--git-common-dir'))?.trim();
+  const own = (await gitSafe(top, 'rev-parse', '--git-dir'))?.trim();
+  if (!common || !own) return null;
+  const commonDir = path.resolve(top, common);
+  if (samePath(commonDir, path.resolve(top, own)) || path.basename(commonDir) !== '.git') return null;
+  const branch = await currentBranch(top);
+  return { path: top, mainRoot: path.dirname(commonDir), branch: branch && branch !== 'HEAD' ? branch : null };
+}
+
+/** The common ancestor of HEAD in `cwd` and `other`, or null when unrelated. */
+export async function mergeBase(cwd: string, other: string) {
+  const out = await gitSafe(cwd, 'merge-base', 'HEAD', other);
+  return out ? out.trim() : null;
+}
+
+/** Commits `ref` has that no remote branch and not `base` has: work that would be lost with the branch. */
+export async function unpushedCommits(cwd: string, ref: string, base: string | null) {
+  const out = await gitSafe(cwd, 'rev-list', '--count', ref, '--not', '--remotes', ...(base ? [base] : []));
+  return Number(out?.trim()) || 0;
+}
+
+/** Remove a worktree Pi Desktop created, including uncommitted files. A folder that is already gone is just forgotten. */
+export async function removeWorktree(repo: string, dest: string) {
+  if (fs.existsSync(dest)) await git(repo, 'worktree', 'remove', '--force', dest);
+  await gitSafe(repo, 'worktree', 'prune');
+}
+
+/** Delete a branch Pi Desktop created, unless it holds commits that exist nowhere else. Returns whether it was deleted. */
+export async function deleteBranch(repo: string, branch: string, base: string | null) {
+  if (await unpushedCommits(repo, branch, base)) return false;
+  return (await gitSafe(repo, 'branch', '-D', branch)) !== null;
 }
 
 /** Files changed in `cwd` relative to `base` (a commit), including untracked files. */

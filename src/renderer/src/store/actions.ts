@@ -2,12 +2,12 @@
 // in the app store; pi events are folded in by transcript.ts.
 import { toast } from 'sonner';
 import { buildMessage, decodeUserContent, type Attachment } from '@shared/attachments';
-import type { HostEvent, OutputStyle, PermissionMode, SessionKind, SessionMeta, ThinkingLevel, UiResponse } from '@shared/protocol';
+import type { HostEvent, OutputStyle, PermissionMode, SessionKind, SessionMeta, SpawnTask, ThinkingLevel, UiResponse } from '@shared/protocol';
 import { referencePrompt } from '@shared/context-reference';
 import { diffStats, positiveLine } from '@shared/tool-previews';
 import { call, errText, modKey } from '@/lib/api';
 import { DESKTOP_COMMANDS, MODES, VIEW_MODES, type ViewMode } from '@/lib/constants';
-import { fmtTok, relPath } from '@/lib/format';
+import { fmtTok, fname, relPath } from '@/lib/format';
 import { currentSession, getApp, isWork, setApp, setPref, updateSession, type AppState } from './app';
 import { dialogs } from './dialogs';
 import { activeDraft, drafts, getDraft, sessionDraftKey, useDrafts } from './drafts';
@@ -69,6 +69,7 @@ function flushEvents() {
           if (s.running) settle(s, true, view);
           s.hostEpoch++;
           s.loaded = false;
+          s.setup = null;
           s.waiting = null;
           for (const key of [...s.pendingUser]) {
             const p = findByKey(s, key);
@@ -111,6 +112,9 @@ function flushEvents() {
         }
         case 'ui_resolved':
           resolveUi(s, ev.requestId, ev.label);
+          break;
+        case 'setup':
+          s.setup = ev.steps;
           break;
         case 'status':
           if (ev.status === 'idle' && s.running) effects.push([s.meta.id, settle(s, false, view)]);
@@ -208,6 +212,7 @@ export function showCustomize() {
   setApp((st) => {
     st.customize = true;
     st.scheduled = false;
+    st.archived = false;
     st.menu = null;
   });
 }
@@ -216,6 +221,16 @@ export function showScheduled() {
   setApp((st) => {
     st.scheduled = true;
     st.customize = false;
+    st.archived = false;
+    st.menu = null;
+  });
+}
+
+export function showArchived() {
+  setApp((st) => {
+    st.archived = true;
+    st.customize = false;
+    st.scheduled = false;
     st.menu = null;
   });
 }
@@ -226,6 +241,7 @@ export function setView(view: SessionKind) {
     st.menu = null;
     st.customize = false;
     st.scheduled = false;
+    st.archived = false;
   });
   try {
     localStorage.setItem('cc_mode', JSON.stringify(view));
@@ -242,6 +258,7 @@ export function showWelcome() {
   setApp((st) => {
     st.customize = false;
     st.scheduled = false;
+    st.archived = false;
     st.current = null;
     st.lastByView[st.view] = null;
   });
@@ -256,8 +273,11 @@ export async function openSession(id: string, fresh = false) {
   setApp((st) => {
     st.customize = false;
     st.scheduled = false;
+    st.archived = false;
     st.current = id;
     st.view = view;
+    // Starting a session is slow (extensions, MCP): show that it is happening instead of an empty page.
+    if (!st.sessions[id].loaded && !st.sessions[id].setup) st.sessions[id].setup = [{ id: 'agent', label: '启动 Agent，加载扩展与工具', state: 'running' }];
     st.lastByView[view] = id;
     st.sessions[id].unread = false;
     if (st.sessions[id].detail?.type === 'file' && (st.sessions[id].detail as any).loading) st.sessions[id].detail = null;
@@ -281,7 +301,9 @@ export async function openSession(id: string, fresh = false) {
       x.meta = r.meta;
       if (!fresh) replay(x, r.messages, st.prefs.viewMode);
       x.loaded = true;
-      x.running = r.isStreaming;
+      x.setup = null;
+      // A new session is about to run its first message: the answer here predates it.
+      if (!fresh) x.running = r.isStreaming;
       x.model = r.model;
       x.thinking = r.thinking;
       x.levels = r.levels;
@@ -294,7 +316,9 @@ export async function openSession(id: string, fresh = false) {
   } catch (err) {
     setApp((st) => {
       const x = st.sessions[id];
-      if (x) push(x, { kind: 'note', key: newKey(), level: 'error', text: `无法打开会话：${errText(err)}` }, st.prefs.viewMode);
+      if (!x) return;
+      x.setup = null;
+      push(x, { kind: 'note', key: newKey(), level: 'error', text: `无法打开会话：${errText(err)}` }, st.prefs.viewMode);
     });
   }
 }
@@ -382,6 +406,7 @@ async function createSession(firstPrompt: string, draftKey: string) {
     kind: work ? 'work' : 'code',
     projectPath: work ? st.prefs.workFolder || null : st.prefs.project,
     worktree: !work && st.prefs.worktree,
+    adoptPath: !work && st.adopt && st.adopt.mainRoot === st.prefs.project ? st.adopt.path : undefined,
     title: firstPrompt.replace(/@\S+/g, '').trim().slice(0, 60) || 'New session',
     autoName: true,
     model: st.prefs.model,
@@ -395,10 +420,16 @@ async function createSession(firstPrompt: string, draftKey: string) {
     x.sessions[meta.id].loaded = true;
     x.sessions[meta.id].model = st.prefs.model;
     x.sessions[meta.id].levels = st.levels;
+    // The worktree and the agent come up in the background; the conversation opens straight away.
+    x.sessions[meta.id].setup = [
+      ...(meta.worktreeSetup ? [{ id: 'worktree' as const, label: `创建 git worktree（${meta.branch}）`, state: 'running' as const }] : []),
+      { id: 'agent', label: '启动 Agent，加载扩展与工具', state: meta.worktreeSetup ? 'pending' : 'running' },
+    ];
+    x.adopt = null;
   });
   const active = useDrafts.getState().active === draftKey;
   drafts.rekey(draftKey, sessionDraftKey(meta.id));
-  if (active) await openSession(meta.id, true);
+  if (active) void openSession(meta.id, true);
   return meta;
 }
 
@@ -626,14 +657,58 @@ export async function renameSession(id: string) {
   }
 }
 
-export async function archiveSession(id: string, confirm = false) {
+/** Archive keeps the conversation and any worktree on disk; the sidebar just stops listing it. */
+export async function archiveSession(id: string) {
   const s = getApp().sessions[id];
   if (!s) return;
-  if (confirm && !(await dialogs.confirm(`Archive “${s.meta.title}”?`, '任务会从列表中移除，文件夹里的文件不受影响。', 'Archive'))) return;
   try {
     await call('sessions:archive', id);
-    updateSession(id, (v) => void (v.meta.archived = true));
+    updateSession(id, (v) => {
+      v.meta.archived = true;
+      v.loaded = false;
+      v.running = false;
+      v.setup = null;
+    });
     if (getApp().current === id) showWelcome();
+    toast(`已归档“${s.meta.title}”`, { action: { label: '撤销', onClick: () => void unarchiveSession(id) } });
+  } catch (err) {
+    fail(err);
+  }
+}
+
+export async function unarchiveSession(id: string) {
+  try {
+    const meta = await call('sessions:unarchive', id);
+    updateSession(id, (v) => void (v.meta = meta));
+  } catch (err) {
+    fail(err);
+  }
+}
+
+/** Forget a session: the sidebar, its conversation file and the worktree Pi Desktop made for it. */
+function dropSession(id: string) {
+  if (getApp().current === id) showWelcome();
+  setApp((st) => {
+    delete st.sessions[id];
+    for (const view of ['code', 'work'] as const) if (st.lastByView[view] === id) st.lastByView[view] = null;
+  });
+}
+
+export async function deleteSession(id: string) {
+  const s = getApp().sessions[id];
+  if (!s) return;
+  try {
+    const lost = await call('sessions:inspect', id);
+    const lines = ['对话记录会被删除；项目里的文件不受影响。'];
+    if (lost.worktree) {
+      lines.push(`它的 git worktree 也会被删除：${lost.worktree}`);
+      if (lost.dirty) lines.push(`其中 ${lost.dirty} 个文件有未提交的改动，会一并丢失。`);
+      if (lost.unpushed) lines.push(`分支 ${lost.branch} 上有 ${lost.unpushed} 个未推送的提交；分支会保留，提交不会丢。`);
+    }
+    if (!(await dialogs.confirm(`删除“${s.meta.title}”？`, lines.join('\n'), 'Delete', true))) return;
+    const removed = await call('sessions:remove', id);
+    dropSession(id);
+    if (removed.branchKept) toast(`分支 ${removed.branchKept} 已保留，里面有只存在于它的提交`);
   } catch (err) {
     fail(err);
   }
@@ -854,17 +929,101 @@ export async function runTerminal(id: string, cmd: string) {
 
 export function selectProject(path: string) {
   setPref('project', path);
+  // An adopted worktree belongs to the project it came with.
+  if (getApp().adopt && getApp().adopt!.mainRoot !== path) setApp((st) => void (st.adopt = null));
   if (!getApp().current) activateDraftFor();
   void refreshImportable();
 }
 
 export async function addProject() {
   try {
-    const p = await call('projects:add');
-    if (!p) return;
+    const added = await call('projects:add');
+    if (!added) return;
+    let project = added.kind === 'added' ? added.project : null;
+    let adopt = null;
+    if (added.kind === 'worktree') {
+      const { info } = added;
+      const main = fname(info.mainRoot);
+      const choice = await dialogs.choose(`“${fname(info.path)}”是 ${main} 的 worktree`, [
+        { label: `作为 ${main} 项目下的新会话`, hint: `直接在这个 worktree（${info.branch ?? '游离 HEAD'}）里工作，不再另建 worktree${added.known ? '' : `；同时把 ${main} 添加为项目`}` },
+        { label: '作为独立项目添加', hint: '把这个文件夹当成一个单独的项目' },
+      ]);
+      if (choice === null) return;
+      const result = await call('projects:adoptWorktree', choice === 0 ? 'session' : 'project');
+      if (!result) return;
+      project = result.project;
+      adopt = result.adopt;
+    }
+    if (!project) return;
     const projects = await call('projects:list');
     setApp((st) => void (st.projects = projects));
-    selectProject(p.path);
+    selectProject(project.path);
+    setApp((st) => void (st.adopt = adopt));
+  } catch (err) {
+    fail(err);
+  }
+}
+
+/** Take a project out of Pi Desktop's list. The folder stays; its sessions are archived, not deleted. */
+export async function removeProject(path: string) {
+  const sessions = Object.values(getApp().sessions).filter((s) => s.meta.kind === 'code' && s.meta.projectPath === path && !s.meta.archived);
+  const note = sessions.length ? `它的 ${sessions.length} 个会话会被归档，之后可以在 Archived sessions 里找回。` : '';
+  if (!(await dialogs.confirm(`从 Pi Desktop 移除“${fname(path)}”？`, `文件夹和里面的文件都不会被删除。${note}`, 'Remove', true))) return;
+  try {
+    for (const s of sessions) {
+      await call('sessions:archive', s.meta.id);
+      updateSession(s.meta.id, (v) => {
+        v.meta.archived = true;
+        v.loaded = false;
+        v.running = false;
+      });
+    }
+    const projects = await call('projects:remove', path);
+    const cur = currentSession();
+    if (cur && cur.meta.projectPath === path) showWelcome();
+    setApp((st) => {
+      st.projects = projects;
+      if (st.prefs.project === path) st.prefs.project = null;
+      if (st.adopt?.mainRoot === path) st.adopt = null;
+    });
+    if (!getApp().prefs.project) setPref('project', projects[0]?.path ?? null);
+    void refreshImportable();
+  } catch (err) {
+    fail(err);
+  }
+}
+
+// ------------------------------------------------------------ suggested tasks
+
+const keyOf = (item: { toolCallId: string }, index: number) => `${item.toolCallId}:${index}`;
+
+/** Run a suggested task in a new session of the same project; the user stays where they are. */
+export async function startSuggested(sid: string, item: { toolCallId: string }, index: number, task: SpawnTask) {
+  try {
+    const meta = await call('sessions:spawn', sid, task, keyOf(item, index));
+    setApp((st) => void (st.sessions[meta.id] ??= emptySession(meta)));
+    toast.success(`已在新会话中开始：${meta.title}`, { action: { label: '打开', onClick: () => void openSession(meta.id) } });
+  } catch (err) {
+    fail(err);
+  }
+}
+
+/** Hand a suggested task to the session that suggested it. */
+export async function doSuggestedHere(sid: string, item: { toolCallId: string }, index: number, task: SpawnTask) {
+  try {
+    const meta = await call('sessions:update', sid, { suggestion: { key: keyOf(item, index), state: 'here' } });
+    updateSession(sid, (v) => void (v.meta = meta));
+    const busy = !!getApp().sessions[sid]?.running;
+    await call('sessions:prompt', sid, { text: task.prompt, attachments: [], clientId: crypto.randomUUID() }, busy ? 'followUp' : 'steer');
+  } catch (err) {
+    fail(err);
+  }
+}
+
+export async function dismissSuggested(sid: string, item: { toolCallId: string }, index: number) {
+  try {
+    const meta = await call('sessions:update', sid, { suggestion: { key: keyOf(item, index), state: 'dismissed' } });
+    updateSession(sid, (v) => void (v.meta = meta));
   } catch (err) {
     fail(err);
   }

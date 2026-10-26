@@ -1,17 +1,19 @@
 import { useState } from 'react';
 import {
   ArchiveIcon, BoxIcon, ChevronDownIcon, ClockIcon, CodeXmlIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon, BrainIcon,
-  ListChecksIcon, MoonIcon, MoreHorizontalIcon, PanelLeftIcon, PlusIcon, SearchIcon, SettingsIcon, ShapesIcon, SunIcon,
-  TriangleAlertIcon,
+  ListChecksIcon, MoonIcon, MoreHorizontalIcon, PanelLeftIcon, PencilIcon, PlusIcon, SearchIcon, SettingsIcon, ShapesIcon, SunIcon,
+  Trash2Icon, TriangleAlertIcon,
 } from 'lucide-react';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { call, isMac, modKey } from '@/lib/api';
 import { ago, fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { archiveSession, openSession, selectProject, setView, showCustomize, showScheduled, showWelcome, toggleSidebar } from '@/store/actions';
+import {
+  archiveSession, deleteSession, openSession, removeProject, renameSession, selectProject, setView, showArchived, showCustomize, showScheduled, showWelcome, toggleSidebar,
+} from '@/store/actions';
 import { setApp, useApp } from '@/store/app';
 import type { SessionKind } from '@shared/protocol';
 import type { SessionView } from '@/store/types';
@@ -47,20 +49,40 @@ function StatusIcon({ s }: { s: SessionView }) {
   return <span className="flex size-4 shrink-0 items-center justify-center">{icon}</span>;
 }
 
-function SessionRow({ s, active, onArchive }: { s: SessionView; active: boolean; onArchive?: () => void }) {
+/** Sessions spun off from another one sit right under it; a session whose parent is gone is a root again. */
+function nest(list: SessionView[]) {
+  const ids = new Set(list.map((s) => s.meta.id));
+  const out: { s: SessionView; child: boolean }[] = [];
+  for (const s of list) {
+    if (s.meta.parentId && ids.has(s.meta.parentId)) continue;
+    out.push({ s, child: false });
+    for (const c of list.filter((x) => x.meta.parentId === s.meta.id)) out.push({ s: c, child: true });
+  }
+  return out;
+}
+
+function SessionRow({ s, active, child }: { s: SessionView; active: boolean; child?: boolean }) {
   const prNote = s.pr ? ` · PR #${s.pr.num} ${s.pr.state === 'open' && s.pr.draft ? 'draft' : s.pr.state}` : '';
   const title = s.waiting ? 'Waiting for your approval' : s.running ? 'Working…' : `${s.meta.title} · ${ago(s.meta.updatedAt || Date.now(), true)}${prNote}`;
   return (
-    <div className={cn('group flex h-8 items-center gap-2 rounded-lg px-2.5 text-sm', active ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent/70')}>
+    <div className={cn('group flex h-8 items-center gap-2 rounded-lg px-2.5 text-sm', child && 'ml-4', active ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent/70')}>
       <button className="flex min-w-0 flex-1 items-center gap-2 text-left" title={title} onClick={() => void openSession(s.meta.id)}>
         <StatusIcon s={s} />
         <span className={cn('truncate', s.unread && 'font-semibold')}>{s.meta.title}</span>
       </button>
-      {onArchive && (
-        <button className="hidden shrink-0 text-muted-foreground group-hover:block hover:text-foreground" title="Archive" onClick={onArchive}>
-          <MoreHorizontalIcon className="size-4" />
-        </button>
-      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button className="hidden shrink-0 text-muted-foreground group-hover:block hover:text-foreground data-[state=open]:block" title="More" aria-label="Session actions">
+            <MoreHorizontalIcon className="size-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-44">
+          <DropdownMenuItem onSelect={() => void renameSession(s.meta.id)}><PencilIcon />Rename</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => void archiveSession(s.meta.id)}><ArchiveIcon />Archive</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onSelect={() => void deleteSession(s.meta.id)}><Trash2Icon />Delete</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
@@ -81,7 +103,7 @@ function NavItem({ icon, children, onClick, hint, soon, active }: { icon: React.
 }
 
 /** Which full-page view (if any) replaces the conversation. */
-const usePage = () => useApp((s) => (s.scheduled ? 'scheduled' : s.customize ? 'customize' : null));
+const usePage = () => useApp((s) => (s.scheduled ? 'scheduled' : s.customize ? 'customize' : s.archived ? 'archived' : null));
 
 function CodeNav() {
   const page = usePage();
@@ -105,7 +127,14 @@ function CodeNav() {
         <NavItem icon={<MoreHorizontalIcon className="size-4" />} onClick={() => setMore((m) => !m)}>More</NavItem>
         {more && (
           <div className="pl-7">
-            {['Archived sessions', 'Usage', 'MCP servers'].map((x) => (
+            <button
+              aria-current={page === 'archived' ? 'page' : undefined}
+              className={cn('flex h-7 w-full items-center rounded-lg px-2.5 text-sm', page === 'archived' ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent')}
+              onClick={showArchived}
+            >
+              Archived sessions
+            </button>
+            {['Usage', 'MCP servers'].map((x) => (
               <button key={x} title={`${x}：即将推出`} aria-disabled className="flex h-7 w-full cursor-default items-center rounded-lg px-2.5 text-sm text-muted-foreground">{x}</button>
             ))}
           </div>
@@ -114,16 +143,29 @@ function CodeNav() {
       <div className="mt-4 space-y-4 px-2">
         {[...groups].map(([path, list]) => {
           const LIMIT = 5;
-          const collapsed = list.length > LIMIT && !expanded.has(path) && !list.slice(LIMIT).some((s) => s.meta.id === current);
+          const rows = nest(list);
+          const collapsed = rows.length > LIMIT && !expanded.has(path) && !rows.slice(LIMIT).some((r) => r.s.meta.id === current);
           return (
             <div key={path}>
-              <div className="group flex h-7 items-center px-2.5 text-xs font-medium text-muted-foreground" title={path}>
+              <div className="group flex h-7 items-center gap-0.5 px-2.5 text-xs font-medium text-muted-foreground" title={path}>
                 <span className="flex-1 truncate">{fname(path)}</span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="hidden rounded p-0.5 group-hover:block hover:bg-sidebar-accent hover:text-foreground data-[state=open]:block" title="Project actions" aria-label="Project actions">
+                      <MoreHorizontalIcon className="size-3.5" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-56">
+                    <DropdownMenuItem onSelect={() => void call('app:revealPath', path).catch(() => {})}>{isMac ? 'Reveal in Finder' : 'Show in File Explorer'}</DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem variant="destructive" onSelect={() => void removeProject(path)}>Remove from Pi Desktop</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <button className="hidden rounded p-0.5 group-hover:block hover:bg-sidebar-accent hover:text-foreground" title={`New session in ${fname(path)}`} onClick={() => { selectProject(path); showWelcome(); }}>
                   <PlusIcon className="size-3.5" />
                 </button>
               </div>
-              {(collapsed ? list.slice(0, LIMIT) : list).map((s) => <SessionRow key={s.meta.id} s={s} active={!page && s.meta.id === current} />)}
+              {(collapsed ? rows.slice(0, LIMIT) : rows).map(({ s, child }) => <SessionRow key={s.meta.id} s={s} child={child} active={!page && s.meta.id === current} />)}
               {collapsed && (
                 <button className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground" onClick={() => setExpanded((e) => new Set(e).add(path))}>Show more</button>
               )}
@@ -147,7 +189,8 @@ function WorkNav() {
         <NavItem icon={<BoxIcon className="size-4" />} soon hint="Projects 即将推出">Projects</NavItem>
         <NavItem icon={<ShapesIcon className="size-4" />} soon hint="Artifacts 即将推出">Artifacts</NavItem>
         <NavItem icon={<ClockIcon className="size-4" />} active={page === 'scheduled'} onClick={showScheduled} hint="Scheduled：按计划自动运行的任务">Scheduled</NavItem>
-        <NavItem icon={<ArchiveIcon className="size-4" />} active={page === 'customize'} onClick={showCustomize} hint="Customize：技能、连接器与插件">Customize</NavItem>
+        <NavItem icon={<ShapesIcon className="size-4" />} active={page === 'customize'} onClick={showCustomize} hint="Customize：技能、连接器与插件">Customize</NavItem>
+        <NavItem icon={<ArchiveIcon className="size-4" />} active={page === 'archived'} onClick={showArchived} hint="已归档的会话">Archived</NavItem>
       </nav>
       <div className="mt-4 flex h-7 items-center px-4 text-xs font-medium text-muted-foreground">
         <span className="flex-1">Tasks</span>
@@ -156,7 +199,7 @@ function WorkNav() {
         </button>
       </div>
       <div className="px-2">
-        {tasks.length ? tasks.map((s) => <SessionRow key={s.meta.id} s={s} active={!page && s.meta.id === current} onArchive={() => void archiveSession(s.meta.id, true)} />) : (
+        {tasks.length ? nest(tasks).map(({ s, child }) => <SessionRow key={s.meta.id} s={s} child={child} active={!page && s.meta.id === current} />) : (
           <div className="px-2.5 py-2 text-sm text-muted-foreground">No tasks yet</div>
         )}
       </div>

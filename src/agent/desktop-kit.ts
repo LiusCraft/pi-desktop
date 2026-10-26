@@ -70,6 +70,12 @@ export interface KitHost {
   setMode(mode: PermissionMode): void;
   /** Runs a subagent and returns its report; omit it to leave out the `task` tool. */
   runSubagent?(run: SubagentRun): Promise<string>;
+  /** The project's other sessions; omit it to leave out the session tools (subagents have none). */
+  peers?: {
+    list(): { id: string; title: string; status: string; branch: string | null; updatedAt: number }[];
+    read(id: string, limit: number): { role: string; text: string }[];
+    send(id: string, text: string): Promise<'delivered' | 'queued'>;
+  };
   /** The subagent identities to offer (built-in plus the user's); the built-ins when omitted. */
   agents?(): AgentType[];
   /** Pushes the progress of a background task to the UI (its tool call has already returned). */
@@ -91,7 +97,11 @@ While working, explain implementation choices and relevant codebase patterns in 
 Work collaboratively and teach as you go. Explain key concepts in plain language, and when a small piece of the work is a good learning exercise, leave a clearly scoped \`TODO(human)\` marker with instructions instead of completing that piece. Keep making progress on everything else; ask before handing over larger chunks.`,
 };
 
-const READ_ONLY_TOOLS = new Set(['read', 'grep', 'find', 'ls', 'pidesk_todo_write', 'pidesk_exit_plan_mode', 'pidesk_task', 'pidesk_bg_output', 'pidesk_bg_kill', 'tool_search', 'codemode']);
+const READ_ONLY_TOOLS = new Set([
+  'read', 'grep', 'find', 'ls', 'pidesk_todo_write', 'pidesk_exit_plan_mode', 'pidesk_task', 'pidesk_bg_output', 'pidesk_bg_kill', 'tool_search', 'codemode',
+  // Nothing here changes anything: a suggestion is only shown to the user, and the session tools below only look.
+  'pidesk_suggest_task', 'pidesk_list_sessions', 'pidesk_read_session',
+]);
 const EDIT_TOOLS = new Set(['edit', 'write']);
 const SHELL_TOOLS = new Set(['bash', 'powershell', 'pidesk_bg_shell']);
 
@@ -258,6 +268,87 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         };
       },
     });
+
+    // ---------------------------------------------------------------- pidesk_suggest_task
+    pi.registerTool({
+      name: 'pidesk_suggest_task',
+      label: 'Suggest task',
+      description:
+        'Offer the user a separate task when you notice work that is outside what they asked for (an unrelated bug, a follow-up refactor, a missing test). ' +
+        'It appears as a card with Start / Do it here buttons and runs nothing by itself. Keep working on the current task; do not wait for an answer.',
+      promptSnippet: 'Suggest side tasks to the user instead of doing unrelated work',
+      promptGuidelines: [
+        'When you find unrelated work worth doing, call pidesk_suggest_task with a self-contained prompt instead of expanding the current task.',
+      ],
+      parameters: Type.Object({
+        tasks: Type.Array(
+          Type.Object({
+            title: Type.String({ description: 'Short title, under 60 characters' }),
+            prompt: Type.String({ description: 'Complete, self-contained instructions: the new session knows nothing about this conversation' }),
+          }),
+          { minItems: 1, maxItems: 5 },
+        ),
+      }),
+      annotations: { readOnlyHint: true },
+      async execute(_id, params) {
+        return {
+          content: [{ type: 'text', text: `Suggested ${params.tasks.length} task${params.tasks.length > 1 ? 's' : ''} to the user. Carry on with the current task; they decide whether to start it.` }],
+          details: { tasks: params.tasks },
+        };
+      },
+    });
+
+    // ---------------------------------------------------------------- other sessions of the project
+    const peers = host.peers;
+    if (peers) {
+      pi.registerTool({
+        name: 'pidesk_list_sessions',
+        label: 'Sessions',
+        description: 'List the other sessions of this project (id, title, status, branch). Use it to find who to read from or message.',
+        parameters: Type.Object({}),
+        annotations: { readOnlyHint: true },
+        async execute() {
+          const list = peers.list();
+          const text = list.length
+            ? list.map((s) => `- ${s.id} · ${s.title} · ${s.status}${s.branch ? ` · ${s.branch}` : ''} · active ${new Date(s.updatedAt).toISOString()}`).join('\n')
+            : 'There are no other sessions in this project.';
+          return { content: [{ type: 'text', text }], details: { sessions: list } };
+        },
+      });
+      pi.registerTool({
+        name: 'pidesk_read_session',
+        label: 'Read session',
+        description: 'Read the most recent messages of another session of this project, to see what it is doing or has decided.',
+        parameters: Type.Object({
+          session_id: Type.String({ description: 'Id from pidesk_list_sessions' }),
+          limit: Type.Optional(Type.Number({ description: 'How many recent messages (default 10, at most 30)' })),
+        }),
+        annotations: { readOnlyHint: true },
+        async execute(_id, params) {
+          const lines = peers.read(params.session_id, params.limit ?? 10);
+          const text = lines.length ? lines.map((l) => `${l.role === 'user' ? 'User' : 'Assistant'}: ${l.text}`).join('\n\n') : 'That session has no messages yet.';
+          return { content: [{ type: 'text', text }], details: { session: params.session_id } };
+        },
+      });
+      pi.registerTool({
+        name: 'pidesk_send_message',
+        label: 'Message session',
+        description:
+          'Send a message to another session of this project, for example to hand over context or ask for a result. ' +
+          'If that session is busy the message waits until its current turn ends. It sees who sent it and may reply the same way; do not start long back-and-forth exchanges.',
+        parameters: Type.Object({
+          session_id: Type.String({ description: 'Id from pidesk_list_sessions' }),
+          message: Type.String({ description: 'The message: self-contained, since that session has not seen this conversation' }),
+        }),
+        async execute(_id, params) {
+          const outcome = await peers.send(params.session_id, params.message);
+          return {
+            content: [{ type: 'text', text: outcome === 'queued' ? 'That session is busy: the message will be delivered when its current turn ends.' : 'Delivered; that session is now working on it.' }],
+            details: { session: params.session_id, outcome },
+          };
+        },
+      });
+    }
 
     // ---------------------------------------------------------------- background tasks
     /** Tell the model a background task is over; it wakes up unless the user stopped it. */

@@ -1,10 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { CheckIcon, CircleAlertIcon } from 'lucide-react';
+import type { SetupStep } from '@shared/protocol';
 import { fmtDur, fmtTok } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { runningTasks } from '@/components/workspace/Panels';
 import { togglePanel } from '@/store/actions';
 import { useApp } from '@/store/app';
 import type { Item, SessionView } from '@/store/types';
-import { AskItem, FootItem, GroupItem, NoteItem, PermItem, PlanItem, TextItem, TodosItem, UserItem } from './Items';
+import { AskItem, FootItem, GroupItem, NoteItem, PermItem, PlanItem, SuggestItem, TextItem, TodosItem, UserItem } from './Items';
 
 function renderItem(sid: string, item: Item, items: Item[], index: number, view: string) {
   switch (item.kind) {
@@ -16,12 +19,43 @@ function renderItem(sid: string, item: Item, items: Item[], index: number, view:
     case 'perm': return <PermItem sid={sid} item={item} />;
     case 'ask': return <AskItem sid={sid} item={item} />;
     case 'plan': return <PlanItem sid={sid} item={item} />;
+    case 'suggest': return <SuggestItem sid={sid} item={item} />;
     case 'foot': {
       let prev: string | undefined;
       for (let i = index - 1; i >= 0; i--) if (items[i].kind === 'text') { prev = (items[i] as any).text; break; }
       return <FootItem sid={sid} item={item} prevText={prev} />;
     }
   }
+}
+
+/** What is happening while a session starts: the worktree, then the agent with its extensions and MCP servers. */
+function SetupCard({ steps }: { steps: SetupStep[] }) {
+  const failed = steps.some((x) => x.state === 'error');
+  return (
+    <div className="rounded-xl border bg-card px-4 py-3 text-sm">
+      <div className="mb-2 flex items-center gap-2 font-medium">
+        {failed ? <CircleAlertIcon className="size-4 text-destructive" /> : <span className="spark spin" />}
+        {failed ? '会话启动失败' : '正在启动会话…'}
+      </div>
+      <ul className="space-y-1.5">
+        {steps.map((step) => (
+          <li key={step.id} className="flex items-start gap-2">
+            <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
+              {step.state === 'done' ? <CheckIcon className="size-3.5 text-success" />
+                : step.state === 'error' ? <CircleAlertIcon className="size-3.5 text-destructive" />
+                : step.state === 'running' ? <span className="size-3 animate-spin rounded-full border-[1.5px] border-primary border-t-transparent" />
+                : <span className="size-2.5 rounded-full border-[1.5px] border-muted-foreground/40" />}
+            </span>
+            <span className="min-w-0">
+              <span className={cn(step.state === 'pending' || step.state === 'done' ? 'text-muted-foreground' : 'text-foreground')}>{step.label}</span>
+              {step.detail && <span className="block text-xs break-words text-destructive">{step.detail}</span>}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {failed && <div className="mt-2 text-xs text-muted-foreground">再发一条消息会重试；不需要这个会话时可以删除它。</div>}
+    </div>
+  );
 }
 
 function StatusLine({ s }: { s: SessionView }) {
@@ -32,6 +66,7 @@ function StatusLine({ s }: { s: SessionView }) {
     return () => clearInterval(t);
   }, [s.running]);
   const tasks = runningTasks(s).length;
+  if (s.setup) return null; // the start-up card says what is happening
   // Between turns, background tasks keep going: say so instead of showing a sleeping spark.
   if (!s.running && !tasks) return s.items.length ? <span className="spark opacity-60" /> : null;
   if (!s.running) {
@@ -84,6 +119,7 @@ export function Transcript({ s }: { s: SessionView }) {
         {s.items.map((item, i) => (
           <div key={item.key} className="transcript-item">{renderItem(s.meta.id, item, s.items, i, view)}</div>
         ))}
+        {s.setup && <SetupCard steps={s.setup} />}
         <StatusLine s={s} />
       </div>
     </div>

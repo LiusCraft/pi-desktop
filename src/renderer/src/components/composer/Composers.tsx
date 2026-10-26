@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ArrowUpIcon, CircleStopIcon, CornerDownLeftIcon, FolderIcon, FolderPlusIcon, GitBranchIcon, InfoIcon, LaptopIcon, PlusIcon } from 'lucide-react';
+import { ArrowUpIcon, CircleStopIcon, CornerDownLeftIcon, FolderIcon, FolderPlusIcon, GitBranchIcon, InfoIcon, LaptopIcon, PlusIcon, XIcon } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -8,7 +8,7 @@ import { modKey } from '@/lib/api';
 import { fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { addWorkFolder, addProject, selectProject, send, setWorkFolder, stop } from '@/store/actions';
-import { modelName, setPref, useApp, useCurrent } from '@/store/app';
+import { modelName, setApp, setPref, useApp, useCurrent } from '@/store/app';
 import { useDrafts } from '@/store/drafts';
 import { Clawd, moodOf } from './Clawd';
 import { ComposerInput, pickAttachments, type ComposerHandle } from './ComposerInput';
@@ -36,6 +36,7 @@ function NewSessionChips() {
   const project = useApp((st) => st.prefs.project);
   const worktree = useApp((st) => st.prefs.worktree);
   const branch = useApp((st) => st.projectBranch);
+  const adopt = useApp((st) => (st.adopt && st.adopt.mainRoot === st.prefs.project ? st.adopt : null));
   return (
     <div className="mb-2.5 flex flex-wrap items-center gap-2">
       <DropdownMenu>
@@ -65,7 +66,19 @@ function NewSessionChips() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      {project && (
+      {adopt && (
+        <div className="flex h-8 items-center rounded-lg bg-muted/80 text-sm text-foreground/85" title={`在已有的 worktree 里工作：${adopt.path}`}>
+          <span className="flex items-center gap-1.5 pr-2 pl-2.5">
+            <GitBranchIcon className="size-4 shrink-0" />
+            <span className="max-w-40 truncate">{adopt.branch ?? fname(adopt.path)}</span>
+            <span className="text-xs text-muted-foreground">已有 worktree</span>
+          </span>
+          <button className="h-full rounded-r-lg px-2 text-muted-foreground hover:bg-accent hover:text-foreground" title="不用它，新建 worktree" aria-label="不用已有 worktree" onClick={() => setApp((st) => void (st.adopt = null))}>
+            <XIcon className="size-3.5" />
+          </button>
+        </div>
+      )}
+      {project && !adopt && (
         <div className="flex h-8 items-center rounded-lg bg-muted/80 text-sm text-foreground/85">
           <span className="flex items-center gap-1.5 pr-2 pl-2.5" title={branch ? `Current branch: ${branch}` : 'Not a git repository'}>
             <GitBranchIcon className="size-4 shrink-0" />

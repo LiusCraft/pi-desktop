@@ -28,7 +28,7 @@ export function emptySession(meta: SessionMeta): SessionView {
     model: meta.model ?? null, thinking: meta.thinking ?? null, levels: [], commands: [], waiting: null, unread: false,
     todosKey: null, lastTodos: [], outputs: [], term: [], changes: [], gitState: null, pr: meta.pr, prHidden: false, files: null,
     panels: { diff: false, preview: false, files: false, terminal: false, progress: true, tasks: false }, detail: null, previewUrl: null,
-    pendingUser: [], stopping: false, historyBusy: false, hostEpoch: 0, cur: null,
+    pendingUser: [], stopping: false, historyBusy: false, setup: null, hostEpoch: 0, cur: null,
   };
 }
 
@@ -80,6 +80,11 @@ export function toolStart(s: SessionView, ev: { toolCallId: string; toolName: st
   if (bareName(ev.toolName) === 'todo_write') return;
   if (bareName(ev.toolName) === 'exit_plan_mode') {
     push(s, { kind: 'plan', key: newKey(), title: ev.args?.title || 'Plan', md: ev.args?.plan || '', toolCallId: ev.toolCallId, requestId: null, resolved: replay ? 'done' : null }, view);
+    return;
+  }
+  if (bareName(ev.toolName) === 'suggest_task') {
+    const tasks = (Array.isArray(ev.args?.tasks) ? ev.args.tasks : []).filter((t: any) => t?.title && t?.prompt);
+    if (tasks.length) push(s, { kind: 'suggest', key: newKey(), toolCallId: ev.toolCallId, tasks }, view);
     return;
   }
   const g = currentGroup(s, view);

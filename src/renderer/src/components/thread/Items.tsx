@@ -1,6 +1,7 @@
 import { memo, useState } from 'react';
-import { BookmarkIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, GitForkIcon, RotateCcwIcon, XIcon } from 'lucide-react';
+import { ArrowUpRightIcon, BookmarkIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, GitForkIcon, LightbulbIcon, MessagesSquareIcon, RotateCcwIcon, XIcon } from 'lucide-react';
 import { PLAN_CHOICES } from '@shared/protocol';
+import { decodePeerMessage, type PeerMessage } from '@shared/peer-message';
 import * as previews from '@shared/tool-previews';
 import { Markdown } from '@/components/common/Markdown';
 import { CopyGlyph, useCopy } from '@/components/common/Copy';
@@ -15,7 +16,9 @@ import { ago, fmtTok } from '@/lib/format';
 import { groupStats, groupSummary, isFileTool, toolLabel, type ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
 import { useApp, updateSession } from '@/store/app';
-import { answerUi, forkSession, openAgent, openDiffRef, openFileRef, openPlan, sessionDraftKey, userMessageAction } from '@/store/actions';
+import {
+  answerUi, dismissSuggested, doSuggestedHere, forkSession, openAgent, openDiffRef, openFileRef, openPlan, openSession, sessionDraftKey, startSuggested, userMessageAction,
+} from '@/store/actions';
 import { drafts } from '@/store/drafts';
 import { findByKey, findTool, permissionTitle } from '@/store/transcript';
 import type { ItemOf } from '@/store/types';
@@ -25,6 +28,8 @@ import type { ItemOf } from '@/store/types';
 export const UserItem = memo(function UserItem({ sid, item }: { sid: string; item: ItemOf<'user'> }) {
   const { copied, copy } = useCopy();
   const busy = useApp((state) => !!(state.sessions[sid]?.running || state.sessions[sid]?.historyBusy || state.sessions[sid]?.pendingUser.length));
+  const peer = decodePeerMessage(item.text);
+  if (peer) return <PeerMessageCard peer={peer} />;
   return (
     <div className={cn('flex flex-col items-end gap-1.5', item.queued && 'opacity-60')} title={item.queued ? '排队中：Pi Desktop 完成当前步骤后处理' : undefined}>
       <AttachmentTiles attachments={item.attachments} />
@@ -60,6 +65,79 @@ export const UserItem = memo(function UserItem({ sid, item }: { sid: string; ite
           <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => item.submission && drafts.recover(sessionDraftKey(sid), item.submission)}>
             Restore draft
           </Button>
+        </div>
+      )}
+    </div>
+  );
+});
+
+/** A message another session of the project sent: shown as theirs, with a way back to them. */
+function PeerMessageCard({ peer }: { peer: PeerMessage }) {
+  const known = useApp((st) => !!st.sessions[peer.fromId]);
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[85%] rounded-xl border bg-card px-3.5 py-2.5 text-sm">
+        <button
+          disabled={!known}
+          className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground enabled:hover:text-foreground"
+          title={known ? '打开发来消息的会话' : '那个会话已不存在'}
+          onClick={() => void openSession(peer.fromId)}
+        >
+          <MessagesSquareIcon className="size-3.5" />来自会话“{peer.fromTitle}”{known && <ArrowUpRightIcon className="size-3" />}
+        </button>
+        <div data-selectable className="break-words whitespace-pre-wrap">{peer.text}</div>
+      </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------ suggested tasks
+
+/** Work the agent noticed outside the current task: the user decides where (or whether) it runs. */
+export const SuggestItem = memo(function SuggestItem({ sid, item }: { sid: string; item: ItemOf<'suggest'> }) {
+  const decided = useApp((st) => st.sessions[sid]?.meta.suggestions);
+  const [open, setOpen] = useState<number | null>(null);
+  const open_ = (id: string) => void openSession(id);
+  const waiting = item.tasks.map((task, index) => ({ task, index })).filter(({ index }) => !decided?.[`${item.toolCallId}:${index}`]);
+  return (
+    <div className="rounded-xl border bg-card px-4 py-3 text-sm shadow-sm">
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <LightbulbIcon className="size-3.5" />建议的任务<span className="font-normal">· Pi Desktop 发现了当前任务之外的事</span>
+      </div>
+      <div className="divide-y">
+        {item.tasks.map((task, index) => {
+          const state = decided?.[`${item.toolCallId}:${index}`];
+          return (
+            <div key={index} className="py-2.5 first:pt-0 last:pb-0">
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium">{task.title}</div>
+                  <button className={cn('mt-0.5 text-left text-xs text-muted-foreground hover:text-foreground', open !== index && 'line-clamp-2')} onClick={() => setOpen(open === index ? null : index)} title="展开 / 收起">
+                    {task.prompt}
+                  </button>
+                </div>
+                {!state && (
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Button size="sm" className="h-7" onClick={() => void startSuggested(sid, item, index, task)} title="在同一项目里新开一个会话来做，你留在当前会话">Start</Button>
+                    <Button size="sm" variant="outline" className="h-7" onClick={() => void doSuggestedHere(sid, item, index, task)} title="把它作为一条消息发给当前会话">Do it here</Button>
+                    <Button size="icon" variant="ghost" className="size-7" aria-label="忽略" title="忽略" onClick={() => void dismissSuggested(sid, item, index)}><XIcon className="size-3.5" /></Button>
+                  </div>
+                )}
+              </div>
+              {state && (
+                <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                  {state.state === 'started' && <><CheckIcon className="size-3.5 text-success" />已在新会话中开始{state.sessionId && <button className="text-primary hover:underline" onClick={() => open_(state.sessionId!)}>打开</button>}</>}
+                  {state.state === 'here' && <><CheckIcon className="size-3.5 text-success" />已发送给当前会话</>}
+                  {state.state === 'dismissed' && <>已忽略</>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {waiting.length > 1 && (
+        <div className="mt-2.5 flex justify-end border-t pt-2.5">
+          <Button size="sm" variant="outline" className="h-7" onClick={() => waiting.forEach(({ task, index }) => void startSuggested(sid, item, index, task))}>Start all</Button>
         </div>
       )}
     </div>

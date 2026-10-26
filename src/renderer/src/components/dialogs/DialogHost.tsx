@@ -45,7 +45,7 @@ export function DialogHost() {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>{spec.title}</AlertDialogTitle>
-              <AlertDialogDescription>{spec.body}</AlertDialogDescription>
+              <AlertDialogDescription className="break-words whitespace-pre-line">{spec.body}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel onClick={() => spec.resolve(false)}>Cancel</AlertDialogCancel>

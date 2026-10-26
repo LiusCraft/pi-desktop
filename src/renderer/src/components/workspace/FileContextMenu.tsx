@@ -8,14 +8,10 @@ import {
 } from '@/components/ui/context-menu';
 import { call, isMac } from '@/lib/api';
 import { fname } from '@/lib/format';
+import { OpenTargetIcon } from '@/components/common/OpenTargetIcon';
+import { OPEN_TARGET_INFO, useOpenTargets } from '@/lib/open-targets';
 import { fail, sessionDraftKey } from '@/store/actions';
 import { drafts, useDrafts } from '@/store/drafts';
-
-const EDITORS: { target: OpenTarget; label: string }[] = [
-  { target: 'vscode', label: 'VS Code' },
-  { target: 'cursor', label: 'Cursor' },
-  { target: 'terminal', label: 'Terminal' },
-];
 
 export function FileContextMenu({ meta, path, directory = false, snapshot, children }: {
   meta: SessionMeta;
@@ -25,6 +21,7 @@ export function FileContextMenu({ meta, path, directory = false, snapshot, child
   snapshot?: string;
   children: ReactElement;
 }) {
+  const targets = useOpenTargets();
   const key = sessionDraftKey(meta.id);
   const sending = useDrafts((state) => state.drafts[key]?.sending ?? false);
   const separator = meta.cwd.includes('\\') ? '\\' : '/';
@@ -57,7 +54,7 @@ export function FileContextMenu({ meta, path, directory = false, snapshot, child
           <ContextMenuSub>
             <ContextMenuSubTrigger><ExternalLinkIcon className="mr-2" />Open in</ContextMenuSubTrigger>
             <ContextMenuSubContent><ContextMenuGroup>
-              {EDITORS.map(({ target, label }) => <ContextMenuItem key={target} disabled={snapshot !== undefined} onSelect={() => openIn(target)}>{label}</ContextMenuItem>)}
+              {targets.filter((t) => t.id !== 'folder').map((t) => <ContextMenuItem key={t.id} disabled={snapshot !== undefined} onSelect={() => openIn(t.id)}><OpenTargetIcon target={t} />{OPEN_TARGET_INFO[t.id].label}</ContextMenuItem>)}
               <ContextMenuItem disabled={snapshot !== undefined} onSelect={() => void call('sessions:openPath', meta.id, path, false).catch(fail)}>Default app</ContextMenuItem>
             </ContextMenuGroup></ContextMenuSubContent>
           </ContextMenuSub>

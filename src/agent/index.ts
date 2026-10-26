@@ -49,6 +49,7 @@ const handlers: Record<HostMethod, Handler> = {
   'host:cancelLogins': withHub((h) => h.admin.cancelAll()),
   'host:meta': withHub((h, id) => ({ ...h.meta(id) })),
   'host:importAttachments': (sources) => importAttachments(sources),
+  'host:worktree': (dir) => git.worktreeInfo(dir),
   'host:shutdown': async () => {
     scheduler?.stop();
     await hub?.shutdown();
@@ -63,6 +64,10 @@ const handlers: Record<HostMethod, Handler> = {
   'sessions:setStyle': withHub((h, id, style) => h.setStyle(id, style)),
   'sessions:update': withHub((h, id, patch) => h.update(id, patch)),
   'sessions:archive': withHub((h, id) => h.archive(id)),
+  'sessions:unarchive': withHub((h, id) => h.unarchive(id)),
+  'sessions:inspect': withHub((h, id) => h.inspect(id)),
+  'sessions:remove': withHub((h, id) => h.remove(id)),
+  'sessions:spawn': withHub((h, fromId, task, key) => h.spawn(fromId, task, key)),
   'sessions:abort': withHub((h, id) => h.abort(id)),
   'sessions:clearQueue': withHub((h, id) => h.clearQueue(id)),
   'sessions:newContext': withHub((h, id) => h.newContext(id)),

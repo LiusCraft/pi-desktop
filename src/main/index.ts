@@ -10,7 +10,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, Notificati
 import {
   HOST_CHANNELS, MAIN_CHANNELS, SUGGESTION_DEFAULT_CONTEXT,
   type ApiArgs, type ApiResult, type BootPayload, type HostEvent, type Project, type PushChannel, type PushEvents,
-  type Settings, type SettingsPayload,
+  type Settings, type SettingsPayload, type WorktreeInfo,
 } from '@shared/protocol';
 import { childEnv } from '../agent/env';
 import {
@@ -22,7 +22,7 @@ import { Store } from '../agent/store';
 import { AgentClient } from './agent-client';
 import { migrateLegacyKeys } from './agent-auth';
 import { clipboardAttachments, type ClipboardItemLike } from './clipboard';
-import { openIn } from './open-in';
+import { openIn, openTargets } from './open-in';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PRELOAD = path.join(here, '../preload/index.js');
@@ -40,6 +40,8 @@ let win: BrowserWindow | null = null;
 let settingsWin: BrowserWindow | null = null;
 let store: Store;
 let agent: AgentClient;
+/** The worktree the user just picked, until they say whether it is a session or a project of its own. */
+let pendingWorktree: WorktreeInfo | null = null;
 
 // ------------------------------------------------------------ projects and folders
 
@@ -317,7 +319,21 @@ const handlers: MainHandlers = {
   'projects:list': () => projects(),
   'projects:add': async () => {
     const dir = await pickFolder();
-    return dir ? addProject(dir) : null;
+    if (!dir) return null;
+    pendingWorktree = null;
+    // A worktree of another repository is not added blindly: the user decides what it means.
+    const info = await agent.call<WorktreeInfo | null>('host:worktree', dir).catch(() => null);
+    if (info && fs.existsSync(info.mainRoot)) {
+      pendingWorktree = info;
+      return { kind: 'worktree', info, known: store.get<Project[]>('projects', []).some((p) => p.path === info.mainRoot) };
+    }
+    return { kind: 'added', project: addProject(dir) };
+  },
+  'projects:adoptWorktree': (choice) => {
+    const info = pendingWorktree;
+    pendingWorktree = null;
+    if (!info) return null;
+    return choice === 'session' ? { project: addProject(info.mainRoot), adopt: info } : { project: addProject(info.path), adopt: null };
   },
   'projects:remove': (dir) => {
     store.set('projects', store.get<Project[]>('projects', []).filter((p) => p.path !== dir));
@@ -344,6 +360,7 @@ const handlers: MainHandlers = {
   'attachments:clipboard': () =>
     clipboardAttachments(() => (clipboard as unknown as { read(): Promise<ClipboardItemLike[]> }).read(), importAttachments),
 
+  'app:openTargets': () => openTargets(),
   'sessions:openIn': async (id, target, rel) => {
     const cwd = await sessionCwd(id);
     const resource = rel ? resolveInside(cwd, rel) : cwd;
