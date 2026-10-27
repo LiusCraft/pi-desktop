@@ -8,7 +8,7 @@ endif
 
 NPM ?= npm
 PRODUCT := Pi Desktop
-# Current package.json version; `make release VERSION=…` is what changes it.
+# Current package.json version (local builds only; CI sets it from the release tag).
 CURRENT_VERSION := $(shell node -p "require('./package.json').version")
 # Host architecture by default: arm64 on Apple Silicon, x64 on Intel.
 ARCH ?= $(shell node -p "process.arch")
@@ -69,12 +69,12 @@ win-installer: ## Build the Windows NSIS installer (x64)
 	$(NPM) run dist:win
 	@echo Built $(DIST)/Pi-Desktop-$(CURRENT_VERSION)-win-x64-setup.exe
 
-release: check-darwin ## Bump version, commit, tag and push (CI publishes)
+release: ## Tag HEAD as v$(VERSION) and push it (CI takes the version from the tag and publishes)
 	@test -n "$(VERSION)" || { echo "usage: make release VERSION=0.2.0"; exit 1; }
 	@test -z "$$(git status --porcelain)" || { echo "error: worktree is dirty"; exit 1; }
-	$(NPM) version $(VERSION) -m "chore(release): v%s"
-	git push --follow-tags
-	@echo "v$(VERSION) pushed — GitHub Actions builds and publishes the dmg"
+	git tag v$(VERSION)
+	git push origin v$(VERSION)
+	@echo "v$(VERSION) pushed — GitHub Actions builds and publishes the release"
 
 publish: check-darwin ## Build locally and upload to GitHub Releases (GH_TOKEN)
 	@test -n "$$GH_TOKEN" || { echo "error: GH_TOKEN is not set"; exit 1; }

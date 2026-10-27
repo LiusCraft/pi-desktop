@@ -301,7 +301,7 @@ make clean             # 删 dist/
 ### 发布一个版本
 
 ```bash
-make release VERSION=0.2.0     # npm version + 打 tag + push
+make release VERSION=0.2.0     # 给当前 HEAD 打 v0.2.0 tag 并 push；版本号以 tag 为准，CI 里写进 package.json
 ```
 
 推上去的 `v0.2.0` tag 触发 `.github/workflows/release.yml`：arm64 和 x64 两个 dmg 在 `macos-14` 上交叉构建（没有按架构编译的原生模块，只有 Electron 的 zip 不同），然后 `gh release create/upload` 挂到同名 Release，附 `SHA256SUMS.txt`。签名靠仓库 secret：`MAC_CERT_P12`、`MAC_CERT_PASSWORD`、`APPLE_ID`、`APPLE_PASSWORD`、`APPLE_TEAM_ID`；不填也能跑通，只是产物未签名。
