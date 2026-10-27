@@ -1,16 +1,16 @@
 // Settings → General → Web search: the engines the model can search with, and the user's API key for each.
-// "Auto" uses every engine that has a key, in turn: it stays on the one that works and moves on
+// "Auto" uses every engine that has a key (Exa needs none), in turn: it stays on the one that works and moves on
 // to the next when that one fails (free quota used up), so the free tiers add up.
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { ENGINE_AUTO, ENGINE_INFO, SEARCH_ENGINES, type EngineChoice, type SearchEngine, type WebSearchInfo } from '@shared/web-search';
+import { ENGINE_AUTO, ENGINE_INFO, KEYLESS_ENGINES, SEARCH_ENGINES, type EngineChoice, type SearchEngine, type WebSearchInfo } from '@shared/web-search';
 import { Segmented } from '@/components/common/Segmented';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { call, errText } from '@/lib/api';
 import { useT } from '@/lib/i18n';
-
-const Panel = ({ children }: { children: ReactNode }) => <div className="divide-y rounded-xl border bg-card">{children}</div>;
+import { Tip } from '@/components/common/Tip';
+import { Panel } from './ui';
 
 const fail = (err: unknown) => toast.error(errText(err));
 
@@ -21,6 +21,7 @@ function EngineRow({ engine, info, onChange }: { engine: SearchEngine; info: Web
   const [busy, setBusy] = useState<'save' | 'test' | 'remove' | null>(null);
   const saved = info.keys[engine];
   const meta = ENGINE_INFO[engine];
+  const keyless = KEYLESS_ENGINES.includes(engine);
 
   const run = async (what: 'save' | 'test' | 'remove') => {
     setBusy(what);
@@ -45,7 +46,7 @@ function EngineRow({ engine, info, onChange }: { engine: SearchEngine; info: Web
     <div className="flex flex-col gap-2 px-4 py-3.5">
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium">{meta.label}</span>
-        {saved && <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{info.current === engine && info.engine === ENGINE_AUTO ? t('web.configured.current') : t('web.configured')}</span>}
+        {(saved || keyless) && <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{info.current === engine && info.engine === ENGINE_AUTO ? t('web.configured.current') : saved ? t('web.configured') : t('web.keyless')}</span>}
         <a className="ml-auto text-xs text-muted-foreground underline-offset-2 hover:underline" href={meta.signup} target="_blank" rel="noreferrer">{t('web.getKey')}</a>
       </div>
       <div className="text-xs text-muted-foreground">{t(meta.free)}</div>
@@ -54,12 +55,12 @@ function EngineRow({ engine, info, onChange }: { engine: SearchEngine; info: Web
           className="h-8 flex-1 font-mono text-xs"
           type="password"
           value={key}
-          placeholder={saved ? t('web.keyKeep') : t('web.keyPlaceholder')}
+          placeholder={saved ? t('web.keyKeep') : t(keyless ? 'web.keyOptional' : 'web.keyPlaceholder')}
           autoComplete="off"
           spellCheck={false}
           onChange={(e) => setKey(e.target.value)}
         />
-        <Button size="sm" variant="outline" disabled={busy !== null || (!saved && !key.trim())} onClick={() => void run('test')}>{busy === 'test' ? t('web.testing') : t('web.test')}</Button>
+        <Button size="sm" variant="outline" disabled={busy !== null || (!saved && !keyless && !key.trim())} onClick={() => void run('test')}>{busy === 'test' ? t('web.testing') : t('web.test')}</Button>
         <Button size="sm" disabled={busy !== null || !key.trim()} onClick={() => void run('save')}>{t('web.save')}</Button>
         {saved && <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void run('remove')}>{t('web.remove')}</Button>}
       </div>
@@ -86,11 +87,10 @@ export function WebSearchSection() {
     { id: ENGINE_AUTO, label: t('web.auto') },
     ...SEARCH_ENGINES.map((id) => ({ id, label: ENGINE_INFO[id].label })),
   ];
-  const configured = SEARCH_ENGINES.filter((e) => info.keys[e]);
 
   return (
-    <section>
-      <h3 className="px-1 text-sm font-semibold">{t('web.title')}</h3>
+    <section className="mt-7">
+      <h3 className="flex items-center gap-1.5 px-1 text-sm font-semibold">{t('web.title')}<Tip>{t('web.tip')}</Tip></h3>
       <p className="mt-0.5 px-1 text-xs text-muted-foreground">
         {t('web.sub')}
       </p>
@@ -100,7 +100,6 @@ export function WebSearchSection() {
           {info.engine === ENGINE_AUTO
             ? t('web.hint.auto')
             : t('web.hint.fixed', { engine: ENGINE_INFO[info.engine].label })}
-          {info.engine === ENGINE_AUTO && !configured.length && ` ${t('web.none')}`}
         </p>
       </div>
       <div className="mt-2">

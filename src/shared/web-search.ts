@@ -1,6 +1,7 @@
 /**
  * Web search and page fetching for the model (`pidesk_web_search`, `pidesk_web_fetch`). The user
  * brings their own API keys; every engine listed here has a free tier, so a key costs nothing to try.
+ * Exa also works with no key at all, so search is usable out of the box.
  * Keys live in the agent host's own file and never reach the renderer or the model.
  */
 
@@ -8,6 +9,9 @@ import type { MessageKey } from './i18n';
 
 export const SEARCH_ENGINES = ['exa', 'brave', 'tavily', 'serper'] as const;
 export type SearchEngine = (typeof SEARCH_ENGINES)[number];
+
+/** Engines that answer without a key (rate-limited); a key, when saved, raises the limits. */
+export const KEYLESS_ENGINES: readonly SearchEngine[] = ['exa'];
 
 /** "auto": use the configured engines in turn, staying on the one that last worked. */
 export const ENGINE_AUTO = 'auto';
@@ -57,5 +61,3 @@ export interface WebSearchDraft {
   engine: EngineChoice;
   keys: Partial<Record<SearchEngine, string | null>>;
 }
-
-export const WEB_NOT_CONFIGURED = 'Web search is not set up. Ask the user to add an API key for Exa, Brave Search, Tavily or Serper in Settings → 联网搜索 (all have a free tier).';

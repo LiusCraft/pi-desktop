@@ -43,9 +43,24 @@ describe('WebSearch', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('asks for a key when none is set, and keeps or removes keys on save', async () => {
+  it('searches Exa without a key and parses its text results', async () => {
     const web = new WebSearch(dir);
-    await expect(web.search(q)).rejects.toThrow(/not set up/);
+    const text = 'Title: A\nURL: https://a.test\nPublished: 2026-01-02T00:00:00Z\nAuthor: N/A\nHighlights:\nfirst\n\n---\n\nTitle: B\nURL: https://b.test\nPublished: N/A\nHighlights:\nsecond';
+    const fetchMock = vi.fn(async (_url: string) => new Response(`event: message\ndata: ${JSON.stringify({ result: { content: [{ type: 'text', text }] } })}\n\n`));
+    vi.stubGlobal('fetch', fetchMock);
+    const out = await web.search(q);
+    expect(out.engine).toBe('exa');
+    expect(out.hits).toEqual([
+      { title: 'A', url: 'https://a.test', date: '2026-01-02', snippet: 'first' },
+      { title: 'B', url: 'https://b.test', date: undefined, snippet: 'second' },
+    ]);
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('https://mcp.exa.ai/mcp');
+  });
+
+  it('needs a key for a fixed engine that has none, and keeps or removes keys on save', async () => {
+    const web = new WebSearch(dir);
+    web.save({ engine: 'brave', keys: {} });
+    await expect(web.search(q)).rejects.toThrow(/no API key/);
     web.save({ engine: 'auto', keys: { tavily: 'k' } });
     expect(web.save({ engine: 'auto', keys: { tavily: '' } }).keys.tavily).toBe(true);
     expect(web.save({ engine: 'auto', keys: { tavily: null } }).keys.tavily).toBe(false);

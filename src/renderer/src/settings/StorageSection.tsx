@@ -1,6 +1,6 @@
 // Settings → Object storage: the user's own S3-compatible bucket. One connection for everything Pi Desktop keeps
 // off this machine (published Artifacts today); features that use it are managed on their own pages.
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import type { MessageKey } from '@shared/i18n';
 import { missingStorageField, type ObjectStorageDraft, type ObjectStorageInfo } from '@shared/storage';
@@ -10,34 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { call, errText } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-
-const Heading = ({ title, sub }: { title: string; sub: string }) => (
-  <div className="mb-5">
-    <h2 className="text-xl font-semibold">{title}</h2>
-    <p className="mt-1 text-sm text-muted-foreground">{sub}</p>
-  </div>
-);
-const Panel = ({ children }: { children: ReactNode }) => <div className="divide-y rounded-xl border bg-card">{children}</div>;
-function Row({ title, hint, children, col }: { title: ReactNode; hint?: ReactNode; children?: ReactNode; col?: boolean }) {
-  return (
-    <div className={cn('flex gap-4 px-4 py-3.5', col ? 'flex-col' : 'items-center')}>
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium">{title}</div>
-        {hint && <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>}
-      </div>
-      {children}
-    </div>
-  );
-}
-function Group({ title, sub, children }: { title: string; sub?: string; children: ReactNode }) {
-  return (
-    <section className="mt-7 first:mt-0">
-      <h3 className="px-1 text-sm font-semibold">{title}</h3>
-      {sub && <p className="mt-0.5 px-1 text-xs text-muted-foreground">{sub}</p>}
-      <div className="mt-2">{children}</div>
-    </section>
-  );
-}
+import { Group, Heading, Panel, Row } from './ui';
 
 const fail = (err: unknown) => toast.error(errText(err));
 /** Setting names in the order the form shows them, for "fill in … first" messages. */
@@ -83,8 +56,8 @@ function StoragePanel({ info, onSaved }: { info: ObjectStorageInfo; onSaved: (in
       setBusy(null);
     }
   };
-  const field = (label: string, key: keyof Form, hint?: string, extra?: { placeholder?: string; type?: string; mono?: boolean }) => (
-    <Row title={label} hint={hint}>
+  const field = (label: string, key: keyof Form, hint?: string, extra?: { placeholder?: string; type?: string; mono?: boolean; tip?: string }) => (
+    <Row title={label} hint={hint} tip={extra?.tip}>
       <Input
         className={cn('h-8 w-72', extra?.mono !== false && 'font-mono text-xs')}
         type={extra?.type}
@@ -98,16 +71,16 @@ function StoragePanel({ info, onSaved }: { info: ObjectStorageInfo; onSaved: (in
   );
   return (
     <Panel>
-      {field('Endpoint', 'endpoint', t('storage.endpoint.hint'), { placeholder: 'https://<account>.r2.cloudflarestorage.com' })}
+      {field('Endpoint', 'endpoint', t('storage.endpoint.hint'), { placeholder: 'https://<account>.r2.cloudflarestorage.com', tip: t('storage.endpoint.tip') })}
       {field('Region', 'region', t('storage.region.hint'), { placeholder: 'auto' })}
-      {field('Bucket', 'bucket', t('storage.bucket.hint'))}
+      {field('Bucket', 'bucket', t('storage.bucket.hint'), { tip: t('storage.bucket.tip') })}
       {field('Access Key ID', 'accessKeyId')}
       {field('Secret Access Key', 'secretAccessKey', t(info.secretSet ? 'storage.secret.set' : 'storage.secret.unset'), {
         type: 'password', placeholder: info.secretSet ? '••••••••' : undefined,
       })}
-      {field(t('storage.publicBaseUrl'), 'publicBaseUrl', t('storage.publicBaseUrl.hint'), { placeholder: 'https://pub-xxxx.r2.dev' })}
-      {field(t('storage.prefix'), 'prefix', t('storage.prefix.hint'), { placeholder: 'pi-desktop' })}
-      <Row title={t('storage.pathStyle')} hint={t('storage.pathStyle.hint')}>
+      {field(t('storage.publicBaseUrl'), 'publicBaseUrl', t('storage.publicBaseUrl.hint'), { placeholder: 'https://pub-xxxx.r2.dev', tip: t('storage.publicBaseUrl.tip') })}
+      {field(t('storage.prefix'), 'prefix', t('storage.prefix.hint'), { placeholder: 'pi-desktop', tip: t('storage.prefix.tip') })}
+      <Row title={t('storage.pathStyle')} hint={t('storage.pathStyle.hint')} tip={t('storage.pathStyle.tip')}>
         <Switch checked={form.pathStyle} onCheckedChange={(v) => set('pathStyle', v)} />
       </Row>
       <div className="flex items-center justify-end gap-2 px-4 py-3">
@@ -130,7 +103,7 @@ export function StorageSection() {
   if (!info) return null;
   return (
     <div>
-      <Heading title={t('storage.title')} sub={t('storage.sub')} />
+      <Heading title={t('storage.title')} sub={t('storage.sub')} tip={t('storage.tip')} />
       <Group title={t(info.ready ? 'storage.ready' : 'storage.notReady')} sub={t(info.ready ? 'storage.ready.sub' : 'storage.notReady.sub')}>
         <StoragePanel info={info} onSaved={setInfo} />
       </Group>

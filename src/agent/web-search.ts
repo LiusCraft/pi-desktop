@@ -1,6 +1,6 @@
 /**
  * The model's web access. The user's API keys and engine choice live in `<app data>/web-search.json`
- * (kept private like the object-storage secret). In "auto" the engines with a key are used in turn:
+ * (kept private like the object-storage secret). In "auto" the engines with a key (or that need none, like Exa) are used in turn:
  * a search starts with the one that last answered, and when it fails (free quota used up, bad key,
  * outage) the next one is tried and becomes the starting point for the next search. A fixed engine
  * is used alone, with no fallback.
@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  ENGINE_AUTO, ENGINE_INFO, SEARCH_ENGINES, WEB_LIMITS, WEB_NOT_CONFIGURED,
+  ENGINE_AUTO, ENGINE_INFO, KEYLESS_ENGINES, SEARCH_ENGINES, WEB_LIMITS,
   type EngineChoice, type SearchEngine, type SearchFreshness, type SearchHit, type WebSearchDraft, type WebSearchInfo,
 } from '@shared/web-search';
 import { appWebSearchFile } from './app-paths';
@@ -34,7 +34,42 @@ interface Stored {
   keys: Partial<Record<SearchEngine, string>>;
 }
 
+/** `key` is empty only for engines in `KEYLESS_ENGINES`. */
 type Adapter = (key: string, q: SearchQuery, signal?: AbortSignal) => Promise<SearchHit[]>;
+
+const EXA_MCP_URL = 'https://mcp.exa.ai/mcp';
+const MCP_RESULT_SEPARATOR = '\n\n---\n\n';
+
+/** Exa's keyless MCP endpoint: one JSON-RPC call, answered as an event stream (or plain JSON). */
+async function exaKeyless(q: SearchQuery, signal?: AbortSignal): Promise<SearchHit[]> {
+  const sites = q.domains?.length ? ` (${q.domains.map((d) => `site:${d}`).join(' OR ')})` : '';
+  const timeout = AbortSignal.timeout(WEB_LIMITS.timeoutMs);
+  const res = await fetch(EXA_MCP_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+    body: JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'web_search_exa', arguments: { query: q.query + sites, numResults: q.maxResults, objective: q.query } },
+    }),
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  });
+  const raw = await res.text();
+  if (!res.ok) throw new Error(`HTTP ${res.status}${raw ? `: ${clip(raw, 200)}` : ''}`);
+  const json = raw.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim()).find(Boolean) ?? raw;
+  const msg = JSON.parse(json);
+  const text: string = (msg.result?.content ?? []).map((c: any) => c.text ?? '').join('\n');
+  if (msg.error || msg.result?.isError) throw new Error(clip(msg.error?.message ?? text, 200) || 'Exa returned an error');
+  return text.split(MCP_RESULT_SEPARATOR).flatMap((block): SearchHit[] => {
+    const field = (name: string) => block.match(new RegExp(`^${name}: (.*)$`, 'm'))?.[1]?.trim();
+    const url = field('URL');
+    if (!url) return [];
+    const published = field('Published');
+    return [{
+      title: field('Title') || url, url, date: published && published !== 'N/A' ? published.slice(0, 10) : undefined,
+      snippet: clip(block.split(/^Highlights:\s*$/m)[1], WEB_LIMITS.snippet),
+    }];
+  });
+}
 
 const FRESHNESS_DAYS: Record<SearchFreshness, number> = { day: 1, week: 7, month: 31, year: 365 };
 const DAY_MS = 86_400_000;
@@ -58,6 +93,7 @@ const postJson = (url: string, headers: Record<string, string>, body: unknown, s
 
 const ADAPTERS: Record<SearchEngine, Adapter> = {
   async exa(key, q, signal) {
+    if (!key) return exaKeyless(q, signal);
     const body: Record<string, unknown> = {
       query: q.query, numResults: q.maxResults, type: 'auto',
       contents: { highlights: { maxCharacters: WEB_LIMITS.snippet * 2 } },
@@ -140,19 +176,18 @@ export class WebSearch {
 
   /** Runs one search against one engine with a saved key (or an unsaved one), so the Settings page can check it. */
   async test(engine: SearchEngine, key?: string): Promise<void> {
-    const k = key?.trim() || this.read().keys[engine];
-    if (!k) throw new Error(`No ${ENGINE_INFO[engine].label} key to test`);
+    const k = key?.trim() || this.read().keys[engine] || '';
+    if (!k && !KEYLESS_ENGINES.includes(engine)) throw new Error(`No ${ENGINE_INFO[engine].label} key to test`);
     await ADAPTERS[engine](k, { query: 'pi desktop', maxResults: 1 });
   }
 
   /** Engines in the order a search tries them. */
   private plan(s: Stored): SearchEngine[] {
     if (s.engine !== ENGINE_AUTO) {
-      if (!s.keys[s.engine]) throw new Error(`${ENGINE_INFO[s.engine].label} is chosen for web search but has no API key. Ask the user to add it in Settings → 联网搜索.`);
+      if (!s.keys[s.engine] && !KEYLESS_ENGINES.includes(s.engine)) throw new Error(`${ENGINE_INFO[s.engine].label} is chosen for web search but has no API key. Ask the user to add it in Settings → 联网搜索.`);
       return [s.engine];
     }
-    const ready = SEARCH_ENGINES.filter((e) => s.keys[e]);
-    if (!ready.length) throw new Error(WEB_NOT_CONFIGURED);
+    const ready = SEARCH_ENGINES.filter((e) => s.keys[e] || KEYLESS_ENGINES.includes(e));
     const at = s.current ? ready.indexOf(s.current) : -1;
     return at > 0 ? [...ready.slice(at), ...ready.slice(0, at)] : ready;
   }
@@ -162,7 +197,7 @@ export class WebSearch {
     const failed: SearchOutcome['failed'] = [];
     for (const engine of this.plan(stored)) {
       try {
-        const hits = await ADAPTERS[engine](stored.keys[engine]!, q, signal);
+        const hits = await ADAPTERS[engine](stored.keys[engine] ?? '', q, signal);
         if (stored.engine === ENGINE_AUTO && stored.current !== engine) this.write({ ...this.read(), current: engine });
         return { engine, hits, failed };
       } catch (err) {
