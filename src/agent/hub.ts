@@ -191,6 +191,15 @@ export class SessionHub {
   private emitMeta(m: SessionMeta) {
     this.emit({ type: 'meta', sessionId: m.id, meta: { ...m } });
   }
+  /** The branch can be switched under the session (by the agent or in a terminal): follow it, so the bar and diff name the real one. */
+  private async syncBranch(m: SessionMeta) {
+    if (m.kind !== 'code' || !m.branch) return;
+    const current = await git.currentBranch(m.cwd);
+    if (!current || current === 'HEAD' || current === m.branch) return;
+    m.branch = current;
+    this.save();
+    this.emitMeta(m);
+  }
   /** A session made on the host's own initiative (a scheduled task run): tell the renderer it exists. */
   announce(m: SessionMeta) {
     this.emitMeta(m);
@@ -429,6 +438,7 @@ export class SessionHub {
       ask: (request, signal) => this.ask(live, request, signal),
       setMode: (mode) => this.applyMode(live.id, mode),
       runSubagent: (run) => this.runSubagent(live, run),
+      rename: (title) => void this.update(live.id, { title }),
       peers: {
         list: () => this.peerList(live.id),
         read: (id, limit) => this.peerRead(live.id, id, limit),
@@ -1409,6 +1419,7 @@ export class SessionHub {
 
   async changes(id: string): Promise<ChangeSet> {
     const m = this.meta(id);
+    await this.syncBranch(m);
     // Session-base diff for the Diff panel, plus live working-tree state for the branch bar.
     const base = await git.diffBase(m.cwd, m.baseCommit, m.baseBranch);
     const [files, state] = await Promise.all([git.changes(m.cwd, base), git.workState(m.cwd)]);
@@ -1416,6 +1427,7 @@ export class SessionHub {
   }
   async prStatus(id: string) {
     const m = this.meta(id);
+    await this.syncBranch(m);
     const pr = await git.prStatus(m.cwd);
     if (pr) this.publishPr(m, pr);
     return pr;
@@ -1492,6 +1504,7 @@ export class SessionHub {
 
   private async prLook(id: string, entry: PrWatchEntry) {
     const m = this.meta(id);
+    await this.syncBranch(m);
     if (m.kind !== 'code' || m.archived || !m.branch || !this.live.has(id)) return this.stopPrWatch(id);
     entry.read = git.readPr(m.cwd).catch(() => null);
     const snapshot = (await entry.read) as Awaited<ReturnType<typeof git.readPr>>;
