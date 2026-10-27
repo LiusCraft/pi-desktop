@@ -26,6 +26,7 @@ import { ModelPicker } from './ModelPicker';
 import { ModelsSection } from './ModelsSection';
 import { RemoteSection } from './RemoteSection';
 import { StorageSection } from './StorageSection';
+import { WebSearchSection } from './WebSearchSection';
 
 type Section = 'appearance' | 'general' | 'work' | 'code' | 'models' | 'projects' | 'remote' | 'storage' | 'about';
 const SECTIONS: { id: Section; label: MessageKey | null; icon: ReactNode }[] = [
@@ -357,6 +358,8 @@ export function SettingsApp() {
               </>
             )}
           </Group>
+
+          <WebSearchSection />
         </div>
       </>
     );

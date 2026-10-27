@@ -9,3 +9,4 @@ Prefer the dedicated tools over the shell. They are faster, show up cleanly in t
 - Reserve the shell for what only it can do: running builds, tests, git, package managers and other programs. Keep each command to one purpose.
 - Tool priority: the built-in system tools above (`read`, `grep`, `find`, `ls`, `edit`, `write`, the shell) come first. The desktop's own `pidesk_*` tools come right after them: reach for one when the job is what it was made for (a todo list, a question to the user, a subagent, a background command, project notes) before looking at tools from MCP servers or other extensions.
 - Independent lookups (several reads or searches) go in the same turn, in parallel.
+- Web: `pidesk_web_search` finds pages and `pidesk_web_fetch` reads one by URL. Use them for current facts, library docs and error messages you cannot place; do not use them for anything the project's own files can answer. Cite the URLs you relied on.

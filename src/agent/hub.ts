@@ -35,6 +35,7 @@ import type { CustomizeHost, ScheduleHost, SettingsHost } from './manage-tools';
 import { listPets, removePet, savePet } from './pets';
 import { ArtifactService } from './artifacts';
 import { ObjectStorage } from './storage';
+import { WebSearch } from './web-search';
 import { createDesktopKit, type KitHost, type KitState, type SubagentRun } from './desktop-kit';
 import { toWireEvent } from './events';
 import { readSessionFile, readSessionImage, resolveInside, searchSessionFiles } from './files';
@@ -138,6 +139,8 @@ export class SessionHub {
   readonly storage: ObjectStorage;
   /** The model's web pages, which can be published to that bucket. */
   readonly artifacts: ArtifactService;
+  /** The model's web search and page fetching, with the user's engine keys. */
+  readonly web: WebSearch;
   private settings!: SettingsManager;
   private metas: SessionMeta[];
   private readonly live = new Map<string, Live>();
@@ -164,6 +167,7 @@ export class SessionHub {
     this.activity = new ActivityRecorder(this.store);
     this.storage = new ObjectStorage(opts.dataDir);
     this.artifacts = new ArtifactService(opts.dataDir, this.storage);
+    this.web = new WebSearch(opts.dataDir);
     this.metas = this.store.get<SessionMeta[]>('sessions', []);
     this.trust = new ProjectTrustStore(this.agentDir);
   }
@@ -501,6 +505,7 @@ export class SessionHub {
           removePlugin: (source, scope) => c.removePlugin(source, scope, project),
         };
       },
+      web: this.web,
       pets: {
         list: () => listPets(appPetsDir(this.opts.dataDir)),
         save: (raw) => savePet(appPetsDir(this.opts.dataDir), raw),

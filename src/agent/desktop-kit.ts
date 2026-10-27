@@ -22,6 +22,8 @@ import { StringEnum } from '@earendil-works/pi-ai';
 import { Type } from 'typebox';
 import { AGENT_TYPES, DEFAULT_AGENT, type AgentType } from './agents';
 import { registerManageTools, type ArtifactHost, type CustomizeHost, type PetHost, type ScheduleHost, type SettingsHost } from './manage-tools';
+import type { WebSearch } from './web-search';
+import { ENGINE_INFO, SEARCH_FRESHNESS, WEB_LIMITS } from '@shared/web-search';
 import {
   PLAN_CHOICES, QUESTION_LIMITS,
   type OutputStyle, type PermissionMode, type Question, type QuestionAnswer, type SessionKind, type SubagentProgress, type TaskUpdate, type UiRequestInput, type UiResponse,
@@ -96,6 +98,8 @@ export interface KitHost {
   settings?: SettingsHost;
   /** The saved artifacts; omit it (subagents) to leave out the artifact tools. */
   artifacts?: ArtifactHost;
+  /** Web search and page fetching with the user's keys; omit it (subagents) to leave out the web tools. */
+  web?: WebSearch;
   /** The project this session runs in (Work or Code): its standing context each turn, and its memory; omit it for sessions in no project. */
   project?: {
     context(): string | null;
@@ -124,6 +128,8 @@ const READ_ONLY_TOOLS = new Set([
   'pidesk_rename_session',
   // Only writes the project's notes, which the user sees and edits on the Projects page.
   'pidesk_remember',
+  // Look things up on the public web; the fetch refuses local and private network addresses.
+  'pidesk_web_search', 'pidesk_web_fetch',
 ]);
 const EDIT_TOOLS = new Set(['edit', 'write']);
 const SHELL_TOOLS = new Set(['bash', 'powershell', 'pidesk_bg_shell']);
@@ -413,6 +419,63 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         async execute(_id, params) {
           const length = project.remember(params);
           return { content: [{ type: 'text', text: `Saved to project memory (${length} characters).` }], details: { length } };
+        },
+      });
+    }
+
+    // ---------------------------------------------------------------- pidesk_web_search / pidesk_web_fetch
+    const web = host.web;
+    if (web) {
+      pi.registerTool({
+        name: 'pidesk_web_search',
+        label: 'Web search',
+        description:
+          'Search the web for current information, documentation or anything outside the project. Returns titles, URLs and snippets; ' +
+          'read a promising page in full with pidesk_web_fetch. The search engine is chosen in the user\'s settings, so do not pick one. ' +
+          'Write the query like a search box query, add freshness for recent news, and use domains to restrict to given sites.',
+        promptSnippet: 'Search the web for current information',
+        parameters: Type.Object({
+          query: Type.String({ description: 'What to search for' }),
+          maxResults: Type.Optional(Type.Number({ description: `How many results, 1-${WEB_LIMITS.maxResults} (default ${WEB_LIMITS.defaultResults})` })),
+          freshness: Type.Optional(StringEnum(SEARCH_FRESHNESS, { description: 'Only results from the last day / week / month / year' })),
+          domains: Type.Optional(Type.Array(Type.String(), { description: 'Only these sites, e.g. ["docs.python.org"]' })),
+        }),
+        annotations: { readOnlyHint: true },
+        async execute(_id, params, signal) {
+          const query = params.query.trim();
+          if (!query) throw new Error('The query cannot be empty');
+          const maxResults = Math.min(WEB_LIMITS.maxResults, Math.max(1, Math.round(params.maxResults ?? WEB_LIMITS.defaultResults)));
+          const { engine, hits, failed } = await web.search({ query, maxResults, freshness: params.freshness, domains: params.domains?.filter(Boolean) }, signal);
+          const notes = failed.map((f) => `${ENGINE_INFO[f.engine].label} failed (${f.reason}), so ${ENGINE_INFO[engine].label} was used.`);
+          const body = hits.length
+            ? hits.map((h, i) => `${i + 1}. ${h.title}\n   ${h.url}${h.date ? ` · ${h.date}` : ''}${h.snippet ? `\n   ${h.snippet}` : ''}`).join('\n\n')
+            : 'No results.';
+          return { content: [{ type: 'text', text: [...notes, `Results for "${query}" (${ENGINE_INFO[engine].label}):`, body].join('\n\n') }], details: { engine, hits } };
+        },
+      });
+
+      pi.registerTool({
+        name: 'pidesk_web_fetch',
+        label: 'Fetch web page',
+        description:
+          'Download one web page (http or https) and return its text with the links as markdown. Works for pages, plain text and JSON; ' +
+          'it cannot reach local or private network addresses and runs no JavaScript. A long page is cut: continue with the offset the result names.',
+        promptSnippet: 'Read a web page by URL',
+        parameters: Type.Object({
+          url: Type.String({ description: 'The page address, starting with http:// or https://' }),
+          offset: Type.Optional(Type.Number({ description: 'Character to start from, to continue a page that was cut' })),
+          maxChars: Type.Optional(Type.Number({ description: `Characters to return (default ${WEB_LIMITS.pageChars}, at most ${WEB_LIMITS.maxPageChars})` })),
+        }),
+        annotations: { readOnlyHint: true },
+        async execute(_id, params, signal) {
+          const page = await web.fetchPage(params.url.trim(), signal);
+          const start = Math.max(0, Math.round(params.offset ?? 0));
+          const size = Math.min(WEB_LIMITS.maxPageChars, Math.max(1, Math.round(params.maxChars ?? WEB_LIMITS.pageChars)));
+          const slice = page.text.slice(start, start + size);
+          const end = start + slice.length;
+          const head = [page.title && `# ${page.title}`, page.url].filter(Boolean).join('\n');
+          const tail = end < page.text.length ? `\n\n[Cut at character ${end} of ${page.text.length}. Continue with offset=${end}.]` : '';
+          return { content: [{ type: 'text', text: `${head}\n\n${slice || '(empty page)'}${tail}` }], details: { url: page.url, title: page.title, length: page.text.length } };
         },
       });
     }
