@@ -9,7 +9,7 @@ import { PET_PERCH } from '@/components/composer/Clawd';
 import { runningTasks } from '@/components/workspace/Panels';
 import { togglePanel } from '@/store/actions';
 import { useApp } from '@/store/app';
-import { rememberScroll, savedScroll } from '@/store/scroll';
+import { rememberScroll, savedScroll, type ScrollSpot } from '@/store/scroll';
 import type { Item, ItemOf, SessionView } from '@/store/types';
 import { SelectionMenu } from './SelectionMenu';
 import { AskCard, FootItem, GroupItem, isPendingAsk, NoteItem, PermItem, PlanItem, PrEventItem, SuggestItem, TextItem, TodosItem, UserItem } from './Items';
@@ -138,20 +138,31 @@ export function AskDock({ s }: { s: SessionView }) {
   );
 }
 
-/** How close to the bottom still counts as "following the answer". */
+/** How close to the bottom the "Latest" button stays hidden. */
 const STICK_PX = 160;
+/** How close to the bottom counts as "following the answer": scrolling up even a little lets go, so streaming text never pulls the view back. */
+const FOLLOW_PX = 24;
 
-const nearBottom = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
+const gapToBottom = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clientHeight;
+const nearBottom = (el: HTMLElement) => gapToBottom(el) < STICK_PX;
+
+/** How long a reopened conversation keeps pulling itself back to where it was while its content settles. */
+const RESTORE_MS = 1500;
 
 /** The conversation, kept pinned to the bottom while the user is near it. */
 export function Transcript({ s }: { s: SessionView }) {
   const t = useT();
   const view = useApp((st) => st.prefs.viewMode);
   const scroller = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
+  /** Where a reopened conversation is being put back to; content (markdown, images) keeps growing for a moment, so it is re-applied until the user scrolls or the time is up. */
+  const restoring = useRef<ScrollSpot | null>(null);
   /** A smooth jump is in flight: scroll events from the animation are not the user's. */
   const jumping = useRef(false);
+  /** Last seen scroll offset and content height, to tell the user scrolling up from the content shrinking under the view. */
+  const last = useRef({ top: 0, height: 0 });
   const [atBottom, setAtBottom] = useState(true);
   const sid = s.meta.id;
   const links = useMemo(() => quoteLinks(s.items), [s.items]);
@@ -198,24 +209,51 @@ export function Transcript({ s }: { s: SessionView }) {
     }
   };
 
+  const endRestore = () => {
+    const el = scroller.current;
+    if (!restoring.current || !el) return;
+    restoring.current = null;
+    const follow = gapToBottom(el) < FOLLOW_PX;
+    stick.current = follow;
+    setAtBottom(follow || nearBottom(el));
+    rememberScroll(sid, { top: el.scrollTop, stick: follow });
+  };
+
   // Opening a session returns to where it was left, unless it was at the bottom (or moved on
   // while it was closed, in which case openSession dropped the remembered spot).
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    const saved = savedScroll(sid);
-    const toBottom = !saved || saved.stick;
-    el.scrollTop = toBottom ? el.scrollHeight : saved.top;
-    // A spot inside the threshold counts as "following", exactly like a real scroll would.
-    const near = toBottom || nearBottom(el);
-    stick.current = near;
-    setAtBottom(near);
-    // Images and diagrams settle a frame later; restore once more so the view does not jump.
-    const frame = requestAnimationFrame(() => {
-      if (!stick.current && saved) el.scrollTop = saved.top;
+    const goal = savedScroll(sid) ?? { top: 0, stick: true };
+    restoring.current = goal;
+    el.scrollTop = goal.stick ? el.scrollHeight : goal.top;
+    // A spot at the very bottom counts as "following", exactly like a real scroll would.
+    stick.current = goal.stick || gapToBottom(el) < FOLLOW_PX;
+    setAtBottom(stick.current || nearBottom(el));
+    last.current = { top: el.scrollTop, height: el.scrollHeight };
+    const timer = window.setTimeout(endRestore, RESTORE_MS);
+    return () => {
+      window.clearTimeout(timer);
+      restoring.current = null;
+    };
+  }, [sid]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Content that grows or reflows after it was laid out (markdown, images, a resized panel) must not
+  // strand the view at the top: keep the restored spot, or the bottom while following.
+  useEffect(() => {
+    const el = scroller.current;
+    const body = content.current;
+    if (!el || !body) return;
+    const observer = new ResizeObserver(() => {
+      last.current.height = el.scrollHeight;
+      const goal = restoring.current;
+      if (goal) el.scrollTop = goal.stick ? el.scrollHeight : goal.top;
+      else if (stick.current && !jumping.current) el.scrollTop = el.scrollHeight;
     });
-    return () => cancelAnimationFrame(frame);
-  }, [sid]);
+    observer.observe(el);
+    observer.observe(body);
+    return () => observer.disconnect();
+  }, []);
 
   // Follow along while the conversation grows, as long as the user is near the bottom.
   useLayoutEffect(() => {
@@ -225,11 +263,22 @@ export function Transcript({ s }: { s: SessionView }) {
 
   const onScroll = () => {
     const el = scroller.current;
-    if (!el || jumping.current) return;
-    const near = nearBottom(el);
-    stick.current = near;
-    setAtBottom((was) => (was === near ? was : near));
-    rememberScroll(sid, { top: el.scrollTop, stick: near });
+    if (!el) return;
+    const movedUp = el.scrollTop < last.current.top && el.scrollHeight >= last.current.height;
+    last.current = { top: el.scrollTop, height: el.scrollHeight };
+    if (jumping.current || restoring.current) return;
+    // Going up lets go of the bottom at once; only coming back down to it follows again.
+    if (movedUp) stick.current = false;
+    else if (gapToBottom(el) < FOLLOW_PX) stick.current = true;
+    const showLatest = stick.current || nearBottom(el);
+    setAtBottom((was) => (was === showLatest ? was : showLatest));
+    rememberScroll(sid, { top: el.scrollTop, stick: stick.current });
+  };
+
+  const onWheel = (e: React.WheelEvent) => {
+    endRestore();
+    const el = e.currentTarget;
+    if (e.deltaY < 0 && el.scrollHeight > el.clientHeight) stick.current = false; // before the next chunk of text can scroll the view back down
   };
 
   const jumpToLatest = () => {
@@ -249,8 +298,8 @@ export function Transcript({ s }: { s: SessionView }) {
   return (
     <div ref={frame} className="relative min-h-0 flex-1">
       <SelectionMenu sid={sid} scope={frame} />
-      <div ref={scroller} onScroll={onScroll} onClick={onQuoteClick} onMouseMove={onQuoteHover} className="h-full overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[786px] flex-col gap-4 px-6 pt-6 pb-4">
+      <div ref={scroller} onScroll={onScroll} onWheel={onWheel} onPointerDown={endRestore} onTouchStart={endRestore} onClick={onQuoteClick} onMouseMove={onQuoteHover} className="h-full overflow-y-auto">
+        <div ref={content} className="mx-auto flex w-full max-w-[786px] flex-col gap-4 px-6 pt-6 pb-4">
           {s.items.map((item, i) => (isPendingAsk(item) ? null : (
             <div key={item.key} data-item-key={item.key} className="transcript-item">
               {renderItem(s.meta.id, item, s.items, i, view, links.targets.get(item.key))}
