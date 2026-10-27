@@ -111,7 +111,6 @@ function CodeNav() {
   const sessions = useApp((s) => s.sessions);
   const current = useApp((s) => s.current);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [more, setMore] = useState(false);
   const groups = new Map<string, SessionView[]>();
   for (const p of projects) groups.set(p.path, []);
   for (const s of Object.values(sessions).filter((x) => !x.meta.archived && x.meta.kind === 'code').sort((a, b) => (b.meta.updatedAt || 0) - (a.meta.updatedAt || 0))) {
@@ -124,21 +123,7 @@ function CodeNav() {
         <NavItem icon={<PlusIcon className="size-4" />} onClick={showWelcome}>New</NavItem>
         <NavItem icon={<ClockIcon className="size-4" />} active={page === 'scheduled'} onClick={showScheduled} hint="Scheduled：按计划自动运行的任务">Scheduled</NavItem>
         <NavItem icon={<ShapesIcon className="size-4" />} active={page === 'customize'} onClick={showCustomize} hint="Customize：技能、连接器与插件">Customize</NavItem>
-        <NavItem icon={<MoreHorizontalIcon className="size-4" />} onClick={() => setMore((m) => !m)}>More</NavItem>
-        {more && (
-          <div className="pl-7">
-            <button
-              aria-current={page === 'archived' ? 'page' : undefined}
-              className={cn('flex h-7 w-full items-center rounded-lg px-2.5 text-sm', page === 'archived' ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent')}
-              onClick={showArchived}
-            >
-              Archived sessions
-            </button>
-            {['Usage', 'MCP servers'].map((x) => (
-              <button key={x} title={`${x}：即将推出`} aria-disabled className="flex h-7 w-full cursor-default items-center rounded-lg px-2.5 text-sm text-muted-foreground">{x}</button>
-            ))}
-          </div>
-        )}
+        <NavItem icon={<ArchiveIcon className="size-4" />} active={page === 'archived'} onClick={showArchived} hint="已归档的会话">Archived</NavItem>
       </nav>
       <div className="mt-4 space-y-4 px-2">
         {[...groups].map(([path, list]) => {
