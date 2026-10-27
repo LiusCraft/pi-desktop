@@ -2,7 +2,7 @@
 // Code and Work each show their own tasks (a task starts the kind of session its tab uses); it
 // replaces the conversation area while open. Tasks run on this machine, so only while the app is open.
 import { useState, type ReactNode } from 'react';
-import { ClockIcon, PencilIcon, PlayIcon, PlusIcon, Trash2Icon, XIcon } from 'lucide-react';
+import { ClockIcon, PencilIcon, PlayIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
 import type { PermissionMode, SessionKind } from '@shared/protocol';
 import { WEEKDAYS, describeSchedule, parseTime, type ScheduledTask, type TaskDraft, type TaskSchedule } from '@shared/schedule';
@@ -19,7 +19,7 @@ import { call, errText } from '@/lib/api';
 import { MODES } from '@/lib/constants';
 import { ago, fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { openSession, showWelcome } from '@/store/actions';
+import { openSession } from '@/store/actions';
 import { useApp } from '@/store/app';
 import { dialogs } from '@/store/dialogs';
 
@@ -285,9 +285,6 @@ export function ScheduledPage() {
 
   return (
     <div className="relative min-h-0 flex-1 overflow-y-auto">
-      <button className="absolute right-4 top-3 rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground" title="关闭" onClick={() => showWelcome()}>
-        <XIcon className="size-4" />
-      </button>
       <div key={form ? `form:${form.id ?? 'new'}` : (current?.id ?? 'list')} className="mx-auto max-w-3xl animate-in px-8 py-8 duration-200 fade-in-0 slide-in-from-bottom-1">{body}</div>
     </div>
   );

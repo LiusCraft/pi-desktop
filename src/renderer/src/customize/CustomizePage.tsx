@@ -2,13 +2,12 @@
 // MCP servers and packages, plus the subagent identities Pi Desktop adds. It replaces the
 // conversation area while open; project-level entries follow the project picked in the sidebar.
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { BotIcon, PackageIcon, PlugZapIcon, ScrollTextIcon, SparklesIcon, XIcon } from 'lucide-react';
+import { BotIcon, PackageIcon, PlugZapIcon, ScrollTextIcon, SparklesIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import type { CustomizeCatalog } from '@shared/protocol';
 import { call, errText } from '@/lib/api';
 import { fname } from '@/lib/format';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { showWelcome } from '@/store/actions';
 import { useApp } from '@/store/app';
 import { AgentsSection } from './AgentsSection';
 import { ConnectorsSection } from './ConnectorsSection';
@@ -83,9 +82,6 @@ export function CustomizePage() {
         </div>
       </nav>
       <div className="relative min-w-0 flex-1 overflow-y-auto">
-        <button className="absolute right-4 top-3 rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground" title="关闭" onClick={() => showWelcome()}>
-          <XIcon className="size-4" />
-        </button>
         <div key={tab} className="mx-auto max-w-3xl animate-in px-8 py-8 duration-200 fade-in-0 slide-in-from-bottom-1">
           {tab === 'agents' ? (
             <AgentsSection />

@@ -1,12 +1,11 @@
 // The Activity page, opened from the sidebar's Pi Desktop menu: how the user has been using the app lately,
 // from their own prompts (Code and Work together). Every number follows the chosen range.
-import { XIcon } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Segmented } from '@/components/common/Segmented';
 import { call } from '@/lib/api';
 import { fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { openSession, showWelcome } from '@/store/actions';
+import { openSession } from '@/store/actions';
 import { useApp } from '@/store/app';
 import { activityLevels, HOURS_PER_DAY, rangeDays, rangeStats, summarize, TEMPORARY_WORKSPACE, type ActivityLog } from '@shared/activity';
 import { fmtDay, Heatmap, Legend } from './Heatmap';
@@ -84,9 +83,6 @@ export function ActivityPage() {
 
   return (
     <div className="relative min-h-0 flex-1 overflow-y-auto">
-      <button className="absolute right-4 top-3 rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground" title="关闭" onClick={() => showWelcome()}>
-        <XIcon className="size-4" />
-      </button>
       <div className="mx-auto max-w-4xl animate-in space-y-4 px-8 py-8 duration-200 fade-in-0 slide-in-from-bottom-1">
         <div className="flex items-end gap-3">
           <div className="min-w-0 flex-1">
