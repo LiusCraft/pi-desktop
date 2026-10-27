@@ -7,6 +7,7 @@
 // Host → renderer traffic is a single stream of `HostEvent`s.
 import type { Attachment, DecodedUserContent, PromptSubmission } from './attachments';
 import type { Forge } from './forge';
+import type { PetDef } from './pets';
 import type { ScheduledTask, TaskDraft } from './schedule';
 
 export type SessionKind = 'code' | 'work';
@@ -669,6 +670,8 @@ export interface Settings {
 }
 export interface SettingsPayload extends Settings {
   resolvedTheme: 'light' | 'dark';
+  /** The user's own pet skins (the built-in ones live in `@shared/pets`). */
+  pets: PetDef[];
 }
 
 /** Options for one next-message prediction request. */
@@ -725,6 +728,9 @@ export interface Api {
   'settings:open'(section?: string): void;
   'settings:get'(): SettingsPayload;
   'settings:set'(patch: Partial<Settings>): SettingsPayload;
+  /** Add or replace a custom pet skin; throws a readable message when the definition is invalid. */
+  'pets:save'(pet: unknown): SettingsPayload;
+  'pets:remove'(id: string): SettingsPayload;
   'settings:close'(): void;
   /** Show a rendered diagram (SVG markup) in its own pan/zoom window. */
   'diagram:open'(svg: string): void;
@@ -878,7 +884,7 @@ export const HOST_CHANNELS = [
 
 export const MAIN_CHANNELS = [
   'app:info', 'app:notify', 'app:openExternal', 'app:revealPath', 'app:pickFolder',
-  'settings:open', 'settings:get', 'settings:set', 'settings:close', 'diagram:open', 'diagram:get',
+  'settings:open', 'settings:get', 'settings:set', 'pets:save', 'pets:remove', 'settings:close', 'diagram:open', 'diagram:get',
   'projects:list', 'projects:add', 'projects:adoptWorktree', 'projects:remove',
   'work:folders', 'work:addFolder', 'work:useFolder', 'work:removeFolder',
   'attachments:import', 'attachments:pick', 'attachments:clipboard',

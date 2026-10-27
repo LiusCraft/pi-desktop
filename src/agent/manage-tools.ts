@@ -10,6 +10,7 @@ import { Type, type Static } from 'typebox';
 import type { CustomizeCatalog, SessionKind } from '@shared/protocol';
 import { describeSchedule, validateSchedule, type ScheduledTask, type TaskDraft, type TaskSchedule } from '@shared/schedule';
 import { PERMISSION_MODES } from '@shared/protocol';
+import { BUILTIN_PETS, PET_GRID, PET_LIMITS, PET_PARTS, type PetDef } from '@shared/pets';
 
 export interface ScheduleHost {
   list(): ScheduledTask[];
@@ -33,6 +34,14 @@ export interface CustomizeHost {
   removeConnector(name: string, scope: 'user' | 'project'): Promise<unknown>;
   installPlugin(source: string, scope: 'user' | 'project'): Promise<unknown>;
   removePlugin(source: string, scope: 'user' | 'project'): Promise<unknown>;
+}
+
+export interface PetHost {
+  /** The user's own skins (the built-in ones are in `BUILTIN_PETS`). */
+  list(): PetDef[];
+  /** Validates, stores and returns the skin; throws a readable message for a bad definition. */
+  save(raw: unknown): PetDef;
+  remove(id: string): void;
 }
 
 const text = (t: string, details: unknown = {}) => ({ content: [{ type: 'text' as const, text: t }], details });
@@ -259,7 +268,74 @@ function registerCustomize(pi: ExtensionAPI, host: CustomizeHost) {
   });
 }
 
-export function registerManageTools(pi: ExtensionAPI, host: { schedule?: ScheduleHost; customize?: CustomizeHost }) {
+// ------------------------------------------------------------ pets
+
+const PetPartField = StringEnum([...PET_PARTS] as [string, ...string[]], { description: 'Animated part; omit for plain body pixels' });
+const PetRectField = Type.Object({
+  x: Type.Integer(), y: Type.Integer(), w: Type.Integer({ minimum: 1 }), h: Type.Integer({ minimum: 1 }), part: Type.Optional(PetPartField),
+});
+const PetShapeField = Type.Object({
+  fill: Type.String({ description: 'Hex colour, e.g. #d97757' }),
+  part: Type.Optional(PetPartField),
+  rects: Type.Array(PetRectField, { minItems: 1 }),
+});
+
+function registerPets(pi: ExtensionAPI, host: PetHost) {
+  const json = (pet: PetDef) => JSON.stringify(pet);
+  pi.registerTool({
+    name: 'pidesk_pet_list',
+    label: 'Pets',
+    description:
+      'Show the desktop pet skins and how a skin is built. A skin is a pixel drawing made of filled rectangles on an integer grid: ' +
+      `x ${PET_GRID.minX}..${PET_GRID.maxX}, y ${PET_GRID.minY}..${PET_GRID.maxY}, the body sitting around x 0..22 and y -4..14 with its feet at y 14. ` +
+      `A rectangle may carry a part (${PET_PARTS.join(', ')}) and the app animates parts by name: legs step, arms tap, eyes blink, the mouth talks, the tail swings. ` +
+      'Always call this before designing a skin: the built-in pets it prints are the reference to copy the structure and proportions from.',
+    parameters: Type.Object({}),
+    annotations: { readOnlyHint: true },
+    async execute() {
+      const custom = host.list();
+      return text(
+        [
+          'Built-in pets (copy their structure for a new skin):',
+          ...BUILTIN_PETS.map((p) => `- ${p.id}: ${json(p)}`),
+          `Custom pets:${custom.length ? '' : ' (none)'}`,
+          ...custom.map((p) => `- ${p.id} · ${p.label}`),
+        ].join('\n'),
+        { builtin: BUILTIN_PETS, custom },
+      );
+    },
+  });
+
+  pi.registerTool({
+    name: 'pidesk_pet_manage',
+    label: 'Manage pet',
+    description:
+      'Create, replace or delete a custom desktop pet skin; it shows up under Settings → Appearance → Pet skin. ' +
+      'save needs id (lowercase letters, digits, -), label (the name shown, up to ' + PET_LIMITS.label + ' characters) and shapes, a list of {fill, part?, rects:[{x,y,w,h,part?}]} painted first to last. ' +
+      'Build it like the built-in pets (see pidesk_pet_list): a body block, four legs (parts "leg a" / "leg b" alternating), arms (parts "arm l" / "arm r"), ' +
+      'eyes as a shape with part "eyes", a one-pixel-high rectangle with part "mouth", an optional "tail". Keep feet at y 14 and the head near y 0. ' +
+      'delete needs id. Saving an existing id replaces it. Tell the user to pick the skin in Settings → Appearance.',
+    promptSnippet: 'Create custom desktop pet skins in the built-in pets’ pixel format',
+    parameters: Type.Object({
+      action: StringEnum(['save', 'delete'] as const),
+      id: Type.String({ description: 'Skin id' }),
+      label: Type.Optional(Type.String({ description: 'save: the name shown in Settings' })),
+      shapes: Type.Optional(Type.Array(PetShapeField, { description: `save: the drawing (at most ${PET_LIMITS.shapes} shapes, ${PET_LIMITS.rects} rectangles in all)` })),
+    }),
+    annotations: { destructiveHint: true },
+    async execute(_id, p) {
+      if (p.action === 'delete') {
+        host.remove(p.id);
+        return text(`Deleted pet ${p.id}.`);
+      }
+      const pet = host.save({ id: p.id, label: p.label, shapes: p.shapes });
+      return text(`Saved pet "${pet.label}" (${pet.id}). It is listed under Settings → Appearance → Pet skin.`, { pet });
+    },
+  });
+}
+
+export function registerManageTools(pi: ExtensionAPI, host: { schedule?: ScheduleHost; customize?: CustomizeHost; pets?: PetHost }) {
   if (host.schedule) registerSchedule(pi, host.schedule);
   if (host.customize) registerCustomize(pi, host.customize);
+  if (host.pets) registerPets(pi, host.pets);
 }

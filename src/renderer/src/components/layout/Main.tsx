@@ -3,6 +3,7 @@ import {
   BotIcon, ChevronDownIcon, ExternalLinkIcon, FileTextIcon, FolderIcon, GlobeIcon, LaptopIcon, PanelRightIcon,
   SquareTerminalIcon,
 } from 'lucide-react';
+import { PET_BLOCK_ATTR } from '@/components/composer/Clawd';
 import { CodeComposer, WorkComposer } from '@/components/composer/Composers';
 import { copyText } from '@/components/common/Copy';
 import { Transcript } from '@/components/thread/Transcript';
@@ -214,7 +215,7 @@ function Thread({ s }: { s: SessionView }) {
       <CodeComposer />
       {sideOpen && (
         // Floats over the conversation; the thread underneath keeps running.
-        <div className="absolute top-3 right-3 bottom-auto z-20 h-[min(560px,calc(100%-1.5rem))] w-[min(400px,calc(100%-1.5rem))]">
+        <div {...{ [PET_BLOCK_ATTR]: '' }} className="absolute top-3 right-3 bottom-auto z-20 h-[min(560px,calc(100%-1.5rem))] w-[min(400px,calc(100%-1.5rem))]">
           <SideChatView sid={s.meta.id} mode="embedded" />
         </div>
       )}

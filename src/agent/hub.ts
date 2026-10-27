@@ -19,7 +19,7 @@ import type {
 } from '@shared/protocol';
 import { decodePeerMessage, encodePeerMessage, isPeerMessage } from '@shared/peer-message';
 import { decodePrEvent, encodePrEvent, isPrEvent } from '@shared/pr-event';
-import { appAgentsDir, appWorkDir, appExtensionsDir, worktreeDir as resolveWorktreeDir } from './app-paths';
+import { appAgentsDir, appPetsDir, appWorkDir, appExtensionsDir, worktreeDir as resolveWorktreeDir } from './app-paths';
 import { validatePromptPayload } from './attachments';
 import workPrompt from './work-prompt.md?raw';
 import { registerDemoModel } from './demo-model';
@@ -27,6 +27,7 @@ import { applyChildPath } from './env';
 import * as customize from './customize';
 import { agentCatalog, agentPrompt, loadAgents, removeAgent, saveAgent } from './agents';
 import type { CustomizeHost, ScheduleHost } from './manage-tools';
+import { listPets, removePet, savePet } from './pets';
 import { createDesktopKit, type KitHost, type KitState, type SubagentRun } from './desktop-kit';
 import { toWireEvent } from './events';
 import { readSessionFile, readSessionImage, resolveInside } from './files';
@@ -459,6 +460,11 @@ export class SessionHub {
           installPlugin: (source, scope) => c.installPlugin(source, scope, project),
           removePlugin: (source, scope) => c.removePlugin(source, scope, project),
         };
+      },
+      pets: {
+        list: () => listPets(appPetsDir(this.opts.dataDir)),
+        save: (raw) => savePet(appPetsDir(this.opts.dataDir), raw),
+        remove: (id) => removePet(appPetsDir(this.opts.dataDir), id),
       },
       taskUpdate: (update) => {
         if (!live.disposed) this.emit({ type: 'task', sessionId: live.id, update });
