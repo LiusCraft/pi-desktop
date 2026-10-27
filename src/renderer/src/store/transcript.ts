@@ -28,7 +28,7 @@ export function emptySession(meta: SessionMeta): SessionView {
   return {
     meta, items: [], loaded: false, running: false, t0: 0, tokens: 0, statusText: '', ctxPct: null,
     model: meta.model ?? null, thinking: meta.thinking ?? null, levels: [], commands: [], waiting: null, unread: false,
-    todosKey: null, lastTodos: [], outputs: [], term: [], changes: [], gitState: null, pr: meta.pr, prThreads: [], prHidden: false, files: null,
+    todosKey: null, lastTodos: [], outputs: [], changes: [], gitState: null, pr: meta.pr, prThreads: [], prHidden: false, files: null,
     panels: readPanels(meta.id), expanded: null, detail: null, previewUrl: null,
     pendingUser: [], stopping: false, historyBusy: false, setup: null, hostEpoch: 0, cur: null,
   };
@@ -153,7 +153,6 @@ export function toolEnd(
   } else if (t.kind !== 'read') t.output = text.slice(0, 8000);
 
   if (t.kind === 'bash' && !replay) {
-    s.term.push({ cmd: t.cmd, out: text });
     if (!ev.isError && /\b(?:gh\s+pr|glab\s+mr)\s+(?:create|merge|close|reopen|ready|edit|update)\b/i.test(t.cmd)) {
       // gh / glab can take a moment to expose a just-created PR through `pr view`.
       const created = /\b(?:gh\s+pr|glab\s+mr)\s+create\b/i.test(t.cmd) && text.match(/https?:\/\/[^\s<>"'`]+\/(?:pull|merge_requests)\/(\d+)/i);
@@ -411,7 +410,6 @@ export function replay(s: SessionView, messages: AgentMessage[], view: ViewMode)
   s.todosKey = null;
   s.lastTodos = [];
   s.outputs = [];
-  s.term = [];
   s.cur = null;
   s.waiting = null;
   s.detail = null;

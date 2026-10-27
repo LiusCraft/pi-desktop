@@ -25,6 +25,7 @@ import { AgentClient } from './agent-client';
 import { migrateLegacyKeys } from './agent-auth';
 import { clipboardAttachments, type ClipboardItemLike } from './clipboard';
 import { openIn, openTargets } from './open-in';
+import { Terminals, terminalShells } from './terminal';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PRELOAD = path.join(here, '../preload/index.js');
@@ -97,7 +98,7 @@ function ensureDemoProject() {
 const DEFAULT_SETTINGS: Settings = {
   theme: null, notify: true, renderMermaid: true, suggestions: true,
   suggestionModel: 'session', suggestionModelId: null, suggestionContext: SUGGESTION_DEFAULT_CONTEXT, suggestionFullContext: false,
-  defaultMode: 'code', sidebarCollapsed: false, worktreeDir: null, pet: true, petSkin: DEFAULT_PET_ID,
+  defaultMode: 'code', sidebarCollapsed: false, worktreeDir: null, pet: true, petSkin: DEFAULT_PET_ID, terminalShell: null,
 };
 
 function settingsValue(): Settings {
@@ -111,6 +112,10 @@ function settingsPayload(): SettingsPayload {
 function broadcast<K extends PushChannel>(channel: K, payload: PushEvents[K]) {
   for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(channel, payload);
 }
+const terminals = new Terminals({
+  data: (id, data) => broadcast('terminal:data', { id, data }),
+  exit: (id, code) => broadcast('terminal:exit', { id, code }),
+});
 /** A worktree root must be one absolute local folder; null/empty restores the default. */
 function normalizeWorktreeDir(value: unknown): string | null {
   const raw = typeof value === 'string' ? value.trim() : '';
@@ -486,6 +491,13 @@ const handlers: MainHandlers = {
     clipboardAttachments(() => (clipboard as unknown as { read(): Promise<ClipboardItemLike[]> }).read(), importAttachments),
 
   'app:openTargets': () => openTargets(),
+  'terminal:shells': () => terminalShells(),
+  'terminal:list': (sessionId) => terminals.list(sessionId),
+  'terminal:create': async (sessionId) => terminals.create(sessionId, await sessionCwd(sessionId), settingsValue().terminalShell),
+  'terminal:attach': (id) => terminals.attach(id),
+  'terminal:write': (id, data) => terminals.write(id, data),
+  'terminal:resize': (id, cols, rows) => terminals.resize(id, cols, rows),
+  'terminal:close': (id) => terminals.close(id),
   'sessions:openIn': async (id, target, rel) => {
     const cwd = await sessionCwd(id);
     const resource = rel ? resolveInside(cwd, rel) : cwd;
@@ -517,7 +529,11 @@ function registerIpc() {
     ipcMain.handle(channel, (_e, ...args) => fn(...args));
   }
   for (const channel of HOST_CHANNELS) {
-    ipcMain.handle(channel, (_e, ...args) => agent.call(channel, ...args));
+    ipcMain.handle(channel, (_e, ...args) => {
+      // Shells go first: one sitting in the session's worktree would keep it from being deleted.
+      if (channel === 'sessions:remove') terminals.closeSession(String(args[0]));
+      return agent.call(channel, ...args);
+    });
   }
 }
 
@@ -563,6 +579,7 @@ app.on('before-quit', async (e) => {
   if (quitting) return;
   e.preventDefault();
   quitting = true;
+  terminals.closeAll();
   await agent?.stop().catch(() => {});
   app.quit();
 });

@@ -3,7 +3,8 @@ import { useDefaultLayout } from 'react-resizable-panels';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { expandCard } from '@/store/actions';
 import type { CardId, SessionView } from '@/store/types';
-import { WorkPanel, DetailPanel, DiffPanel, FilesPanel, PreviewPanel, TasksPanel, TerminalPanel, type CardProps } from './Panels';
+import { WorkPanel, DetailPanel, DiffPanel, FilesPanel, PreviewPanel, TasksPanel, type CardProps } from './Panels';
+import { TerminalPanel } from './TerminalPanel';
 
 /** Which cards are open, split into the two tool columns. */
 export function openCards(s: SessionView): { primary: CardId[]; secondary: CardId[] } {

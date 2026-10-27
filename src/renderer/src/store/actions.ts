@@ -2,7 +2,7 @@
 // in the app store; pi events are folded in by transcript.ts.
 import { toast } from 'sonner';
 import { buildMessage, decodeUserContent, type Attachment } from '@shared/attachments';
-import type { HostEvent, OutputStyle, PermissionMode, SessionKind, SessionMeta, SpawnTask, ThinkingLevel, UiResponse } from '@shared/protocol';
+import type { HostEvent, OutputStyle, PermissionMode, PrThread, SessionKind, SessionMeta, SpawnTask, ThinkingLevel, UiResponse } from '@shared/protocol';
 import { referencePrompt } from '@shared/context-reference';
 import { positiveLine } from '@shared/tool-previews';
 import { call, errText, modKey } from '@/lib/api';
@@ -353,6 +353,36 @@ export function replyWith(sid: string, passage: string, comment = '') {
   const added = drafts.addReference(key, { id: crypto.randomUUID(), kind: 'quote', path: '', text: passage.trim(), comment: comment.trim() || undefined });
   if (!added) throw new Error(getDraft(key).errors.at(-1) ?? '无法添加回复');
   requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('textarea[data-composer-input]')?.focus());
+}
+
+/** Quote a PR review thread into the composer, so the next message can answer or act on it. */
+export function quotePrThread(thread: PrThread) {
+  const s = currentSession();
+  if (!s) return;
+  const key = sessionDraftKey(s.meta.id);
+  const text = thread.comments.map((c) => `${c.author}: ${c.body}`).join('\n\n');
+  const added = drafts.addReference(key, {
+    id: crypto.randomUUID(), kind: 'comment', path: thread.path, text,
+    ...(thread.line ? { startLine: thread.line, endLine: thread.line } : {}),
+    side: thread.side,
+  });
+  if (!added) throw new Error(getDraft(key).errors.at(-1) ?? '无法引用评论');
+  requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('textarea[data-composer-input]')?.focus());
+}
+
+/** Answer a PR review thread on the code host itself, then refresh the threads. */
+export async function replyPrThread(threadId: string, body: string) {
+  const id = currentSession()?.meta.id;
+  if (!id) return;
+  await call('sessions:prReply', id, threadId, body);
+  await loadPrThreads(id);
+}
+
+export async function resolvePrThread(threadId: string, resolved: boolean) {
+  const id = currentSession()?.meta.id;
+  if (!id) return;
+  await call('sessions:prResolve', id, threadId, resolved);
+  await loadPrThreads(id);
 }
 
 const HELP = () => `### Shortcuts
@@ -904,14 +934,30 @@ export async function openPrComments() {
   togglePanel(id, 'diff', true);
 }
 
+const threadCacheKey = (id: string) => `pi.prThreads.${id}`;
+function readThreadCache(id: string): PrThread[] {
+  try {
+    const cached = JSON.parse(localStorage.getItem(threadCacheKey(id)) ?? '[]');
+    return Array.isArray(cached) ? cached : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Stale-while-revalidate: the last known threads show at once, the forge answers in the background. */
 export async function loadPrThreads(id: string) {
   const s = getApp().sessions[id];
   if (!s || isWork(s) || !s.pr) return;
+  if (!s.prThreads.length) {
+    const cached = readThreadCache(id);
+    if (cached.length) updateSession(id, (v) => void (v.prThreads = cached));
+  }
   try {
     const prThreads = await call('sessions:prThreads', id);
     updateSession(id, (v) => void (v.prThreads = prThreads));
+    try { localStorage.setItem(threadCacheKey(id), JSON.stringify(prThreads)); } catch { /* storage full or blocked */ }
   } catch {
-    // Without gh the diff simply has no comments.
+    // Without gh the diff keeps whatever it last knew.
   }
 }
 
@@ -964,23 +1010,6 @@ export async function setPrAuto(id: string, patch: { fixCi?: boolean; merge?: bo
   } catch (err) {
     fail(err);
   }
-}
-
-/** A command typed in the terminal panel; its output joins the next turn's context. */
-export async function runTerminal(id: string, cmd: string) {
-  const index = getApp().sessions[id]?.term.length ?? 0;
-  updateSession(id, (v) => void v.term.push({ cmd, out: '…' }));
-  let out: string;
-  try {
-    const r = await call('sessions:bash', id, cmd);
-    out = r.output + (r.exitCode ? `\nCommand exited with code ${r.exitCode}` : '');
-  } catch (err) {
-    out = errText(err);
-  }
-  updateSession(id, (v) => {
-    if (v.term[index]) v.term[index].out = out;
-  });
-  scheduleChanges(id);
 }
 
 // ------------------------------------------------------------ projects and folders

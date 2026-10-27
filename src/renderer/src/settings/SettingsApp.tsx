@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { BrainIcon, FolderIcon, InfoIcon, MoonIcon, PlusIcon, SettingsIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
-import type { AppInfo, Project, Settings, SettingsPayload, SuggestionModelMode } from '@shared/protocol';
+import type { AppInfo, Project, Settings, SettingsPayload, SuggestionModelMode, TerminalShell } from '@shared/protocol';
 import { SUGGESTION_DEFAULT_CONTEXT, SUGGESTION_MAX_CONTEXT } from '@shared/protocol';
 import { BUILTIN_PETS, BUILTIN_PET_IDS, DEFAULT_PET_ID } from '@shared/pets';
 import { useCopy } from '@/components/common/Copy';
@@ -11,6 +11,7 @@ import { Segmented } from '@/components/common/Segmented';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -33,6 +34,8 @@ const SECTIONS: { id: Section; label: string; icon: ReactNode }[] = [
 // `keys` was the old section id: keep old links working.
 const normalizeSection = (s: string): Section => (s === 'keys' ? 'models' : (s as Section));
 const isSection = (s: string): s is Section => SECTIONS.some((x) => x.id === s || (x.id === 'models' && s === 'keys'));
+/** Select value standing for `terminalShell: null`. */
+const SYSTEM_SHELL = 'system';
 const revealLabel = isMac ? '在 Finder 中显示' : '在资源管理器中显示';
 const SUGGESTION_MODES: { id: SuggestionModelMode; label: string; hint: string }[] = [
   { id: 'session', label: '跟随会话', hint: '用会话当前的模型（默认），更好但可能更贵' },
@@ -164,10 +167,14 @@ export function SettingsApp() {
   const [settings, setSettings] = useState<Partial<SettingsPayload>>(bridge.boot.settings ?? {});
   const [section, setSection] = useState<Section>(() => (isSection(location.hash.slice(1)) ? normalizeSection(location.hash.slice(1)) : 'appearance'));
   const [info, setInfo] = useState<AppInfo | null>(null);
+  const [shells, setShells] = useState<TerminalShell[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [folders, setFolders] = useState<Project[]>([]);
   const { copied, copy } = useCopy();
 
+  useEffect(() => {
+    call('terminal:shells').then(setShells).catch(() => {});
+  }, []);
   useEffect(() => {
     const offChanged = bridge.on('settings:changed', (s) => {
       setSettings(s);
@@ -272,6 +279,21 @@ export function SettingsApp() {
                 options={[{ id: 'code', label: 'Code' }, { id: 'work', label: 'Work' }]}
                 onChange={(m) => void patch({ defaultMode: m })}
               />
+            </Row>
+          </Group>
+
+          <Group title="终端">
+            <Row title="默认终端" hint="终端面板新建标签页时启动的 shell。已打开的终端不受影响。">
+              <Select value={settings.terminalShell ?? SYSTEM_SHELL} onValueChange={(v) => void patch({ terminalShell: v === SYSTEM_SHELL ? null : v })}>
+                <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup>
+                  <SelectItem value={SYSTEM_SHELL}>系统默认</SelectItem>
+                  {shells.map((sh) => <SelectItem key={sh.file} value={sh.file}>{sh.label}</SelectItem>)}
+                  {settings.terminalShell && !shells.some((sh) => sh.file === settings.terminalShell) && (
+                    <SelectItem value={settings.terminalShell}>{settings.terminalShell}（未找到）</SelectItem>
+                  )}
+                </SelectGroup></SelectContent>
+              </Select>
             </Row>
           </Group>
 
