@@ -36,7 +36,19 @@ export function PrThreadCard({ thread, className }: { thread: PrThread; classNam
       setReplying(false);
     });
   };
-  const iconBtn = 'shrink-0 rounded p-0.5 hover:bg-accent hover:text-foreground disabled:opacity-50';
+  const toComposer = () => {
+    const body = draft.trim();
+    if (!body || busy) return;
+    try {
+      quotePrThread(thread, body);
+      setDraft('');
+      setReplying(false);
+      setError('');
+    } catch (e) {
+      setError(errText(e));
+    }
+  };
+  const iconBtn ='shrink-0 rounded p-0.5 hover:bg-accent hover:text-foreground disabled:opacity-50';
 
   return (
     <div
@@ -82,7 +94,7 @@ export function PrThreadCard({ thread, className }: { thread: PrThread; classNam
               value={draft}
               disabled={busy}
               rows={3}
-              placeholder="回复到 PR…（⌘/Ctrl+↵ 发送）"
+              placeholder="写下回复…（⌘/Ctrl+↵ 回复到 PR）"
               className="w-full resize-y rounded border bg-background px-2 py-1 text-[12.5px] outline-none focus-visible:border-info"
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
@@ -92,7 +104,8 @@ export function PrThreadCard({ thread, className }: { thread: PrThread; classNam
             />
             <div className="flex justify-end gap-1.5">
               <button className="rounded px-2 py-0.5 text-muted-foreground hover:bg-accent" disabled={busy} onClick={() => setReplying(false)}>取消</button>
-              <button className="rounded bg-primary px-2 py-0.5 text-primary-foreground disabled:opacity-50" disabled={busy || !draft.trim()} onClick={submit}>{busy ? '发送中…' : '回复'}</button>
+              <button className="rounded border px-2 py-0.5 hover:bg-accent disabled:opacity-50" disabled={busy || !draft.trim()} onClick={toComposer}>添加到输入框</button>
+              <button className="rounded bg-primary px-2 py-0.5 text-primary-foreground disabled:opacity-50" disabled={busy || !draft.trim()} onClick={submit}>{busy ? '发送中…' : '回复到 PR'}</button>
             </div>
           </div>
         ) : (

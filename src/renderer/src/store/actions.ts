@@ -356,13 +356,14 @@ export function replyWith(sid: string, passage: string, comment = '') {
 }
 
 /** Quote a PR review thread into the composer, so the next message can answer or act on it. */
-export function quotePrThread(thread: PrThread) {
+export function quotePrThread(thread: PrThread, note?: string) {
   const s = currentSession();
   if (!s) return;
   const key = sessionDraftKey(s.meta.id);
   const text = thread.comments.map((c) => `${c.author}: ${c.body}`).join('\n\n');
   const added = drafts.addReference(key, {
     id: crypto.randomUUID(), kind: 'comment', path: thread.path, text,
+    ...(note ? { comment: note } : {}),
     ...(thread.line ? { startLine: thread.line, endLine: thread.line } : {}),
     side: thread.side,
   });
