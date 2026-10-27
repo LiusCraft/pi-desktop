@@ -14,3 +14,6 @@ playwright-report/
 # intermediate iconset from `make icon` (build/icon.png + icon.icns are tracked)
 build/*.iconset/
 coverage/
+
+# built by `npm run build:plugin`
+plugin/pi-remote/index.js
