@@ -47,6 +47,10 @@ export const PET_BLOCK_ATTR = 'data-pet-block';
 /** Mark an element sitting above the composer that the pet can hop onto and walk along (chips, the PR bar). */
 export const PET_GROUND_ATTR = 'data-pet-ground';
 export const PET_GROUND = { [PET_GROUND_ATTR]: '' };
+/** Mark a card docked above the composer: the pet moves up to stand on its top edge instead of covering it. */
+export const PET_PERCH_ATTR = 'data-pet-perch';
+export const PET_PERCH = { [PET_PERCH_ATTR]: '' };
+const PERCH_POLL_MS = 250;
 
 const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -358,6 +362,35 @@ export function Clawd({ mood }: { mood: Mood }) {
   const [joy, setJoy] = useState(false);
   const joyTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(joyTimer.current), []);
+  // How far above the input box the docked card's top edge is (0 when nothing is docked).
+  // Written straight to the style: while the card animates this runs every frame, and a React render per frame makes the pet stutter.
+  useEffect(() => {
+    const measure = () => {
+      const el = track.current;
+      if (!el) return;
+      const perch = document.querySelector(`[${PET_PERCH_ATTR}]`);
+      const box = el.parentElement;
+      const lift = perch && box ? Math.max(0, box.getBoundingClientRect().top - perch.getBoundingClientRect().top) : 0;
+      el.style.bottom = lift ? `calc(100% + ${lift}px)` : '';
+    };
+    measure();
+    // The card animates its height: follow it every frame instead of waiting for the next poll.
+    const observer = new ResizeObserver(measure);
+    let watched: Element | null = null;
+    const poll = setInterval(() => {
+      const perch = document.querySelector(`[${PET_PERCH_ATTR}]`);
+      if (perch !== watched) {
+        if (watched) observer.unobserve(watched);
+        if (perch) observer.observe(perch);
+        watched = perch;
+      }
+      measure();
+    }, PERCH_POLL_MS);
+    return () => {
+      clearInterval(poll);
+      observer.disconnect();
+    };
+  }, []);
   if (!enabled) return null;
   const { facing, walking, arrived, held } = patrol;
   const left = (el: HTMLElement) => el.getBoundingClientRect().left - track.current!.getBoundingClientRect().left;

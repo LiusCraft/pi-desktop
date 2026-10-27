@@ -1,6 +1,6 @@
 import type { Attachment, DecodedAttachment } from '@shared/attachments';
 import type {
-  FileChange, GitState, PrStatus, PrSummary, PrThread, SessionMeta, SetupStep, SlashCommand, SpawnTask, ThinkingLevel, UiRequest,
+  FileChange, GitState, PrStatus, PrSummary, PrThread, SessionMeta, SetupStep, SlashCommand, QuestionAnswer, SpawnTask, ThinkingLevel, UiRequest,
 } from '@shared/protocol';
 import type { PrEvent } from '@shared/pr-event';
 import type { ToolState } from '@/lib/tools';
@@ -45,7 +45,7 @@ export type Item =
   | { kind: 'group'; key: string; thoughts: ThinkStep[]; tools: ToolState[]; open: boolean; userToggled?: boolean }
   | { kind: 'todos'; key: string; items: Todo[] }
   | { kind: 'perm'; key: string; requestId: string | null; toolCallId: string; title: string; resolved: string | null }
-  | { kind: 'ask'; key: string; requestId: string | null; request: UiRequest; resolved: string | null }
+  | { kind: 'ask'; key: string; requestId: string | null; request: UiRequest; resolved: string | null; answers?: QuestionAnswer[]; /** Set for `pidesk_ask_question`, whose card starts at the tool call. */ toolCallId?: string }
   | { kind: 'plan'; key: string; toolCallId: string | null; title: string; md: string; requestId: string | null; resolved: string | null }
   /** Tasks the agent suggests; what the user did with each lives in `meta.suggestions`. */
   | { kind: 'suggest'; key: string; toolCallId: string; tasks: SpawnTask[] }

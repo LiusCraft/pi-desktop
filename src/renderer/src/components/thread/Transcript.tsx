@@ -3,13 +3,14 @@ import { CheckIcon, ChevronDownIcon, CircleAlertIcon } from 'lucide-react';
 import type { SetupStep } from '@shared/protocol';
 import { fmtDur, fmtTok } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { PET_PERCH } from '@/components/composer/Clawd';
 import { runningTasks } from '@/components/workspace/Panels';
 import { togglePanel } from '@/store/actions';
 import { useApp } from '@/store/app';
 import { rememberScroll, savedScroll } from '@/store/scroll';
-import type { Item, SessionView } from '@/store/types';
+import type { Item, ItemOf, SessionView } from '@/store/types';
 import { SelectionMenu } from './SelectionMenu';
-import { AskItem, FootItem, GroupItem, NoteItem, PermItem, PlanItem, PrEventItem, SuggestItem, TextItem, TodosItem, UserItem } from './Items';
+import { AskCard, FootItem, GroupItem, isPendingAsk, NoteItem, PermItem, PlanItem, PrEventItem, SuggestItem, TextItem, TodosItem, UserItem } from './Items';
 
 function renderItem(sid: string, item: Item, items: Item[], index: number, view: string) {
   switch (item.kind) {
@@ -19,7 +20,7 @@ function renderItem(sid: string, item: Item, items: Item[], index: number, view:
     case 'group': return <GroupItem sid={sid} item={item} view={view} />;
     case 'todos': return <TodosItem item={item} />;
     case 'perm': return <PermItem sid={sid} item={item} />;
-    case 'ask': return <AskItem sid={sid} item={item} />;
+    case 'ask': return <AskCard sid={sid} item={item} />;
     case 'plan': return <PlanItem sid={sid} item={item} />;
     case 'suggest': return <SuggestItem sid={sid} item={item} />;
     case 'prEvent': return <PrEventItem sid={sid} item={item} />;
@@ -100,6 +101,17 @@ function StatusLine({ s }: { s: SessionView }) {
   );
 }
 
+/** The question the agent is waiting on, docked right above the composer so it stays in view while the transcript scrolls. */
+export function AskDock({ s }: { s: SessionView }) {
+  const item = s.items.find((i): i is ItemOf<'ask'> => i.kind === 'ask' && !i.resolved && !!i.requestId);
+  if (!item) return null;
+  return (
+    <div {...PET_PERCH} className="mx-auto max-h-[65%] w-full max-w-[786px] shrink-0 overflow-y-auto px-6 pb-2">
+      <AskCard key={item.key} sid={s.meta.id} item={item} />
+    </div>
+  );
+}
+
 /** How close to the bottom still counts as "following the answer". */
 const STICK_PX = 160;
 
@@ -169,9 +181,9 @@ export function Transcript({ s }: { s: SessionView }) {
       <SelectionMenu sid={sid} scope={frame} />
       <div ref={scroller} onScroll={onScroll} className="h-full overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[786px] flex-col gap-4 px-6 pt-6 pb-4">
-          {s.items.map((item, i) => (
+          {s.items.map((item, i) => (isPendingAsk(item) ? null : (
             <div key={item.key} className="transcript-item">{renderItem(s.meta.id, item, s.items, i, view)}</div>
-          ))}
+          )))}
           {s.setup && <SetupCard steps={s.setup} />}
           <StatusLine s={s} />
         </div>

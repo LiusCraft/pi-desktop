@@ -609,7 +609,7 @@ export class SessionHub {
   respond(id: string, requestId: string, response: UiResponse) {
     const pending = this.live.get(id)?.pending.get(requestId);
     if (!pending) return;
-    const label = response.cancelled ? 'cancelled' : response.value ?? (response.confirmed === undefined ? 'OK' : response.confirmed ? 'Yes' : 'No');
+    const label = response.cancelled ? 'cancelled' : response.answers ? 'Answered' : response.value ?? (response.confirmed === undefined ? 'OK' : response.confirmed ? 'Yes' : 'No');
     pending.done(response, label);
   }
 

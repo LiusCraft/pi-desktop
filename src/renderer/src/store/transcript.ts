@@ -2,7 +2,7 @@
 // SessionView; anything that needs IPC or global UI is returned as an Effect.
 import { decodeUserContent } from '@shared/attachments';
 import { forgeOfUrl } from '@shared/forge';
-import type { AgentMessage, PiEvent, PrSummary, SessionMeta, TaskUpdate, UiRequest } from '@shared/protocol';
+import type { AgentMessage, PiEvent, PrSummary, Question, SessionMeta, TaskUpdate, UiRequest } from '@shared/protocol';
 import { decodePrEvent } from '@shared/pr-event';
 import * as previews from '@shared/tool-previews';
 import { fmtDur, fmtTok, relPath } from '@/lib/format';
@@ -84,6 +84,16 @@ export function toolStart(s: SessionView, ev: { toolCallId: string; toolName: st
     push(s, { kind: 'plan', key: newKey(), title: ev.args?.title || 'Plan', md: ev.args?.plan || '', toolCallId: ev.toolCallId, requestId: null, resolved: replay ? 'done' : null }, view);
     return;
   }
+  if (bareName(ev.toolName) === 'ask_question') {
+    const questions: Question[] = (Array.isArray(ev.args?.questions) ? ev.args.questions : [])
+      .filter((q: any) => q?.question && Array.isArray(q.options))
+      .map((q: any) => ({ question: q.question, header: q.header ?? '', multiSelect: !!q.multiSelect, options: q.options }));
+    if (questions.length) {
+      const request: UiRequest = { id: '', kind: 'questions', toolCallId: ev.toolCallId, title: '', questions };
+      push(s, { kind: 'ask', key: newKey(), requestId: null, request, toolCallId: ev.toolCallId, resolved: replay ? 'cancelled' : null }, view);
+    }
+    return;
+  }
   if (bareName(ev.toolName) === 'suggest_task') {
     const tasks = (Array.isArray(ev.args?.tasks) ? ev.args.tasks : []).filter((t: any) => t?.title && t?.prompt);
     if (tasks.length) push(s, { kind: 'suggest', key: newKey(), toolCallId: ev.toolCallId, tasks }, view);
@@ -111,6 +121,15 @@ export function toolEnd(
     if (current?.kind === 'todos') current.items = items;
     else s.todosKey = push(s, { kind: 'todos', key: newKey(), items }, view).key;
     s.lastTodos = items;
+    return fx;
+  }
+  const asked = find(s, 'ask', (a) => a.toolCallId === ev.toolCallId);
+  if (asked) {
+    const answered = ev.result?.details?.status === 'answered';
+    asked.resolved = answered ? 'Answered' : 'cancelled';
+    asked.answers = answered ? ev.result?.details?.answers : undefined;
+    asked.requestId = null;
+    if (s.waiting === asked.key) s.waiting = null;
     return fx;
   }
   const plan = find(s, 'plan', (p) => p.toolCallId === ev.toolCallId);
@@ -389,6 +408,15 @@ export function addUiRequest(s: SessionView, req: UiRequest, view: ViewMode): { 
     plan.requestId = req.id;
     s.waiting = plan.key;
     return { openPlan: plan.key };
+  }
+  const card = req.kind === 'questions' ? find(s, 'ask', (a) => a.toolCallId === req.toolCallId) : undefined;
+  if (card) {
+    // Reopening a session replays the call as unanswered; the host says it is still waiting.
+    card.resolved = null;
+    card.answers = undefined;
+    card.requestId = req.id;
+    s.waiting = card.key;
+    return {};
   }
   s.waiting = push(s, { kind: 'ask', key: newKey(), requestId: req.id, request: req, resolved: null }, view).key;
   return {};

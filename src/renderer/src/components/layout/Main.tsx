@@ -6,7 +6,7 @@ import {
 import { PET_BLOCK_ATTR } from '@/components/composer/Clawd';
 import { CodeComposer, WorkComposer } from '@/components/composer/Composers';
 import { copyText } from '@/components/common/Copy';
-import { Transcript } from '@/components/thread/Transcript';
+import { AskDock, Transcript } from '@/components/thread/Transcript';
 import { openCards, soloCard, Workspace } from '@/components/workspace/Workspace';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup,
@@ -193,6 +193,7 @@ function Thread({ s }: { s: SessionView }) {
   const conversation = (
     <div className="relative flex h-full min-w-0 flex-col">
       <Transcript s={s} />
+      <AskDock s={s} />
       <CodeComposer />
       {sideOpen && (
         // Floats over the conversation; the thread underneath keeps running.

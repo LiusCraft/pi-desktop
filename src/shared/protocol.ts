@@ -514,10 +514,34 @@ export interface ClipboardImportResult extends AttachmentImportResult {
 
 // ------------------------------------------------------------ interactive requests
 
-/** Questions the agent asks the user. Permission and plan prompts come from desktop-kit. */
+export const QUESTION_LIMITS = { questions: 4, optionsMin: 2, optionsMax: 4, header: 12 } as const;
+
+export interface QuestionOption {
+  label: string;
+  description?: string;
+  /** Markdown shown beside the options while this one is highlighted; single-select questions only. */
+  preview?: string;
+}
+
+export interface Question {
+  question: string;
+  /** Short tab label. */
+  header: string;
+  multiSelect: boolean;
+  options: QuestionOption[];
+}
+
+/** What the user chose for one question: option labels, plus their own words when they picked "Other". */
+export interface QuestionAnswer {
+  selected: string[];
+  other?: string;
+}
+
+/** Questions the agent asks the user. Permission, plan and questions prompts come from desktop-kit. */
 export type UiRequest =
   | { id: string; kind: 'permission'; toolCallId: string; title: string }
   | { id: string; kind: 'plan'; toolCallId: string; title: string }
+  | { id: string; kind: 'questions'; toolCallId: string; title: string; questions: Question[] }
   | { id: string; kind: 'select'; title: string; options: string[] }
   | { id: string; kind: 'confirm'; title: string; message: string }
   | { id: string; kind: 'input' | 'editor'; title: string; placeholder?: string; prefill?: string };
@@ -528,6 +552,8 @@ export type UiRequestInput = DistributiveOmit<UiRequest, 'id'>;
 
 export interface UiResponse {
   value?: string;
+  /** One entry per question, in order (answers to a `questions` request). */
+  answers?: QuestionAnswer[];
   confirmed?: boolean;
   cancelled?: boolean;
 }

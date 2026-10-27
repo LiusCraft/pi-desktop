@@ -18,7 +18,7 @@ import { askSide, showSide } from './side';
 import {
   addUiRequest, applyPiEvent, applyTaskUpdate, applyViewMode, emptySession, findByKey, hasThinking, newKey, push, replay, resolveUi, settle, type Effects,
 } from './transcript';
-import type { Arrangement, CardId, Column, DropPlace, Item, Panels, SessionView } from './types';
+import type { Arrangement, CardId, Column, DropPlace, Item, ItemOf, Panels, SessionView } from './types';
 
 export const fail = (err: unknown) => toast.error(errText(err));
 
@@ -415,6 +415,11 @@ export async function openSession(id: string, fresh = false) {
       x.setup = null;
       // A new session is about to run its first message: the answer here predates it.
       if (!fresh) x.running = r.isStreaming;
+      // The run began before this window opened the session: count from the message that started it.
+      if (x.running && !x.t0) {
+        const started = x.items.findLast((i): i is ItemOf<'user'> => i.kind === 'user');
+        x.t0 = started?.timestamp ?? Date.now();
+      }
       x.model = r.model;
       x.thinking = r.thinking;
       x.levels = r.levels;
@@ -733,7 +738,11 @@ export function answerUi(id: string, itemKey: string, response: UiResponse, labe
   const item = findByKey(s, itemKey);
   if (!item || !('requestId' in item) || !item.requestId) return;
   const requestId = item.requestId;
-  updateSession(id, (v) => resolveUi(v, requestId, label));
+  updateSession(id, (v) => {
+    resolveUi(v, requestId, label);
+    const resolved = findByKey(v, itemKey);
+    if (resolved?.kind === 'ask' && response.answers) resolved.answers = response.answers;
+  });
   call('sessions:respond', id, requestId, response).catch(fail);
 }
 

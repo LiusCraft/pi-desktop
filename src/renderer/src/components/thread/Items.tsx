@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { ArrowUpRightIcon, BookmarkIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CircleAlertIcon, GitForkIcon, GitMergeIcon, LightbulbIcon, LoaderCircleIcon, MessagesSquareIcon, RotateCcwIcon, TerminalIcon, XIcon } from 'lucide-react';
+import { ArrowUpRightIcon, BookmarkIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CircleAlertIcon, GitForkIcon, GitMergeIcon, LightbulbIcon, LoaderCircleIcon, MessageCircleQuestionIcon, MessagesSquareIcon, RotateCcwIcon, TerminalIcon, XIcon } from 'lucide-react';
 import { PLAN_CHOICES } from '@shared/protocol';
 import { BUILTIN_COMMAND_INFO, commandLabel, decodeCommandMessage, type CommandMessage } from '@shared/command-message';
 import { decodePeerMessage, type PeerMessage } from '@shared/peer-message';
@@ -13,6 +13,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Kbd } from '@/components/ui/kbd';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
+import { QuestionsItem } from './Questions';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { call } from '@/lib/api';
 import { ago, fmtTok } from '@/lib/format';
@@ -25,7 +26,7 @@ import {
 } from '@/store/actions';
 import { drafts } from '@/store/drafts';
 import { findByKey, findTool, permissionTitle } from '@/store/transcript';
-import type { ItemOf } from '@/store/types';
+import type { Item, ItemOf } from '@/store/types';
 
 // ------------------------------------------------------------ user
 
@@ -509,62 +510,80 @@ export const PermItem = memo(function PermItem({ sid, item }: { sid: string; ite
   );
 });
 
-export const AskItem = memo(function AskItem({ sid, item }: { sid: string; item: ItemOf<'ask'> }) {
+/** A question to the user: open ones are docked above the composer (`AskDock`), answered ones stay in the transcript. */
+export const isPendingAsk = (item: Item) => item.kind === 'ask' && !item.resolved;
+
+export const AskCard = memo(function AskCard({ sid, item }: { sid: string; item: ItemOf<'ask'> }) {
+  return item.request.kind === 'questions' ? <QuestionsItem sid={sid} item={item} /> : <DialogItem sid={sid} item={item} />;
+});
+
+/** Dialogs from pi extensions (ctx.ui.select / confirm / input / editor). */
+function DialogItem({ sid, item }: { sid: string; item: ItemOf<'ask'> }) {
   const r = item.request;
   const [value, setValue] = useState(r.kind === 'input' || r.kind === 'editor' ? (r.prefill ?? '') : '');
   if (item.resolved) return <Resolved label={r.title.split('\n')[0]} subject={item.resolved} denied={item.resolved === 'cancelled'} />;
   const answer = (response: Parameters<typeof answerUi>[2], label: string) => answerUi(sid, item.key, response, label);
-  // Question tools fold optional previews into the dialog title.
+  // Dialogs from question-style extensions fold optional previews into the title.
   const [question, ...extra] = r.title.split(/\n\n(?=--- \d+\. [^\n]+ preview ---\n)/);
   return (
-    <div className="rounded-xl border border-primary/40 bg-card p-3.5 shadow-sm">
-      <div data-selectable className="mb-2 text-sm font-medium whitespace-pre-wrap">{question}</div>
-      {extra.map((p, i) => {
-        const nl = p.indexOf('\n');
-        return (
-          <Collapsible key={i} className="mb-2 text-sm">
-            <CollapsibleTrigger className="cursor-pointer text-left text-muted-foreground">{p.slice(0, nl).replace(/^--- | ---$/g, '')}</CollapsibleTrigger>
-            <CollapsibleContent>
-              <pre className="mt-1 max-h-60 overflow-auto rounded bg-code p-2 font-mono text-xs">{p.slice(nl + 1)}</pre>
-            </CollapsibleContent>
-          </Collapsible>
-        );
-      })}
-      {r.kind === 'select' && (
-        <div className="flex flex-col gap-1.5">
-          {r.options.map((o, i) => {
-            const split = o.indexOf(' — ');
-            return (
-              <Button key={o} variant={i === 0 ? 'default' : 'outline'} className="h-auto justify-start py-1.5 text-left whitespace-normal" onClick={() => answer({ value: o }, o)}>
-                <span>{split < 0 ? o : o.slice(0, split)}</span>
-                {split >= 0 && <span className="ml-2 text-xs opacity-70">{o.slice(split + 3)}</span>}
-              </Button>
-            );
-          })}
-          <Button variant="ghost" size="sm" className="self-start" onClick={() => answer({ cancelled: true }, 'cancelled')}>Cancel</Button>
-        </div>
-      )}
-      {r.kind === 'confirm' && (
-        <>
-          <div className="mb-3 text-sm text-muted-foreground">{r.message}</div>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={() => answer({ confirmed: true }, 'Yes')}>Yes</Button>
-            <Button size="sm" variant="outline" onClick={() => answer({ confirmed: false }, 'No')}>No</Button>
+    <div className="overflow-hidden rounded-xl border border-primary/40 bg-card shadow-sm">
+      <div className="flex items-start gap-2 p-3.5 pb-2.5">
+        <MessageCircleQuestionIcon className="mt-0.5 size-4 shrink-0 text-primary" />
+        <div data-selectable className="min-w-0 flex-1 text-sm font-medium whitespace-pre-wrap">{question}</div>
+      </div>
+      <div className="space-y-2 px-3.5 pb-3.5">
+        {extra.map((p, i) => {
+          const nl = p.indexOf('\n');
+          return (
+            <Collapsible key={i} className="text-sm">
+              <CollapsibleTrigger className="cursor-pointer text-left text-muted-foreground">{p.slice(0, nl).replace(/^--- | ---$/g, '')}</CollapsibleTrigger>
+              <CollapsibleContent>
+                <pre className="mt-1 max-h-60 overflow-auto rounded-lg border bg-code p-2 font-mono text-xs">{p.slice(nl + 1)}</pre>
+              </CollapsibleContent>
+            </Collapsible>
+          );
+        })}
+        {r.kind === 'select' && (
+          <div className="flex flex-col gap-1.5">
+            {r.options.map((o) => {
+              const split = o.indexOf(' — ');
+              return (
+                <button
+                  key={o}
+                  type="button"
+                  className="cursor-pointer rounded-lg border px-3 py-2 text-left outline-none transition-colors hover:border-ring/60 hover:bg-accent/40 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  onClick={() => answer({ value: o }, o)}
+                >
+                  <span className="block text-sm font-medium">{split < 0 ? o : o.slice(0, split)}</span>
+                  {split >= 0 && <span className="mt-0.5 block text-xs text-muted-foreground">{o.slice(split + 3)}</span>}
+                </button>
+              );
+            })}
+            <Button variant="ghost" size="sm" className="self-start" onClick={() => answer({ cancelled: true }, 'cancelled')}>Dismiss</Button>
           </div>
-        </>
-      )}
-      {(r.kind === 'input' || r.kind === 'editor') && (
-        <>
-          <Textarea rows={r.kind === 'editor' ? 6 : 1} placeholder={r.placeholder} value={value} onChange={(e) => setValue(e.target.value)} className="mb-2" />
-          <div className="flex gap-2">
-            <Button size="sm" onClick={() => answer({ value }, 'OK')}>OK</Button>
-            <Button size="sm" variant="outline" onClick={() => answer({ cancelled: true }, 'cancelled')}>Cancel</Button>
-          </div>
-        </>
-      )}
+        )}
+        {r.kind === 'confirm' && (
+          <>
+            <div className="text-sm text-muted-foreground">{r.message}</div>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => answer({ confirmed: true }, 'Yes')}>Yes</Button>
+              <Button size="sm" variant="outline" onClick={() => answer({ confirmed: false }, 'No')}>No</Button>
+            </div>
+          </>
+        )}
+        {(r.kind === 'input' || r.kind === 'editor') && (
+          <>
+            <Textarea rows={r.kind === 'editor' ? 6 : 1} placeholder={r.placeholder} value={value} onChange={(e) => setValue(e.target.value)} />
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => answer({ value }, 'OK')}>OK</Button>
+              <Button size="sm" variant="outline" onClick={() => answer({ cancelled: true }, 'cancelled')}>Cancel</Button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
-});
+}
 
 export function PlanActions({ sid, itemKey }: { sid: string; itemKey: string }) {
   return (

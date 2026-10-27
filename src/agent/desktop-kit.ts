@@ -5,6 +5,7 @@
  *   - Output styles appended to the system prompt in `before_agent_start`
  *   - `pidesk_todo_write`      task checklist the UI renders as a todo card
  *   - `pidesk_exit_plan_mode`  plan approval when running in plan mode
+ *   - `pidesk_ask_question`    one or more multiple-choice questions (with optional previews) for the user
  *   - `task`            read-only subagent with a fresh context (optionally in the background)
  *   - `pidesk_bg_shell`        long-running shell command in the background, with `pidesk_bg_output` / `pidesk_bg_kill`
  *
@@ -22,8 +23,8 @@ import { Type } from 'typebox';
 import { AGENT_TYPES, DEFAULT_AGENT, type AgentType } from './agents';
 import { registerManageTools, type ArtifactHost, type CustomizeHost, type PetHost, type ScheduleHost } from './manage-tools';
 import {
-  PLAN_CHOICES,
-  type OutputStyle, type PermissionMode, type SessionKind, type SubagentProgress, type TaskUpdate, type UiRequestInput, type UiResponse,
+  PLAN_CHOICES, QUESTION_LIMITS,
+  type OutputStyle, type PermissionMode, type Question, type QuestionAnswer, type SessionKind, type SubagentProgress, type TaskUpdate, type UiRequestInput, type UiResponse,
 } from '@shared/protocol';
 
 /** First words of the hidden message injected in plan mode (the demo model looks for it). */
@@ -39,7 +40,7 @@ export interface KitState {
   allowed: Set<string>;
 }
 
-export type KitRequest = Extract<UiRequestInput, { kind: 'permission' | 'plan' }>;
+export type KitRequest = Extract<UiRequestInput, { kind: 'permission' | 'plan' | 'questions' }>;
 interface PlanDetails {
   status: 'skipped' | 'approved' | 'keep';
   mode?: PermissionMode;
@@ -114,7 +115,7 @@ Work collaboratively and teach as you go. Explain key concepts in plain language
 };
 
 const READ_ONLY_TOOLS = new Set([
-  'read', 'grep', 'find', 'ls', 'pidesk_todo_write', 'pidesk_exit_plan_mode', 'pidesk_task', 'pidesk_bg_output', 'pidesk_bg_kill', 'tool_search', 'codemode',
+  'read', 'grep', 'find', 'ls', 'pidesk_todo_write', 'pidesk_exit_plan_mode', 'pidesk_ask_question', 'pidesk_task', 'pidesk_bg_output', 'pidesk_bg_kill', 'tool_search', 'codemode',
   // Nothing here changes anything: a suggestion is only shown to the user, and the session tools below only look.
   'pidesk_suggest_task', 'pidesk_list_sessions', 'pidesk_read_session',
   // Only changes the label shown in the session list.
@@ -163,6 +164,13 @@ export const isRiskyCommand = (command: string, profile: SessionKind = 'code') =
 export const commandKey = (command: string) => command.trim().split(/\s+/).slice(0, 2).join(' ');
 
 const DENIED = 'The user denied this tool call. Ask how they want to proceed.';
+
+function describeAnswer(a: QuestionAnswer | undefined): string {
+  if (!a || (!a.selected.length && !a.other)) return '(no answer)';
+  const parts = a.selected.map((s) => `"${s}"`);
+  if (a.other) parts.push(`their own answer: "${a.other}"`);
+  return parts.join(', ');
+}
 
 export function createDesktopKit(host: KitHost): ExtensionFactory {
   return (pi: ExtensionAPI) => {
@@ -285,6 +293,55 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
           content: [{ type: 'text', text: 'The user wants to keep refining the plan. Stop and wait for their feedback.' }],
           details: { status: 'keep' },
           terminate: true,
+        };
+      },
+    });
+
+    // ---------------------------------------------------------------- pidesk_ask_question
+    const Option = Type.Object({
+      label: Type.String({ description: 'Short choice text (1-5 words)' }),
+      description: Type.Optional(Type.String({ description: 'One sentence on what this choice means or implies' })),
+      preview: Type.Optional(Type.String({ description: 'Markdown shown beside the options when this one is highlighted (a code sketch, config, layout). Single-select only.' })),
+    });
+    pi.registerTool({
+      name: 'pidesk_ask_question',
+      label: 'Ask question',
+      description:
+        'Ask the user one or more multiple-choice questions and wait for the answers. Use it when a decision is genuinely theirs ' +
+        '(a design direction, a trade-off, which of several approaches) and you cannot settle it from the request or the code. ' +
+        'Users can always type their own answer, so do not add an "Other" option. Put your recommended option first and end its label with "(Recommended)". ' +
+        'Do not use it to ask "should I continue?" or for things you can look up.',
+      promptSnippet: 'Ask the user multiple-choice questions when a decision is theirs',
+      parameters: Type.Object({
+        questions: Type.Array(
+          Type.Object({
+            question: Type.String({ description: 'The complete question, ending with a question mark' }),
+            header: Type.String({ description: `Very short tab label, at most ${QUESTION_LIMITS.header} characters` }),
+            multiSelect: Type.Optional(Type.Boolean({ description: 'Allow several answers (previews are ignored then)' })),
+            options: Type.Array(Option, { minItems: QUESTION_LIMITS.optionsMin, maxItems: QUESTION_LIMITS.optionsMax }),
+          }),
+          { minItems: 1, maxItems: QUESTION_LIMITS.questions },
+        ),
+      }),
+      async execute(toolCallId, params, signal): Promise<{ content: { type: 'text'; text: string }[]; details: { status: 'answered' | 'cancelled'; answers?: QuestionAnswer[] } }> {
+        const questions: Question[] = params.questions.map((q) => ({
+          question: q.question,
+          header: q.header.slice(0, QUESTION_LIMITS.header),
+          multiSelect: !!q.multiSelect,
+          options: q.options.map((o) => ({ label: o.label, description: o.description, preview: q.multiSelect ? undefined : o.preview })),
+        }));
+        const title = questions.map((q) => q.question).join('\n');
+        const reply = await host.ask({ kind: 'questions', toolCallId, title, questions }, signal);
+        if (reply.cancelled || !reply.answers) {
+          return {
+            content: [{ type: 'text', text: 'The user dismissed the questions without answering. Do not guess: stop and ask in plain text, or continue with the safest option and say so.' }],
+            details: { status: 'cancelled' },
+          };
+        }
+        const lines = questions.map((q, i) => `- ${q.question}\n  → ${describeAnswer(reply.answers![i])}`);
+        return {
+          content: [{ type: 'text', text: `The user answered:\n${lines.join('\n')}` }],
+          details: { status: 'answered', answers: reply.answers },
         };
       },
     });
