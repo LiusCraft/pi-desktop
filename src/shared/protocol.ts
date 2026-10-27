@@ -426,6 +426,15 @@ export interface FileChange {
   binary: boolean;
 }
 
+/** One commit on the session's branch, as the Diff panel's commit list shows it. */
+export interface CommitInfo {
+  hash: string;
+  short: string;
+  subject: string;
+  author: string;
+  date: string;
+}
+
 /** Live working-tree state: what the composer's branch bar reports (never the session base). */
 export interface GitState {
   /** Paths with uncommitted changes, untracked files included. */
@@ -832,6 +841,10 @@ export interface Api {
   /** Forget the side conversation and start over. */
   'sessions:sideReset'(id: string): void;
   'sessions:changes'(id: string): ChangeSet;
+  /** Commits made since the session's base, newest first. */
+  'sessions:commits'(id: string): CommitInfo[];
+  /** What one of those commits changed. */
+  'sessions:commitChanges'(id: string, hash: string): FileChange[];
   'sessions:pr'(id: string): PrStatus | null;
   'sessions:prThreads'(id: string): PrThread[];
   /** Post a reply into a review thread on GitHub / GitLab. */
@@ -893,7 +906,7 @@ export const HOST_CHANNELS = [
   'sessions:setMode', 'sessions:setStyle', 'sessions:update', 'sessions:archive', 'sessions:unarchive', 'sessions:inspect', 'sessions:remove', 'sessions:spawn', 'sessions:abort',
   'sessions:clearQueue', 'sessions:newContext', 'sessions:compact', 'sessions:stats', 'sessions:exportHtml',
   'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:side', 'sessions:sideGet', 'sessions:sideStage', 'sessions:sideAbort', 'sessions:sideReset',
-  'sessions:changes', 'sessions:pr', 'sessions:prThreads', 'sessions:prReply', 'sessions:prResolve', 'sessions:files', 'sessions:readFile', 'sessions:readImage',
+  'sessions:changes', 'sessions:commits', 'sessions:commitChanges', 'sessions:pr', 'sessions:prThreads', 'sessions:prReply', 'sessions:prResolve', 'sessions:files', 'sessions:readFile', 'sessions:readImage',
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
   'sessions:import', 'git:branch', 'git:branches', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove',
   'customize:list', 'customize:readFile', 'customize:skillSetDisabled', 'customize:skillCreate', 'customize:connectorSave',

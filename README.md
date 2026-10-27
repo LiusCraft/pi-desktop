@@ -203,7 +203,7 @@ Code 会话输入框上方的 PR 条报告当前分支的 PR：状态颜色、`+
 一台电脑上的 Pi Desktop 可以遥控另一台电脑上的会话，会话始终在**被遥控的那台**运行（文件、shell、模型凭据都在那边），这边只是界面。有两种被遥控的对象，对 Desktop 客户端来说协议完全相同：
 
 - **另一台 Pi Desktop**：设置 → 远程 →「共享这台电脑」开启，把地址和访问令牌告诉对方。
-- **只装了 pi 命令行的电脑**：安装 `pi-remote` 插件（`pi install "<Pi Desktop 安装目录>/plugin/pi-remote"`，设置 → 远程 里有现成命令；开发时是仓库里的 `plugin/pi-remote`），在 pi 里执行 `/remote start [--lan] [--port N]`，或用 `pi --remote` 启动即自动开启；`/remote status | token | rotate | stop`。插件在 pi 进程内跑一个无头的 session hub（共用 pi 的登录与模型配置，状态放 `~/.pi-remote`，`PI_REMOTE_HOME` 可改），pi 退出服务即停止。
+- **只装了 pi 命令行的电脑**：安装 `pi-remote` 插件（`pi install npm:@liuscraft/pi-remote`，设置 → 远程 里有现成命令；开发时可 `pi install` 仓库里的 `plugin/pi-remote` 目录），在 pi 里执行 `/remote start [--lan] [--port N]`，或用 `pi --remote` 启动即自动开启；`/remote status | token | rotate | stop`。插件在 pi 进程内跑一个无头的 session hub（共用 pi 的登录与模型配置，状态放 `~/.pi-remote`，`PI_REMOTE_HOME` 可改），pi 退出服务即停止。
 
 连接端：设置 → 远程 →「连接到远程」添加地址 + 令牌并点「连接」，主窗口整体切换为对方的项目与会话（侧边栏底部显示连接状态与「断开」）；断开后回到本机。断线会自动重连，重连后重新读取对方的会话状态。
 

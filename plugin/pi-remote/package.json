@@ -1,11 +1,12 @@
 {
-  "name": "pi-remote",
+  "name": "@liuscraft/pi-remote",
   "version": "0.1.0",
   "description": "Serve pi sessions to a remote Pi Desktop: run /remote start in a plain pi, then connect from Pi Desktop on another machine.",
   "keywords": ["pi-package"],
   "license": "MIT",
   "type": "module",
   "files": ["index.js", "README.md"],
+  "publishConfig": { "access": "public" },
   "pi": { "extensions": ["./index.js"] },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

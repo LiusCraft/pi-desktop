@@ -5,6 +5,7 @@ import {
   Trash2Icon, XIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import type { CommitInfo } from '@shared/protocol';
 import { generatedKind, isGeneratedFile, type GeneratedKind } from '@shared/generated';
 import { lineWindow, WINDOW_LINES } from '@shared/tool-previews';
 import { CodeLines, DiffRows } from '@/components/common/CodeView';
@@ -15,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { call } from '@/lib/api';
 import { modeName } from '@/lib/constants';
-import { firstThread, isLargeDiff } from '@/lib/diff';
+import { changeStats, firstThread, isLargeDiff } from '@/lib/diff';
 import { fdir, fmtDur, fmtTok, fname } from '@/lib/format';
 import type { ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
@@ -96,9 +97,30 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const [gaps, setGaps] = useState<Set<string>>(new Set());
   const [showTree, setShowTree] = useState(true);
   const [active, setActive] = useState<string | null>(null);
+  // The commit list under the tree; picking one swaps the panel from "all changes" to just that commit.
+  const [commits, setCommits] = useState<CommitInfo[]>([]);
+  const [commit, setCommit] = useState<CommitInfo | null>(null);
+  const [commitFiles, setCommitFiles] = useState<ChangedFile[]>([]);
   const body = useRef<HTMLDivElement>(null);
   const id = s.meta.id;
-  const byPath = useMemo(() => new Map(s.changes.map((f) => [f.path, f])), [s.changes]);
+  const files = commit ? commitFiles : s.changes;
+  const byPath = useMemo(() => new Map(files.map((f) => [f.path, f])), [files]);
+  useEffect(() => {
+    call('sessions:commits', id).then(setCommits).catch(() => setCommits([]));
+  }, [id, s.changes]);
+  const pickCommit = async (next: CommitInfo | null) => {
+    setFlipped(new Set());
+    setRevealed(new Set());
+    setGaps(new Set());
+    if (!next || next.hash === commit?.hash) return void setCommit(null);
+    try {
+      const list = await call('sessions:commitChanges', id, next.hash);
+      setCommitFiles(list.map((f) => ({ ...f, ...(f.binary ? { add: 0, del: 0 } : changeStats(f.path, f.before, f.status === 'D' ? null : f.after)) })));
+      setCommit(next);
+    } catch (err) {
+      fail(err);
+    }
+  };
   const scrollTo = (p: string) => {
     const el = [...(body.current?.querySelectorAll<HTMLElement>('[data-path]') ?? [])].find((x) => x.dataset.path === p || p.endsWith('/' + x.dataset.path) || x.dataset.path!.endsWith(p));
     if (!el || !body.current) return false;
@@ -158,19 +180,19 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
       if (f.offsetTop - el.scrollTop > 8) break;
       current = f.dataset.path!;
     }
-    setActive(current ?? s.changes[0]?.path ?? null);
+    setActive(current ?? files[0]?.path ?? null);
   };
 
   // Changed files grouped by folder, root files first.
   const dirs = useMemo(() => {
-    const map = new Map<string, typeof s.changes>();
-    for (const f of s.changes) {
+    const map = new Map<string, typeof files>();
+    for (const f of files) {
       const d = fdir(f.path);
       if (!map.has(d)) map.set(d, []);
       map.get(d)!.push(f);
     }
     return [...map.entries()].sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b)));
-  }, [s.changes]);
+  }, [files]);
 
   const title = (
     <span className="flex min-w-0 items-center gap-1.5 text-sm font-normal">
@@ -216,7 +238,8 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
     content = (
       <div className="flex h-full min-h-0">
         {showTree && (
-          <nav className="w-[38%] max-w-72 min-w-44 shrink-0 overflow-y-auto border-r p-1.5" aria-label="Changed files">
+          <div className="flex w-[38%] max-w-72 min-w-44 shrink-0 flex-col border-r">
+          <nav className="min-h-0 flex-1 overflow-y-auto p-1.5" aria-label="Changed files">
             {dirs.map(([dir, files]) => dir === '' ? files.map((f) => fileRow(f)) : (
               <div key={dir}>
                 <FileContextMenu meta={s.meta} path={dir} directory>
@@ -233,9 +256,34 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
               </div>
             ))}
           </nav>
+          {commits.length > 0 && (
+            <nav className="max-h-[40%] shrink-0 overflow-y-auto border-t p-1.5" aria-label="Commits">
+              <div className="px-2 py-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Commits · {commits.length}</div>
+              <button
+                className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] hover:bg-accent', !commit && 'bg-accent')}
+                onClick={() => void pickCommit(null)}
+              >
+                <span className="truncate">All changes</span>
+              </button>
+              {commits.map((c) => (
+                <button
+                  key={c.hash}
+                  title={`${c.short} · ${c.author} · ${new Date(c.date).toLocaleString()}
+${c.subject}`}
+                  onClick={() => void pickCommit(c)}
+                  className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] hover:bg-accent', commit?.hash === c.hash && 'bg-accent')}
+                >
+                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{c.short}</span>
+                  <span className="min-w-0 flex-1 truncate">{c.subject}</span>
+                </button>
+              ))}
+            </nav>
+          )}
+          </div>
         )}
         <div ref={body} onScroll={onScroll} className="relative min-w-0 flex-1 overflow-auto">
-          {s.changes.map((f) => {
+          {files.length === 0 && <Empty>这个提交没有文件改动</Empty>}
+          {files.map((f) => {
             const gen = generatedKind(f.path);
             const large = !gen && isLargeDiff(f);
             return (

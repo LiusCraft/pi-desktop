@@ -2,7 +2,7 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { FileChange, GitState, PrStatus, PrThread, WorktreeInfo } from '@shared/protocol';
+import type { CommitInfo, FileChange, GitState, PrStatus, PrThread, WorktreeInfo } from '@shared/protocol';
 import type { PrNote } from '@shared/pr-event';
 import { forgeOfUrl, type Forge } from '@shared/forge';
 import { childEnv } from './env';
@@ -115,31 +115,66 @@ export async function diffBase(cwd: string, base: string | null, baseBranch: str
   return base;
 }
 
+/** Git's empty tree: the "before" of a root commit. */
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbcc4904';
+const FIELD = '\u001f';
+
 /** Files changed in the working tree relative to `base` (a commit), including untracked files. */
 export async function changes(cwd: string, base: string | null): Promise<FileChange[]> {
   const root = base ? await repoRoot(cwd) : null;
   if (!base || !root) return [];
   // Git reports paths from the repository root; resolve everything there, not from a sub-folder.
-  cwd = root;
   const files = new Map<string, string>();
-  const status = (await gitSafe(cwd, 'diff', '--name-status', '-z', '--no-renames', base)) || '';
+  const status = (await gitSafe(root, 'diff', '--name-status', '-z', '--no-renames', base)) || '';
   const parts = status.split('\0').filter(Boolean);
   for (let i = 0; i + 1 < parts.length; i += 2) files.set(parts[i + 1], parts[i][0]);
-  const untracked = (await gitSafe(cwd, 'ls-files', '--others', '--exclude-standard', '-z')) || '';
+  const untracked = (await gitSafe(root, 'ls-files', '--others', '--exclude-standard', '-z')) || '';
   for (const p of untracked.split('\0').filter(Boolean)) files.set(p, 'A');
+  return readChanges(root, files, base, null);
+}
 
+/** Commits on the current branch since `base`, newest first. */
+export async function commits(cwd: string, base: string | null): Promise<CommitInfo[]> {
+  if (!base) return [];
+  const out = (await gitSafe(cwd, 'log', `--format=%H${FIELD}%h${FIELD}%s${FIELD}%an${FIELD}%aI`, `${base}..HEAD`)) || '';
+  return out.split('\n').filter(Boolean).map((line) => {
+    const [hash, short, subject, author, date] = line.split(FIELD);
+    return { hash, short, subject, author, date };
+  });
+}
+
+/** Files one commit changed against its first parent (or against nothing, for a root commit). */
+export async function commitChanges(cwd: string, hash: string): Promise<FileChange[]> {
+  const root = await repoRoot(cwd);
+  if (!root || !/^[0-9a-f]{7,64}$/i.test(hash)) return [];
+  const parent = (await gitSafe(root, 'rev-parse', '--verify', '--quiet', `${hash}^`))?.trim() || EMPTY_TREE;
+  const status = (await gitSafe(root, 'diff', '--name-status', '-z', '--no-renames', parent, hash)) || '';
+  const parts = status.split('\0').filter(Boolean);
+  const files = new Map<string, string>();
+  for (let i = 0; i + 1 < parts.length; i += 2) files.set(parts[i + 1], parts[i][0]);
+  return readChanges(root, files, parent, hash);
+}
+
+/** Before/after contents of `files` (path → A/M/D); `after` is read from `head` when given, else from disk. */
+async function readChanges(root: string, files: Map<string, string>, base: string, head: string | null): Promise<FileChange[]> {
   const out: FileChange[] = [];
   for (const [file, st] of [...files].sort()) {
-    const abs = path.join(cwd, file);
     let before: string | null = null, after: string | null = null, binary = false;
-    if (st !== 'A') before = await gitSafe(cwd, 'show', `${base}:${file}`);
-    if (st !== 'D' && fs.existsSync(abs)) {
-      const stat = fs.statSync(abs);
-      if (stat.size > MAX_FILE) binary = true;
-      else {
-        const buf = fs.readFileSync(abs);
-        if (buf.includes(0)) binary = true;
-        else after = buf.toString('utf8');
+    if (st !== 'A') before = base === EMPTY_TREE ? null : await gitSafe(root, 'show', `${base}:${file}`);
+    if (st !== 'D') {
+      if (head) {
+        after = await gitSafe(root, 'show', `${head}:${file}`);
+        if (after && (after.length > MAX_FILE || after.includes('\0'))) { binary = true; after = null; }
+      } else {
+        const abs = path.join(root, file);
+        if (fs.existsSync(abs)) {
+          if (fs.statSync(abs).size > MAX_FILE) binary = true;
+          else {
+            const buf = fs.readFileSync(abs);
+            if (buf.includes(0)) binary = true;
+            else after = buf.toString('utf8');
+          }
+        }
       }
     }
     if (before && (before.length > MAX_FILE || before.includes('\0'))) { binary = true; before = null; }

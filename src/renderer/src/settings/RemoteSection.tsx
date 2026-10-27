@@ -12,6 +12,8 @@ import { call, errText } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 const POLL_MS = 3000;
+// The plugin's npm name (plugin/pi-remote/package.json); `pi install npm:<name>` fetches it.
+const PLUGIN_INSTALL = 'pi install npm:@liuscraft/pi-remote';
 const PLUGIN_START = '/remote start --lan';
 
 const Heading = ({ title, sub }: { title: string; sub: string }) => (
@@ -115,7 +117,12 @@ function ServePanel() {
         {state.enabled && state.listening && (
           <Row title="连接地址" hint="在另一台电脑的 Pi Desktop 里添加连接时填写。" col>
             <div className="space-y-1">
-              {state.urls.map((u) => <code key={u} className="block font-mono text-xs">{u}</code>)}
+              {state.urls.map((u) => (
+                <div key={u} className="flex items-center gap-2">
+                  <code className="min-w-0 flex-1 truncate font-mono text-xs">{u}</code>
+                  <Button size="sm" variant="ghost" onClick={() => copy(u)}>{copied ? '已复制' : '复制'}</Button>
+                </div>
+              ))}
             </div>
           </Row>
         )}
@@ -225,12 +232,7 @@ function ConnectPanel() {
 
 function PluginPanel() {
   const { copied, copy } = useCopy();
-  const [dir, setDir] = useState<string | null>(null);
-  useEffect(() => {
-    call('remote:serveGet').then((s) => setDir(s.pluginDir)).catch(() => {});
-  }, []);
-  // A path with spaces must stay one argument.
-  const commands = [dir ? `pi install "${dir}"` : 'pi install <Pi Desktop>/plugin/pi-remote', PLUGIN_START];
+  const commands = [PLUGIN_INSTALL, PLUGIN_START];
   return (
     <Group title="没有安装 Pi Desktop 的电脑" sub="只装了 pi 命令行也可以被遥控：安装 pi-remote 插件，在 pi 里启动远程服务，再用上面的方式连接。">
       <Panel>

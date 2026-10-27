@@ -1425,6 +1425,13 @@ export class SessionHub {
     const [files, state] = await Promise.all([git.changes(m.cwd, base), git.workState(m.cwd)]);
     return { files, state };
   }
+  async commits(id: string) {
+    const m = this.meta(id);
+    return git.commits(m.cwd, await git.diffBase(m.cwd, m.baseCommit, m.baseBranch));
+  }
+  commitChanges(id: string, hash: string) {
+    return git.commitChanges(this.meta(id).cwd, hash);
+  }
   async prStatus(id: string) {
     const m = this.meta(id);
     await this.syncBranch(m);

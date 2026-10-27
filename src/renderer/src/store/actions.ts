@@ -509,16 +509,14 @@ export async function exportHtml(id: string) {
 async function createSession(firstPrompt: string, draftKey: string) {
   const st = getApp();
   const work = st.view === 'work';
-  const chosenName = st.newSessionName.trim().slice(0, 80);
   const meta = await call('sessions:create', {
     kind: work ? 'work' : 'code',
     projectPath: work ? st.prefs.workFolder || null : st.prefs.project,
     worktree: !work && st.prefs.worktree,
     adoptPath: !work && st.adopt && st.adopt.mainRoot === st.prefs.project ? st.adopt.path : undefined,
     baseRef: !work && st.prefs.worktree && st.baseRef && st.baseRef !== st.projectBranch ? st.baseRef : undefined,
-    // A name typed up front is the user's choice; otherwise the prompt is only a placeholder until the model names it.
-    title: chosenName || firstPrompt.replace(/@\S+/g, '').trim().slice(0, 60) || 'New session',
-    autoName: !chosenName,
+    title: firstPrompt.replace(/@\S+/g, '').trim().slice(0, 60) || 'New session',
+    autoName: true,
     model: st.prefs.model,
     thinking: st.prefs.effort,
     mode: st.prefs.mode,
@@ -537,7 +535,6 @@ async function createSession(firstPrompt: string, draftKey: string) {
     ];
     x.adopt = null;
     x.baseRef = null;
-    x.newSessionName = '';
   });
   const active = useDrafts.getState().active === draftKey;
   drafts.rekey(draftKey, sessionDraftKey(meta.id));

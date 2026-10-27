@@ -4,7 +4,7 @@ A [pi](https://github.com/earendil-works/pi) extension that serves pi sessions t
 Install it on a machine that has only the pi CLI; control it from Pi Desktop on another machine.
 
 ```bash
-pi install /path/to/pi-desktop/plugin/pi-remote     # or: pi -e /path/to/pi-desktop/plugin/pi-remote/index.js
+pi install npm:@liuscraft/pi-remote                # from a checkout: pi install /path/to/pi-desktop/plugin/pi-remote
 ```
 
 In pi:
