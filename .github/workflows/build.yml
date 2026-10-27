@@ -27,7 +27,14 @@ jobs:
       - run: npm ci
 
       - name: Typecheck and test
-        run: npm run typecheck && npm test
+        run: npm run typecheck && npm run test:coverage
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage/lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
       - name: Pack
         run: npm run pack:mac -- --arm64

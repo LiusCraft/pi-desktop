@@ -13,3 +13,4 @@ playwright-report/
 *.dmg
 # intermediate iconset from `make icon` (build/icon.png + icon.icns are tracked)
 build/*.iconset/
+coverage/

@@ -8,5 +8,10 @@ export default defineConfig({
     environment: 'node',
     testTimeout: 60_000,
     hookTimeout: 60_000,
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      reporter: ['text-summary', 'lcov'],
+    },
   },
 });

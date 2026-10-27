@@ -1,9 +1,63 @@
+<div align="center">
+
 # Pi Desktop
 
-基于 [pi coding agent](https://github.com/badlogic/pi-mono) 的桌面端，界面仿照 Claude desktop，有 **Work** 和 **Code** 两种模式。界面用 React + TypeScript + [shadcn/ui](https://ui.shadcn.com) 构建；agent 直接复用 **pi SDK**（`createAgentSession`），所有会话跑在一个常驻的 Electron utilityProcess 里。Claude 风格界面里 pi 没有的能力（权限模式、计划审批、待办、子 agent、后台任务）由内置的 desktop-kit 扩展补上。
+**[pi coding agent](https://github.com/badlogic/pi-mono) 的桌面端 · 仿 Claude desktop 的 Work / Code 双模式**
 
-- **Code**：在项目的独立 git worktree 里写代码，配有 diff、PR / CI 状态、终端和预览。
-- **Work**：在你选的文件夹里做知识类工作，比如整理文件、写文档、做简报；不选文件夹时会新建一个临时工作区。右侧面板显示进度、Pi Desktop 生成的文件和任务上下文。
+[![build](https://img.shields.io/github/actions/workflow/status/LiusCraft/pi-desktop/build.yml?branch=main&label=build%20%26%20test&logo=githubactions&logoColor=white)](https://github.com/LiusCraft/pi-desktop/actions/workflows/build.yml)
+[![release](https://img.shields.io/github/actions/workflow/status/LiusCraft/pi-desktop/release.yml?label=release&logo=github)](https://github.com/LiusCraft/pi-desktop/actions/workflows/release.yml)
+[![version](https://img.shields.io/github/v/release/LiusCraft/pi-desktop?include_prereleases&sort=semver&label=version)](https://github.com/LiusCraft/pi-desktop/releases)
+[![downloads](https://img.shields.io/github/downloads/LiusCraft/pi-desktop/total?label=downloads)](https://github.com/LiusCraft/pi-desktop/releases)
+[![coverage](https://img.shields.io/codecov/c/github/LiusCraft/pi-desktop?logo=codecov&logoColor=white)](https://codecov.io/gh/LiusCraft/pi-desktop)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
+![electron](https://img.shields.io/badge/Electron-45-47848F?logo=electron&logoColor=white)
+![react](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![typescript](https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white)
+![node](https://img.shields.io/badge/Node-%E2%89%A522.12-339933?logo=nodedotjs&logoColor=white)
+![tests](https://img.shields.io/badge/tests-vitest%20%2B%20playwright-6E9F18?logo=vitest&logoColor=white)
+
+---
+
+<p align="center">
+  <a href="#快速开始">快速开始</a> ·
+  <a href="#功能一览">功能一览</a> ·
+  <a href="#架构">架构</a> ·
+  <a href="#测试">测试</a> ·
+  <a href="#打包与发布macos--windows">打包与发布</a> ·
+  <a href="#已知限制--下一步">已知限制</a>
+</p>
+
+</div>
+
+<p align="center">
+  <img src="docs/screenshots/new-session.png" alt="Code 新建会话页：待你回复的会话和未合并的 PR" width="32%">
+  <img src="docs/screenshots/code.png" alt="Code 模式：对话、Diff 面板、PR 条" width="32%">
+  <img src="docs/screenshots/work.png" alt="Work 模式：进度、生成的文件、权限确认" width="32%">
+</p>
+<p align="center"><sub>左：新建会话页，列出等你回复的会话和未合并的 PR（Draft / Open / Checks failing / Ready to merge…）　·　中：Code 模式修 bug，右侧是 Diff　·　右：Work 模式整理收件箱，移动文件前先问你（均为离线演示模型）</sub></p>
+
+## 简介
+
+界面仿照 Claude desktop，有 **Work** 和 **Code** 两种模式。界面用 React + TypeScript + [shadcn/ui](https://ui.shadcn.com) 构建；agent 直接复用 **pi SDK**（`createAgentSession`），所有会话跑在一个常驻的 Electron utilityProcess 里。Claude 风格界面里 pi 没有的能力（权限模式、计划审批、待办、子 agent、后台任务）由内置的 desktop-kit 扩展补上。
+
+| | 做什么 |
+|---|---|
+| 💻 **Code** | 在项目的独立 git worktree 里写代码，配有 diff、PR / CI 状态、终端和预览。 |
+| 🗂️ **Work** | 在你选的文件夹里做知识类工作，比如整理文件、写文档、做简报；不选文件夹时会新建一个临时工作区。右侧面板显示进度、Pi Desktop 生成的文件和任务上下文。 |
+
+## 功能一览
+
+- 🔐 **权限模式**：Auto / Ask / Accept edits / Plan / Bypass，高风险命令始终先问。
+- 🌳 **独立 worktree**：每个 Code 会话一个分支，互不干扰，删会话时一并清理。
+- 🔀 **PR 条与 CI 自动化**：host 内监听 PR，CI 变红自动修、可合并时自动合并。
+- 🧠 **后台小请求**：会话命名、下一句输入预测，不占会话上下文。
+- 🤖 **子 agent 与后台任务**：`explore` / `plan` 内置，自定义身份放 `~/.pi-desktop/agents/`。
+- ⏰ **定时任务**：手动 / 每小时 / 每天 / 工作日 / 每周 / 一次性 / cron。
+- 🧩 **Customize**：技能、MCP、插件、提示模板，读写 pi 自己的文件，和 CLI 一致。
+- 🌐 **远程**：遥控另一台电脑上的 Pi Desktop 或装了 `pi-remote` 的 pi 命令行。
+- 📎 **附件与引用**：粘贴截图、拖入文件，Diff / 文件正文里选代码加评论。
 
 ## 快速开始
 
@@ -52,6 +106,9 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
                      src/shared：三方共用的协议类型、附件消息格式、工具预览
 ```
 
+<details>
+<summary><b>目录 / 文件一览</b>（点击展开）</summary>
+
 | 目录 / 文件 | 作用 |
 |---|---|
 | `src/shared/protocol.ts` | 三个进程之间的契约：渲染进程能调用的每个通道（`Api`）、哪些转发给 agent host（`HOST_CHANNELS`）、host 推回的事件流（`HostEvent`）、交互请求（`UiRequest`） |
@@ -72,6 +129,8 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 | `src/renderer/src/store/transcript.ts` | pi 事件流 → transcript 条目的纯函数（流式文本 / 思考、工具组、权限卡片、计划、todo） |
 | `src/renderer/src/store/actions.ts` | 发送、插话 / 排队、停止、模式 / 模型 / 思考强度、面板、PR 轮询等界面逻辑 |
 | `src/renderer/src/components/` | 侧边栏、对话、输入框（附件、`/` 命令、`@` 文件）、右侧工作区（Diff / 预览 / 文件 / 终端 / 计划 / 子 agent / 文件查看器 / Work 进度） |
+
+</details>
 
 为什么用一个常驻 utilityProcess：pi SDK 是 ESM、会执行工具和用户扩展，放在主进程里重负载时会拖慢窗口、崩溃会带走整个应用；而每会话一个进程又浪费资源。现在 agent host 崩溃只会让正在运行的会话中断，下一条消息会自动重启并从会话文件恢复。
 
@@ -253,8 +312,12 @@ pi 本身不做权限确认。desktop-kit 在 `tool_call` 钩子里按模式决�
 ```bash
 npm run typecheck   # main / agent / preload 与渲染进程两套 tsconfig
 npm test            # vitest：真实的进程内 pi 会话 + desktop-kit + 演示模型，无需 API Key
+npm run test:coverage # 同上并输出覆盖率（CI 上传到 Codecov）
 npm run test:desktop # 构建后用项目自带的 Electron 运行 Playwright 窗口交互测试
 ```
+
+<details>
+<summary><b>测试文件一览</b>（点击展开）</summary>
 
 - `test/hub.e2e.test.ts`：Auto 模式在隔离 worktree 里修 bug（修复前测试真的失败，修复后真的通过，主工作区不被改动）、worktree 默认根目录与设置里的自定义根目录、Ask 模式拒绝、Plan 模式审批后自动切到 Accept edits、运行中切换模式、进程内子 agent、高风险命令仍需询问、带图片附件的会话关闭后从会话文件恢复、`/clear`、首条提示词命名与手动重命名；Work 整理收件箱时只有移动文件需要确认、拒绝后文件保持原样、生成简报文件、临时工作区。
 - `test/desktop/interactions.spec.ts`：临时配置目录（`PI_DESKTOP_HOME`）中的真实 Electron 窗口，覆盖模型元数据编辑、价格 0、token 限制校验、文件菜单、预览引用、Diff 评论、随消息发送及历史回退 / 分支；`test/context-reference.test.ts` 覆盖引用格式、草稿隔离与恢复、容量限制。
@@ -265,6 +328,8 @@ npm run test:desktop # 构建后用项目自带的 Electron 运行 Playwright �
 - `test/attachment-message.test.ts` / `test/attachments-backend.test.ts`：附件消息往返、校验限制、剪贴板格式（macOS / Windows / Linux）和图片规范化。
 - `test/tool-previews.test.ts` / `test/files.test.ts`：原生工具输出、行号 / 分页，以及文件边界、符号链接（需要系统允许创建符号链接）、二进制和大小限制。
 - `test/naming.test.ts`、`test/suggest.test.ts`、`test/side-model.test.ts`、`test/git-pr.test.ts`：命名规则、输入预测的上下文裁剪与回复清洗、小模型挑选、`gh pr view` 结果映射。
+
+</details>
 
 ## 打包与发布（macOS / Windows）
 
@@ -340,11 +405,13 @@ xattr -cr /Applications/Pi\ Desktop.app   # 只在你自己确认过来源的情
 - **`asar: false`**：agent host 里的 pi SDK 要从文件系统读自己的资源、用 jiti 加载用户的 TS 扩展、加载预编译 `.node` 并启动工具二进制；全部保持普通文件最省心。代价是 app 目录里有一万多文件。
 - **不做 universal 单包**：`@earendil-works/pi-tui` 自带 `darwin-arm64` / `darwin-x64` 两份预编译 `.node`，合并成 universal 要额外配 `@electron/universal` 的 `x64ArchFiles`，体积还翻倍。arm64 / x64 各一个 dmg 更省事。
 
+README 里的界面图由 `npm run build && node scripts/screenshots.mjs` 用离线演示模型重新生成到 `docs/screenshots/`。
+
 图标是 `scripts/make-icon.mjs` 用纯 Node（SDF 画形状 + 手写 PNG 编码，无依赖）生成的，改完跑 `make icon` 会一起更新 `.png` 和 `.icns`。
 
 ## 已知限制 / 下一步
 
-- Work 的 **Projects / Artifacts** 入口还是占位（Scheduled 和 Customize 已可用）。定时任务只在应用运行时触发，没有系统级后台服务。
+- 定时任务只在应用运行时触发，没有系统级后台服务。
 - Work 还没接日历、邮箱这类连接器；可以通过 pi 的 MCP（`~/.pi/agent/mcp.json`）或扩展接入。
 - **Cloud 环境**还没实现，菜单里是禁用状态。
 - pi 的 `find` 工具依赖 `fd`，pi 会自动下载；在离线环境下这一项会失败（`grep` 用系统里的 `rg`）。
