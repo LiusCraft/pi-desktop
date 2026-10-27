@@ -7,7 +7,6 @@ import { referencePrompt } from '@shared/context-reference';
 import { positiveLine } from '@shared/tool-previews';
 import { call, errText, modKey } from '@/lib/api';
 import { DESKTOP_COMMANDS, MODES, VIEW_MODES, type ViewMode } from '@/lib/constants';
-import { changeStats } from '@/lib/diff';
 import { fmtTok, fname, relPath } from '@/lib/format';
 import { currentSession, getApp, isWork, read, savePref, setApp, setPref, updateSession, type AppState } from './app';
 import { dialogs } from './dialogs';
@@ -1060,10 +1059,9 @@ export async function loadChanges(id: string) {
   if (!s || isWork(s)) return;
   try {
     const { files, state } = await call('sessions:changes', id);
-    const changes = files.map((f) => ({ ...f, ...(f.binary ? { add: 0, del: 0 } : changeStats(f.path, f.before, f.status === 'D' ? null : f.after)) }));
     updateSession(id, (v) => {
       // Panels are the user's: a new change must not rearrange their workspace.
-      v.changes = changes;
+      v.changes = files;
       v.gitState = state;
     });
   } catch {

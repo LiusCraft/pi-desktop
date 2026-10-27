@@ -1432,6 +1432,10 @@ export class SessionHub {
   commitChanges(id: string, hash: string) {
     return git.commitChanges(this.meta(id).cwd, hash);
   }
+  async changeContent(id: string, file: string, hash: string | null) {
+    const m = this.meta(id);
+    return git.changeContent(m.cwd, hash ? null : await git.diffBase(m.cwd, m.baseCommit, m.baseBranch), file, hash);
+  }
   async prStatus(id: string) {
     const m = this.meta(id);
     await this.syncBranch(m);

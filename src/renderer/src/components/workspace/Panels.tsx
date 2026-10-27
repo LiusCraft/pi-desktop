@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode, type Ref } from 'react';
 import {
   ArrowLeftIcon, BotIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, ChevronsDownUpIcon, ChevronsUpDownIcon, CodeIcon, ExternalLinkIcon, FileIcon, FolderIcon,
   EyeIcon, ListIcon, Maximize2Icon, MessageSquareIcon, Minimize2Icon, RefreshCwIcon, SearchIcon, SquareIcon, SquareTerminalIcon,
@@ -19,9 +19,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { call, isMac } from '@/lib/api';
+import { contentOf, onContent, wantContent } from '@/lib/change-content';
 import { fileDiffOf } from '@/lib/file-diff';
 import { modeName } from '@/lib/constants';
-import { changeStats, firstThread } from '@/lib/diff';
+import { firstThread } from '@/lib/diff';
 import { fdir, fmtDur, fmtTok, fname } from '@/lib/format';
 import type { ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
@@ -138,6 +139,12 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const [hit, setHit] = useState(0);
   const id = s.meta.id;
   const files = commit ? commitFiles : s.changes;
+  const hash = commit?.hash ?? null;
+  // Contents are read per file as the viewer reaches it; each arrival re-renders the panel.
+  const [arrived, arrive] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => onContent(arrive), []);
+  const contents = (f: ChangedFile) => contentOf(id, hash, f);
+  const isBinary = (f: ChangedFile) => f.binary || !!contents(f)?.binary;
   const byPath = useMemo(() => new Map(files.map((f) => [f.path, f])), [files]);
   useEffect(() => {
     call('sessions:commits', id).then(setCommits).catch(() => setCommits([]));
@@ -147,7 +154,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
     if (!next || next.hash === commit?.hash) return void setCommit(null);
     try {
       const list = await call('sessions:commitChanges', id, next.hash);
-      setCommitFiles(list.map((f) => ({ ...f, ...(f.binary ? { add: 0, del: 0 } : changeStats(f.path, f.before, f.status === 'D' ? null : f.after)) })));
+      setCommitFiles(list);
       setCommit(next);
     } catch (err) {
       fail(err);
@@ -174,8 +181,9 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
     const out: { path: string; line: number; side: 'additions' | 'deletions' }[] = [];
     if (!finding || !query) return out;
     for (const f of files) {
-      if (f.binary || out.length >= SEARCH_MAX_MATCHES) continue;
-      const diff = fileDiffOf(f.path, f.status === 'A' ? null : f.before, f.status === 'D' ? null : f.after);
+      const content = contents(f);
+      if (f.binary || !content || content.binary || out.length >= SEARCH_MAX_MATCHES) continue;
+      const diff = fileDiffOf(f.path, f.status === 'A' ? null : content.before, f.status === 'D' ? null : content.after);
       const scan = (lines: string[], from: number, count: number, side: 'additions' | 'deletions') => {
         for (const m of findInText(lines.slice(from, from + count).join(''), query, caseSensitive)) out.push({ path: f.path, line: from + m.line, side });
       };
@@ -190,7 +198,11 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
       }
     }
     return out;
-  }, [finding, query, caseSensitive, files]);
+  }, [finding, query, caseSensitive, files, arrived]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Searching needs every file's text, not just the ones scrolled to.
+  useEffect(() => {
+    if (finding && query) for (const f of files) if (!f.binary) wantContent(id, hash, f);
+  }, [finding, !!query, files, hash]); // eslint-disable-line react-hooks/exhaustive-deps
   // Scrolling the viewer can pull focus into it; stepping with Enter needs the box to keep it.
   const keepFindFocus = () => requestAnimationFrame(() => finder.current?.focus({ preventScroll: true }));
   const showHit = (at: number) => {
@@ -236,14 +248,19 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
     diffTarget.path = null;
   }, [diffTarget.seq, s.changes.length, s.prThreads]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const items = useMemo<ReviewItem[]>(() => files.filter((f) => !f.binary).map((f) => ({
-    id: f.path, kind: 'diff', path: f.path, before: f.status === 'A' ? null : f.before, after: f.status === 'D' ? null : f.after, collapsed: isCollapsed(f.path),
-  })), [files, flipped]); // eslint-disable-line react-hooks/exhaustive-deps
+  const items = useMemo<ReviewItem[]>(() => files.filter((f) => !isBinary(f)).map((f) => {
+    const content = contents(f);
+    return {
+      id: f.path, kind: 'diff', path: f.path, ready: !!content,
+      before: f.status === 'A' ? null : content?.before ?? null, after: f.status === 'D' ? null : content?.after ?? null, collapsed: isCollapsed(f.path),
+    };
+  }), [files, flipped, arrived, hash]); // eslint-disable-line react-hooks/exhaustive-deps
+  const need = (ids: string[]) => ids.forEach((p) => { const f = byPath.get(p); if (f) wantContent(id, hash, f); });
   const statuses = useMemo(() => new Map(files.map((f) => [f.path, STATUS_OF_CHANGE[f.status]])), [files]);
   const decorate = (path: string): FileTreeRowDecoration | null => {
     const f = byPath.get(path);
     if (!f) return null;
-    if (f.binary) return { text: 'binary' };
+    if (isBinary(f)) return { text: 'binary' };
     return { text: `+${f.add} −${f.del}`, parts: [{ text: `+${f.add}`, color: 'var(--success)' }, { text: ` −${f.del}`, color: 'var(--destructive)' }] };
   };
 
@@ -302,7 +319,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
               decorate={decorate}
               selected={active}
               expandAll
-              snapshotOf={(p) => { const f = byPath.get(p); return f?.status === 'D' ? f.before ?? '' : undefined; }}
+              snapshotOf={(p) => { const f = byPath.get(p); if (f?.status !== 'D') return undefined; wantContent(id, hash, f); return contents(f)?.before ?? undefined; }}
               onOpen={open}
             />
             {commits.length > 0 && (
@@ -339,6 +356,7 @@ ${c.subject}`}
             sid={id}
             items={items}
             threads={s.prThreads}
+            onNeed={need}
             onActiveChange={setActive}
             renderPrefix={(item) => (
               <button className="flex items-center text-muted-foreground hover:text-foreground" aria-expanded={!isCollapsed(item.path)} title={isCollapsed(item.path) ? 'Show diff' : 'Hide diff'} onClick={() => toggle(item.path)}>

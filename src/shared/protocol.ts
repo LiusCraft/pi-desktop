@@ -422,8 +422,17 @@ export interface SlashCommand {
 export interface FileChange {
   path: string;
   status: 'A' | 'M' | 'D';
+  binary: boolean;
+  add: number;
+  del: number;
+  /** Changes whenever the file's contents may have: what a cached copy of them is keyed by. */
+  rev: string;
+}
+
+/** Both sides of a changed file, read when the Diff panel gets to it. `binary`: too big or not text. */
+export interface FileContent {
   before: string | null;
-  after: string;
+  after: string | null;
   binary: boolean;
 }
 
@@ -846,6 +855,8 @@ export interface Api {
   'sessions:commits'(id: string): CommitInfo[];
   /** What one of those commits changed. */
   'sessions:commitChanges'(id: string, hash: string): FileChange[];
+  /** One changed file's contents; `hash` picks a commit's change over the working tree's. */
+  'sessions:changeContent'(id: string, path: string, hash: string | null): FileContent;
   'sessions:pr'(id: string): PrStatus | null;
   'sessions:prThreads'(id: string): PrThread[];
   /** Post a reply into a review thread on GitHub / GitLab. */
@@ -909,7 +920,7 @@ export const HOST_CHANNELS = [
   'sessions:setMode', 'sessions:setStyle', 'sessions:update', 'sessions:archive', 'sessions:unarchive', 'sessions:inspect', 'sessions:remove', 'sessions:spawn', 'sessions:abort',
   'sessions:clearQueue', 'sessions:newContext', 'sessions:compact', 'sessions:stats', 'sessions:exportHtml',
   'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:side', 'sessions:sideGet', 'sessions:sideStage', 'sessions:sideAbort', 'sessions:sideReset',
-  'sessions:changes', 'sessions:commits', 'sessions:commitChanges', 'sessions:pr', 'sessions:prThreads', 'sessions:prReply', 'sessions:prResolve', 'sessions:files', 'sessions:readFile', 'sessions:search', 'sessions:readImage',
+  'sessions:changes', 'sessions:commits', 'sessions:commitChanges', 'sessions:changeContent', 'sessions:pr', 'sessions:prThreads', 'sessions:prReply', 'sessions:prResolve', 'sessions:files', 'sessions:readFile', 'sessions:search', 'sessions:readImage',
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
   'sessions:import', 'git:branch', 'git:branches', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove',
   'customize:list', 'customize:readFile', 'customize:skillSetDisabled', 'customize:skillCreate', 'customize:connectorSave',

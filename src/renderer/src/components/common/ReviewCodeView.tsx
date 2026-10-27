@@ -19,11 +19,18 @@ const WORKER_POOL_SIZE = 3;
 /** Rows kept above the line a jump lands on, so it is not hard against the sticky header. */
 const JUMP_OFFSET = 40;
 const THREAD_LOOKUP_TRIES = 30;
+/** Parsing every file's diff in one go freezes the window on a big change: only the first few go in, and more follow as the reader nears the end of what is there. */
+const REVEAL_FIRST = 3;
+const REVEAL_BATCH = 3;
+/** How many screens of files are kept ready below the one being read. */
+const REVEAL_AHEAD = 2;
+/** How long a jump waits for the file it lands on to be read (about 10 s). */
+const CONTENT_WAIT_FRAMES = 600;
 /** The theme paints its own background; inside the shadow root the app's card colour has to be set on the host. */
 const HOST_CSS = ':host { --diffs-light-bg: var(--card) !important; --diffs-dark-bg: var(--card) !important; --diffs-font-family: var(--font-mono); --diffs-font-size: 12.5px; }';
 
 export type ReviewItem =
-  | { id: string; kind: 'diff'; path: string; before: string | null; after: string | null; collapsed?: boolean }
+  | { id: string; kind: 'diff'; path: string; before: string | null; after: string | null; /** False until the contents have arrived. */ ready: boolean; collapsed?: boolean }
   | { id: string; kind: 'file'; path: string; text: string };
 
 type Note = { kind: 'thread'; thread: PrThread } | { kind: 'composer' };
@@ -48,6 +55,8 @@ export interface ReviewProps {
   hideHeader?: boolean;
   renderPrefix?(item: ReviewItem): ReactNode;
   renderMetadata?(item: ReviewItem): ReactNode;
+  /** Items that are about to be shown but whose contents are not in yet. */
+  onNeed?(ids: string[]): void;
   /** The item whose header has scrolled to the top. */
   onActiveChange?(id: string | null): void;
 }
@@ -59,7 +68,7 @@ function trimEol(line: string) {
 }
 
 export const ReviewCodeView = forwardRef<ReviewHandle, ReviewProps>(function ReviewCodeView(
-  { sid, items, threads = [], className, target, hideHeader, renderPrefix, renderMetadata, onActiveChange },
+  { sid, items, threads = [], className, target, hideHeader, renderPrefix, renderMetadata, onNeed, onActiveChange },
   ref,
 ) {
   const view = useRef<CodeViewHandle<Note, undefined>>(null);
@@ -69,10 +78,48 @@ export const ReviewCodeView = forwardRef<ReviewHandle, ReviewProps>(function Rev
   // Only a selection the user made opens the composer; a jump's highlight does not.
   const [composing, setComposing] = useState(false);
   const [commenting, setCommenting] = useState(false);
+  const [shown, setShown] = useState(REVEAL_FIRST);
   const byId = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
   const versions = useRef(new Map<string, { signature: string; version: number }>());
   // CodeView compares files by identity while laying them out, so one text keeps one object.
   const files = useRef(new Map<string, { text: string; file: FileContents }>());
+
+  const shownRef = useRef(shown);
+  shownRef.current = shown;
+  const readyRef = useRef(new Set<string>());
+  readyRef.current = new Set(items.filter((item) => item.kind === 'file' || item.ready).map((item) => item.id));
+  useEffect(() => {
+    const missing = items.slice(0, shown).filter((item) => !readyRef.current.has(item.id)).map((item) => item.id);
+    if (missing.length) onNeed?.(missing);
+  }, [items, shown]); // eslint-disable-line react-hooks/exhaustive-deps
+  const scrolled = useRef(0);
+  /** Bring in the next few files while the last one in the view is within `REVEAL_AHEAD` screens of the bottom edge. */
+  const topUp = useCallback(() => {
+    const last = items[Math.min(shown, items.length) - 1];
+    if (!last || shown >= items.length || !readyRef.current.has(last.id)) return;
+    const top = view.current?.getInstance()?.getTopForItem(last.id);
+    const height = root.current?.clientHeight ?? 0;
+    if (top == null || top - scrolled.current < height * REVEAL_AHEAD) setShown((n) => n + REVEAL_BATCH);
+  }, [items, shown]);
+  // A short or folded file may leave the view unfilled, with no scroll event to ask for more.
+  useEffect(() => {
+    const frame = requestAnimationFrame(topUp);
+    return () => cancelAnimationFrame(frame);
+  }, [topUp]);
+
+  /** Run `go` once the item is part of the view and its contents are in (an item further down is brought in first, with all before it). */
+  const whenShown = useCallback((id: string, go: () => void) => {
+    const at = items.findIndex((item) => item.id === id);
+    if (at < 0) return;
+    if (at < shown && readyRef.current.has(id)) return go();
+    setShown((n) => Math.max(n, at + 1));
+    onNeed?.([id]);
+    const wait = (tries: number) => {
+      if (readyRef.current.has(id) && shownRef.current > at) requestAnimationFrame(go);
+      else if (tries > 0) requestAnimationFrame(() => wait(tries - 1));
+    };
+    requestAnimationFrame(() => wait(CONTENT_WAIT_FRAMES));
+  }, [items, shown, onNeed]);
 
   const dismiss = useCallback(() => {
     setSelection(null);
@@ -80,7 +127,7 @@ export const ReviewCodeView = forwardRef<ReviewHandle, ReviewProps>(function Rev
     setCommenting(false);
   }, []);
 
-  const codeItems = useMemo(() => items.map((item): CodeViewItem<Note> => {
+  const codeItems = useMemo(() => items.slice(0, shown).filter((item) => item.kind === 'file' || item.ready).map((item): CodeViewItem<Note> => {
     const own = threads.filter((t) => t.path === item.path);
     const annotations: { side?: 'additions' | 'deletions'; lineNumber: number; metadata: Note }[] = [];
     if (item.kind === 'diff') {
@@ -105,7 +152,7 @@ export const ReviewCodeView = forwardRef<ReviewHandle, ReviewProps>(function Rev
       files.current.set(item.id, held);
     }
     return { id: item.id, type: 'file', file: held.file, annotations: annotations as never, version: versionOf(versions.current, item.id, signature) };
-  }), [items, threads, sid, composing, selection]);
+  }), [items, shown, threads, sid, composing, selection]);
 
   const referenceOf = useCallback((id: string, range: SelectedLineRange): CodeReference | null => {
     const item = byId.get(id);
@@ -126,15 +173,15 @@ export const ReviewCodeView = forwardRef<ReviewHandle, ReviewProps>(function Rev
       setSelection({ id, range: { start: line, end: line, side } });
       setComposing(false);
     }
-    view.current?.scrollTo({ type: 'line', id, lineNumber: line, side, align, offset: JUMP_OFFSET, behavior: 'instant' });
-  }, []);
+    whenShown(id, () => view.current?.scrollTo({ type: 'line', id, lineNumber: line, side, align, offset: JUMP_OFFSET, behavior: 'instant' }));
+  }, [whenShown]);
 
   useImperativeHandle(ref, () => ({
-    scrollToItem: (id) => view.current?.scrollTo({ type: 'item', id, align: 'start', behavior: 'instant' }),
+    scrollToItem: (id) => whenShown(id, () => view.current?.scrollTo({ type: 'item', id, align: 'start', behavior: 'instant' })),
     scrollToLine: (id, line, side) => jump(id, line, 'center', true, side),
     focusThread: (thread) => {
       const side = thread.side === 'old' ? 'deletions' : 'additions';
-      view.current?.scrollTo({ type: 'line', id: thread.path, lineNumber: thread.line ?? 0, side, align: 'center', behavior: 'instant' });
+      whenShown(thread.path, () => view.current?.scrollTo({ type: 'line', id: thread.path, lineNumber: thread.line ?? 0, side, align: 'center', behavior: 'instant' }));
       const find = (tries: number) => {
         const card = [...(root.current?.querySelectorAll<HTMLElement>('[data-thread-id]') ?? [])].find((el) => el.dataset.threadId === thread.id);
         if (!card) return void (tries > 0 && requestAnimationFrame(() => find(tries - 1)));
@@ -146,7 +193,7 @@ export const ReviewCodeView = forwardRef<ReviewHandle, ReviewProps>(function Rev
       };
       requestAnimationFrame(() => find(THREAD_LOOKUP_TRIES));
     },
-  }), [jump]);
+  }), [jump, whenShown]);
 
   // A new target line (the file preview opened on a reference) scrolls there once the item is laid out.
   const targetKey = target ? `${target.id}:${target.line}` : null;
@@ -185,6 +232,8 @@ export const ReviewCodeView = forwardRef<ReviewHandle, ReviewProps>(function Rev
 
   const activeRef = useRef<string | null>(null);
   const onScroll = useCallback((_top: number, viewer: { getTopForItem(id: string): number | undefined }, scrollTop = _top) => {
+    scrolled.current = scrollTop;
+    topUp();
     if (!onActiveChange) return;
     let current: string | null = null;
     for (const item of items) {
@@ -193,7 +242,7 @@ export const ReviewCodeView = forwardRef<ReviewHandle, ReviewProps>(function Rev
       current = item.id;
     }
     if (current !== activeRef.current) onActiveChange((activeRef.current = current));
-  }, [items, onActiveChange]);
+  }, [items, onActiveChange, topUp]);
 
   return (
     <div ref={root} className={cn('review-code relative min-h-0', className)}>

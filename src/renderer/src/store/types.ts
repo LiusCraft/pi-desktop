@@ -66,10 +66,7 @@ export interface FileTab {
   pinned: boolean;
 }
 
-export interface ChangedFile extends FileChange {
-  add: number;
-  del: number;
-}
+export type ChangedFile = FileChange;
 
 /** The cards the workspace can show beside the conversation. */
 export type CardId = 'progress' | 'tasks' | 'diff' | 'preview' | 'detail' | 'files' | 'terminal';

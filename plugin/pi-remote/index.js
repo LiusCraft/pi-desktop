@@ -54,12 +54,16 @@ var HOST_CHANNELS = [
 	"sessions:sideAbort",
 	"sessions:sideReset",
 	"sessions:changes",
+	"sessions:commits",
+	"sessions:commitChanges",
+	"sessions:changeContent",
 	"sessions:pr",
 	"sessions:prThreads",
 	"sessions:prReply",
 	"sessions:prResolve",
 	"sessions:files",
 	"sessions:readFile",
+	"sessions:search",
 	"sessions:readImage",
 	"sessions:context",
 	"sessions:stopTask",
@@ -245,6 +249,8 @@ function applyChildPath() {
 }
 // src/agent/git.ts
 var MAX_FILE = 524288;
+/** How much of the base commit's hash tells one base from another in a file's revision. */
+var REV_BASE = 12;
 function run(cmd, args, cwd, { allowFail = false } = {}) {
 	return new Promise((resolve, reject) => {
 		execFile(cmd, args, {
@@ -332,42 +338,156 @@ async function diffBase(cwd, base, baseBranch) {
 	}
 	return base;
 }
+/** Git's empty tree: the "before" of a root commit. */
+var EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbcc4904";
+var FIELD = "";
 /** Files changed in the working tree relative to `base` (a commit), including untracked files. */
 async function changes(cwd, base) {
 	const root = base ? await repoRoot(cwd) : null;
 	if (!base || !root) return [];
-	cwd = root;
 	const files = /* @__PURE__ */ new Map();
-	const parts = (await gitSafe(cwd, "diff", "--name-status", "-z", "--no-renames", base) || "").split("\0").filter(Boolean);
+	const parts = (await gitSafe(root, "diff", "--name-status", "-z", "--no-renames", base) || "").split("\0").filter(Boolean);
 	for (let i = 0; i + 1 < parts.length; i += 2) files.set(parts[i + 1], parts[i][0]);
-	const untracked = await gitSafe(cwd, "ls-files", "--others", "--exclude-standard", "-z") || "";
+	const untracked = await gitSafe(root, "ls-files", "--others", "--exclude-standard", "-z") || "";
 	for (const p of untracked.split("\0").filter(Boolean)) files.set(p, "A");
+	return listChanges(root, files, [base], base.slice(0, REV_BASE), (file) => workingRev(root, file));
+}
+/** Commits on the current branch since `base`, newest first. */
+async function commits(cwd, base) {
+	if (!base) return [];
+	return (await gitSafe(cwd, "log", `--format=%H${FIELD}%h${FIELD}%s${FIELD}%an${FIELD}%aI`, `${base}..HEAD`) || "").split("\n").filter(Boolean).map((line) => {
+		const [hash, short, subject, author, date] = line.split(FIELD);
+		return {
+			hash,
+			short,
+			subject,
+			author,
+			date
+		};
+	});
+}
+/** The commit a commit is measured against: its first parent, or nothing for a root commit. */
+async function parentOf(root, hash) {
+	return (await gitSafe(root, "rev-parse", "--verify", "--quiet", `${hash}^`))?.trim() || EMPTY_TREE;
+}
+/** Files one commit changed against its first parent (or against nothing, for a root commit). */
+async function commitChanges(cwd, hash) {
+	const root = await repoRoot(cwd);
+	if (!root || !/^[0-9a-f]{7,64}$/i.test(hash)) return [];
+	const parent = await parentOf(root, hash);
+	const parts = (await gitSafe(root, "diff", "--name-status", "-z", "--no-renames", parent, hash) || "").split("\0").filter(Boolean);
+	const files = /* @__PURE__ */ new Map();
+	for (let i = 0; i + 1 < parts.length; i += 2) files.set(parts[i + 1], parts[i][0]);
+	return listChanges(root, files, [parent, hash], "", () => "");
+}
+/** Added / removed line counts per path from git (`binary` when git calls the file binary). */
+async function lineCounts(root, range) {
+	const counts = /* @__PURE__ */ new Map();
+	const out = await gitSafe(root, "diff", "--numstat", "-z", "--no-renames", ...range) || "";
+	for (const entry of out.split("\0").filter(Boolean)) {
+		const [add, del, ...name] = entry.split("	");
+		counts.set(name.join("	"), {
+			add: Number(add) || 0,
+			del: Number(del) || 0,
+			binary: add === "-"
+		});
+	}
+	return counts;
+}
+/** A working-tree file's size and mtime: when either moves, its contents have to be read again. */
+function workingRev(root, file) {
+	try {
+		const stat = fs.statSync(path.join(root, file));
+		return `${stat.size}:${stat.mtimeMs}`;
+	} catch {
+		return "gone";
+	}
+}
+/** What the Diff panel lists for `files` (path → A/M/D) without reading any of their contents. */
+async function listChanges(root, files, range, baseRev, revOf) {
+	const counts = await lineCounts(root, range);
 	const out = [];
 	for (const [file, st] of [...files].sort()) {
-		const abs = path.join(cwd, file);
-		let before = null, after = null, binary = false;
-		if (st !== "A") before = await gitSafe(cwd, "show", `${base}:${file}`);
-		if (st !== "D" && fs.existsSync(abs)) {
-			if (fs.statSync(abs).size > MAX_FILE) binary = true;
-			else {
-				const buf = fs.readFileSync(abs);
-				if (buf.includes(0)) binary = true;
-				else after = buf.toString("utf8");
-			}
+		const status = st === "A" ? "A" : st === "D" ? "D" : "M";
+		let own = counts.get(file);
+		if (!own && status === "A" && range.length === 1) {
+			const abs = path.join(root, file);
+			try {
+				if (fs.statSync(abs).size > MAX_FILE) own = {
+					add: 0,
+					del: 0,
+					binary: true
+				};
+				else {
+					const buf = fs.readFileSync(abs);
+					own = buf.includes(0) ? {
+						add: 0,
+						del: 0,
+						binary: true
+					} : {
+						add: lineCount(buf.toString("utf8")),
+						del: 0,
+						binary: false
+					};
+				}
+			} catch {}
 		}
-		if (before && (before.length > MAX_FILE || before.includes("\0"))) {
-			binary = true;
-			before = null;
-		}
+		const { add, del, binary } = own ?? {
+			add: 0,
+			del: 0,
+			binary: false
+		};
 		out.push({
 			path: file,
-			status: st === "A" ? "A" : st === "D" ? "D" : "M",
-			before,
-			after: after ?? "",
-			binary
+			status,
+			binary,
+			add: binary ? 0 : add,
+			del: binary ? 0 : del,
+			rev: `${baseRev}:${status}:${revOf(file)}`
 		});
 	}
 	return out;
+}
+var lineCount = (text) => text ? text.split("\n").length - (text.endsWith("\n") ? 1 : 0) : 0;
+/** Both sides of one changed file (`hash`: a commit's change, else the working tree against `base`). `binary` when a side is too big to show. */
+async function changeContent(cwd, base, file, hash) {
+	const root = await repoRoot(cwd);
+	if (!root || !hash && !base || hash && !/^[0-9a-f]{7,64}$/i.test(hash)) return {
+		before: null,
+		after: null,
+		binary: false
+	};
+	if (path.relative(root, path.resolve(root, file)).startsWith("..")) return {
+		before: null,
+		after: null,
+		binary: false
+	};
+	const from = hash ? await parentOf(root, hash) : base;
+	let before = from === EMPTY_TREE ? null : await gitSafe(root, "show", `${from}:${file}`);
+	let after = null;
+	if (hash) after = await gitSafe(root, "show", `${hash}:${file}`);
+	else {
+		const abs = path.join(root, file);
+		if (fs.existsSync(abs)) {
+			if (fs.statSync(abs).size > MAX_FILE) return {
+				before: null,
+				after: null,
+				binary: true
+			};
+			after = fs.readFileSync(abs).toString("utf8");
+		}
+	}
+	const tooBig = (text) => !!text && (text.length > MAX_FILE || text.includes("\0"));
+	if (tooBig(before) || tooBig(after)) return {
+		before: null,
+		after: null,
+		binary: true
+	};
+	return {
+		before,
+		after,
+		binary: false
+	};
 }
 /** Uncommitted paths plus upstream tracking: what the composer's branch bar reports. */
 async function workState(cwd) {
@@ -1146,12 +1266,16 @@ function sessionHandlers(ready, getScheduler) {
 		"sessions:sideAbort": withHub((h, id) => h.sideAbort(id)),
 		"sessions:sideReset": withHub((h, id) => h.sideReset(id)),
 		"sessions:changes": withHub((h, id) => h.changes(id)),
+		"sessions:commits": withHub((h, id) => h.commits(id)),
+		"sessions:commitChanges": withHub((h, id, hash) => h.commitChanges(id, hash)),
+		"sessions:changeContent": withHub((h, id, file, hash) => h.changeContent(id, file, hash)),
 		"sessions:pr": withHub((h, id) => h.prStatus(id)),
 		"sessions:prThreads": withHub((h, id) => h.prThreads(id)),
 		"sessions:prReply": withHub((h, id, threadId, body) => h.prReply(id, threadId, body)),
 		"sessions:prResolve": withHub((h, id, threadId, resolved) => h.prResolve(id, threadId, resolved)),
 		"sessions:files": withHub((h, id) => h.files(id)),
 		"sessions:readFile": withHub((h, id, rel) => h.readFile(id, rel)),
+		"sessions:search": withHub((h, id, query, caseSensitive) => h.search(id, query, caseSensitive)),
 		"sessions:readImage": withHub((h, id, rel) => h.readImage(id, rel)),
 		"sessions:context": withHub((h, id) => h.context(id)),
 		"sessions:stopTask": withHub((h, id, toolCallId) => h.stopTask(id, toolCallId)),
@@ -3800,6 +3924,31 @@ function toWireEvent(event) {
 		assistantMessageEvent: delta
 	};
 }
+/** How much of the line before the match stays visible when it is cut. */
+var SNIPPET_LEAD_CHARS = 40;
+/** One entry per line that contains `query`, at most `limit` of them. */
+function findInText(text, query, caseSensitive, limit = 500) {
+	if (!query) return [];
+	const needle = caseSensitive ? query : query.toLowerCase();
+	const out = [];
+	const lines = text.split("\n");
+	for (let i = 0; i < lines.length && out.length < limit; i++) {
+		const raw = lines[i].replace(/\r$/, "");
+		const at = (caseSensitive ? raw : raw.toLowerCase()).indexOf(needle);
+		if (at < 0) continue;
+		const indent = raw.length - raw.trimStart().length;
+		let from = Math.min(indent, at);
+		if (at - from + needle.length > 200) from = Math.max(from, at - SNIPPET_LEAD_CHARS);
+		const text = raw.slice(from, from + 200).trimEnd();
+		out.push({
+			line: i + 1,
+			text,
+			start: at - from,
+			end: Math.min(at - from + needle.length, text.length)
+		});
+	}
+	return out;
+}
 // src/agent/files.ts
 var MAX_FILE_BYTES = 1048576;
 function inside(root, candidate) {
@@ -3849,6 +3998,38 @@ function readSessionFile(root, rel) {
 	} catch {
 		return null;
 	}
+}
+/** Files read between breaks that let the host answer other calls. */
+var SEARCH_BATCH_FILES = 40;
+/** Every line of the given session files that contains `query`; unreadable, binary and oversized files are skipped. */
+async function searchSessionFiles(root, paths, query, caseSensitive) {
+	const matches = [];
+	if (!query) return {
+		matches,
+		truncated: false
+	};
+	for (let i = 0; i < paths.length; i++) {
+		if (i % SEARCH_BATCH_FILES === 0) await new Promise((resolve) => setImmediate(resolve));
+		let text = null;
+		try {
+			text = readSessionFile(root, paths[i]);
+		} catch {}
+		if (text === null) continue;
+		for (const hit of findInText(text, query, caseSensitive, 501 - matches.length)) {
+			if (matches.length >= 500) return {
+				matches,
+				truncated: true
+			};
+			matches.push({
+				path: paths[i],
+				...hit
+			});
+		}
+	}
+	return {
+		matches,
+		truncated: false
+	};
 }
 var MAX_IMAGE_BYTES = 20971520;
 var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set([
@@ -6197,7 +6378,8 @@ var SessionHub = class {
 				}]
 			}, {
 				signal: controller.signal,
-				maxTokens: 64
+				maxTokens: 64,
+				sessionId: id
 			});
 			if (reply.stopReason === "error" || reply.stopReason === "aborted") return;
 			raw = reply.content.filter((c) => c.type === "text").map((c) => c.text).join("");
@@ -6283,7 +6465,8 @@ var SessionHub = class {
 					}]
 				}, {
 					signal: controller.signal,
-					maxTokens: 256
+					maxTokens: 256,
+					sessionId: id
 				});
 				const now = this.live.get(id);
 				if (!now || now !== live || now.disposed || now.generation !== generation) return null;
@@ -6391,7 +6574,8 @@ var SessionHub = class {
 				messages
 			}, {
 				signal: controller.signal,
-				maxTokens: 4096
+				maxTokens: 4096,
+				sessionId: id
 			});
 			if (this.sideChats.get(id) !== chat) return;
 			if (reply.stopReason === "aborted") throw new Error(timedOut ? "The side chat timed out" : "Cancelled");
@@ -6842,6 +7026,17 @@ var SessionHub = class {
 			state
 		};
 	}
+	async commits(id) {
+		const m = this.meta(id);
+		return commits(m.cwd, await diffBase(m.cwd, m.baseCommit, m.baseBranch));
+	}
+	commitChanges(id, hash) {
+		return commitChanges(this.meta(id).cwd, hash);
+	}
+	async changeContent(id, file, hash) {
+		const m = this.meta(id);
+		return changeContent(m.cwd, hash ? null : await diffBase(m.cwd, m.baseCommit, m.baseBranch), file, hash);
+	}
 	async prStatus(id) {
 		const m = this.meta(id);
 		await this.syncBranch(m);
@@ -6863,6 +7058,10 @@ var SessionHub = class {
 	}
 	readFile(id, rel) {
 		return readSessionFile(this.meta(id).cwd, rel);
+	}
+	async search(id, query, caseSensitive) {
+		const cwd = this.meta(id).cwd;
+		return searchSessionFiles(cwd, await listFiles(cwd), query, caseSensitive);
 	}
 	readImage(id, rel) {
 		return readSessionImage(this.meta(id).cwd, rel);

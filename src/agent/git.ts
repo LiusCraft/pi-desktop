@@ -2,12 +2,14 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { CommitInfo, FileChange, GitState, PrStatus, PrThread, WorktreeInfo } from '@shared/protocol';
+import type { CommitInfo, FileChange, FileContent, GitState, PrStatus, PrThread, WorktreeInfo } from '@shared/protocol';
 import type { PrNote } from '@shared/pr-event';
 import { forgeOfUrl, type Forge } from '@shared/forge';
 import { childEnv } from './env';
 
 const MAX_FILE = 512 * 1024;
+/** How much of the base commit's hash tells one base from another in a file's revision. */
+const REV_BASE = 12;
 
 function run(cmd: string, args: string[], cwd: string, { allowFail = false } = {}): Promise<string | null> {
   return new Promise((resolve, reject) => {
@@ -130,7 +132,7 @@ export async function changes(cwd: string, base: string | null): Promise<FileCha
   for (let i = 0; i + 1 < parts.length; i += 2) files.set(parts[i + 1], parts[i][0]);
   const untracked = (await gitSafe(root, 'ls-files', '--others', '--exclude-standard', '-z')) || '';
   for (const p of untracked.split('\0').filter(Boolean)) files.set(p, 'A');
-  return readChanges(root, files, base, null);
+  return listChanges(root, files, [base], base.slice(0, REV_BASE), (file) => workingRev(root, file));
 }
 
 /** Commits on the current branch since `base`, newest first. */
@@ -143,44 +145,90 @@ export async function commits(cwd: string, base: string | null): Promise<CommitI
   });
 }
 
+/** The commit a commit is measured against: its first parent, or nothing for a root commit. */
+async function parentOf(root: string, hash: string) {
+  return (await gitSafe(root, 'rev-parse', '--verify', '--quiet', `${hash}^`))?.trim() || EMPTY_TREE;
+}
+
 /** Files one commit changed against its first parent (or against nothing, for a root commit). */
 export async function commitChanges(cwd: string, hash: string): Promise<FileChange[]> {
   const root = await repoRoot(cwd);
   if (!root || !/^[0-9a-f]{7,64}$/i.test(hash)) return [];
-  const parent = (await gitSafe(root, 'rev-parse', '--verify', '--quiet', `${hash}^`))?.trim() || EMPTY_TREE;
+  const parent = await parentOf(root, hash);
   const status = (await gitSafe(root, 'diff', '--name-status', '-z', '--no-renames', parent, hash)) || '';
   const parts = status.split('\0').filter(Boolean);
   const files = new Map<string, string>();
   for (let i = 0; i + 1 < parts.length; i += 2) files.set(parts[i + 1], parts[i][0]);
-  return readChanges(root, files, parent, hash);
+  // A commit never changes, so its files never need re-reading.
+  return listChanges(root, files, [parent, hash], '', () => '');
 }
 
-/** Before/after contents of `files` (path → A/M/D); `after` is read from `head` when given, else from disk. */
-async function readChanges(root: string, files: Map<string, string>, base: string, head: string | null): Promise<FileChange[]> {
+/** Added / removed line counts per path from git (`binary` when git calls the file binary). */
+async function lineCounts(root: string, range: string[]) {
+  const counts = new Map<string, { add: number; del: number; binary: boolean }>();
+  const out = (await gitSafe(root, 'diff', '--numstat', '-z', '--no-renames', ...range)) || '';
+  for (const entry of out.split('\0').filter(Boolean)) {
+    const [add, del, ...name] = entry.split('\t');
+    counts.set(name.join('\t'), { add: Number(add) || 0, del: Number(del) || 0, binary: add === '-' });
+  }
+  return counts;
+}
+
+/** A working-tree file's size and mtime: when either moves, its contents have to be read again. */
+function workingRev(root: string, file: string) {
+  try {
+    const stat = fs.statSync(path.join(root, file));
+    return `${stat.size}:${stat.mtimeMs}`;
+  } catch {
+    return 'gone';
+  }
+}
+
+/** What the Diff panel lists for `files` (path → A/M/D) without reading any of their contents. */
+async function listChanges(root: string, files: Map<string, string>, range: string[], baseRev: string, revOf: (file: string) => string): Promise<FileChange[]> {
+  const counts = await lineCounts(root, range);
   const out: FileChange[] = [];
   for (const [file, st] of [...files].sort()) {
-    let before: string | null = null, after: string | null = null, binary = false;
-    if (st !== 'A') before = base === EMPTY_TREE ? null : await gitSafe(root, 'show', `${base}:${file}`);
-    if (st !== 'D') {
-      if (head) {
-        after = await gitSafe(root, 'show', `${head}:${file}`);
-        if (after && (after.length > MAX_FILE || after.includes('\0'))) { binary = true; after = null; }
-      } else {
-        const abs = path.join(root, file);
-        if (fs.existsSync(abs)) {
-          if (fs.statSync(abs).size > MAX_FILE) binary = true;
-          else {
-            const buf = fs.readFileSync(abs);
-            if (buf.includes(0)) binary = true;
-            else after = buf.toString('utf8');
-          }
+    const status = st === 'A' ? 'A' : st === 'D' ? 'D' : 'M';
+    let own = counts.get(file);
+    if (!own && status === 'A' && range.length === 1) {
+      // Untracked files are not in git's numstat: everything in them is added.
+      const abs = path.join(root, file);
+      try {
+        if (fs.statSync(abs).size > MAX_FILE) own = { add: 0, del: 0, binary: true };
+        else {
+          const buf = fs.readFileSync(abs);
+          own = buf.includes(0) ? { add: 0, del: 0, binary: true } : { add: lineCount(buf.toString('utf8')), del: 0, binary: false };
         }
-      }
+      } catch { /* vanished since the listing */ }
     }
-    if (before && (before.length > MAX_FILE || before.includes('\0'))) { binary = true; before = null; }
-    out.push({ path: file, status: st === 'A' ? 'A' : st === 'D' ? 'D' : 'M', before, after: after ?? '', binary });
+    const { add, del, binary } = own ?? { add: 0, del: 0, binary: false };
+    out.push({ path: file, status, binary, add: binary ? 0 : add, del: binary ? 0 : del, rev: `${baseRev}:${status}:${revOf(file)}` });
   }
   return out;
+}
+
+const lineCount = (text: string) => (text ? text.split('\n').length - (text.endsWith('\n') ? 1 : 0) : 0);
+
+/** Both sides of one changed file (`hash`: a commit's change, else the working tree against `base`). `binary` when a side is too big to show. */
+export async function changeContent(cwd: string, base: string | null, file: string, hash: string | null): Promise<FileContent> {
+  const root = await repoRoot(cwd);
+  if (!root || (!hash && !base) || (hash && !/^[0-9a-f]{7,64}$/i.test(hash))) return { before: null, after: null, binary: false };
+  if (path.relative(root, path.resolve(root, file)).startsWith('..')) return { before: null, after: null, binary: false };
+  const from = hash ? await parentOf(root, hash) : base!;
+  let before = from === EMPTY_TREE ? null : await gitSafe(root, 'show', `${from}:${file}`);
+  let after: string | null = null;
+  if (hash) after = await gitSafe(root, 'show', `${hash}:${file}`);
+  else {
+    const abs = path.join(root, file);
+    if (fs.existsSync(abs)) {
+      if (fs.statSync(abs).size > MAX_FILE) return { before: null, after: null, binary: true };
+      after = fs.readFileSync(abs).toString('utf8');
+    }
+  }
+  const tooBig = (text: string | null) => !!text && (text.length > MAX_FILE || text.includes('\0'));
+  if (tooBig(before) || tooBig(after)) return { before: null, after: null, binary: true };
+  return { before, after, binary: false };
 }
 
 /** Uncommitted paths plus upstream tracking: what the composer's branch bar reports. */

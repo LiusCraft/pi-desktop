@@ -51,6 +51,7 @@ export function sessionHandlers(ready: Promise<SessionHub>, getScheduler: () => 
     'sessions:changes': withHub((h, id) => h.changes(id)),
     'sessions:commits': withHub((h, id) => h.commits(id)),
     'sessions:commitChanges': withHub((h, id, hash) => h.commitChanges(id, hash)),
+    'sessions:changeContent': withHub((h, id, file, hash) => h.changeContent(id, file, hash)),
     'sessions:pr': withHub((h, id) => h.prStatus(id)),
     'sessions:prThreads': withHub((h, id) => h.prThreads(id)),
     'sessions:prReply': withHub((h, id, threadId, body) => h.prReply(id, threadId, body)),
