@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PrThread } from '../src/shared/protocol';
 import { firstThread, placeThreads } from '../src/renderer/src/lib/diff';
 
-const thread = (id: string, path: string, line: number | null, side: 'old' | 'new' = 'new'): PrThread => ({ id, path, line, side, outdated: false, comments: [] });
+const thread = (id: string, path: string, line: number | null, side: 'old' | 'new' = 'new'): PrThread => ({ id, path, line, side, outdated: false, resolved: false, comments: [] });
 
 describe('firstThread (the comment chip lands here)', () => {
   const files = [{ path: 'a.ts' }, { path: 'b.ts' }];

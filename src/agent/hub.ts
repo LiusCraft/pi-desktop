@@ -1429,6 +1429,12 @@ export class SessionHub {
   prThreads(id: string) {
     return git.prThreads(this.meta(id).cwd);
   }
+  prReply(id: string, threadId: string, body: string) {
+    return git.replyToThread(this.meta(id).cwd, threadId, body);
+  }
+  prResolve(id: string, threadId: string, resolved: boolean) {
+    return git.setThreadResolved(this.meta(id).cwd, threadId, resolved);
+  }
   files(id: string) {
     return git.listFiles(this.meta(id).cwd);
   }

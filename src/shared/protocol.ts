@@ -59,6 +59,8 @@ export interface PrThread {
   side: 'old' | 'new';
   /** The code it was written against has since changed. */
   outdated: boolean;
+  /** Marked resolved on the host. */
+  resolved: boolean;
   comments: { id: string; author: string; body: string; url: string; at: number }[];
 }
 
@@ -788,6 +790,9 @@ export interface Api {
   'sessions:changes'(id: string): ChangeSet;
   'sessions:pr'(id: string): PrStatus | null;
   'sessions:prThreads'(id: string): PrThread[];
+  /** Post a reply into a review thread on GitHub / GitLab. */
+  'sessions:prReply'(id: string, threadId: string, body: string): void;
+  'sessions:prResolve'(id: string, threadId: string, resolved: boolean): void;
   'sessions:files'(id: string): string[];
   'sessions:readFile'(id: string, rel: string): string | null;
   'sessions:readImage'(id: string, rel: string): { mimeType: string; src: string } | null;
@@ -844,7 +849,7 @@ export const HOST_CHANNELS = [
   'sessions:setMode', 'sessions:setStyle', 'sessions:update', 'sessions:archive', 'sessions:unarchive', 'sessions:inspect', 'sessions:remove', 'sessions:spawn', 'sessions:abort',
   'sessions:clearQueue', 'sessions:newContext', 'sessions:compact', 'sessions:stats', 'sessions:exportHtml',
   'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:side', 'sessions:sideGet', 'sessions:sideStage', 'sessions:sideAbort', 'sessions:sideReset', 'sessions:bash',
-  'sessions:changes', 'sessions:pr', 'sessions:prThreads', 'sessions:files', 'sessions:readFile', 'sessions:readImage',
+  'sessions:changes', 'sessions:pr', 'sessions:prThreads', 'sessions:prReply', 'sessions:prResolve', 'sessions:files', 'sessions:readFile', 'sessions:readImage',
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
   'sessions:import', 'git:branch', 'git:branches', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove',
   'customize:list', 'customize:readFile', 'customize:skillSetDisabled', 'customize:skillCreate', 'customize:connectorSave',

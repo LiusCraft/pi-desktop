@@ -15,6 +15,7 @@ import { currentSession, getApp, setApp, useApp } from '@/store/app';
 import { activeDraft, drafts } from '@/store/drafts';
 import { useDialogs } from '@/store/dialogs';
 import { watchSideWindows } from '@/store/side';
+import { watchCodeSession } from '@/store/refresh';
 
 function useShortcuts() {
   useEffect(() => {
@@ -88,8 +89,10 @@ export function App() {
     });
     const offFocus = bridge.on('session:focus', (id) => void openSession(id));
     const offSide = watchSideWindows();
+    const offRefresh = watchCodeSession();
     bootstrap().catch(fail);
     return () => {
+      offRefresh();
       offSide();
       offFocus();
       offHost();

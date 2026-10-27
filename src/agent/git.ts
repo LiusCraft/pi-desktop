@@ -211,13 +211,101 @@ export async function prStatus(cwd: string): Promise<PrStatus | null> {
   return (await readPr(cwd))?.status ?? null;
 }
 
-/** Inline review comments of the branch's PR, grouped into threads in diff order; empty when gh or a PR is unavailable. */
+/** Which CLI talks to this repo's PR: the remote's name says, else whichever finds a PR for the branch. */
+async function prForge(cwd: string): Promise<Forge> {
+  const known = await originForge(cwd);
+  if (known) return known;
+  return (await run('gh', ['pr', 'view', '--json', 'number'], cwd, { allowFail: true })) ? 'github' : 'gitlab';
+}
+
+const byPlace = (a: PrThread, b: PrThread) => a.path.localeCompare(b.path) || (a.line ?? 0) - (b.line ?? 0);
+
+/** Inline review comments of the branch's PR, grouped into threads in diff order; empty when gh/glab or a PR is unavailable. */
 export async function prThreads(cwd: string): Promise<PrThread[]> {
+  return (await prForge(cwd)) === 'gitlab' ? gitlabThreads(cwd) : githubThreads(cwd);
+}
+
+async function githubThreads(cwd: string): Promise<PrThread[]> {
   const num = (await run('gh', ['pr', 'view', '--json', 'number', '-q', '.number'], cwd, { allowFail: true }))?.trim();
   if (!num || !/^\d+$/.test(num)) return [];
   const pick = '.[] | {id, reply: .in_reply_to_id, path, line, original_line, side, outdated: (.line == null), author: .user.login, body, url: .html_url, at: .created_at}';
-  const out = await run('gh', ['api', `repos/{owner}/{repo}/pulls/${num}/comments`, '--paginate', '--jq', pick], cwd, { allowFail: true });
-  return groupThreads((out ?? '').split('\n').flatMap((l) => { try { return l.trim() ? [JSON.parse(l)] : []; } catch { return []; } }));
+  const [out, states] = await Promise.all([
+    run('gh', ['api', `repos/{owner}/{repo}/pulls/${num}/comments`, '--paginate', '--jq', pick], cwd, { allowFail: true }),
+    githubThreadStates(cwd, num),
+  ]);
+  const threads = groupThreads(jsonLines(out));
+  for (const t of threads) t.resolved = states.get(t.id)?.resolved ?? false;
+  return threads;
+}
+
+function jsonLines(out: string | null): any[] {
+  return (out ?? '').split('\n').flatMap((l) => { try { return l.trim() ? [JSON.parse(l)] : []; } catch { return []; } });
+}
+
+const THREAD_STATES = 'query($owner:String!,$name:String!,$num:Int!){repository(owner:$owner,name:$name){pullRequest(number:$num){reviewThreads(first:100){nodes{id isResolved comments(first:1){nodes{databaseId}}}}}}}';
+
+/** GitHub keeps "resolved" on the GraphQL thread, keyed here by its first comment's REST id. */
+async function githubThreadStates(cwd: string, num: string): Promise<Map<string, { node: string; resolved: boolean }>> {
+  const jq = '.data.repository.pullRequest.reviewThreads.nodes[] | {node: .id, resolved: .isResolved, root: .comments.nodes[0].databaseId}';
+  const out = await run('gh', ['api', 'graphql', '-F', 'owner={owner}', '-F', 'name={repo}', '-F', `num=${num}`, '-f', `query=${THREAD_STATES}`, '--jq', jq], cwd, { allowFail: true });
+  return new Map(jsonLines(out).map((r) => [String(r.root), { node: String(r.node), resolved: !!r.resolved }]));
+}
+
+/** The merge request of the branch as the API addresses it. */
+async function gitlabMr(cwd: string): Promise<{ base: string; url: string } | null> {
+  try {
+    const mr = JSON.parse((await run('glab', ['mr', 'view', '-F', 'json'], cwd, { allowFail: true })) ?? '');
+    return mr?.iid && mr.project_id ? { base: `projects/${mr.project_id}/merge_requests/${mr.iid}`, url: String(mr.web_url) } : null;
+  } catch {
+    return null;
+  }
+}
+
+async function gitlabThreads(cwd: string): Promise<PrThread[]> {
+  const mr = await gitlabMr(cwd);
+  const discussions = mr ? await glabJson(cwd, `${mr.base}/discussions?per_page=100`) : null;
+  if (!mr || !Array.isArray(discussions)) return [];
+  return discussions.flatMap((d: any): PrThread[] => {
+    const pos = d.notes?.[0]?.position;
+    if (d.notes?.[0]?.type !== 'DiffNote' || !pos) return [];
+    const old = pos.new_line == null && pos.old_line != null;
+    const line = old ? pos.old_line : pos.new_line;
+    const path = old ? pos.old_path : pos.new_path;
+    if (!path) return [];
+    const comments = d.notes.filter((n: any) => !n.system).map((n: any) => ({
+      id: String(n.id), author: n.author?.username ?? 'someone', body: String(n.body ?? ''), url: `${mr.url}#note_${n.id}`, at: Date.parse(n.created_at) || 0,
+    }));
+    return [{ id: String(d.id), path, line: typeof line === 'number' ? line : null, side: old ? 'old' : 'new', outdated: false, resolved: !!d.notes[0].resolved, comments }];
+  }).sort(byPlace);
+}
+
+/** Post a reply into a review thread, on whichever host the PR lives. */
+export async function replyToThread(cwd: string, threadId: string, body: string): Promise<void> {
+  if ((await prForge(cwd)) === 'gitlab') {
+    const mr = await gitlabMr(cwd);
+    if (!mr) throw new Error('找不到当前分支的 Merge Request');
+    await run('glab', ['api', '-X', 'POST', `${mr.base}/discussions/${threadId}/notes`, '-f', `body=${body}`], cwd);
+    return;
+  }
+  const num = (await run('gh', ['pr', 'view', '--json', 'number', '-q', '.number'], cwd))?.trim();
+  await run('gh', ['api', '-X', 'POST', `repos/{owner}/{repo}/pulls/${num}/comments/${threadId}/replies`, '-f', `body=${body}`], cwd);
+}
+
+/** Mark a review thread resolved (or reopen it). */
+export async function setThreadResolved(cwd: string, threadId: string, resolved: boolean): Promise<void> {
+  if ((await prForge(cwd)) === 'gitlab') {
+    const mr = await gitlabMr(cwd);
+    if (!mr) throw new Error('找不到当前分支的 Merge Request');
+    await run('glab', ['api', '-X', 'PUT', `${mr.base}/discussions/${threadId}?resolved=${resolved}`], cwd);
+    return;
+  }
+  const num = (await run('gh', ['pr', 'view', '--json', 'number', '-q', '.number'], cwd))?.trim() ?? '';
+  const node = (await githubThreadStates(cwd, num)).get(threadId)?.node;
+  if (!node) throw new Error('找不到这条评论所在的 review thread');
+  const mutation = resolved
+    ? 'mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{id}}}'
+    : 'mutation($id:ID!){unresolveReviewThread(input:{threadId:$id}){thread{id}}}';
+  await run('gh', ['api', 'graphql', '-F', `id=${node}`, '-f', `query=${mutation}`], cwd);
 }
 
 /** Raw `pulls/:n/comments` rows (already trimmed by jq) into threads: replies join their root, in file/line order. */
@@ -227,13 +315,13 @@ export function groupThreads(rows: any[]): PrThread[] {
   for (const r of rows) {
     if (r.reply != null || !r.path) continue;
     const line = typeof r.line === 'number' ? r.line : typeof r.original_line === 'number' ? r.original_line : null;
-    roots.set(String(r.id), { id: String(r.id), path: r.path, line, side: r.side === 'LEFT' ? 'old' : 'new', outdated: !!r.outdated, comments: [toComment(r)] });
+    roots.set(String(r.id), { id: String(r.id), path: r.path, line, side: r.side === 'LEFT' ? 'old' : 'new', outdated: !!r.outdated, resolved: false, comments: [toComment(r)] });
   }
   for (const r of rows) {
     if (r.reply == null) continue;
     roots.get(String(r.reply))?.comments.push(toComment(r));
   }
-  return [...roots.values()].sort((a, b) => a.path.localeCompare(b.path) || (a.line ?? 0) - (b.line ?? 0));
+  return [...roots.values()].sort(byPlace);
 }
 
 /** The remote's name picks the CLI; a host we cannot tell by name (self-hosted) gets both, GitHub first. */
