@@ -43,6 +43,7 @@ const handlers: Record<HostMethod, Handler> = {
     hub = new SessionHub({ dataDir, agentDir, demoModel: demo, emit: (event) => send({ kind: 'event', event }) });
     await hub.init();
     scheduler = new Scheduler(new Store(dataDir), hub, (tasks) => send({ kind: 'event', event: { type: 'tasks', tasks } }));
+    hub.scheduler = scheduler;
     scheduler.start();
     resolveReady(hub);
   },

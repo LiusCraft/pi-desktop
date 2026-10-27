@@ -26,6 +26,7 @@ import { registerDemoModel } from './demo-model';
 import { applyChildPath } from './env';
 import * as customize from './customize';
 import { agentCatalog, agentPrompt, loadAgents, removeAgent, saveAgent } from './agents';
+import type { CustomizeHost, ScheduleHost } from './manage-tools';
 import { createDesktopKit, type KitHost, type KitState, type SubagentRun } from './desktop-kit';
 import { toWireEvent } from './events';
 import { readSessionFile, readSessionImage, resolveInside } from './files';
@@ -33,6 +34,7 @@ import * as git from './git';
 import { ModelAdmin } from './model-admin';
 import { PrWatcher, type PrPending } from './pr-watch';
 import * as naming from './naming';
+import type { Scheduler } from './scheduler';
 import { pickSideModel } from './side-model';
 import { Store } from './store';
 import * as prediction from './suggest';
@@ -110,6 +112,8 @@ export class SessionHub {
   models!: ModelRuntime;
   /** Accounts, API keys and custom endpoints; shares auth.json and models.json with pi. */
   admin!: ModelAdmin;
+  /** Set by the host once it exists; it needs the hub, so the hub can't build it. */
+  scheduler: Scheduler | null = null;
   private readonly store: Store;
   private settings!: SettingsManager;
   private metas: SessionMeta[];
@@ -406,6 +410,8 @@ export class SessionHub {
   }
 
   private kitHost(live: Live): KitHost {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const hub = this;
     return {
       state: live.kit,
       ask: (request, signal) => this.ask(live, request, signal),
@@ -417,6 +423,33 @@ export class SessionHub {
         send: (id, text) => this.peerSend(live.id, id, text),
       },
       agents: () => loadAgents(appAgentsDir(this.opts.dataDir)),
+      get schedule(): ScheduleHost | undefined {
+        const scheduler = hub.scheduler;
+        if (!scheduler) return undefined;
+        const m = hub.meta(live.id);
+        return {
+          list: () => scheduler.list(),
+          save: (draft) => scheduler.save(draft),
+          setEnabled: (id, enabled) => scheduler.setEnabled(id, enabled),
+          remove: (id) => scheduler.remove(id),
+          runNow: (id) => scheduler.runNow(id),
+          defaults: { kind: m.kind, projectPath: m.scratch ? null : m.projectPath },
+        };
+      },
+      get customize(): CustomizeHost {
+        const project = hub.meta(live.id).projectPath;
+        const c = hub.customize;
+        return {
+          list: () => c.list(project),
+          createSkill: (draft) => c.createSkill(draft, project),
+          setSkillDisabled: (file, disabled) => c.setSkillDisabled(file, disabled, project),
+          saveConnector: (draft) => c.saveConnector(draft, project),
+          setConnectorEnabled: (name, scope, enabled) => c.setConnectorEnabled(name, scope, enabled, project),
+          removeConnector: (name, scope) => c.removeConnector(name, scope, project),
+          installPlugin: (source, scope) => c.installPlugin(source, scope, project),
+          removePlugin: (source, scope) => c.removePlugin(source, scope, project),
+        };
+      },
       taskUpdate: (update) => {
         if (!live.disposed) this.emit({ type: 'task', sessionId: live.id, update });
       },

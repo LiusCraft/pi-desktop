@@ -57,7 +57,7 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 | `src/shared/protocol.ts` | 三个进程之间的契约：渲染进程能调用的每个通道（`Api`）、哪些转发给 agent host（`HOST_CHANNELS`）、host 推回的事件流（`HostEvent`）、交互请求（`UiRequest`） |
 | `src/agent/app-paths.ts` | 应用自己的数据目录（`~/.pi-desktop`、`PI_DESKTOP_HOME`）、worktree 根目录、扩展目录；pi 的配置目录只读解析，不搬家 |
 | `src/agent/hub.ts` | 会话元数据、worktree、`createAgentSessionRuntime` 创建 / 恢复会话、事件转发、交互请求（权限 / 计划 / 扩展对话框）、子 agent、会话命名、CLI 会话导入 |
-| `src/agent/desktop-kit.ts` | 每个会话一个实例的 pi 扩展：权限模式、output style、`pidesk_todo_write`、`pidesk_exit_plan_mode`、`pidesk_task`（子 agent）、`pidesk_bg_*`（后台 shell）、`pidesk_suggest_task`、会话间通信 |
+| `src/agent/desktop-kit.ts` | 每个会话一个实例的 pi 扩展：权限模式、output style、`pidesk_todo_write`、`pidesk_exit_plan_mode`、`pidesk_task`（子 agent）、`pidesk_bg_*`（后台 shell）、`pidesk_suggest_task`、会话间通信；`src/agent/manage-tools.ts` 里的 `pidesk_schedule_*`（定时任务）和 `pidesk_customize_*`（技能 / 连接器 / 插件），让 AI 在对话里代你管理 Scheduled 和 Customize 页 |
 | `src/agent/model-admin.ts` | 模型管理：provider / 登录方式枚举、OAuth 与 API key 登录事件桥接、登出、自定义端点保存与热加载 |
 | `src/agent/endpoints.ts` | `models.json` 读写（保留手写字段）、`/models` 发现、本地端点占位密钥 |
 | `src/agent/models-dev.ts` | models.dev 目录（按天缓存）：按模型 ID / canonical ID 匹配上下文、输出上限和价格 |

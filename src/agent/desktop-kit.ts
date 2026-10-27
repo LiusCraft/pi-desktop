@@ -20,6 +20,7 @@ import {
 import { StringEnum } from '@earendil-works/pi-ai';
 import { Type } from 'typebox';
 import { AGENT_TYPES, DEFAULT_AGENT, type AgentType } from './agents';
+import { registerManageTools, type CustomizeHost, type ScheduleHost } from './manage-tools';
 import {
   PLAN_CHOICES,
   type OutputStyle, type PermissionMode, type SessionKind, type SubagentProgress, type TaskUpdate, type UiRequestInput, type UiResponse,
@@ -82,6 +83,10 @@ export interface KitHost {
   taskUpdate?(update: TaskUpdate): void;
   /** Lets the UI stop a background task by its tool call id; returns the untrack function. */
   trackTask?(id: string, stop: AbortController): () => void;
+  /** The Scheduled page's backend; omit it (subagents) to leave out the scheduling tools. */
+  schedule?: ScheduleHost;
+  /** The Customize page's backend; omit it (subagents) to leave out the customize tools. */
+  customize?: CustomizeHost;
 }
 
 // Appended to the system prompt for the current turn. These change how Pi Desktop talks,
@@ -297,6 +302,9 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         };
       },
     });
+
+    // ---------------------------------------------------------------- scheduled tasks and customize
+    registerManageTools(pi, host);
 
     // ---------------------------------------------------------------- other sessions of the project
     const peers = host.peers;
