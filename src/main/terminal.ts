@@ -3,6 +3,7 @@
 // The renderer draws them with xterm.js; this side owns the processes, so a tab
 // keeps running (and keeps its output) while the panel is hidden.
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import * as pty from 'node-pty';
@@ -73,6 +74,23 @@ function resolveShell(configured: string | null): string {
   return shells[0]?.file ?? (isWin ? 'cmd.exe' : '/bin/sh');
 }
 
+/**
+ * node-pty launches the shell through a `spawn-helper` binary, and npm can unpack it without the
+ * executable bit; posix_spawn then fails and no terminal opens. Restore the bit before spawning.
+ */
+let helperChecked = false;
+function ensureSpawnHelper() {
+  if (isWin || helperChecked) return;
+  helperChecked = true;
+  try {
+    const root = path.dirname(createRequire(import.meta.url).resolve('node-pty/package.json'));
+    for (const dir of [path.join(root, 'build', 'Release'), path.join(root, 'build', 'Debug'), path.join(root, 'prebuilds', `${process.platform}-${process.arch}`)]) {
+      const helper = path.join(dir, 'spawn-helper');
+      if (exists(helper)) fs.chmodSync(helper, 0o755);
+    }
+  } catch {}
+}
+
 /** Login shell on unix so a GUI launch gets the profile's PATH, as in Terminal.app. */
 const shellArgs = (file: string) => (isWin || !/(^|\/)(bash|zsh|fish|sh)$/.test(file) ? [] : ['-l']);
 
@@ -103,6 +121,7 @@ export class Terminals {
   }
 
   create(sessionId: string, cwd: string, configured: string | null): TerminalInfo {
+    ensureSpawnHelper();
     const file = resolveShell(configured);
     const n = (this.counter.get(sessionId) ?? 0) + 1;
     this.counter.set(sessionId, n);
