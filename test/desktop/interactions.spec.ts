@@ -268,20 +268,35 @@ test('selecting a reply offers Reply and a side chat that can pop out and pin', 
     el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
   });
 
-  // Reply quotes the selection into the composer.
+  // Reply is typed in a draggable popup and lands in the composer as a card.
   await select();
   await page.getByRole('menuitem', { name: 'Reply' }).click();
-  await expect(page.locator('textarea[data-composer-input]')).toHaveValue(/^> /);
-  await page.locator('textarea[data-composer-input]').fill('');
+  const prompt = page.getByTestId('selection-prompt');
+  await expect(prompt).toHaveAttribute('data-mode', 'reply');
+  const before = await prompt.boundingBox();
+  const grip = await prompt.locator('header').boundingBox();
+  await page.mouse.move(grip!.x + 40, grip!.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(grip!.x + 100, grip!.y + 60, { steps: 4 });
+  await page.mouse.up();
+  const after = await prompt.boundingBox();
+  expect(Math.round(after!.x - before!.x)).toBe(60);
+  expect(Math.round(after!.y - before!.y)).toBe(50);
+  await prompt.getByLabel('Reply message').fill('这里能再解释下吗？');
+  await prompt.getByLabel('Reply message').press('Enter');
+  await expect(prompt).toHaveCount(0);
+  const cards = page.getByLabel('附加的上下文和评论');
+  await expect(cards.getByText('这里能再解释下吗？')).toBeVisible();
+  await cards.getByRole('button', { name: /移除/ }).click();
 
-  // Send side chat opens the panel inside the session with the passage staged.
+  // Send side chat is typed in the same popup, then the answer shows in the panel.
   await select();
   await page.getByRole('menuitem', { name: 'Send side chat' }).click();
+  await expect(prompt).toHaveAttribute('data-mode', 'side');
+  await prompt.getByLabel('Side chat message').fill('为什么这样改？');
+  await prompt.getByLabel('Ask').click();
   const panel = page.getByTestId('side-chat');
   await expect(panel).toHaveAttribute('data-mode', 'embedded');
-  await expect(panel.getByLabel('移除引用')).toBeVisible();
-  await panel.getByLabel('Side chat message').fill('为什么这样改？');
-  await panel.getByLabel('Send').click();
   await expect(panel.getByText('为什么这样改？')).toBeVisible();
 
   // Pop out: a second window shows the same thread; pin keeps it on top.

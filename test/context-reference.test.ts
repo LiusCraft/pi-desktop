@@ -22,6 +22,15 @@ describe('context references', () => {
     expect(referencePrompt('', [{ id: 'folder', kind: 'path', path: 'src', directory: true }])).toContain('Context from "src/"');
   });
 
+  it('sends a reply to a conversation passage as a card with its comment', () => {
+    const reply: ContextReference = { id: 'reply-1', kind: 'quote', path: '', text: 'The date was off by one month.', comment: 'Why?' };
+    expect(referenceLocation(reply)).toBe('conversation');
+    const prompt = referencePrompt('', [reply]);
+    expect(prompt).toContain('Reply to a passage of the "conversation"');
+    expect(prompt).toContain(reply.text);
+    expect(prompt).toContain('Why?');
+  });
+
   it('quotes code fences without allowing the excerpt to escape its block', () => {
     const prompt = referencePrompt('', [{ ...comment, text: '```ts\nconst x = 1;\n```' }]);
     expect(prompt).toContain('````\n```ts\nconst x = 1;\n```\n````');
