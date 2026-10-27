@@ -8,6 +8,7 @@ import { togglePanel } from '@/store/actions';
 import { useApp } from '@/store/app';
 import { rememberScroll, savedScroll } from '@/store/scroll';
 import type { Item, SessionView } from '@/store/types';
+import { SelectionMenu } from './SelectionMenu';
 import { AskItem, FootItem, GroupItem, NoteItem, PermItem, PlanItem, PrEventItem, SuggestItem, TextItem, TodosItem, UserItem } from './Items';
 
 function renderItem(sid: string, item: Item, items: Item[], index: number, view: string) {
@@ -108,6 +109,7 @@ const nearBottom = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clie
 export function Transcript({ s }: { s: SessionView }) {
   const view = useApp((st) => st.prefs.viewMode);
   const scroller = useRef<HTMLDivElement>(null);
+  const frame = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   /** A smooth jump is in flight: scroll events from the animation are not the user's. */
   const jumping = useRef(false);
@@ -163,7 +165,8 @@ export function Transcript({ s }: { s: SessionView }) {
   };
 
   return (
-    <div className="relative min-h-0 flex-1">
+    <div ref={frame} className="relative min-h-0 flex-1">
+      <SelectionMenu sid={sid} scope={frame} />
       <div ref={scroller} onScroll={onScroll} className="h-full overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[786px] flex-col gap-4 px-6 pt-6 pb-4">
           {s.items.map((item, i) => (

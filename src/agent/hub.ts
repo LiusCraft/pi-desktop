@@ -15,7 +15,7 @@ import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import { buildMessage, decodeUserContent } from '@shared/attachments';
 import type {
   AgentDraft, ConnectorDraft, SkillDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
-  PrStatus, PrSummary, SessionCleanup, SessionMeta, SessionRemoval, SessionStats, SetupStep, Settings, SpawnTask, SubagentProgress, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
+  PrStatus, PrSummary, SessionCleanup, SessionMeta, SessionRemoval, SessionStats, SetupStep, Settings, SideChat, SpawnTask, SubagentProgress, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
 } from '@shared/protocol';
 import { decodePeerMessage, encodePeerMessage, isPeerMessage } from '@shared/peer-message';
 import { decodePrEvent, encodePrEvent, isPrEvent } from '@shared/pr-event';
@@ -38,6 +38,7 @@ import type { Scheduler } from './scheduler';
 import { pickSideModel } from './side-model';
 import { Store } from './store';
 import * as prediction from './suggest';
+import * as sideChat from './side-chat';
 
 const NAMES = ['trusting-maxwell', 'eager-lovelace', 'quiet-hopper', 'brave-turing', 'calm-knuth', 'swift-ritchie', 'bold-curie', 'keen-dijkstra'];
 /** Tools on top of pi's defaults (read, bash, edit, write). */
@@ -123,6 +124,9 @@ export class SessionHub {
   private namers = new Set<AbortController>();
   /** In-flight next-message predictions, so a new turn or a closed session can cancel them. */
   private suggesters = new Map<string, AbortController>();
+  /** Side chats (/btw) by session, and their in-flight requests. */
+  private sideChats = new Map<string, SideChat>();
+  private sideRuns = new Map<string, AbortController>();
   /** Model catalog refreshes are serialized: a refresh reloads models.json, so two in flight can drop a provider. */
   private modelRefresh: Promise<unknown> = Promise.resolve();
   /**
@@ -995,6 +999,85 @@ export class SessionHub {
     return { text: prediction.fallbackSuggestion(session.messages) };
   }
 
+  // ------------------------------------------------------------ side chat (/btw)
+
+  private sideState(id: string): SideChat {
+    let chat = this.sideChats.get(id);
+    if (!chat) this.sideChats.set(id, (chat = { sessionId: id, title: this.meta(id).title, turns: [], busy: false, quote: null }));
+    chat.title = this.meta(id).title;
+    return chat;
+  }
+  private emitSide(chat: SideChat) {
+    this.emit({ type: 'side', sessionId: chat.sessionId, chat: { ...chat, turns: chat.turns.slice() } });
+  }
+  sideGet(id: string): SideChat {
+    const chat = this.sideState(id);
+    return { ...chat, turns: chat.turns.slice() };
+  }
+  sideStage(id: string, quote: string | null) {
+    const chat = this.sideState(id);
+    chat.quote = quote?.trim() ? quote.trim().slice(0, 20_000) : null;
+    this.emitSide(chat);
+  }
+  sideAbort(id: string) {
+    this.sideRuns.get(id)?.abort();
+    this.sideRuns.delete(id);
+  }
+  sideReset(id: string) {
+    this.sideAbort(id);
+    this.sideChats.set(id, { sessionId: id, title: this.meta(id).title, turns: [], busy: false, quote: null });
+    this.emitSide(this.sideState(id));
+  }
+
+  /**
+   * Ask the side chat of a session. The question joins the host-held thread right away
+   * and the answer follows as another `side` event. The request carries a fresh
+   * transcript snapshot and no tools; the session is never prompted, so this works
+   * mid-turn and leaves its context alone. Failures land in the thread's `error`.
+   */
+  async side(id: string, input: { text: string; quote?: string }): Promise<void> {
+    const chat = this.sideState(id);
+    const text = String(input?.text ?? '').trim();
+    const quote = (input?.quote ?? chat.quote)?.trim() || undefined;
+    if (!text) throw new Error('Ask a question first');
+    if (chat.busy) throw new Error('Wait for the answer first');
+    chat.turns.push({ role: 'user', text, ...(quote ? { quote: quote.slice(0, 20_000) } : {}) });
+    chat.quote = null;
+    chat.busy = true;
+    chat.error = undefined;
+    this.emitSide(chat);
+    const controller = new AbortController();
+    this.sideRuns.set(id, controller);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, sideChat.SIDE_TIMEOUT_MS);
+    try {
+      const live = this.live.get(id);
+      if (!live || live.disposed) throw new Error('Open the session before starting a side chat');
+      const session = live.runtime.session;
+      const current = session.model ? `${session.model.provider}/${session.model.id}` : this.meta(id).model;
+      const model = (current ? this.findModel(current) : null) ?? this.autoSideModel(current);
+      if (!model) throw new Error('No model is available for a side chat');
+      const messages = sideChat.sideMessages(sideChat.sideTranscript(session.messages, { contextWindow: model.contextWindow }), chat.turns);
+      if (!messages) throw new Error('Ask a question first');
+      const reply = await this.models.completeSimple(model, { systemPrompt: sideChat.SIDE_SYSTEM_PROMPT, messages }, { signal: controller.signal, maxTokens: 4096 });
+      if (this.sideChats.get(id) !== chat) return; // reset while waiting
+      if (reply.stopReason === 'aborted') throw new Error(timedOut ? 'The side chat timed out' : 'Cancelled');
+      if (reply.stopReason === 'error') throw new Error(reply.errorMessage || 'The model returned an error');
+      const answer = prediction.contentText(reply.content).trim();
+      if (!answer) throw new Error('The model returned no text');
+      chat.turns.push({ role: 'assistant', text: answer });
+    } catch (err) {
+      if (this.sideChats.get(id) === chat) chat.error = err instanceof Error ? err.message : String(err);
+    } finally {
+      clearTimeout(timer);
+      if (this.sideRuns.get(id) === controller) this.sideRuns.delete(id);
+      if (this.sideChats.get(id) === chat) {
+        chat.busy = false;
+        this.emitSide(chat);
+      }
+    }
+  }
+
   /** Persist a title, tell pi (it records session_info) and tell the UI. */
   private setTitle(id: string, title: string) {
     const m = this.meta(id);
@@ -1493,6 +1576,8 @@ export class SessionHub {
   async shutdown() {
     for (const c of this.namers) c.abort();
     this.namers.clear();
+    for (const c of this.sideRuns.values()) c.abort();
+    this.sideRuns.clear();
     for (const c of this.suggesters.values()) c.abort();
     this.suggesters.clear();
     await Promise.all([...this.live.keys()].map((id) => this.dispose(id)));

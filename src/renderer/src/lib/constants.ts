@@ -30,6 +30,7 @@ export const OUTPUT_STYLE_INFO: { id: OutputStyle; name: string; desc: string }[
 export const DESKTOP_COMMANDS: [string, string][] = [
   ['/clear', '开始新的上下文（保留会话）'],
   ['/compact', '压缩对话历史'],
+  ['/btw', '旁路提问：基于当前会话聊一句，不进入上下文'],
   ['/context', '查看上下文用量'],
   ['/model', '切换模型'],
   ['/permissions', '切换权限模式'],

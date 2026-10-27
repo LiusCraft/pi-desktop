@@ -279,6 +279,26 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect(await driver.hub.suggest(meta.id, { model: 'fixed', modelId: 'demo/demo-coder', context: 6 })).toBeNull();
   });
 
+  it('keeps a side chat in the host without touching the session', async () => {
+    const { meta } = await codeSession();
+    await driver.hub.open(meta.id);
+    const before = (await driver.hub.open(meta.id)).messages.length;
+    const from = driver.events.length;
+    await driver.hub.side(meta.id, { text: '刚才为什么这样做？', quote: '一段回复' });
+    const chat = driver.hub.sideGet(meta.id);
+    expect(chat.busy).toBe(false);
+    expect(chat.turns[0]).toEqual({ role: 'user', text: '刚才为什么这样做？', quote: '一段回复' });
+    expect(chat.turns.length === 2 ? chat.turns[1].role : 'assistant').toBe('assistant');
+    expect(chat.turns.length === 2 || !!chat.error).toBe(true);
+    const sides = driver.events.slice(from).filter((e) => e.type === 'side');
+    expect(sides.length).toBeGreaterThanOrEqual(2);
+    expect((await driver.hub.open(meta.id)).messages.length).toBe(before);
+    driver.hub.sideStage(meta.id, ' 引用 ');
+    expect(driver.hub.sideGet(meta.id).quote).toBe('引用');
+    driver.hub.sideReset(meta.id);
+    expect(driver.hub.sideGet(meta.id)).toMatchObject({ turns: [], quote: null, busy: false });
+  });
+
   it('uses the worktree folder from settings, and the default when it is unset', async () => {
     const project = makeProject('worktree-root');
     const custom = path.join(tmp, 'custom-worktrees');

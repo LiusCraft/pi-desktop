@@ -253,3 +253,55 @@ test('scheduled tasks: pick a one-off date and time, then run it now', async () 
   await expect(page.getByText('say hi from the schedule').first()).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('selecting a reply offers Reply and a side chat that can pop out and pin', async () => {
+  const box = page.getByPlaceholder('Describe a task or ask a question');
+  await box.fill('日期显示少了一个月，帮我修一下');
+  await box.press('Enter');
+  await expect(page.getByRole('button', { name: '回退到这里', exact: true })).toBeEnabled({ timeout: 45_000 });
+
+  const select = (locator = page.locator('.prose-chat').last()) => locator.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    getSelection()!.removeAllRanges();
+    getSelection()!.addRange(range);
+    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  });
+
+  // Reply quotes the selection into the composer.
+  await select();
+  await page.getByRole('menuitem', { name: 'Reply' }).click();
+  await expect(page.locator('textarea[data-composer-input]')).toHaveValue(/^> /);
+  await page.locator('textarea[data-composer-input]').fill('');
+
+  // Send side chat opens the panel inside the session with the passage staged.
+  await select();
+  await page.getByRole('menuitem', { name: 'Send side chat' }).click();
+  const panel = page.getByTestId('side-chat');
+  await expect(panel).toHaveAttribute('data-mode', 'embedded');
+  await expect(panel.getByLabel('移除引用')).toBeVisible();
+  await panel.getByLabel('Side chat message').fill('为什么这样改？');
+  await panel.getByLabel('Send').click();
+  await expect(panel.getByText('为什么这样改？')).toBeVisible();
+
+  // Pop out: a second window shows the same thread; pin keeps it on top.
+  const [popup] = await Promise.all([app.waitForEvent('window'), panel.getByTitle('弹出为独立窗口').click()]);
+  await expect(popup.getByTestId('side-chat')).toHaveAttribute('data-mode', 'window');
+  await expect(popup.getByText('为什么这样改？')).toBeVisible();
+  await expect(page.getByTestId('side-chat')).toHaveCount(0);
+  await popup.getByTitle('置顶窗口').click();
+  await expect(popup.getByTitle('取消置顶')).toBeVisible();
+  const pinned = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.isAlwaysOnTop()).length);
+  expect(pinned).toBe(1);
+
+  // Dock: back inside the session.
+  await popup.getByTitle('放回会话').click();
+  await expect(page.getByTestId('side-chat')).toHaveAttribute('data-mode', 'embedded');
+
+  // /btw from the composer asks without sending anything to the session.
+  const composer = page.locator('textarea[data-composer-input]');
+  await composer.fill('/btw 一句话总结');
+  await composer.press('Enter');
+  await expect(page.getByTestId('side-chat').getByText('一句话总结')).toBeVisible();
+  expect(errors).toEqual([]);
+});
