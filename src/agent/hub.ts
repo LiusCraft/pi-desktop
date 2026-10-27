@@ -716,9 +716,14 @@ export class SessionHub {
       const settingsManager = SettingsManager.create(cwd, this.agentDir, { projectTrusted: !hasTrustRequiringProjectResources(cwd) || this.trust.get(cwd) === true });
       const resourceLoader = new DefaultResourceLoader({
         cwd, agentDir: this.agentDir, settingsManager,
-        // Nobody answers prompts inside a subagent: plan mode blocks anything that would ask.
+        // Questions and permission prompts surface in the parent session's transcript and the subagent
+        // waits for the user. Plan approval has no meaning here (a subagent's mode never changes).
         extensionFactories: [
-          createDesktopKit({ state: kit, ask: async () => ({ cancelled: true }), setMode: () => {} }),
+          createDesktopKit({
+            state: kit,
+            ask: async (request, signal) => (request.kind === 'plan' ? { cancelled: true } : this.ask(live, request, signal)),
+            setMode: () => {},
+          }),
           createToolSearchExtension(),
           createMcpExtension(),
         ],
