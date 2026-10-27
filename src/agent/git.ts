@@ -2,7 +2,7 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { FileChange, GitState, PrStatus, WorktreeInfo } from '@shared/protocol';
+import type { FileChange, GitState, PrStatus, PrThread, WorktreeInfo } from '@shared/protocol';
 import type { PrNote } from '@shared/pr-event';
 import { forgeOfUrl, type Forge } from '@shared/forge';
 import { childEnv } from './env';
@@ -209,6 +209,31 @@ function viewer(forge: Forge, cwd: string): Promise<string | null> {
 /** PR (or GitLab merge request) state for the current branch via gh / glab; null when the CLI or the PR is unavailable. */
 export async function prStatus(cwd: string): Promise<PrStatus | null> {
   return (await readPr(cwd))?.status ?? null;
+}
+
+/** Inline review comments of the branch's PR, grouped into threads in diff order; empty when gh or a PR is unavailable. */
+export async function prThreads(cwd: string): Promise<PrThread[]> {
+  const num = (await run('gh', ['pr', 'view', '--json', 'number', '-q', '.number'], cwd, { allowFail: true }))?.trim();
+  if (!num || !/^\d+$/.test(num)) return [];
+  const pick = '.[] | {id, reply: .in_reply_to_id, path, line, original_line, side, outdated: (.line == null), author: .user.login, body, url: .html_url, at: .created_at}';
+  const out = await run('gh', ['api', `repos/{owner}/{repo}/pulls/${num}/comments`, '--paginate', '--jq', pick], cwd, { allowFail: true });
+  return groupThreads((out ?? '').split('\n').flatMap((l) => { try { return l.trim() ? [JSON.parse(l)] : []; } catch { return []; } }));
+}
+
+/** Raw `pulls/:n/comments` rows (already trimmed by jq) into threads: replies join their root, in file/line order. */
+export function groupThreads(rows: any[]): PrThread[] {
+  const roots = new Map<string, PrThread>();
+  const toComment = (r: any) => ({ id: String(r.id), author: r.author ?? 'someone', body: String(r.body ?? ''), url: String(r.url ?? ''), at: Date.parse(r.at) || 0 });
+  for (const r of rows) {
+    if (r.reply != null || !r.path) continue;
+    const line = typeof r.line === 'number' ? r.line : typeof r.original_line === 'number' ? r.original_line : null;
+    roots.set(String(r.id), { id: String(r.id), path: r.path, line, side: r.side === 'LEFT' ? 'old' : 'new', outdated: !!r.outdated, comments: [toComment(r)] });
+  }
+  for (const r of rows) {
+    if (r.reply == null) continue;
+    roots.get(String(r.reply))?.comments.push(toComment(r));
+  }
+  return [...roots.values()].sort((a, b) => a.path.localeCompare(b.path) || (a.line ?? 0) - (b.line ?? 0));
 }
 
 /** The remote's name picks the CLI; a host we cannot tell by name (self-hosted) gets both, GitHub first. */

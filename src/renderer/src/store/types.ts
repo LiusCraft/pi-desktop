@@ -1,6 +1,6 @@
 import type { Attachment, DecodedAttachment } from '@shared/attachments';
 import type {
-  FileChange, GitState, PrStatus, PrSummary, SessionMeta, SetupStep, SlashCommand, SpawnTask, ThinkingLevel, UiRequest,
+  FileChange, GitState, PrStatus, PrSummary, PrThread, SessionMeta, SetupStep, SlashCommand, SpawnTask, ThinkingLevel, UiRequest,
 } from '@shared/protocol';
 import type { PrEvent } from '@shared/pr-event';
 import type { ToolState } from '@/lib/tools';
@@ -106,6 +106,8 @@ export interface SessionView {
   /** Live git state for the branch bar: uncommitted paths and unpushed commits. */
   gitState: GitState | null;
   pr: PrStatus | (PrSummary & Partial<PrStatus>) | null;
+  /** Inline review threads of the PR, drawn in the Diff panel. */
+  prThreads: PrThread[];
   prHidden: boolean;
   files: string[] | null;
   panels: Panels;

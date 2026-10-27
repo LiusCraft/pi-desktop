@@ -1,5 +1,6 @@
 // Sizing up a change: which diffs are too big to render on open, and how to count
 // added / removed lines without re-diffing every file on every change event.
+import type { PrThread } from '@shared/protocol';
 import { diffStats } from '@shared/tool-previews';
 
 /** Changed lines (added and removed) from which a file's diff starts folded. */
@@ -52,4 +53,25 @@ export function changeStats(path: string, before: string | null, after: string |
   }
   cache.set(key, stats);
   return stats;
+}
+
+/** The review thread the PR bar's comment chip lands on: first in the order the Diff panel lists files, then by line. */
+export function firstThread(files: { path: string }[], threads: PrThread[]): PrThread | undefined {
+  for (const f of files) {
+    const found = threads.filter((t) => t.path === f.path).sort((a, b) => (a.line ?? 0) - (b.line ?? 0))[0];
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** Which diff row each thread hangs under (its side and line number); the rest have lost their line. */
+export function placeThreads(rows: { t: string; o?: number; n?: number }[], threads: PrThread[]) {
+  const placed = new Map<number, PrThread[]>();
+  const lost: PrThread[] = [];
+  for (const t of threads) {
+    const k = rows.findIndex((r) => (t.side === 'old' ? r.t === '-' && r.o === t.line : r.t !== '-' && r.n === t.line));
+    if (k < 0) lost.push(t);
+    else placed.set(k, [...(placed.get(k) ?? []), t]);
+  }
+  return { placed, lost };
 }

@@ -1,13 +1,16 @@
 // Line-numbered code and diffs (tool previews, the file viewer, the Diff panel).
-import { memo, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, memo, useEffect, useMemo, useState, type ReactNode } from 'react';
 import DOMPurify from 'dompurify';
 import { ChevronDownIcon, ChevronsUpDownIcon, ChevronUpIcon, ImageOffIcon } from 'lucide-react';
 import { lineDiff, PREVIEW_LINES, type DiffRow, type PreviewRow, type ToolPreview } from '@shared/tool-previews';
 import { call } from '@/lib/api';
 import { highlight, langOfPath } from '@/lib/highlight';
+import { placeThreads } from '@/lib/diff';
 import { fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import type { PrThread } from '@shared/protocol';
 import { CodeSelection } from './CodeSelection';
+import { PrThreadCard } from './PrThreadCard';
 
 function lineHtml(r: DiffRow, lang: string) {
   if (!r.wd) return highlight(r.s, lang) || ' ';
@@ -84,7 +87,7 @@ export function CodeLines({ lines, path, sid, startLine = 1, target, limit = PRE
 }
 
 /** Rows of a diff with unchanged stretches folded into expandable gaps. */
-export function DiffRows({ before, after, path, sid, openGaps, onOpenGap, context = 3, wrap }: {
+export function DiffRows({ before, after, path, sid, openGaps, onOpenGap, context = 3, wrap, threads }: {
   before: string | null;
   after: string | null;
   path: string;
@@ -94,29 +97,40 @@ export function DiffRows({ before, after, path, sid, openGaps, onOpenGap, contex
   context?: number;
   /** Wrap long lines instead of scrolling sideways (the Diff panel). */
   wrap?: boolean;
+  /** PR review threads of this file: drawn under their line, which stays unfolded. */
+  threads?: PrThread[];
 }) {
   const rows = useMemo(() => lineDiff(before, after), [before, after]);
   const lang = langOfPath(path);
   const open = new Set(openGaps ?? []);
   const keep = rows.map(() => false);
+  // A thread belongs to the row on its side with its line number; one whose line moved on is listed after the code.
+  const { placed, lost } = useMemo(() => placeThreads(rows, threads ?? []), [rows, threads]);
+  const line = (k: number) => {
+    const here = placed.get(k);
+    const row = <DiffLine key={k} row={rows[k]} lang={lang} selectable={!!sid} />;
+    // Same entry as its row, so a line selection never counts the card as a code line.
+    return here ? <Fragment key={k}>{row}{here.map((t) => <PrThreadCard key={t.id} thread={t} />)}</Fragment> : row;
+  };
   rows.forEach((r, k) => {
-    if (r.t !== ' ') for (let x = Math.max(0, k - context); x <= Math.min(rows.length - 1, k + context); x++) keep[x] = true;
+    if (r.t !== ' ' || placed.has(k)) for (let x = Math.max(0, k - context); x <= Math.min(rows.length - 1, k + context); x++) keep[x] = true;
   });
   const out: React.ReactNode[] = [];
   for (let k = 0; k < rows.length;) {
     if (keep[k]) {
-      out.push(<DiffLine key={k} row={rows[k]} lang={lang} selectable={!!sid} />);
+      out.push(line(k));
       k++;
       continue;
     }
     let e = k;
     while (e < rows.length && !keep[e]) e++;
     const id = `${path}:${k}`;
-    if (open.has(id)) for (let x = k; x < e; x++) out.push(<DiffLine key={x} row={rows[x]} lang={lang} selectable={!!sid} />);
+    if (open.has(id)) for (let x = k; x < e; x++) out.push(line(x));
     else out.push(<HunkGap key={id} count={e - k} edge={k === 0 ? 'top' : e === rows.length ? 'bottom' : undefined} onClick={() => onOpenGap?.(id)} />);
     k = e;
   }
-  return <CodeSelection key={`${sid}:${path}`} sid={sid} path={path} className={cn('code-lines', wrap ? 'wrap' : 'overflow-x-auto')}>{out}</CodeSelection>;
+  const code = <CodeSelection key={`${sid}:${path}`} sid={sid} path={path} className={cn('code-lines', wrap ? 'wrap' : 'overflow-x-auto')}>{out}</CodeSelection>;
+  return lost.length ? <>{code}{lost.map((t) => <PrThreadCard key={t.id} thread={t} />)}</> : code;
 }
 
 const Note = ({ children, className }: { children: React.ReactNode; className?: string }) => (

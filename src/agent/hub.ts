@@ -1426,6 +1426,9 @@ export class SessionHub {
     if (pr) this.publishPr(m, pr);
     return pr;
   }
+  prThreads(id: string) {
+    return git.prThreads(this.meta(id).cwd);
+  }
   files(id: string) {
     return git.listFiles(this.meta(id).cwd);
   }

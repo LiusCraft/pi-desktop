@@ -123,6 +123,11 @@ function flushEvents() {
           if (ev.status) {
             // A PR that did not exist when the bar was hidden is news: show the bar again.
             if (s.pr?.num !== ev.status.num) s.prHidden = false;
+            // New comments on a PR whose diff is on screen should appear there without a refresh.
+            if (s.panels.diff && (s.pr?.num !== ev.status.num || s.pr.comments !== ev.status.comments)) {
+              const sid = s.meta.id;
+              queueMicrotask(() => void loadPrThreads(sid));
+            }
             s.pr = ev.status;
             s.meta.pr = { num: ev.status.num, url: ev.status.url, state: ev.status.state, draft: ev.status.draft };
           } else {
@@ -800,7 +805,10 @@ export function togglePanel(id: string, panel: keyof Panels, open?: boolean) {
   const s = getApp().sessions[id];
   // The layout belongs to the session: coming back to it should look the way it was left.
   if (s) writePanels(id, s.panels);
-  if (panel === 'diff' && s?.panels.diff) void loadChanges(id);
+  if (panel === 'diff' && s?.panels.diff) {
+    void loadChanges(id);
+    void loadPrThreads(id);
+  }
   if (panel === 'files' && s?.panels.files && !s.files) void loadFiles(id);
 }
 
@@ -865,14 +873,46 @@ export function setFileWindow(id: string, start: number) {
   });
 }
 
-/** Open the Diff panel scrolled to one file. */
-export const diffTarget = { path: null as string | null, seq: 0 };
+/** Open the Diff panel scrolled to one file, or to the first PR review thread (`thread`). */
+export const diffTarget = { path: null as string | null, thread: false, seq: 0 };
 export function openDiffRef(path: string) {
   const s = currentSession();
   if (!s) return;
   diffTarget.path = relPath(s.meta.cwd, path);
   diffTarget.seq++;
   togglePanel(s.meta.id, 'diff', true);
+}
+/** The PR bar's size chip: just show the diff. */
+export function openDiffPanel() {
+  const s = currentSession();
+  if (s) togglePanel(s.meta.id, 'diff', true);
+}
+/** The PR bar's comment chip: land on the first review comment in the diff, focused and flashing. */
+export async function openPrComments() {
+  const s = currentSession();
+  if (!s) return;
+  const id = s.meta.id;
+  await loadPrThreads(id);
+  const now = getApp().sessions[id];
+  if (!now?.prThreads.length) {
+    // Conversation comments and review summaries have no line in the diff: GitHub is where they live.
+    if (now?.pr) void call('app:openExternal', now.pr.url);
+    return;
+  }
+  diffTarget.thread = true;
+  diffTarget.seq++;
+  togglePanel(id, 'diff', true);
+}
+
+export async function loadPrThreads(id: string) {
+  const s = getApp().sessions[id];
+  if (!s || isWork(s) || !s.pr) return;
+  try {
+    const prThreads = await call('sessions:prThreads', id);
+    updateSession(id, (v) => void (v.prThreads = prThreads));
+  } catch {
+    // Without gh the diff simply has no comments.
+  }
 }
 
 const changeTimers = new Map<string, ReturnType<typeof setTimeout>>();

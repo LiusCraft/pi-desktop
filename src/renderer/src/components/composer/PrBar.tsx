@@ -10,7 +10,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { call } from '@/lib/api';
 import { ago, fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { send, sessionDraftKey, setPrAuto } from '@/store/actions';
+import { openDiffPanel, openPrComments, send, sessionDraftKey, setPrAuto } from '@/store/actions';
 import { updateSession } from '@/store/app';
 import { drafts } from '@/store/drafts';
 import type { SessionView } from '@/store/types';
@@ -57,7 +57,7 @@ export function PrBar({ s }: { s: SessionView }) {
   const sync = st && (
     <span className="flex shrink-0 items-center gap-2 whitespace-nowrap font-mono text-[11px]">
       {dirty > 0 && (pending.length > 0 && !size ? (
-        <Lines add={add} del={del} />
+        <Lines add={add} del={del} title="查看 Diff" onClick={openDiffPanel} />
       ) : (
         <span className="text-muted-foreground">{dirty} uncommitted</span>
       ))}
@@ -113,12 +113,12 @@ export function PrBar({ s }: { s: SessionView }) {
       </div>
       <span className="flex-1" />
       {sync}
-      {size && <Lines add={size.add} del={size.del} title={size.files != null ? `${size.files} files` : undefined} />}
+      {size && <Lines add={size.add} del={size.del} title={size.files != null ? `${size.files} files · 查看 Diff` : '查看 Diff'} onClick={openDiffPanel} />}
       {!!pr.comments && (
         <button
           className="flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          title="Review comments"
-          onClick={() => ask(`用 ${forgeWords(pr.forge ?? st?.forge).comments(pr.num)} 读取 PR #${pr.num} 的评审意见，逐条处理后提交并推送。`)}
+          title="在 Diff 中查看评审意见"
+          onClick={() => void openPrComments()}
         >
           <MessageSquareIcon className="size-3.5" />{pr.comments}
         </button>
@@ -158,12 +158,18 @@ function PrCard({ pr, repo, badge }: { pr: PrLike; repo: string; badge: PrBadge 
 }
 
 /** `+2,504 −132` in one chip: the size of the change, whatever its source. */
-function Lines({ add, del, title }: { add: number; del: number; title?: string }) {
-  return (
-    <span className="flex shrink-0 items-center gap-1.5 rounded-md bg-muted/70 px-1.5 py-0.5 font-mono text-[11px] leading-4 tabular-nums" title={title}>
+function Lines({ add, del, title, onClick }: { add: number; del: number; title?: string; onClick?: () => void }) {
+  const chip = (
+    <>
       <span className="text-success">+{fmtLines(add)}</span>
       <span className="text-destructive">−{fmtLines(del)}</span>
-    </span>
+    </>
+  );
+  const base = 'flex shrink-0 items-center gap-1.5 rounded-md bg-muted/70 px-1.5 py-0.5 font-mono text-[11px] leading-4 tabular-nums';
+  return onClick ? (
+    <button className={cn(base, 'cursor-pointer transition-colors hover:bg-accent')} title={title} onClick={onClick}>{chip}</button>
+  ) : (
+    <span className={base} title={title}>{chip}</span>
   );
 }
 

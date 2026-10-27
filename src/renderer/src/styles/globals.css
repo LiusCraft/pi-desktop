@@ -356,6 +356,14 @@
 .hunk-gap > :last-child { padding-left: 0.9em; }
 .code-row.add .wd { background: var(--diff-add-strong); border-radius: 2px; }
 .code-row.del .wd { background: var(--diff-del-strong); border-radius: 2px; }
+/* A PR review thread the PR bar jumped to: it pulses once, like a hover that draws the eye. */
+.pr-thread[data-flash] { animation: pr-thread-flash 1.8s ease-out 1; border-color: var(--info); }
+@keyframes pr-thread-flash {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--info) 55%, transparent); transform: scale(1); }
+  25% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--info) 28%, transparent); transform: scale(1.012); }
+  60% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--info) 14%, transparent); transform: scale(1.004); }
+  100% { box-shadow: 0 0 0 0 transparent; transform: scale(1); }
+}
 .code-row.target { background: color-mix(in srgb, var(--warning) 18%, transparent); }
 
 .hljs-keyword, .hljs-built_in, .hljs-selector-tag, .hljs-literal, .hljs-type { color: var(--tok-keyword); }

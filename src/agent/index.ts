@@ -89,6 +89,7 @@ const handlers: Record<HostMethod, Handler> = {
   'sessions:bash': withHub((h, id, command) => h.bash(id, command)),
   'sessions:changes': withHub((h, id) => h.changes(id)),
   'sessions:pr': withHub((h, id) => h.prStatus(id)),
+  'sessions:prThreads': withHub((h, id) => h.prThreads(id)),
   'sessions:files': withHub((h, id) => h.files(id)),
   'sessions:readFile': withHub((h, id, rel) => h.readFile(id, rel)),
   'sessions:readImage': withHub((h, id, rel) => h.readImage(id, rel)),
