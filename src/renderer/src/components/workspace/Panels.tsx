@@ -106,6 +106,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
     setActive(el.dataset.path!);
     return true;
   };
+  const threadsOf = (path: string) => s.prThreads.filter((t) => t.path === path);
   const isCollapsed = (path: string) => {
     const f = byPath.get(path);
     return f ? foldedByDefault(f) !== flipped.has(path) : false;
@@ -120,14 +121,34 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
     } else setFlipped((c) => { const n = new Set(c); n.delete(p); return n; });
     requestAnimationFrame(() => scrollTo(p));
   };
-  // "View diff" on a tool row jumps here.
+  // Bring a PR review thread to the middle of the panel, focus it and let it flash.
+  const showThread = (threadId: string, tries = 12) => {
+    const el = [...(body.current?.querySelectorAll<HTMLElement>('[data-thread-id]') ?? [])].find((x) => x.dataset.threadId === threadId);
+    if (!el) return void (tries > 0 && requestAnimationFrame(() => showThread(threadId, tries - 1)));
+    el.scrollIntoView({ block: 'center' });
+    el.focus({ preventScroll: true });
+    el.removeAttribute('data-flash');
+    void el.offsetWidth;
+    el.setAttribute('data-flash', '1');
+  };
+  // "View diff" on a tool row, and the PR bar's chips, jump here.
   useEffect(() => {
+    if (diffTarget.thread) {
+      // The first comment is the first one in the order the panel lists files.
+      const first = s.changes.flatMap((f) => s.prThreads.filter((t) => t.path === f.path).slice(0, 1))[0];
+      if (first) {
+        diffTarget.thread = false;
+        open(first.path);
+        requestAnimationFrame(() => showThread(first.id));
+      } else if (s.changes.length) diffTarget.thread = false;
+      return;
+    }
     if (!diffTarget.path) return;
     const target = diffTarget.path;
     open(target);
     if (!scrollTo(target)) void loadChanges(id).then(() => requestAnimationFrame(() => scrollTo(target)));
     diffTarget.path = null;
-  }, [diffTarget.seq, s.changes.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [diffTarget.seq, s.changes.length, s.prThreads]); // eslint-disable-line react-hooks/exhaustive-deps
   // The file whose header has scrolled past the top is the one the tree highlights.
   const onScroll = () => {
     const el = body.current;
@@ -239,7 +260,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
                   )}
                 </div>
                 {!isCollapsed(f.path) && (f.binary ? <div className="px-3 py-2 text-xs text-muted-foreground">Binary or large file</div> : revealed.has(f.path) ? (
-                  <DiffRows sid={id} wrap before={f.before} after={f.status === 'D' ? null : f.after} path={f.path} openGaps={gaps} onOpenGap={(g) => setGaps((x) => new Set(x).add(g))} />
+                  <DiffRows sid={id} wrap before={f.before} after={f.status === 'D' ? null : f.after} path={f.path} threads={threadsOf(f.path)} openGaps={gaps} onOpenGap={(g) => setGaps((x) => new Set(x).add(g))} />
                 ) : gen ? (
                   <FoldNote onReveal={() => setRevealed((r) => new Set(r).add(f.path))}>Generated {GENERATED_LABEL[gen]} · diff hidden by default</FoldNote>
                 ) : large ? (
@@ -247,7 +268,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
                     Large diff · <span className="text-success">+{f.add}</span> <span className="text-destructive">−{f.del}</span> lines · hidden by default
                   </FoldNote>
                 ) : (
-                  <DiffRows sid={id} wrap before={f.before} after={f.status === 'D' ? null : f.after} path={f.path} openGaps={gaps} onOpenGap={(g) => setGaps((x) => new Set(x).add(g))} />
+                  <DiffRows sid={id} wrap before={f.before} after={f.status === 'D' ? null : f.after} path={f.path} threads={threadsOf(f.path)} openGaps={gaps} onOpenGap={(g) => setGaps((x) => new Set(x).add(g))} />
                 ))}
               </section>
             );
