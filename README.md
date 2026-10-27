@@ -133,6 +133,12 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 - **采用**：在空输入框里按 `→`（光标在末尾时）或 `Tab`，灰色文字变成真正的草稿，再按 `↵` 发送；`Esc` 忽略。任何输入都会让预测消失；切换会话、开始新的一轮或停止运行会取消或丢弃旧的预测。
 - 预测失败、超时、返回拒绝或复述上一句时什么都不显示；可以在 设置 → 通用 → 输入预测 关闭（默认开启）。
 
+### 会话布局与滚动位置
+
+- **每个会话记住自己的布局**：哪些面板开着（Diff / 预览 / 文件 / 终端 / 进度 / 子 agent）、分栏的宽度、以及被放大的那张卡片，都跟着会话走，切回来原样恢复。文件发生改动不会自动打开 Diff——只有你自己点顶部按钮或 `Ctrl/⌘+D` 才会打开。布局按会话 id 记在 localStorage（`pd_panels:<id>` 和分栏尺寸），重启应用后依然有效。
+- **滚动位置**：切回会话时回到上次停留的位置；只有会话在关闭期间产生了新消息（侧边栏有未读圆点）时才直接跳到最新一条。往上翻时底部中央会出现悬浮的 **Latest** 按钮，点一下平滑回到底部，回去后自动消失。
+- **大 diff 默认折叠**：单个文件改动达到 400 行，或新旧内容合计 200 KB 时，Diff 面板只显示文件头和 `Large diff · +a −b lines · hidden by default`，点 **Show diff** 才渲染行（生成文件如 lockfile / 打包产物同样默认折叠）。改动行数按内容指纹缓存，同一份内容不会重复做一次 O(n²) 的行级 diff。
+
 ### 文件工具预览与附件
 
 - **Read / Edit / Write**：展开工具行可查看带行号的读取片段、本次编辑的红绿 diff，或实际写入的内容快照。点击文件名会在现有右侧文件查看器打开**当前正文**并定位；历史快照不会被当前正文或累计 Git diff 替代。需要累计改动时使用独立的 **Diff** 入口。
@@ -182,6 +188,9 @@ npm run test:desktop # 构建后用项目自带的 Electron 运行 Playwright �
 
 - `test/hub.e2e.test.ts`：Auto 模式在隔离 worktree 里修 bug（修复前测试真的失败，修复后真的通过，主工作区不被改动）、worktree 默认根目录与设置里的自定义根目录、Ask 模式拒绝、Plan 模式审批后自动切到 Accept edits、运行中切换模式、进程内子 agent、高风险命令仍需询问、带图片附件的会话关闭后从会话文件恢复、`/clear`、首条提示词命名与手动重命名；Work 整理收件箱时只有移动文件需要确认、拒绝后文件保持原样、生成简报文件、临时工作区。
 - `test/desktop/interactions.spec.ts`：临时配置目录（`PI_DESKTOP_HOME`）中的真实 Electron 窗口，覆盖模型元数据编辑、价格 0、token 限制校验、文件菜单、预览引用、Diff 评论、随消息发送及历史回退 / 分支；`test/context-reference.test.ts` 覆盖引用格式、草稿隔离与恢复、容量限制。
+- `test/desktop/sessions.spec.ts`：真实窗口里的会话生命周期（新建、归档、恢复、删除、移除项目），以及每个会话自己的工作区（不会自动弹出 Diff，切回来时布局还在）。
+- `test/session-ui-memory.test.ts` / `test/diff-fold.test.ts`：面板与滚动位置的记忆（按会话隔离、删除会话时清掉），以及大 diff 的折叠阈值和改动行数缓存。
+- `test/bash-shell.test.ts`：Windows 上挑 `bash.exe` 的规则（标准 Git 安装、`where git` 指向的自定义安装、MSYS2，以及绝不选中 System32 的 WSL 启动器）。
 - `test/attachment-message.test.ts` / `test/attachments-backend.test.ts`：附件消息往返、校验限制、剪贴板格式（macOS / Windows / Linux）和图片规范化。
 - `test/tool-previews.test.ts` / `test/files.test.ts`：原生工具输出、行号 / 分页，以及文件边界、符号链接（需要系统允许创建符号链接）、二进制和大小限制。
 - `test/naming.test.ts`、`test/suggest.test.ts`、`test/side-model.test.ts`、`test/git-pr.test.ts`：命名规则、输入预测的上下文裁剪与回复清洗、小模型挑选、`gh pr view` 结果映射。
@@ -199,6 +208,8 @@ npm run dist:win       # NSIS 安装包 dist/Pi-Desktop-<版本>-win-x64-setup.e
 ```
 
 默认未签名（安装时会有 SmartScreen 提示）。要签名就设 `CSC_LINK`（pfx 路径或 base64）和 `CSC_KEY_PASSWORD`；CI 里对应仓库 secret `WIN_CERT_PFX` / `WIN_CERT_PASSWORD`。tag 推送时 `release.yml` 的 `windows` job 会把安装包挂到同名 Release。
+
+Windows 上 agent 的 `bash` 工具需要一个真的 bash：Pi Desktop 启动时会从标准 Git 安装、`where git.exe` 指向的位置、以及 PATH 里的 MSYS2 / Cygwin 中挑一个，并把它的目录放到 PATH 最前面。找不到时不会退到 `C:\Windows\System32\bash.exe`（那是 WSL 启动器，没装发行版时会直接报 `execvpe(/bin/bash) failed`）。从资源管理器 / PowerShell 直接启动也能正常工作，不需要在 Git Bash 里运行。
 
 ### macOS
 

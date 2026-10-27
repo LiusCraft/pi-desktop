@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import { useDefaultLayout } from 'react-resizable-panels';
 import { call, isMac, modKey } from '@/lib/api';
 import { WORK_IDEAS, OUTPUT_STYLE_INFO, VIEW_MODES, type ViewMode } from '@/lib/constants';
 import { fname } from '@/lib/format';
@@ -215,6 +216,8 @@ function WorkWelcome() {
 function Thread({ s }: { s: SessionView }) {
   const { primary, secondary } = openCards(s);
   const tools = primary.length + secondary.length > 0;
+  // The conversation/workspace split belongs to the session, so switching back restores it.
+  const { defaultLayout, onLayoutChanged } = useDefaultLayout({ id: `${s.meta.id}:thread` });
   const conversation = (
     <div className="flex h-full min-w-0 flex-col">
       <Transcript s={s} />
@@ -223,7 +226,7 @@ function Thread({ s }: { s: SessionView }) {
   );
   if (!tools) return conversation;
   return (
-    <ResizablePanelGroup orientation="horizontal" id="thread-workspace">
+    <ResizablePanelGroup orientation="horizontal" id={`${s.meta.id}:thread`} defaultLayout={defaultLayout} onLayoutChanged={onLayoutChanged}>
       <ResizablePanel id="conversation" minSize={320}>{conversation}</ResizablePanel>
       <ResizableHandle className="bg-transparent" />
       <ResizablePanel id="tools" minSize={300} defaultSize={secondary.length && primary.length ? '62%' : '48%'} className="pb-2">

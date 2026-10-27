@@ -22,6 +22,7 @@ import { appAgentsDir, appWorkDir, appExtensionsDir, worktreeDir as resolveWorkt
 import { validatePromptPayload } from './attachments';
 import workPrompt from './work-prompt.md?raw';
 import { registerDemoModel } from './demo-model';
+import { applyChildPath } from './env';
 import * as customize from './customize';
 import { agentCatalog, agentPrompt, loadAgents, removeAgent, saveAgent } from './agents';
 import { createDesktopKit, type KitHost, type KitState, type SubagentRun } from './desktop-kit';
@@ -114,6 +115,8 @@ export class SessionHub {
   }
 
   async init() {
+    // Every tool spawns children with process.env, and pi resolves bash through PATH.
+    applyChildPath();
     // Pi Desktop's own extension folder (distinct from pi's <agentDir>/extensions).
     fs.mkdirSync(appExtensionsDir(this.opts.dataDir), { recursive: true });
     fs.mkdirSync(appAgentsDir(this.opts.dataDir), { recursive: true });

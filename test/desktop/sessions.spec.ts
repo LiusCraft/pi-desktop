@@ -100,3 +100,29 @@ test('removing a project archives its sessions and leaves the folder alone', asy
   await sidebar().getByRole('button', { name: 'Archived sessions' }).click();
   await expect(page.getByRole('button', { name: 'Unarchive' })).toHaveCount(1);
 });
+
+test('each session keeps its own workspace: no surprise Diff, layout restored on return', async () => {
+  const diff = page.getByTestId('diff');
+  const changedFiles = page.getByRole('navigation', { name: 'Changed files' });
+  const mod = (key: string) => page.keyboard.press(process.platform === 'darwin' ? `Meta+${key}` : `Control+${key}`);
+
+  await startSession('日期显示少了一个月，帮我修一下');
+  // A change arriving must not open the Diff panel by itself.
+  await expect(page.getByRole('button', { name: '回退到这里' }).first()).toBeEnabled({ timeout: 60_000 });
+  await expect(diff).toHaveCount(0);
+
+  await mod('d');
+  await expect(diff).toHaveCount(1);
+  await expect(changedFiles).toBeVisible({ timeout: 30_000 });
+  const first = await page.evaluate(async () => (await window.piDesktop.invoke('sessions:list'))[0].title);
+
+  // A second session starts with a clean workspace …
+  await mod('n');
+  await startSession('hello');
+  await expect(diff).toHaveCount(0);
+
+  // … and the first one comes back the way it was left.
+  await row(first).click();
+  await expect(diff).toHaveCount(1);
+  await expect(changedFiles).toBeVisible();
+});

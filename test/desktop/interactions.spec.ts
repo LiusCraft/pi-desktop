@@ -103,6 +103,8 @@ test('file menus, preview excerpts, diff comments, send, fork and rewind', async
   await viewer.getByRole('button', { name: '附加为上下文', exact: true }).click();
 
   await viewer.getByTitle('Close', { exact: true }).click();
+  // Panels stay closed until the user asks for them (Ctrl/Cmd+D or the header button).
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+d' : 'Control+d');
   const diff = page.locator('section[data-path="src/utils/date.js"]');
   await expect(diff).toBeVisible();
   await diff.locator('.code-row.del [data-select-line]').first().click();

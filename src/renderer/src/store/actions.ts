@@ -4,18 +4,21 @@ import { toast } from 'sonner';
 import { buildMessage, decodeUserContent, type Attachment } from '@shared/attachments';
 import type { HostEvent, OutputStyle, PermissionMode, SessionKind, SessionMeta, SpawnTask, ThinkingLevel, UiResponse } from '@shared/protocol';
 import { referencePrompt } from '@shared/context-reference';
-import { diffStats, positiveLine } from '@shared/tool-previews';
+import { positiveLine } from '@shared/tool-previews';
 import { call, errText, modKey } from '@/lib/api';
 import { DESKTOP_COMMANDS, MODES, VIEW_MODES, type ViewMode } from '@/lib/constants';
+import { changeStats } from '@/lib/diff';
 import { fmtTok, fname, relPath } from '@/lib/format';
 import { currentSession, getApp, isWork, setApp, setPref, updateSession, type AppState } from './app';
 import { dialogs } from './dialogs';
 import { activeDraft, drafts, getDraft, sessionDraftKey, useDrafts } from './drafts';
+import { forgetPanels, writePanels } from './layout';
 import { primeSuggestion, resumeSuggestion } from './predict';
+import { forgetScroll } from './scroll';
 import {
   addUiRequest, applyPiEvent, applyTaskUpdate, applyViewMode, emptySession, findByKey, hasThinking, newKey, push, replay, resolveUi, settle, type Effects,
 } from './transcript';
-import type { Item, Panels, SessionView } from './types';
+import type { CardId, Item, Panels, SessionView } from './types';
 
 export const fail = (err: unknown) => toast.error(errText(err));
 
@@ -92,8 +95,7 @@ function flushEvents() {
       }
       let s = st.sessions[ev.sessionId];
       if (ev.type === 'meta') {
-        if (!s) st.sessions[ev.sessionId] = emptySession(ev.meta);
-        else s.meta = { ...ev.meta, pr: s.meta.pr ?? ev.meta.pr };
+        if (s) s.meta = { ...ev.meta, pr: s.meta.pr ?? ev.meta.pr }; else st.sessions[ev.sessionId] = emptySession(ev.meta);
         continue;
       }
       if (!s) continue;
@@ -270,6 +272,9 @@ export async function openSession(id: string, fresh = false) {
   const s = getApp().sessions[id];
   if (!s) return;
   const view: SessionKind = s.meta.kind;
+  // A session that moved on while it was closed opens at its newest message instead of
+  // the place the user left it at; everything else returns to where they were.
+  if (s.unread) forgetScroll(id);
   setApp((st) => {
     st.customize = false;
     st.scheduled = false;
@@ -688,6 +693,8 @@ export async function unarchiveSession(id: string) {
 /** Forget a session: the sidebar, its conversation file and the worktree Pi Desktop made for it. */
 function dropSession(id: string) {
   if (getApp().current === id) showWelcome();
+  forgetPanels(id);
+  forgetScroll(id);
   setApp((st) => {
     delete st.sessions[id];
     for (const view of ['code', 'work'] as const) if (st.lastByView[view] === id) st.lastByView[view] = null;
@@ -757,8 +764,15 @@ export async function forkSession(id: string) {
 export function togglePanel(id: string, panel: keyof Panels, open?: boolean) {
   updateSession(id, (v) => void (v.panels[panel] = open ?? !v.panels[panel]));
   const s = getApp().sessions[id];
+  // The layout belongs to the session: coming back to it should look the way it was left.
+  if (s) writePanels(id, s.panels);
   if (panel === 'diff' && s?.panels.diff) void loadChanges(id);
   if (panel === 'files' && s?.panels.files && !s.files) void loadFiles(id);
+}
+
+/** Blow one card up over the whole workspace, or put it back — remembered per session. */
+export function expandCard(id: string, card: CardId | null) {
+  updateSession(id, (v) => void (v.expanded = card));
 }
 
 export function closeDetail(id: string) {
@@ -837,15 +851,11 @@ export async function loadChanges(id: string) {
   if (!s || isWork(s)) return;
   try {
     const { files, state } = await call('sessions:changes', id);
-    const changes = files.map((f) => ({ ...f, ...(f.binary ? { add: 0, del: 0 } : diffStats(f.before, f.status === 'D' ? null : f.after)) }));
+    const changes = files.map((f) => ({ ...f, ...(f.binary ? { add: 0, del: 0 } : changeStats(f.path, f.before, f.status === 'D' ? null : f.after)) }));
     updateSession(id, (v) => {
+      // Panels are the user's: a new change must not rearrange their workspace.
       v.changes = changes;
       v.gitState = state;
-      // The first change opens the Diff panel once, on wide windows.
-      if (changes.length && !(v as any).autoOpened && window.innerWidth > 1180 && getApp().current === id) {
-        (v as any).autoOpened = true;
-        v.panels.diff = true;
-      }
     });
   } catch {
     // The diff panel simply keeps its previous contents when a refresh fails.

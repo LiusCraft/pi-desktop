@@ -6,6 +6,7 @@ import * as previews from '@shared/tool-previews';
 import { fmtDur, fmtTok, relPath } from '@/lib/format';
 import { bareName, toolFromArgs, toolLabel, type ToolState } from '@/lib/tools';
 import type { ViewMode } from '@/lib/constants';
+import { readPanels } from './layout';
 import type { Item, ItemOf, SessionView, ThinkStep, Todo } from './types';
 
 export interface Effects {
@@ -27,7 +28,7 @@ export function emptySession(meta: SessionMeta): SessionView {
     meta, items: [], loaded: false, running: false, t0: 0, tokens: 0, statusText: '', ctxPct: null,
     model: meta.model ?? null, thinking: meta.thinking ?? null, levels: [], commands: [], waiting: null, unread: false,
     todosKey: null, lastTodos: [], outputs: [], term: [], changes: [], gitState: null, pr: meta.pr, prHidden: false, files: null,
-    panels: { diff: false, preview: false, files: false, terminal: false, progress: true, tasks: false }, detail: null, previewUrl: null,
+    panels: readPanels(meta.id), expanded: null, detail: null, previewUrl: null,
     pendingUser: [], stopping: false, historyBusy: false, setup: null, hostEpoch: 0, cur: null,
   };
 }

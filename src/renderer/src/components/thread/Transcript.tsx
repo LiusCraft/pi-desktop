@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { CheckIcon, CircleAlertIcon } from 'lucide-react';
+import { CheckIcon, ChevronDownIcon, CircleAlertIcon } from 'lucide-react';
 import type { SetupStep } from '@shared/protocol';
 import { fmtDur, fmtTok } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { runningTasks } from '@/components/workspace/Panels';
 import { togglePanel } from '@/store/actions';
 import { useApp } from '@/store/app';
+import { rememberScroll, savedScroll } from '@/store/scroll';
 import type { Item, SessionView } from '@/store/types';
 import { AskItem, FootItem, GroupItem, NoteItem, PermItem, PlanItem, SuggestItem, TextItem, TodosItem, UserItem } from './Items';
 
@@ -97,31 +98,92 @@ function StatusLine({ s }: { s: SessionView }) {
   );
 }
 
+/** How close to the bottom still counts as "following the answer". */
+const STICK_PX = 160;
+
+const nearBottom = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
+
 /** The conversation, kept pinned to the bottom while the user is near it. */
 export function Transcript({ s }: { s: SessionView }) {
   const view = useApp((st) => st.prefs.viewMode);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
-  const onScroll = () => {
-    const el = scroller.current;
-    if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
-  };
+  /** A smooth jump is in flight: scroll events from the animation are not the user's. */
+  const jumping = useRef(false);
+  const [atBottom, setAtBottom] = useState(true);
+  const sid = s.meta.id;
+
+  // Opening a session returns to where it was left, unless it was at the bottom (or moved on
+  // while it was closed, in which case openSession dropped the remembered spot).
   useLayoutEffect(() => {
-    stick.current = true;
-  }, [s.meta.id]);
+    const el = scroller.current;
+    if (!el) return;
+    const saved = savedScroll(sid);
+    const toBottom = !saved || saved.stick;
+    el.scrollTop = toBottom ? el.scrollHeight : saved.top;
+    // A spot inside the threshold counts as "following", exactly like a real scroll would.
+    const near = toBottom || nearBottom(el);
+    stick.current = near;
+    setAtBottom(near);
+    // Images and diagrams settle a frame later; restore once more so the view does not jump.
+    const frame = requestAnimationFrame(() => {
+      if (!stick.current && saved) el.scrollTop = saved.top;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [sid]);
+
+  // Follow along while the conversation grows, as long as the user is near the bottom.
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   });
+
+  const onScroll = () => {
+    const el = scroller.current;
+    if (!el || jumping.current) return;
+    const near = nearBottom(el);
+    stick.current = near;
+    setAtBottom((was) => (was === near ? was : near));
+    rememberScroll(sid, { top: el.scrollTop, stick: near });
+  };
+
+  const jumpToLatest = () => {
+    const el = scroller.current;
+    if (!el) return;
+    jumping.current = true;
+    stick.current = true;
+    setAtBottom(true);
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    // The animation is short: a scroll event in the middle of it must not undo the intent.
+    window.setTimeout(() => {
+      jumping.current = false;
+      rememberScroll(sid, { top: el.scrollTop, stick: true });
+    }, 400);
+  };
+
   return (
-    <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-6 pt-6 pb-4">
-        {s.items.map((item, i) => (
-          <div key={item.key} className="transcript-item">{renderItem(s.meta.id, item, s.items, i, view)}</div>
-        ))}
-        {s.setup && <SetupCard steps={s.setup} />}
-        <StatusLine s={s} />
+    <div className="relative min-h-0 flex-1">
+      <div ref={scroller} onScroll={onScroll} className="h-full overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-6 pt-6 pb-4">
+          {s.items.map((item, i) => (
+            <div key={item.key} className="transcript-item">{renderItem(s.meta.id, item, s.items, i, view)}</div>
+          ))}
+          {s.setup && <SetupCard steps={s.setup} />}
+          <StatusLine s={s} />
+        </div>
       </div>
+      {!atBottom && (
+        <button
+          type="button"
+          onClick={jumpToLatest}
+          title="Jump to the newest message"
+          aria-label="Jump to the newest message"
+          className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border bg-card/95 px-3 py-1.5 text-xs text-muted-foreground shadow-md backdrop-blur transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <ChevronDownIcon className="size-3.5" />
+          Latest
+        </button>
+      )}
     </div>
   );
 }

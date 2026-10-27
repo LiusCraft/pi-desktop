@@ -62,6 +62,9 @@ export interface ChangedFile extends FileChange {
   del: number;
 }
 
+/** The cards the workspace can show beside the conversation. */
+export type CardId = 'progress' | 'tasks' | 'diff' | 'preview' | 'detail' | 'files' | 'terminal';
+
 export interface Panels {
   diff: boolean;
   preview: boolean;
@@ -103,6 +106,8 @@ export interface SessionView {
   prHidden: boolean;
   files: string[] | null;
   panels: Panels;
+  /** Card blown up over the whole workspace, remembered per session like the panels. */
+  expanded: CardId | null;
   detail: Detail | null;
   previewUrl: string | null;
   /** User items not yet confirmed by pi. */

@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { call } from '@/lib/api';
 import { modeName } from '@/lib/constants';
+import { isLargeDiff } from '@/lib/diff';
 import { fdir, fmtDur, fmtTok, fname } from '@/lib/format';
 import type { ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
@@ -23,7 +24,7 @@ import {
 } from '@/store/actions';
 import { modelName, setPref, updateSession, useApp } from '@/store/app';
 import { findByKey, findTool } from '@/store/transcript';
-import type { SessionView } from '@/store/types';
+import type { ChangedFile, SessionView } from '@/store/types';
 import { FileContextMenu } from './FileContextMenu';
 
 // ------------------------------------------------------------ card chrome
@@ -73,19 +74,22 @@ const Empty = ({ children }: { children: ReactNode }) => <div className="flex h-
 
 const GENERATED_LABEL: Record<GeneratedKind, string> = { lockfile: 'lockfile', minified: 'minified bundle', sourcemap: 'source map' };
 
-/** Shown instead of diff rows for a generated file the user has not asked to see. */
-function GeneratedNote({ kind, onReveal }: { kind: GeneratedKind; onReveal: () => void }) {
+/** Files whose rows wait for an explicit click: generated artifacts, and anything big enough to stall the window. */
+const foldedByDefault = (f: ChangedFile) => isGeneratedFile(f.path) || isLargeDiff(f);
+
+/** Shown instead of diff rows for any file the user has not asked to see yet. */
+function FoldNote({ children, onReveal }: { children: ReactNode; onReveal: () => void }) {
   return (
     <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 text-xs text-muted-foreground">
       <FileIcon className="size-3.5 shrink-0" />
-      <span>Generated {GENERATED_LABEL[kind]} · diff hidden by default</span>
+      <span>{children}</span>
       <Button size="xs" variant="outline" onClick={onReveal}>Show diff</Button>
     </div>
   );
 }
 
 export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
-  // Generated files start collapsed; `flipped` holds the user's per-file overrides.
+  // Generated files and large diffs start collapsed; `flipped` holds the user's per-file overrides.
   const [flipped, setFlipped] = useState<Set<string>>(new Set());
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [closedDirs, setClosedDirs] = useState<Set<string>>(new Set());
@@ -94,6 +98,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const [active, setActive] = useState<string | null>(null);
   const body = useRef<HTMLDivElement>(null);
   const id = s.meta.id;
+  const byPath = useMemo(() => new Map(s.changes.map((f) => [f.path, f])), [s.changes]);
   const scrollTo = (p: string) => {
     const el = [...(body.current?.querySelectorAll<HTMLElement>('[data-path]') ?? [])].find((x) => x.dataset.path === p || p.endsWith('/' + x.dataset.path) || x.dataset.path!.endsWith(p));
     if (!el || !body.current) return false;
@@ -101,11 +106,15 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
     setActive(el.dataset.path!);
     return true;
   };
-  const isCollapsed = (path: string) => isGeneratedFile(path) !== flipped.has(path);
+  const isCollapsed = (path: string) => {
+    const f = byPath.get(path);
+    return f ? foldedByDefault(f) !== flipped.has(path) : false;
+  };
   const toggle = (path: string) => setFlipped((c) => { const n = new Set(c); if (n.has(path)) n.delete(path); else n.add(path); return n; });
   // "View diff" on a tool row is an explicit request, so it expands and reveals.
   const open = (p: string) => {
-    if (isGeneratedFile(p)) {
+    const f = byPath.get(p);
+    if (f && foldedByDefault(f)) {
       setFlipped((c) => new Set(c).add(p));
       setRevealed((r) => new Set(r).add(p));
     } else setFlipped((c) => { const n = new Set(c); n.delete(p); return n; });
@@ -207,6 +216,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
         <div ref={body} onScroll={onScroll} className="relative min-w-0 flex-1 overflow-auto">
           {s.changes.map((f) => {
             const gen = generatedKind(f.path);
+            const large = !gen && isLargeDiff(f);
             return (
               <section key={f.path} data-path={f.path}>
                 <div className="group sticky top-0 z-10 flex items-center gap-2 border-b bg-card px-3 py-2 text-[13px]">
@@ -228,8 +238,14 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
                     <IconBtn title="Open file" className="size-6 opacity-0 group-hover:opacity-100" onClick={() => void openFileRef(f.path)}><CodeIcon className="size-3.5" /></IconBtn>
                   )}
                 </div>
-                {!isCollapsed(f.path) && (f.binary ? <div className="px-3 py-2 text-xs text-muted-foreground">Binary or large file</div> : gen && !revealed.has(f.path) ? (
-                  <GeneratedNote kind={gen} onReveal={() => setRevealed((r) => new Set(r).add(f.path))} />
+                {!isCollapsed(f.path) && (f.binary ? <div className="px-3 py-2 text-xs text-muted-foreground">Binary or large file</div> : revealed.has(f.path) ? (
+                  <DiffRows sid={id} wrap before={f.before} after={f.status === 'D' ? null : f.after} path={f.path} openGaps={gaps} onOpenGap={(g) => setGaps((x) => new Set(x).add(g))} />
+                ) : gen ? (
+                  <FoldNote onReveal={() => setRevealed((r) => new Set(r).add(f.path))}>Generated {GENERATED_LABEL[gen]} · diff hidden by default</FoldNote>
+                ) : large ? (
+                  <FoldNote onReveal={() => setRevealed((r) => new Set(r).add(f.path))}>
+                    Large diff · <span className="text-success">+{f.add}</span> <span className="text-destructive">−{f.del}</span> lines · hidden by default
+                  </FoldNote>
                 ) : (
                   <DiffRows sid={id} wrap before={f.before} after={f.status === 'D' ? null : f.after} path={f.path} openGaps={gaps} onOpenGap={(g) => setGaps((x) => new Set(x).add(g))} />
                 ))}
