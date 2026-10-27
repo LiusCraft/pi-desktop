@@ -14,14 +14,13 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { useDefaultLayout } from 'react-resizable-panels';
-import { call, isMac, modKey } from '@/lib/api';
+import { isMac, modKey } from '@/lib/api';
 import { WORK_IDEAS, OUTPUT_STYLE_INFO, VIEW_MODES, type ViewMode } from '@/lib/constants';
 import { fname } from '@/lib/format';
-import { OpenTargetIcon } from '@/components/common/OpenTargetIcon';
-import { OPEN_TARGET_INFO, refreshOpenTargets, useOpenTargets } from '@/lib/open-targets';
+import { OpenInMenu } from '@/components/common/OpenInMenu';
 import { cn } from '@/lib/utils';
 import {
-  archiveSession, deleteSession, exportHtml, fail, renameSession, setOutputStyle, setViewMode,
+  archiveSession, deleteSession, exportHtml, renameSession, setOutputStyle, setViewMode,
   togglePanel, welcomeDraftKey,
 } from '@/store/actions';
 import { useApp, useCurrent } from '@/store/app';
@@ -91,27 +90,6 @@ function SessionMenu({ s, children }: { s: SessionView; children: (props: { onCl
   );
 }
 
-/** Editors that are installed, plus terminal and file manager. */
-function OpenInMenu({ id }: { id: string }) {
-  const targets = useOpenTargets();
-  return (
-    <DropdownMenu onOpenChange={(o) => o && refreshOpenTargets()}>
-      <DropdownMenuTrigger asChild>
-        <HeaderButton title="Open in…"><ExternalLinkIcon className="size-4" /></HeaderButton>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuLabel className="text-xs text-muted-foreground">Open in</DropdownMenuLabel>
-        {targets.map((t) => (
-          <DropdownMenuItem key={t.id} onSelect={() => call('sessions:openIn', id, t.id).catch(fail)}>
-            <OpenTargetIcon target={t} />
-            {OPEN_TARGET_INFO[t.id].label}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 function Header({ s, title }: { s?: SessionView; title?: string }) {
   const collapsed = useApp((st) => st.sidebarCollapsed);
   const work = s?.meta.kind === 'work';
@@ -146,7 +124,7 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
               <HeaderButton on={p!.files} title="Files" onClick={() => togglePanel(s.meta.id, 'files')}><FolderIcon className="size-4" /></HeaderButton>
             </>
           )}
-          <OpenInMenu id={s.meta.id} />
+          <OpenInMenu id={s.meta.id}><HeaderButton title="Open in…"><ExternalLinkIcon className="size-4" /></HeaderButton></OpenInMenu>
         </>
       ) : (
         <span className="px-2 text-sm text-muted-foreground">{title ?? (useApp.getState().view === 'work' ? 'New task' : 'New session')}</span>

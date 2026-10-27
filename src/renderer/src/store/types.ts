@@ -60,6 +60,12 @@ export type Detail =
   | { type: 'agent'; toolCallId: string }
   | { type: 'file'; path: string; line: number; start?: number; loading: boolean; text?: string | null; error?: string; image?: string | null };
 
+/** A file open in the Files card. A tab nobody double-clicked is a preview: the next single click replaces it. */
+export interface FileTab {
+  path: string;
+  pinned: boolean;
+}
+
 export interface ChangedFile extends FileChange {
   add: number;
   del: number;
@@ -109,6 +115,8 @@ export interface SessionView {
   prThreads: PrThread[];
   prHidden: boolean;
   files: string[] | null;
+  /** The Files card's tabs; `detail` is the one showing. */
+  fileTabs: FileTab[];
   panels: Panels;
   /** Card blown up over the whole workspace, remembered per session like the panels. */
   expanded: CardId | null;

@@ -57,6 +57,7 @@ export function sessionHandlers(ready: Promise<SessionHub>, getScheduler: () => 
     'sessions:prResolve': withHub((h, id, threadId, resolved) => h.prResolve(id, threadId, resolved)),
     'sessions:files': withHub((h, id) => h.files(id)),
     'sessions:readFile': withHub((h, id, rel) => h.readFile(id, rel)),
+    'sessions:search': withHub((h, id, query, caseSensitive) => h.search(id, query, caseSensitive)),
     'sessions:readImage': withHub((h, id, rel) => h.readImage(id, rel)),
     'sessions:context': withHub((h, id) => h.context(id)),
     'sessions:stopTask': withHub((h, id, toolCallId) => h.stopTask(id, toolCallId)),

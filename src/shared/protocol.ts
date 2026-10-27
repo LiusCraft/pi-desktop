@@ -10,6 +10,7 @@ import type { Forge } from './forge';
 import type { PetDef } from './pets';
 import type { RemoteActive, RemoteConnectionDraft, RemoteConnectionInfo, RemoteLinkState, RemoteListing, RemoteServeSettings, RemoteServeState } from './remote';
 import type { ScheduledTask, TaskDraft } from './schedule';
+import type { SearchResult } from './text-search';
 
 export type SessionKind = 'code' | 'work';
 export type PermissionMode = 'auto' | 'default' | 'acceptEdits' | 'plan' | 'bypass';
@@ -852,6 +853,8 @@ export interface Api {
   'sessions:prResolve'(id: string, threadId: string, resolved: boolean): void;
   'sessions:files'(id: string): string[];
   'sessions:readFile'(id: string, rel: string): string | null;
+  /** Which lines of the project's text files contain `query`. */
+  'sessions:search'(id: string, query: string, caseSensitive: boolean): SearchResult;
   'sessions:readImage'(id: string, rel: string): { mimeType: string; src: string } | null;
   'sessions:context'(id: string): ContextBreakdown | null;
   'sessions:stopTask'(id: string, toolCallId: string): boolean;
@@ -906,7 +909,7 @@ export const HOST_CHANNELS = [
   'sessions:setMode', 'sessions:setStyle', 'sessions:update', 'sessions:archive', 'sessions:unarchive', 'sessions:inspect', 'sessions:remove', 'sessions:spawn', 'sessions:abort',
   'sessions:clearQueue', 'sessions:newContext', 'sessions:compact', 'sessions:stats', 'sessions:exportHtml',
   'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:side', 'sessions:sideGet', 'sessions:sideStage', 'sessions:sideAbort', 'sessions:sideReset',
-  'sessions:changes', 'sessions:commits', 'sessions:commitChanges', 'sessions:pr', 'sessions:prThreads', 'sessions:prReply', 'sessions:prResolve', 'sessions:files', 'sessions:readFile', 'sessions:readImage',
+  'sessions:changes', 'sessions:commits', 'sessions:commitChanges', 'sessions:pr', 'sessions:prThreads', 'sessions:prReply', 'sessions:prResolve', 'sessions:files', 'sessions:readFile', 'sessions:search', 'sessions:readImage',
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
   'sessions:import', 'git:branch', 'git:branches', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove',
   'customize:list', 'customize:readFile', 'customize:skillSetDisabled', 'customize:skillCreate', 'customize:connectorSave',

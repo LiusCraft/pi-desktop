@@ -1,6 +1,5 @@
 // Line-numbered code and diffs (tool previews, the file viewer, the Diff panel).
 import { Fragment, memo, useEffect, useMemo, useState, type ReactNode } from 'react';
-import DOMPurify from 'dompurify';
 import { ChevronDownIcon, ChevronsUpDownIcon, ChevronUpIcon, ImageOffIcon } from 'lucide-react';
 import { lineDiff, PREVIEW_LINES, type DiffRow, type PreviewRow, type ToolPreview } from '@shared/tool-previews';
 import { call } from '@/lib/api';
@@ -18,15 +17,29 @@ function lineHtml(r: DiffRow, lang: string) {
   return `${highlight(r.s.slice(0, x), lang)}<span class="wd">${highlight(r.s.slice(x, y), lang)}</span>${highlight(r.s.slice(y), lang)}`;
 }
 
-/** Only text and span nodes from the highlighter become React children. */
+const ENTITIES: Record<string, string> = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#x27;': "'", '&#39;': "'" };
+const TOKEN = /<span class="([\w\s-]*)">|<\/span>|([^<]+)/g;
+
+/**
+ * The highlighter's output is only escaped text and class-only spans, so a small scanner turns
+ * it into React children (no DOM parse per line, which is what made big diffs crawl). Anything
+ * else is dropped; unbalanced spans are closed at the end.
+ */
 function highlightedNodes(html: string): ReactNode[] {
-  const fragment = DOMPurify.sanitize(html, { RETURN_DOM_FRAGMENT: true, ALLOWED_TAGS: ['span'], ALLOWED_ATTR: ['class'] });
-  const render = (node: ChildNode, index: number): ReactNode => {
-    if (node.nodeType === Node.TEXT_NODE) return node.textContent;
-    if (!(node instanceof HTMLElement)) return null;
-    return <span key={index} className={node.getAttribute('class') ?? undefined}>{[...node.childNodes].map(render)}</span>;
+  const root: ReactNode[] = [];
+  const stack: { className: string; children: ReactNode[] }[] = [];
+  const target = () => (stack.length ? stack[stack.length - 1].children : root);
+  const close = () => {
+    const done = stack.pop()!;
+    target().push(<span key={target().length} className={done.className}>{done.children}</span>);
   };
-  return [...fragment.childNodes].map(render);
+  for (const m of html.matchAll(TOKEN)) {
+    if (m[2] !== undefined) target().push(m[2].replace(/&(?:amp|lt|gt|quot|#x27|#39);/g, (e) => ENTITIES[e]));
+    else if (m[1] !== undefined) stack.push({ className: m[1], children: [] });
+    else if (stack.length) close();
+  }
+  while (stack.length) close();
+  return root;
 }
 
 /** The gutter's plus button selects a line for a comment. */

@@ -31,7 +31,7 @@ import type { CustomizeHost, ScheduleHost } from './manage-tools';
 import { listPets, removePet, savePet } from './pets';
 import { createDesktopKit, type KitHost, type KitState, type SubagentRun } from './desktop-kit';
 import { toWireEvent } from './events';
-import { readSessionFile, readSessionImage, resolveInside } from './files';
+import { readSessionFile, readSessionImage, resolveInside, searchSessionFiles } from './files';
 import * as git from './git';
 import { ModelAdmin } from './model-admin';
 import { PrWatcher, type PrPending } from './pr-watch';
@@ -1453,6 +1453,10 @@ export class SessionHub {
   }
   readFile(id: string, rel: string) {
     return readSessionFile(this.meta(id).cwd, rel);
+  }
+  async search(id: string, query: string, caseSensitive: boolean) {
+    const cwd = this.meta(id).cwd;
+    return searchSessionFiles(cwd, await git.listFiles(cwd), query, caseSensitive);
   }
   readImage(id: string, rel: string) {
     return readSessionImage(this.meta(id).cwd, rel);

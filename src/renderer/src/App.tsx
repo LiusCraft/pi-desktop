@@ -10,7 +10,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { bridge, call, isMac } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
-import { answerUi, bootstrap, cycleViewMode, fail, handleHostEvent, openSession, showWelcome, stop, toggleSidebar, togglePanel } from '@/store/actions';
+import { answerUi, bootstrap, cycleViewMode, fail, handleHostEvent, openSession, requestFind, showWelcome, stop, toggleSidebar, togglePanel } from '@/store/actions';
 import { currentSession, getApp, setApp, useApp } from '@/store/app';
 import { activeDraft, drafts } from '@/store/drafts';
 import { useDialogs } from '@/store/dialogs';
@@ -51,6 +51,10 @@ function useShortcuts() {
       if (mod && key === 'o') {
         e.preventDefault();
         return cycleViewMode();
+      }
+      if (mod && e.shiftKey && !e.altKey && key === 'f') {
+        e.preventDefault();
+        return requestFind('all');
       }
       if (mod && key === 'd') {
         e.preventDefault();

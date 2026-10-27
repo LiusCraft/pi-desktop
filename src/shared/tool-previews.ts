@@ -119,21 +119,32 @@ export function lineWindow(text: string, target = 1, start?: number, all = false
 export function lineDiff(a: string | null | undefined, b: string | null | undefined): DiffRow[] {
   const A = a == null ? [] : a.split('\n');
   const B = b == null ? [] : b.split('\n');
-  const n = A.length, m = B.length;
-  // Large files: fall back to a whole-file replace instead of an O(n·m) table.
-  if (n * m > 4e6) return [...A.map((s, i): DiffRow => ({ t: '-', o: i + 1, s })), ...B.map((s, i): DiffRow => ({ t: '+', n: i + 1, s }))];
-  const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
-  for (let i = n - 1; i >= 0; i--)
-    for (let j = m - 1; j >= 0; j--) dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  // Untouched head and tail need no table: only the middle is diffed.
+  let head = 0;
+  while (head < A.length && head < B.length && A[head] === B[head]) head++;
+  let tail = 0;
+  while (tail < A.length - head && tail < B.length - head && A[A.length - 1 - tail] === B[B.length - 1 - tail]) tail++;
+  const n = A.length - head - tail, m = B.length - head - tail;
   const out: DiffRow[] = [];
-  let i = 0, j = 0;
-  while (i < n && j < m) {
-    if (A[i] === B[j]) { out.push({ t: ' ', o: i + 1, n: j + 1, s: A[i] }); i++; j++; }
-    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ t: '-', o: i + 1, s: A[i] }); i++; }
-    else { out.push({ t: '+', n: j + 1, s: B[j] }); j++; }
+  for (let k = 0; k < head; k++) out.push({ t: ' ', o: k + 1, n: k + 1, s: A[k] });
+  // A very large middle falls back to a whole-block replace instead of an O(n·m) table.
+  if (n * m > 4e6) {
+    for (let i = 0; i < n; i++) out.push({ t: '-', o: head + i + 1, s: A[head + i] });
+    for (let j = 0; j < m; j++) out.push({ t: '+', n: head + j + 1, s: B[head + j] });
+  } else {
+    const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--)
+      for (let j = m - 1; j >= 0; j--) dp[i][j] = A[head + i] === B[head + j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    let i = 0, j = 0;
+    while (i < n && j < m) {
+      if (A[head + i] === B[head + j]) { out.push({ t: ' ', o: head + i + 1, n: head + j + 1, s: A[head + i] }); i++; j++; }
+      else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ t: '-', o: head + i + 1, s: A[head + i] }); i++; }
+      else { out.push({ t: '+', n: head + j + 1, s: B[head + j] }); j++; }
+    }
+    while (i < n) { out.push({ t: '-', o: head + i + 1, s: A[head + i] }); i++; }
+    while (j < m) { out.push({ t: '+', n: head + j + 1, s: B[head + j] }); j++; }
   }
-  while (i < n) { out.push({ t: '-', o: i + 1, s: A[i] }); i++; }
-  while (j < m) { out.push({ t: '+', n: j + 1, s: B[j] }); j++; }
+  for (let k = 0; k < tail; k++) out.push({ t: ' ', o: A.length - tail + k + 1, n: B.length - tail + k + 1, s: A[A.length - tail + k] });
   for (let k = 0; k < out.length;) {
     if (out[k].t !== '-') { k++; continue; }
     let d = k; while (d < out.length && out[d].t === '-') d++;

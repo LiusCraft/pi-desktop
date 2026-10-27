@@ -907,15 +907,28 @@ let fileRequest = 0;
 /**
  * Show the current contents of a session file in the detail panel, at a line.
  * Images show as images; `fallbackImage` (what a read tool returned) covers files outside the session.
+ * The file takes a tab of the Files card: the preview tab if nobody pinned it, else a new one (`pin` keeps it).
  */
-export async function openFileRef(path: string, line?: number, fallbackImage?: string) {
+export async function openFileRef(path: string, line?: number, fallbackImage?: string, pin = false) {
   const s = currentSession();
   if (!s) return;
   const id = s.meta.id;
   const rel = relPath(s.meta.cwd, path);
   const request = ++fileRequest;
   const target = positiveLine(line);
-  updateSession(id, (v) => void (v.detail = { type: 'file', path: rel, line: target, loading: true }));
+  updateSession(id, (v) => {
+    v.detail = { type: 'file', path: rel, line: target, loading: true };
+    if (v.meta.kind === 'work') return;
+    const known = v.fileTabs.find((t) => t.path === rel);
+    if (known) known.pinned ||= pin;
+    else {
+      const preview = pin ? -1 : v.fileTabs.findIndex((t) => !t.pinned);
+      if (preview >= 0) v.fileTabs[preview] = { path: rel, pinned: false };
+      else v.fileTabs.push({ path: rel, pinned: pin });
+    }
+  });
+  // The preview lives in the Files card (a Work session has no such card and shows it on its own).
+  if (s.meta.kind !== 'work') togglePanel(id, 'files', true);
   const stillShowing = () => {
     const d = getApp().sessions[id]?.detail;
     return request === fileRequest && getApp().current === id && d?.type === 'file' && d.path === rel;
@@ -932,10 +945,51 @@ export async function openFileRef(path: string, line?: number, fallbackImage?: s
     if (stillShowing()) updateSession(id, (v) => void (v.detail = { type: 'file', path: rel, line: target, loading: false, error: errText(err) }));
   }
 }
+/** Keep a previewed file's tab (a double click on the tab or the file). */
+export function pinFileTab(id: string, path: string) {
+  updateSession(id, (v) => {
+    const tab = v.fileTabs.find((t) => t.path === path);
+    if (tab) tab.pinned = true;
+  });
+}
+
+/** Close a tab; if it was showing, the neighbour takes over, or the card goes back to its empty state. */
+export function closeFileTab(id: string, path: string) {
+  const s = getApp().sessions[id];
+  const at = s?.fileTabs.findIndex((t) => t.path === path) ?? -1;
+  if (!s || at < 0) return;
+  const next = s.fileTabs[at + 1] ?? s.fileTabs[at - 1];
+  const showing = s.detail?.type === 'file' && s.detail.path === path;
+  updateSession(id, (v) => void v.fileTabs.splice(at, 1));
+  if (!showing) return;
+  if (next) void openFileRef(next.path);
+  else closeDetail(id);
+}
+
+/** Closing the Files card drops its tabs. */
+export function closeFiles(id: string) {
+  updateSession(id, (v) => {
+    v.fileTabs = [];
+    if (v.detail?.type === 'file') v.detail = null;
+  });
+}
+
 export function setFileWindow(id: string, start: number) {
   updateSession(id, (v) => {
     if (v.detail?.type === 'file') v.detail.start = start;
   });
+}
+
+/** Ctrl/Cmd+Shift+F: the Files card opens with its find bar on this scope (a card already open is told by event). */
+export const findTarget = { scope: null as 'file' | 'all' | null };
+export const FIND_EVENT = 'pi:find';
+export function requestFind(scope: 'file' | 'all') {
+  const s = currentSession();
+  if (!s || s.meta.kind === 'work') return;
+  findTarget.scope = scope;
+  const open = s.panels.files;
+  togglePanel(s.meta.id, 'files', true);
+  if (open) window.dispatchEvent(new Event(FIND_EVENT));
 }
 
 /** Open the Diff panel scrolled to one file, or to the first PR review thread (`thread`). */

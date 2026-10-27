@@ -49,17 +49,6 @@ test.afterEach(async ({}, testInfo) => {
   fs.rmSync(temporary, { recursive: true, force: true });
 });
 
-async function selectCode(locator: ReturnType<Page['locator']>) {
-  await locator.evaluate((element) => {
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-  });
-  await locator.dispatchEvent('mouseup');
-}
-
 test('file menus, preview excerpts, diff comments, send, fork and rewind', async () => {
   await page.getByPlaceholder('Describe a task or ask a question').fill('日期显示少了一个月，帮我修一下');
   await page.getByPlaceholder('Describe a task or ask a question').press('Enter');
@@ -67,15 +56,17 @@ test('file menus, preview excerpts, diff comments, send, fork and rewind', async
   const sourceId = await page.evaluate(async () => (await window.piDesktop.invoke('sessions:list'))[0].id);
 
   await page.getByTitle('Files', { exact: true }).click();
+  // The Files card is one window: the tree on the left, the open file on the right.
   const files = page.getByTestId('files');
-  const src = files.locator('button[title="src"]');
+  const row = (scope: typeof files, path: string) => scope.locator(`[data-item-path="${path}"]`);
+  const src = row(files, 'src/');
   await expect(src).toBeVisible();
   await src.click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Attach as context', exact: true }).click();
   await expect(page.getByLabel('附加的上下文和评论')).toContainText('src/');
   await src.click();
-  await files.locator('button[title="src/utils"]').click();
-  const date = files.locator('button[title="src/utils/date.js"]');
+  await row(files, 'src/utils/').click();
+  const date = row(files, 'src/utils/date.js');
   await date.click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Copy', exact: true }).hover();
   await page.getByRole('menuitem', { name: 'Relative path', exact: true }).click();
@@ -87,36 +78,86 @@ test('file menus, preview excerpts, diff comments, send, fork and rewind', async
   await page.keyboard.press('Escape');
   await date.click();
 
-  const viewer = page.getByTestId('detail');
-  const line = viewer.locator('[data-source-line="2"] [data-code-text]');
-  await selectCode(line);
+  // Lines are picked by their number in the gutter; the composer opens under them.
+  const line = (scope: typeof files, n: number) => scope.locator(`[data-line-type][data-column-number="${n}"]`).first();
+  await line(files, 2).click();
   await page.getByRole('button', { name: '附加为上下文', exact: true }).click();
   await expect(page.getByLabel('附加的上下文和评论')).toContainText('Excerpt');
-  await viewer.getByRole('button', { name: '评论第 3 行', exact: true }).click();
+  await line(files, 3).click();
+  await page.getByRole('button', { name: '添加评论', exact: true }).click();
   await page.getByLabel('选区评论').fill('Preview review comment');
   await page.getByRole('button', { name: '添加到输入框', exact: true }).click();
   await expect(page.getByLabel('附加的上下文和评论')).toContainText('Preview review comment');
-  await viewer.getByRole('button', { name: '评论第 2 行', exact: true }).click();
-  await viewer.getByRole('button', { name: '评论第 4 行', exact: true }).click({ modifiers: ['Shift'] });
-  await viewer.getByRole('button', { name: '评论第 1 行', exact: true }).click({ modifiers: ['Shift'] });
-  await expect(viewer.getByTitle('src/utils/date.js:1–2', { exact: true })).toBeVisible();
-  await viewer.getByRole('button', { name: '附加为上下文', exact: true }).click();
 
-  await viewer.getByTitle('Close', { exact: true }).click();
+  // A single click previews (italic tab, replaced by the next click); a double click keeps the tab.
+  const tabs = files.getByRole('tab');
+  await expect(tabs).toHaveCount(1);
+  await expect(files.locator('[role=tab] span.italic')).toHaveCount(1);
+  await row(files, 'src/utils/date.js').dblclick();
+  await expect(files.locator('[role=tab] span.italic')).toHaveCount(0);
+  await row(files, 'README.md').click();
+  await expect(tabs).toHaveCount(2);
+  await row(files, 'package.json').click();
+  await expect(tabs).toHaveCount(2);
+  await expect(files.locator('[role=tab] span.italic')).toHaveText('package.json');
+  await files.getByTitle('Hide file tree', { exact: true }).click();
+  await expect(row(files, 'README.md')).toHaveCount(0);
+  await files.getByTitle('Show file tree', { exact: true }).click();
+  await expect(row(files, 'README.md')).toBeVisible();
+  // Find: in the open file (Enter steps), or in every file of the project.
+  const find = files.getByRole('search');
+  await files.getByTitle(/Find in files/).click();
+  await page.keyboard.type('name');
+  await expect(find).toContainText('1/');
+  await find.getByRole('button', { name: '全部文件' }).click();
+  await expect(files.getByLabel('Search results')).toBeVisible();
+  await files.getByLabel('Search results').getByRole('button').first().click();
+  await expect(tabs.first()).toBeVisible();
+  await find.getByRole('button', { name: '关闭搜索' }).click();
+  await expect(find).toHaveCount(0);
+  await expect(row(files, 'package.json')).toBeVisible();
+  // The keyboard shortcut opens the project search from anywhere.
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+F' : 'Control+Shift+F');
+  await expect(files.getByPlaceholder('在所有文件中搜索')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(find).toHaveCount(0);
+
+  await files.getByTitle('Close', { exact: true }).click();
   // Panels stay closed until the user asks for them (Ctrl/Cmd+D or the header button).
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+d' : 'Control+d');
-  const diff = page.locator('section[data-path="src/utils/date.js"]');
+  // The editor needs room for its gutters and the comment box.
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(2200, 1200));
+  const diff = page.getByTestId('diff');
   await expect(diff).toBeVisible();
-  await diff.locator('.code-row.del [data-select-line]').first().click();
+  await diff.locator('[data-line-type="change-addition"][data-column-number]').first().click();
+  await page.getByRole('button', { name: '添加评论', exact: true }).click();
   await page.getByLabel('选区评论').fill('Diff review comment');
   await page.getByRole('button', { name: '添加到输入框', exact: true }).click();
-  await expect(page.getByLabel('附加的上下文和评论')).toContainText('before change');
+  await expect(page.getByLabel('附加的上下文和评论')).toContainText('Diff review comment');
   const changedFiles = page.getByRole('navigation', { name: 'Changed files' });
-  await changedFiles.getByTitle('src/utils/date.js', { exact: true }).click({ button: 'right' });
+  await row(changedFiles, 'src/utils/date.js').click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Attach as context', exact: true }).click();
-  await changedFiles.getByTitle('src/utils', { exact: true }).click({ button: 'right' });
+  await row(changedFiles, 'src/utils/').click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Attach as context', exact: true }).click();
   await expect(page.getByLabel('附加的上下文和评论')).toContainText('src/utils/');
+
+  // Every file folds or unfolds at once, and Open in lists what can open the folder.
+  await diff.getByTitle('Collapse all', { exact: true }).click();
+  await expect(diff.locator('[data-line-type]')).toHaveCount(0);
+  await diff.getByTitle('Expand all', { exact: true }).click();
+  await expect(diff.locator('[data-line-type]').first()).toBeVisible();
+  await diff.getByTitle('Open in…', { exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Terminal', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  // Focus goes back to the Open in button once the menu has closed; wait for that before moving on.
+  await expect(page.getByRole('menuitem', { name: 'Terminal', exact: true })).toHaveCount(0);
+  await diff.getByTitle(/Find in the diff/).click();
+  await page.keyboard.type('getMonth');
+  await expect(diff.getByRole('search')).toContainText('1/');
+  // The first hit follows the last keystroke; Enter steps from there.
+  await page.waitForTimeout(300);
+  await page.keyboard.press('Enter');
+  await expect(diff.getByRole('search')).toContainText('2/');
 
   await page.getByTitle('Send (↵)', { exact: true }).click();
   await expect(page.getByRole('button', { name: '回退到这里', exact: true })).toHaveCount(2);

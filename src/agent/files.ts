@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { TextDecoder } from 'node:util';
+import { findInText, SEARCH_MAX_MATCHES, type SearchResult } from '../shared/text-search';
 
 export const MAX_FILE_BYTES = 1024 * 1024;
 
@@ -51,6 +52,26 @@ export function readSessionFile(root: string, rel: string): string | null {
   if (!content || content.includes(0)) return null;
   try { return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(content); }
   catch { return null; }
+}
+
+/** Files read between breaks that let the host answer other calls. */
+const SEARCH_BATCH_FILES = 40;
+
+/** Every line of the given session files that contains `query`; unreadable, binary and oversized files are skipped. */
+export async function searchSessionFiles(root: string, paths: string[], query: string, caseSensitive: boolean): Promise<SearchResult> {
+  const matches: SearchResult['matches'] = [];
+  if (!query) return { matches, truncated: false };
+  for (let i = 0; i < paths.length; i++) {
+    if (i % SEARCH_BATCH_FILES === 0) await new Promise<void>((resolve) => setImmediate(resolve));
+    let text: string | null = null;
+    try { text = readSessionFile(root, paths[i]); } catch { /* moved or unreadable since the listing */ }
+    if (text === null) continue;
+    for (const hit of findInText(text, query, caseSensitive, SEARCH_MAX_MATCHES + 1 - matches.length)) {
+      if (matches.length >= SEARCH_MAX_MATCHES) return { matches, truncated: true };
+      matches.push({ path: paths[i], ...hit });
+    }
+  }
+  return { matches, truncated: false };
 }
 
 export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;

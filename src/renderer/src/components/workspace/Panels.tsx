@@ -1,32 +1,38 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
 import {
-  ArrowLeftIcon, BotIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CodeIcon, ExternalLinkIcon, FileCodeIcon, FileIcon, FolderIcon,
-  EyeIcon, FolderOpenIcon, ListIcon, Maximize2Icon, MessageSquareIcon, Minimize2Icon, RefreshCwIcon, SearchIcon, SquareIcon, SquareTerminalIcon,
+  ArrowLeftIcon, BotIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, ChevronsDownUpIcon, ChevronsUpDownIcon, CodeIcon, ExternalLinkIcon, FileIcon, FolderIcon,
+  EyeIcon, ListIcon, Maximize2Icon, MessageSquareIcon, Minimize2Icon, RefreshCwIcon, SearchIcon, SquareIcon, SquareTerminalIcon,
   Trash2Icon, XIcon,
 } from 'lucide-react';
+import { useDefaultLayout } from 'react-resizable-panels';
 import { toast } from 'sonner';
+import { findInText, SEARCH_MAX_MATCHES, type SearchResult } from '@shared/text-search';
 import type { CommitInfo } from '@shared/protocol';
 import { generatedKind, isGeneratedFile, type GeneratedKind } from '@shared/generated';
-import { lineWindow, WINDOW_LINES } from '@shared/tool-previews';
-import { CodeLines, DiffRows } from '@/components/common/CodeView';
+import { ReviewCodeView, type ReviewHandle, type ReviewItem } from '@/components/common/ReviewCodeView';
+import type { FileTreeRowDecoration } from '@pierre/trees';
 import { CopyGlyph, useCopy } from '@/components/common/Copy';
+import { OpenInMenu } from '@/components/common/OpenInMenu';
 import { Markdown } from '@/components/common/Markdown';
 import { TodoList, PlanActions } from '@/components/thread/Items';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { call } from '@/lib/api';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import { call, isMac } from '@/lib/api';
+import { fileDiffOf } from '@/lib/file-diff';
 import { modeName } from '@/lib/constants';
-import { changeStats, firstThread, isLargeDiff } from '@/lib/diff';
+import { changeStats, firstThread } from '@/lib/diff';
 import { fdir, fmtDur, fmtTok, fname } from '@/lib/format';
 import type { ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
 import {
-  closeDetail, diffTarget, fail, loadChanges, loadFiles, openAgent, openDiffRef, openFileRef, setFileWindow, stopTask, togglePanel,
+  closeDetail, closeFiles, closeFileTab, diffTarget, fail, FIND_EVENT, findTarget, loadChanges, loadFiles, openAgent, openDiffRef, openFileRef, pinFileTab, stopTask, togglePanel,
 } from '@/store/actions';
 import { modelName, setPref, updateSession, useApp } from '@/store/app';
 import { findByKey, findTool } from '@/store/transcript';
 import type { ChangedFile, SessionView } from '@/store/types';
-import { FileContextMenu } from './FileContextMenu';
+import { FindBar, SearchResults, type FindScope } from './FindBar';
+import { PathTree, type PathStatus } from './PathTree';
 
 // ------------------------------------------------------------ card chrome
 
@@ -71,37 +77,65 @@ export function IconBtn({ children, className, ...props }: React.ComponentProps<
 
 const Empty = ({ children }: { children: ReactNode }) => <div className="flex h-full items-center justify-center p-6 text-center text-sm whitespace-pre-line text-muted-foreground">{children}</div>;
 
+/** Tree sizes, in pixels and as a share of the card. */
+const TREE_MIN_PX = 140;
+const TREE_START = '32%';
+const TREE_MAX = '70%';
+const VIEW_MIN_PX = 200;
+
+/** A tree beside its view; the divider between them is dragged to resize the tree (remembered per session). */
+function TreeSplit({ id, tree, children }: { id: string; tree: ReactNode | null; children: ReactNode }) {
+  const layout = useDefaultLayout({ id });
+  if (!tree) return <div className="h-full min-w-0">{children}</div>;
+  return (
+    <ResizablePanelGroup orientation="horizontal" id={id} defaultLayout={layout.defaultLayout} onLayoutChanged={layout.onLayoutChanged}>
+      <ResizablePanel id="tree" defaultSize={TREE_START} minSize={TREE_MIN_PX} maxSize={TREE_MAX}>{tree}</ResizablePanel>
+      <ResizableHandle />
+      <ResizablePanel id="view" minSize={VIEW_MIN_PX}>{children}</ResizablePanel>
+    </ResizablePanelGroup>
+  );
+}
+
+/** Ctrl/Cmd+F (and +Shift for all files) inside a card opens its find bar. */
+function findKeys(open: (scope: FindScope) => void) {
+  return {
+    onKeyDownCapture: (event: React.KeyboardEvent) => {
+      const mod = isMac ? event.metaKey : event.ctrlKey;
+      if (!mod || event.altKey || event.key.toLowerCase() !== 'f') return;
+      event.preventDefault();
+      event.stopPropagation();
+      open(event.shiftKey ? 'all' : 'file');
+    },
+  };
+}
+
+const FIND_DEBOUNCE_MS = 250;
+const findHint = `${isMac ? '⌘' : 'Ctrl+'}F`;
+
+/** A step through `count` hits, wrapping around. */
+const wrapIndex = (index: number, direction: 1 | -1, count: number) => (index + direction + count) % count;
+
 // ------------------------------------------------------------ diff
 
 const GENERATED_LABEL: Record<GeneratedKind, string> = { lockfile: 'lockfile', minified: 'minified bundle', sourcemap: 'source map' };
 
-/** Files whose rows wait for an explicit click: generated artifacts, and anything big enough to stall the window. */
-const foldedByDefault = (f: ChangedFile) => isGeneratedFile(f.path) || isLargeDiff(f);
-
-/** Shown instead of diff rows for any file the user has not asked to see yet. */
-function FoldNote({ children, onReveal }: { children: ReactNode; onReveal: () => void }) {
-  return (
-    <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 text-xs text-muted-foreground">
-      <FileIcon className="size-3.5 shrink-0" />
-      <span>{children}</span>
-      <Button size="xs" variant="outline" onClick={onReveal}>Show diff</Button>
-    </div>
-  );
-}
+const STATUS_OF_CHANGE: Record<ChangedFile['status'], PathStatus> = { A: 'added', M: 'modified', D: 'deleted' };
 
 export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
-  // Generated files and large diffs start collapsed; `flipped` holds the user's per-file overrides.
+  // Generated files start collapsed; `flipped` holds the user's per-file overrides.
   const [flipped, setFlipped] = useState<Set<string>>(new Set());
-  const [revealed, setRevealed] = useState<Set<string>>(new Set());
-  const [closedDirs, setClosedDirs] = useState<Set<string>>(new Set());
-  const [gaps, setGaps] = useState<Set<string>>(new Set());
   const [showTree, setShowTree] = useState(true);
   const [active, setActive] = useState<string | null>(null);
   // The commit list under the tree; picking one swaps the panel from "all changes" to just that commit.
   const [commits, setCommits] = useState<CommitInfo[]>([]);
   const [commit, setCommit] = useState<CommitInfo | null>(null);
   const [commitFiles, setCommitFiles] = useState<ChangedFile[]>([]);
-  const body = useRef<HTMLDivElement>(null);
+  const review = useRef<ReviewHandle>(null);
+  const finder = useRef<HTMLInputElement>(null);
+  const [finding, setFinding] = useState(false);
+  const [query, setQuery] = useState('');
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [hit, setHit] = useState(0);
   const id = s.meta.id;
   const files = commit ? commitFiles : s.changes;
   const byPath = useMemo(() => new Map(files.map((f) => [f.path, f])), [files]);
@@ -110,8 +144,6 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   }, [id, s.changes]);
   const pickCommit = async (next: CommitInfo | null) => {
     setFlipped(new Set());
-    setRevealed(new Set());
-    setGaps(new Set());
     if (!next || next.hash === commit?.hash) return void setCommit(null);
     try {
       const list = await call('sessions:commitChanges', id, next.hash);
@@ -121,37 +153,70 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
       fail(err);
     }
   };
-  const scrollTo = (p: string) => {
-    const el = [...(body.current?.querySelectorAll<HTMLElement>('[data-path]') ?? [])].find((x) => x.dataset.path === p || p.endsWith('/' + x.dataset.path) || x.dataset.path!.endsWith(p));
-    if (!el || !body.current) return false;
-    body.current.scrollTop = el.offsetTop;
-    setActive(el.dataset.path!);
-    return true;
-  };
-  const threadsOf = (path: string) => s.prThreads.filter((t) => t.path === path);
-  const isCollapsed = (path: string) => {
-    const f = byPath.get(path);
-    return f ? foldedByDefault(f) !== flipped.has(path) : false;
-  };
+  const isCollapsed = (path: string) => isGeneratedFile(path) !== flipped.has(path);
   const toggle = (path: string) => setFlipped((c) => { const n = new Set(c); if (n.has(path)) n.delete(path); else n.add(path); return n; });
-  // "View diff" on a tool row is an explicit request, so it expands and reveals.
-  const open = (p: string) => {
-    const f = byPath.get(p);
-    if (f && foldedByDefault(f)) {
-      setFlipped((c) => new Set(c).add(p));
-      setRevealed((r) => new Set(r).add(p));
-    } else setFlipped((c) => { const n = new Set(c); n.delete(p); return n; });
-    requestAnimationFrame(() => scrollTo(p));
+  // A file is collapsed when it is generated (unless flipped) or flipped (when it is not).
+  const setAllCollapsed = (collapsed: boolean) => setFlipped(new Set(files.filter((f) => isGeneratedFile(f.path) !== collapsed).map((f) => f.path)));
+  // One button for both: it folds everything while anything is open, and unfolds once all is folded.
+  const allCollapsed = files.length > 0 && files.every((f) => f.binary || isCollapsed(f.path));
+  const [focusFind, setFocusFind] = useState(0);
+  const openFind = () => {
+    setFinding(true);
+    setFocusFind((n) => n + 1);
   };
-  // Bring a PR review thread to the middle of the panel, focus it and let it flash.
-  const showThread = (threadId: string, tries = 12) => {
-    const el = [...(body.current?.querySelectorAll<HTMLElement>('[data-thread-id]') ?? [])].find((x) => x.dataset.threadId === threadId);
-    if (!el) return void (tries > 0 && requestAnimationFrame(() => showThread(threadId, tries - 1)));
-    el.scrollIntoView({ block: 'center' });
-    el.focus({ preventScroll: true });
-    el.removeAttribute('data-flash');
-    void el.offsetWidth;
-    el.setAttribute('data-flash', '1');
+  useEffect(() => {
+    if (!focusFind) return;
+    finder.current?.focus();
+    finder.current?.select();
+  }, [focusFind]);
+  // Every line of the diff (changed and the context around it) that has the text, in file order.
+  const hits = useMemo(() => {
+    const out: { path: string; line: number; side: 'additions' | 'deletions' }[] = [];
+    if (!finding || !query) return out;
+    for (const f of files) {
+      if (f.binary || out.length >= SEARCH_MAX_MATCHES) continue;
+      const diff = fileDiffOf(f.path, f.status === 'A' ? null : f.before, f.status === 'D' ? null : f.after);
+      const scan = (lines: string[], from: number, count: number, side: 'additions' | 'deletions') => {
+        for (const m of findInText(lines.slice(from, from + count).join(''), query, caseSensitive)) out.push({ path: f.path, line: from + m.line, side });
+      };
+      for (const hunk of diff.hunks) {
+        for (const c of hunk.hunkContent) {
+          if (c.type === 'context') scan(diff.additionLines, c.additionLineIndex, c.lines, 'additions');
+          else {
+            scan(diff.deletionLines, c.deletionLineIndex, c.deletions, 'deletions');
+            scan(diff.additionLines, c.additionLineIndex, c.additions, 'additions');
+          }
+        }
+      }
+    }
+    return out;
+  }, [finding, query, caseSensitive, files]);
+  // Scrolling the viewer can pull focus into it; stepping with Enter needs the box to keep it.
+  const keepFindFocus = () => requestAnimationFrame(() => finder.current?.focus({ preventScroll: true }));
+  const showHit = (at: number) => {
+    const target = hits[at];
+    if (!target) return;
+    setHit(at);
+    setFlipped((c) => { const n = new Set(c); if (isGeneratedFile(target.path)) n.add(target.path); else n.delete(target.path); return n; });
+    setActive(target.path);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      review.current?.scrollToLine(target.path, target.line, target.side);
+      keepFindFocus();
+    }));
+  };
+  // A new search starts at its first hit; a refresh of the changes under it does not move the reader.
+  useEffect(() => {
+    setHit(0);
+    if (hits.length) showHit(0);
+  }, [finding, query, caseSensitive]); // eslint-disable-line react-hooks/exhaustive-deps
+  // "View diff" on a tool row is an explicit request: show the file, then land on it.
+  const open = (p: string) => {
+    const f = [...byPath.values()].find((x) => x.path === p || p.endsWith('/' + x.path) || x.path.endsWith(p));
+    if (!f) return false;
+    setFlipped((c) => { const n = new Set(c); if (isGeneratedFile(f.path)) n.add(f.path); else n.delete(f.path); return n; });
+    setActive(f.path);
+    requestAnimationFrame(() => review.current?.scrollToItem(f.path));
+    return true;
   };
   // "View diff" on a tool row, and the PR bar's chips, jump here.
   useEffect(() => {
@@ -161,38 +226,26 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
       if (first) {
         diffTarget.thread = false;
         open(first.path);
-        requestAnimationFrame(() => showThread(first.id));
+        requestAnimationFrame(() => review.current?.focusThread(first));
       } else if (s.changes.length) diffTarget.thread = false;
       return;
     }
     if (!diffTarget.path) return;
     const target = diffTarget.path;
-    open(target);
-    if (!scrollTo(target)) void loadChanges(id).then(() => requestAnimationFrame(() => scrollTo(target)));
+    if (!open(target)) void loadChanges(id).then(() => requestAnimationFrame(() => open(target)));
     diffTarget.path = null;
   }, [diffTarget.seq, s.changes.length, s.prThreads]); // eslint-disable-line react-hooks/exhaustive-deps
-  // The file whose header has scrolled past the top is the one the tree highlights.
-  const onScroll = () => {
-    const el = body.current;
-    if (!el) return;
-    let current: string | null = null;
-    for (const f of el.querySelectorAll<HTMLElement>('[data-path]')) {
-      if (f.offsetTop - el.scrollTop > 8) break;
-      current = f.dataset.path!;
-    }
-    setActive(current ?? files[0]?.path ?? null);
-  };
 
-  // Changed files grouped by folder, root files first.
-  const dirs = useMemo(() => {
-    const map = new Map<string, typeof files>();
-    for (const f of files) {
-      const d = fdir(f.path);
-      if (!map.has(d)) map.set(d, []);
-      map.get(d)!.push(f);
-    }
-    return [...map.entries()].sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b)));
-  }, [files]);
+  const items = useMemo<ReviewItem[]>(() => files.filter((f) => !f.binary).map((f) => ({
+    id: f.path, kind: 'diff', path: f.path, before: f.status === 'A' ? null : f.before, after: f.status === 'D' ? null : f.after, collapsed: isCollapsed(f.path),
+  })), [files, flipped]); // eslint-disable-line react-hooks/exhaustive-deps
+  const statuses = useMemo(() => new Map(files.map((f) => [f.path, STATUS_OF_CHANGE[f.status]])), [files]);
+  const decorate = (path: string): FileTreeRowDecoration | null => {
+    const f = byPath.get(path);
+    if (!f) return null;
+    if (f.binary) return { text: 'binary' };
+    return { text: `+${f.add} −${f.del}`, parts: [{ text: `+${f.add}`, color: 'var(--success)' }, { text: ` −${f.del}`, color: 'var(--destructive)' }] };
+  };
 
   const title = (
     <span className="flex min-w-0 items-center gap-1.5 text-sm font-normal">
@@ -203,9 +256,12 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   );
   const tools = (
     <>
-      <IconBtn title="Search files" onClick={() => togglePanel(id, 'files', true)}><SearchIcon className="size-3.5" /></IconBtn>
-      <IconBtn title="Refresh" onClick={() => { setGaps(new Set()); setFlipped(new Set()); setRevealed(new Set()); void loadChanges(id); }}><RefreshCwIcon className="size-3.5" /></IconBtn>
-      <IconBtn title="Open in VS Code" onClick={() => call('sessions:openIn', id, 'vscode').catch(fail)}><ExternalLinkIcon className="size-3.5" /></IconBtn>
+      <IconBtn title={`Find in the diff  ${findHint}`} onClick={openFind}><SearchIcon className="size-3.5" /></IconBtn>
+      <IconBtn title={allCollapsed ? 'Expand all' : 'Collapse all'} onClick={() => setAllCollapsed(!allCollapsed)}>
+        {allCollapsed ? <ChevronsUpDownIcon className="size-3.5" /> : <ChevronsDownUpIcon className="size-3.5" />}
+      </IconBtn>
+      <IconBtn title="Refresh" onClick={() => { setFlipped(new Set()); void loadChanges(id); }}><RefreshCwIcon className="size-3.5" /></IconBtn>
+      <OpenInMenu id={id}><IconBtn title="Open in…"><ExternalLinkIcon className="size-3.5" /></IconBtn></OpenInMenu>
     </>
   );
   const treeToggle = (
@@ -217,110 +273,92 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   if (!s.meta.baseCommit) content = <Empty>{'这个项目不是 git 仓库\n初始化 git 后即可查看 Pi Desktop 的改动'}</Empty>;
   else if (!s.changes.length) content = <Empty>{'No changes yet\nPi Desktop 修改的文件会出现在这里'}</Empty>;
   else {
-    const genTag = (path: string) => {
-      const gen = generatedKind(path);
-      return gen ? <span title={`Generated ${GENERATED_LABEL[gen]}`} className="shrink-0 text-[10px] font-medium tracking-wide text-muted-foreground/70">gen</span> : null;
-    };
-    const fileRow = (f: (typeof s.changes)[number]) => (
-      <FileContextMenu key={f.path} meta={s.meta} path={f.path} snapshot={f.status === 'D' ? f.before ?? '' : undefined}>
-      <button
-        title={f.path}
-        onClick={() => open(f.path)}
-        className={cn('flex w-full items-center gap-2 rounded-md py-1 pr-2 pl-2 text-left text-[13px] hover:bg-accent', active === f.path && 'bg-accent')}
-      >
-        <FileCodeIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className={cn('min-w-0 flex-1 truncate', f.status === 'D' && 'line-through opacity-70')}>{fname(f.path)}</span>
-        {genTag(f.path)}
-        <span className="shrink-0 font-mono text-xs"><span className="text-success">+{f.add}</span> <span className="text-destructive">−{f.del}</span></span>
-      </button>
-      </FileContextMenu>
-    );
     content = (
-      <div className="flex h-full min-h-0">
-        {showTree && (
-          <div className="flex w-[38%] max-w-72 min-w-44 shrink-0 flex-col border-r">
-          <nav className="min-h-0 flex-1 overflow-y-auto p-1.5" aria-label="Changed files">
-            {dirs.map(([dir, files]) => dir === '' ? files.map((f) => fileRow(f)) : (
-              <div key={dir}>
-                <FileContextMenu meta={s.meta} path={dir} directory>
+      <div className="flex h-full min-h-0 flex-col" {...findKeys(openFind)}>
+        {finding && (
+          <FindBar
+            inputRef={finder}
+            value={query}
+            onValue={setQuery}
+            caseSensitive={caseSensitive}
+            onCaseSensitive={setCaseSensitive}
+            placeholder="在改动中查找"
+            status={query ? `${hits.length ? hit + 1 : 0}/${hits.length}${hits.length >= SEARCH_MAX_MATCHES ? '+' : ''}` : ''}
+            onStep={(direction) => hits.length && showHit(wrapIndex(hit, direction, hits.length))}
+            onClose={() => setFinding(false)}
+          />
+        )}
+        <div className="min-h-0 flex-1">
+      <TreeSplit
+        id={`${id}:diff-split`}
+        tree={showTree && (
+          <div className="flex h-full min-h-0 flex-col">
+            <PathTree
+              className="min-h-0 flex-1"
+              label="Changed files"
+              meta={s.meta}
+              paths={files.map((f) => f.path)}
+              statuses={statuses}
+              decorate={decorate}
+              selected={active}
+              expandAll
+              snapshotOf={(p) => { const f = byPath.get(p); return f?.status === 'D' ? f.before ?? '' : undefined; }}
+              onOpen={open}
+            />
+            {commits.length > 0 && (
+              <nav className="max-h-[40%] shrink-0 overflow-y-auto border-t p-1.5" aria-label="Commits">
+                <div className="px-2 py-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Commits · {commits.length}</div>
                 <button
-                  className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-[13px] hover:bg-accent"
-                  title={dir}
-                  onClick={() => setClosedDirs((c) => { const n = new Set(c); if (n.has(dir)) n.delete(dir); else n.add(dir); return n; })}
+                  className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] hover:bg-accent', !commit && 'bg-accent')}
+                  onClick={() => void pickCommit(null)}
                 >
-                  {closedDirs.has(dir) ? <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" /> : <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />}
-                  <span className="truncate">{dir}</span>
+                  <span className="truncate">All changes</span>
                 </button>
-                </FileContextMenu>
-                {!closedDirs.has(dir) && <div className="ml-3.5 border-l">{files.map((f) => fileRow(f))}</div>}
-              </div>
-            ))}
-          </nav>
-          {commits.length > 0 && (
-            <nav className="max-h-[40%] shrink-0 overflow-y-auto border-t p-1.5" aria-label="Commits">
-              <div className="px-2 py-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Commits · {commits.length}</div>
-              <button
-                className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] hover:bg-accent', !commit && 'bg-accent')}
-                onClick={() => void pickCommit(null)}
-              >
-                <span className="truncate">All changes</span>
-              </button>
-              {commits.map((c) => (
-                <button
-                  key={c.hash}
-                  title={`${c.short} · ${c.author} · ${new Date(c.date).toLocaleString()}
+                {commits.map((c) => (
+                  <button
+                    key={c.hash}
+                    title={`${c.short} · ${c.author} · ${new Date(c.date).toLocaleString()}
 ${c.subject}`}
-                  onClick={() => void pickCommit(c)}
-                  className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] hover:bg-accent', commit?.hash === c.hash && 'bg-accent')}
-                >
-                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{c.short}</span>
-                  <span className="min-w-0 flex-1 truncate">{c.subject}</span>
-                </button>
-              ))}
-            </nav>
-          )}
+                    onClick={() => void pickCommit(c)}
+                    className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] hover:bg-accent', commit?.hash === c.hash && 'bg-accent')}
+                  >
+                    <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{c.short}</span>
+                    <span className="min-w-0 flex-1 truncate">{c.subject}</span>
+                  </button>
+                ))}
+              </nav>
+            )}
           </div>
         )}
-        <div ref={body} onScroll={onScroll} className="relative min-w-0 flex-1 overflow-auto">
+      >
+        <div className="relative h-full min-w-0">
           {files.length === 0 && <Empty>这个提交没有文件改动</Empty>}
-          {files.map((f) => {
-            const gen = generatedKind(f.path);
-            const large = !gen && isLargeDiff(f);
-            return (
-              <section key={f.path} data-path={f.path}>
-                <div className="group sticky top-0 z-10 flex items-center gap-2 border-b bg-card px-3 py-2 text-[13px]">
-                  <button
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                    aria-expanded={!isCollapsed(f.path)}
-                    onClick={() => toggle(f.path)}
-                  >
-                    {isCollapsed(f.path) ? <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" /> : <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />}
-                    <FileCodeIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span className="shrink-0 font-medium">{fname(f.path)}</span>
-                    {fdir(f.path) && <span className="truncate text-muted-foreground">{fdir(f.path)}</span>}
-                    <span className="shrink-0 font-mono text-xs"><span className="text-success">+{f.add}</span> <span className="text-destructive">−{f.del}</span></span>
-                    {f.status === 'A' && <span className="shrink-0 text-[10px] font-semibold text-success">NEW</span>}
-                    {f.status === 'D' && <span className="shrink-0 text-[10px] font-semibold text-destructive">DELETED</span>}
-                    {genTag(f.path)}
-                  </button>
-                  {f.status !== 'D' && (
-                    <IconBtn title="Open file" className="size-6 opacity-0 group-hover:opacity-100" onClick={() => void openFileRef(f.path)}><CodeIcon className="size-3.5" /></IconBtn>
+          <ReviewCodeView
+            ref={review}
+            className="h-full"
+            sid={id}
+            items={items}
+            threads={s.prThreads}
+            onActiveChange={setActive}
+            renderPrefix={(item) => (
+              <button className="flex items-center text-muted-foreground hover:text-foreground" aria-expanded={!isCollapsed(item.path)} title={isCollapsed(item.path) ? 'Show diff' : 'Hide diff'} onClick={() => toggle(item.path)}>
+                {isCollapsed(item.path) ? <ChevronRightIcon className="size-3.5" /> : <ChevronDownIcon className="size-3.5" />}
+              </button>
+            )}
+            renderMetadata={(item) => {
+              const gen = generatedKind(item.path);
+              return (
+                <span className="flex items-center gap-1.5">
+                  {gen && <span title={`Generated ${GENERATED_LABEL[gen]}`} className="text-[10px] font-medium tracking-wide text-muted-foreground/70">gen</span>}
+                  {byPath.get(item.path)?.status !== 'D' && (
+                    <IconBtn title="Open file" className="size-6" onClick={() => void openFileRef(item.path)}><CodeIcon className="size-3.5" /></IconBtn>
                   )}
-                </div>
-                {!isCollapsed(f.path) && (f.binary ? <div className="px-3 py-2 text-xs text-muted-foreground">Binary or large file</div> : revealed.has(f.path) ? (
-                  <DiffRows sid={id} wrap before={f.before} after={f.status === 'D' ? null : f.after} path={f.path} threads={threadsOf(f.path)} openGaps={gaps} onOpenGap={(g) => setGaps((x) => new Set(x).add(g))} />
-                ) : gen ? (
-                  <FoldNote onReveal={() => setRevealed((r) => new Set(r).add(f.path))}>Generated {GENERATED_LABEL[gen]} · diff hidden by default</FoldNote>
-                ) : large ? (
-                  <FoldNote onReveal={() => setRevealed((r) => new Set(r).add(f.path))}>
-                    Large diff · <span className="text-success">+{f.add}</span> <span className="text-destructive">−{f.del}</span> lines · hidden by default
-                  </FoldNote>
-                ) : (
-                  <DiffRows sid={id} wrap before={f.before} after={f.status === 'D' ? null : f.after} path={f.path} threads={threadsOf(f.path)} openGaps={gaps} onOpenGap={(g) => setGaps((x) => new Set(x).add(g))} />
-                ))}
-              </section>
-            );
-          })}
+                </span>
+              );
+            }}
+          />
+        </div>
+      </TreeSplit>
         </div>
       </div>
     );
@@ -367,67 +405,168 @@ export function PreviewPanel({ s, ...card }: CardProps & { s: SessionView }) {
 
 // ------------------------------------------------------------ files
 
+type FileDetail = Extract<NonNullable<SessionView['detail']>, { type: 'file' }>;
+
+/** One window for the project: the file tree on the left, the open files (as tabs) on the right. */
 export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
-  const [filter, setFilter] = useState('');
-  const [open, setOpen] = useState<Set<string>>(new Set());
   const id = s.meta.id;
-  const rows = useMemo(() => {
-    if (!s.files) return [];
-    const q = filter.toLowerCase();
-    type Node = { path: string; name: string; depth: number; folder: boolean; children: string[] };
-    const tree = new Map<string, Node>();
-    for (const path of s.files.filter((p) => !q || p.toLowerCase().includes(q))) {
-      const bits = path.split('/');
-      for (let i = 1; i <= bits.length; i++) {
-        const key = bits.slice(0, i).join('/');
-        if (!tree.has(key)) tree.set(key, { path: key, name: bits[i - 1], depth: i - 1, folder: i < bits.length, children: [] });
-        if (i > 1) {
-          const parent = tree.get(bits.slice(0, i - 1).join('/'))!;
-          if (!parent.children.includes(key)) parent.children.push(key);
-        }
-      }
-    }
-    const out: Node[] = [];
-    const visit = (nodes: Node[]) => {
-      nodes.sort((a, b) => Number(b.folder) - Number(a.folder) || a.name.localeCompare(b.name));
-      for (const node of nodes) {
-        out.push(node);
-        if (node.folder && (q || open.has(node.path))) visit(node.children.map((k) => tree.get(k)!));
-      }
+  const d = s.detail?.type === 'file' ? s.detail : null;
+  const [source, setSource] = useSourceToggle(d?.path ?? '');
+  const [showTree, setShowTree] = useState(true);
+  const view = useRef<ReviewHandle>(null);
+  const finder = useRef<HTMLInputElement>(null);
+  const [find, setFind] = useState<FindScope | null>(null);
+  const [query, setQuery] = useState('');
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [hit, setHit] = useState(0);
+  const [result, setResult] = useState<SearchResult | null>(null);
+  const [searching, setSearching] = useState(false);
+  const paths = useMemo(() => s.files ?? [], [s.files]);
+
+  const [focusFind, setFocusFind] = useState(0);
+  const openFind = (scope: FindScope) => {
+    setFind(scope);
+    setFocusFind((n) => n + 1);
+  };
+  // The bar exists once the state has rendered; only then can it take the cursor.
+  useEffect(() => {
+    if (!focusFind) return;
+    finder.current?.focus();
+    finder.current?.select();
+  }, [focusFind]);
+  const closeFind = () => {
+    setFind(null);
+    setResult(null);
+  };
+  // Ctrl/Cmd+Shift+F anywhere in the app lands here.
+  useEffect(() => {
+    const take = () => {
+      if (!findTarget.scope) return;
+      openFind(findTarget.scope);
+      findTarget.scope = null;
     };
-    visit([...tree.values()].filter((n) => !n.depth));
-    return out;
-  }, [s.files, filter, open]);
+    take();
+    window.addEventListener(FIND_EVENT, take);
+    return () => window.removeEventListener(FIND_EVENT, take);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // In the open file: the lines with the text, stepped through with Enter.
+  const rendered = !!d && HTML_FILE.test(d.path) && !source;
+  const fileHits = useMemo(() => (find === 'file' && d?.text != null && !rendered ? findInText(d.text, query, caseSensitive) : []), [find, d?.text, rendered, query, caseSensitive]);
+  const showHit = (at: number) => {
+    if (!d || !fileHits[at]) return;
+    setHit(at);
+    view.current?.scrollToLine(d.path, fileHits[at].line);
+    requestAnimationFrame(() => finder.current?.focus({ preventScroll: true }));
+  };
+  useEffect(() => {
+    setHit(0);
+    if (!fileHits.length) return;
+    const frame = requestAnimationFrame(() => showHit(0));
+    return () => cancelAnimationFrame(frame);
+  }, [fileHits]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // In every file: the host reads the project; a keystroke later it is asked again.
+  useEffect(() => {
+    if (find !== 'all') return;
+    if (!query) return void setResult(null);
+    let live = true;
+    const timer = setTimeout(() => {
+      setSearching(true);
+      call('sessions:search', id, query, caseSensitive)
+        .then((r) => live && setResult(r))
+        .catch((err) => live && fail(err))
+        .finally(() => live && setSearching(false));
+    }, FIND_DEBOUNCE_MS);
+    return () => { live = false; clearTimeout(timer); };
+  }, [find, query, caseSensitive, id]);
+
+  const treeToggle = (
+    <IconBtn title={showTree ? 'Hide file tree' : 'Show file tree'} aria-pressed={showTree} className={cn(showTree && 'bg-info/15 text-info hover:bg-info/20 hover:text-info')} onClick={() => setShowTree((v) => !v)}>
+      <ListIcon className="size-4" />
+    </IconBtn>
+  );
+  const listing = find === 'all'
+    ? <SearchResults result={result} busy={searching} onOpen={(path, line) => void openFileRef(path, line)} />
+    : !s.files ? <Empty>Loading files…</Empty> : !paths.length ? <Empty>No files</Empty> : (
+      <PathTree
+        className="min-h-0 flex-1"
+        label="Project files"
+        meta={s.meta}
+        paths={paths}
+        selected={d?.path}
+        onOpen={(p) => void openFileRef(p)}
+        onPin={(p) => pinFileTab(id, p)}
+      />
+    );
+  const status = !query ? '' : find === 'all'
+    ? (searching ? '…' : `${result?.matches.length ?? 0}${result?.truncated ? '+' : ''}`)
+    : `${fileHits.length ? hit + 1 : 0}/${fileHits.length}${fileHits.length >= SEARCH_MAX_MATCHES ? '+' : ''}`;
   return (
     <Card
       {...card}
-      title="Files"
-      tools={<IconBtn title="Refresh" onClick={() => void loadFiles(id, true)}><RefreshCwIcon className="size-3.5" /></IconBtn>}
-      onClose={() => togglePanel(id, 'files', false)}
-      bodyClass="flex flex-col overflow-hidden"
+      title={<>{treeToggle}<span>Files</span></>}
+      tools={(
+        <>
+          <IconBtn title={`Find in files  ${findHint} · ${isMac ? '⇧⌘' : 'Ctrl+Shift+'}F`} onClick={() => openFind(d ? 'file' : 'all')}><SearchIcon className="size-3.5" /></IconBtn>
+          <IconBtn title="Refresh" onClick={() => void loadFiles(id, true)}><RefreshCwIcon className="size-3.5" /></IconBtn>
+        </>
+      )}
+      onClose={() => { togglePanel(id, 'files', false); closeFiles(id); }}
+      bodyClass="overflow-hidden"
     >
-      <div className="border-b p-2">
-        <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter files" aria-label="Filter files" spellCheck={false} className="h-7 text-xs" autoFocus />
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto py-1">
-        {!s.files ? <Empty>Loading files…</Empty> : !rows.length ? <Empty>No matching files</Empty> : rows.map((node) => {
-          const expanded = !!filter || open.has(node.path);
-          return (
-            <FileContextMenu key={node.path} meta={s.meta} path={node.path} directory={node.folder}>
-            <button
-              title={node.path}
-              aria-expanded={node.folder ? expanded : undefined}
-              style={{ paddingLeft: 8 + node.depth * 14 }}
-              className="flex w-full items-center gap-1.5 py-[3px] pr-2 text-left text-[13px] hover:bg-accent"
-              onClick={() => (node.folder ? setOpen((o) => { const n = new Set(o); if (n.has(node.path)) n.delete(node.path); else n.add(node.path); return n; }) : void openFileRef(node.path))}
-            >
-              {node.folder ? (expanded ? <ChevronDownIcon className="size-3 shrink-0" /> : <ChevronRightIcon className="size-3 shrink-0" />) : <span className="w-3 shrink-0" />}
-              {node.folder ? (expanded ? <FolderOpenIcon className="size-3.5 shrink-0 text-muted-foreground" /> : <FolderIcon className="size-3.5 shrink-0 text-muted-foreground" />) : <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />}
-              <span className="truncate">{node.name}</span>
-            </button>
-            </FileContextMenu>
-          );
-        })}
+      <div className="flex h-full min-h-0 flex-col" {...findKeys(openFind)}>
+        {find && (
+          <FindBar
+            inputRef={finder}
+            value={query}
+            onValue={setQuery}
+            caseSensitive={caseSensitive}
+            onCaseSensitive={setCaseSensitive}
+            scope={find}
+            onScope={openFind}
+            placeholder={find === 'all' ? '在所有文件中搜索' : '在当前文件中查找'}
+            status={status}
+            onStep={find === 'file' ? (direction) => fileHits.length && showHit(wrapIndex(hit, direction, fileHits.length)) : undefined}
+            onClose={closeFind}
+          />
+        )}
+        <div className="min-h-0 flex-1">
+          <TreeSplit id={`${id}:files-split`} tree={(showTree || find === 'all') && <div className="flex h-full min-h-0 flex-col">{listing}</div>}>
+            <div className="flex h-full min-w-0 flex-col">
+              {d ? (
+                <>
+                  <div className="flex h-9 shrink-0 items-stretch border-b">
+                    <div role="tablist" className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
+                      {s.fileTabs.map((tab) => (
+                        <div
+                          key={tab.path}
+                          role="tab"
+                          aria-selected={tab.path === d.path}
+                          title={tab.path}
+                          onClick={() => void openFileRef(tab.path)}
+                          onDoubleClick={() => pinFileTab(id, tab.path)}
+                          className={cn('group flex max-w-48 shrink-0 cursor-pointer items-center gap-1.5 border-r px-3 text-xs', tab.path === d.path ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50')}
+                        >
+                          <span className={cn('truncate', !tab.pinned && 'italic')}>{fname(tab.path)}</span>
+                          <button
+                            aria-label={`Close ${fname(tab.path)}`}
+                            className="shrink-0 rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-accent focus-visible:opacity-100"
+                            onClick={(event) => { event.stopPropagation(); closeFileTab(id, tab.path); }}
+                          >
+                            <XIcon className="size-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1 px-2"><FileTools s={s} d={d} source={source} onSource={setSource} /></div>
+                  </div>
+                  <FileBody s={s} d={d} source={source} viewRef={view} />
+                </>
+              ) : <Empty>{'选择左侧的文件来预览\n双击保留标签页'}</Empty>}
+            </div>
+          </TreeSplit>
+        </div>
       </div>
     </Card>
   );
@@ -605,62 +744,60 @@ export function DetailPanel({ s, ...card }: CardProps & { s: SessionView }) {
 }
 
 const HTML_FILE = /\.html?$/i;
+/** A file opens at its top; only a line past the first is a place to jump to. */
+const FIRST_LINE = 1;
 
-function FileViewer({ s, ...card }: CardProps & { s: SessionView }) {
-  const d = s.detail as Extract<NonNullable<SessionView['detail']>, { type: 'file' }>;
-  // An HTML file opens rendered; the toggle brings the source back. A new file starts rendered again.
+/** An HTML file opens rendered; the toggle brings the source back. A new file starts rendered again. */
+function useSourceToggle(path: string) {
   const [source, setSource] = useState(false);
-  useEffect(() => setSource(false), [d.path]);
-  const rendered = HTML_FILE.test(d.path) && d.text != null && !source;
-  const body = useRef<HTMLDivElement>(null);
-  const view = d.text != null ? lineWindow(d.text, d.line, d.start) : null;
+  useEffect(() => setSource(false), [path]);
+  return [source, setSource] as const;
+}
+
+function FileTools({ s, d, source, onSource }: { s: SessionView; d: FileDetail; source: boolean; onSource: (on: boolean) => void }) {
   const hasDiff = s.changes.some((f) => f.path === d.path);
-  useEffect(() => {
-    const el = body.current?.querySelector<HTMLElement>('.code-row.target');
-    if (el && body.current) body.current.scrollTop = el.offsetTop - 65;
-    else body.current?.scrollTo({ top: 0 });
-  }, [d.path, d.line, d.start, d.loading]);
-  const nav = view && (
-    <div className="flex items-center justify-between border-b px-3 py-1 text-xs text-muted-foreground">
-      <Button variant="ghost" size="sm" className="h-6 text-xs" disabled={view.previous == null} onClick={() => setFileWindow(s.meta.id, view.previous!)}>Previous lines</Button>
-      <span>Lines {view.startLine}–{view.endLine} of {view.totalLines}</span>
-      <Button variant="ghost" size="sm" className="h-6 text-xs" disabled={view.next == null} onClick={() => setFileWindow(s.meta.id, view.next!)}>Next lines</Button>
-    </div>
+  return (
+    <>
+      {HTML_FILE.test(d.path) && d.text != null && (
+        <IconBtn title={source ? '查看渲染效果' : '查看源码'} onClick={() => onSource(!source)}>{source ? <EyeIcon className="size-3.5" /> : <CodeIcon className="size-3.5" />}</IconBtn>
+      )}
+      {hasDiff && <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => openDiffRef(d.path)}>Diff</Button>}
+    </>
   );
+}
+
+function FileBody({ s, d, source, viewRef }: { s: SessionView; d: FileDetail; source: boolean; viewRef?: Ref<ReviewHandle> }) {
+  const target = useMemo(() => (d.line > FIRST_LINE ? { id: d.path, line: d.line } : null), [d.path, d.line]);
+  const items = useMemo<ReviewItem[]>(() => (d.text != null ? [{ id: d.path, kind: 'file', path: d.path, text: d.text }] : []), [d.path, d.text]);
+  if (d.loading) return <Empty>Loading current file…</Empty>;
+  if (d.error) return <div className="p-4 text-sm text-destructive">Unable to open current file.<pre className="mt-2 text-xs whitespace-pre-wrap">{d.error}</pre></div>;
+  if (d.image !== undefined) {
+    return d.image ? (
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-[repeating-conic-gradient(var(--muted)_0_25%,transparent_0_50%)] bg-[length:20px_20px] p-4">
+        <img src={d.image} alt={fname(d.path)} className="max-h-full max-w-full object-contain shadow-sm" />
+      </div>
+    ) : <Empty>{'Image preview unavailable\nNot a supported image, outside the session folder, or larger than 20 MiB'}</Empty>;
+  }
+  if (d.text == null) return <Empty>{'File preview unavailable\nBinary, non-text, or larger than 1 MiB'}</Empty>;
+  if (HTML_FILE.test(d.path) && !source) {
+    return <iframe key={d.path} srcDoc={d.text} title={fname(d.path)} className="min-h-0 flex-1 border-0 bg-white" sandbox="allow-scripts" />;
+  }
+  return <ReviewCodeView key={d.path} ref={viewRef} sid={s.meta.id} className="flex-1" items={items} target={target} hideHeader />;
+}
+
+/** A file opened from a Work session, which has no Files card: the preview stands alone. */
+function FileViewer({ s, ...card }: CardProps & { s: SessionView }) {
+  const d = s.detail as FileDetail;
+  const [source, setSource] = useSourceToggle(d.path);
   return (
     <Card
       {...card}
       title={<span className="truncate font-mono text-xs" title={d.path}>{d.path}</span>}
-      tools={(
-        <>
-          {HTML_FILE.test(d.path) && d.text != null && (
-            <IconBtn title={source ? '查看渲染效果' : '查看源码'} onClick={() => setSource((v) => !v)}>{source ? <EyeIcon className="size-3.5" /> : <CodeIcon className="size-3.5" />}</IconBtn>
-          )}
-          {hasDiff && <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => openDiffRef(d.path)}>Diff</Button>}
-        </>
-      )}
+      tools={<FileTools s={s} d={d} source={source} onSource={setSource} />}
       onClose={() => closeDetail(s.meta.id)}
       bodyClass="overflow-hidden flex flex-col"
     >
-      {d.loading ? <Empty>Loading current file…</Empty> : d.error ? (
-        <div className="p-4 text-sm text-destructive">Unable to open current file.<pre className="mt-2 text-xs whitespace-pre-wrap">{d.error}</pre></div>
-      ) : d.image !== undefined ? (
-        d.image ? (
-          <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-[repeating-conic-gradient(var(--muted)_0_25%,transparent_0_50%)] bg-[length:20px_20px] p-4">
-            <img src={d.image} alt={fname(d.path)} className="max-h-full max-w-full object-contain shadow-sm" />
-          </div>
-        ) : <Empty>{'Image preview unavailable\nNot a supported image, outside the session folder, or larger than 20 MiB'}</Empty>
-      ) : rendered ? (
-        <iframe key={d.path} srcDoc={d.text ?? undefined} title={fname(d.path)} className="min-h-0 flex-1 border-0 bg-white" sandbox="allow-scripts" />
-      ) : !view ? <Empty>{'File preview unavailable\nBinary, non-text, or larger than 1 MiB'}</Empty> : (
-        <>
-          {nav}
-          <div ref={body} className="relative min-h-0 flex-1 overflow-auto">
-            {d.line > view.totalLines && <div className="px-3 py-1.5 text-xs text-muted-foreground">Requested line {d.line} is beyond the current file ({view.totalLines} lines). Showing the last line.</div>}
-            <CodeLines sid={s.meta.id} lines={view.lines} path={d.path} startLine={view.startLine} target={view.targetLine} limit={WINDOW_LINES} />
-          </div>
-        </>
-      )}
+      <FileBody s={s} d={d} source={source} />
     </Card>
   );
 }

@@ -25,7 +25,7 @@ export function isLargeDiff(change: ChangeSize): boolean {
 }
 
 /** FNV-1a over the text plus its length: cheap, and enough to tell revisions apart. */
-function fingerprint(text: string | null | undefined): string {
+export function fingerprint(text: string | null | undefined): string {
   if (!text) return '0';
   let hash = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {

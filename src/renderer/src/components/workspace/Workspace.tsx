@@ -15,7 +15,8 @@ export function openCards(s: SessionView): { primary: CardId[]; secondary: CardI
   if (s.panels.tasks) primary.push('tasks');
   if (s.panels.diff) primary.push('diff');
   if (s.panels.preview) primary.push('preview');
-  if (s.detail) primary.push('detail');
+  // A file opens inside the Files card, so only the other details (plan, subagent) get a card of their own.
+  if (s.detail && s.detail.type !== 'file') primary.push('detail');
   const secondary: CardId[] = [];
   if (s.panels.files) secondary.push('files');
   if (s.panels.terminal) secondary.push('terminal');

@@ -13,14 +13,25 @@ import { OPEN_TARGET_INFO, useOpenTargets } from '@/lib/open-targets';
 import { fail, sessionDraftKey } from '@/store/actions';
 import { drafts, useDrafts } from '@/store/drafts';
 
-export function FileContextMenu({ meta, path, directory = false, snapshot, children }: {
+interface MenuTarget {
   meta: SessionMeta;
   path: string;
   directory?: boolean;
   /** A deleted file can still be quoted from the diff snapshot. */
   snapshot?: string;
-  children: ReactElement;
-}) {
+}
+
+export function FileContextMenu({ children, ...target }: MenuTarget & { children: ReactElement }) {
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <FileMenuContent {...target} />
+    </ContextMenu>
+  );
+}
+
+/** The menu itself, for a trigger that decides which path it is about (a tree with many rows). */
+export function FileMenuContent({ meta, path, directory = false, snapshot }: MenuTarget) {
   const targets = useOpenTargets();
   const key = sessionDraftKey(meta.id);
   const sending = useDrafts((state) => state.drafts[key]?.sending ?? false);
@@ -35,8 +46,6 @@ export function FileContextMenu({ meta, path, directory = false, snapshot, child
     void call('sessions:openIn', ...args).catch(fail);
   };
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent className="min-w-52">
         <ContextMenuGroup>
           <ContextMenuItem disabled={sending} onSelect={attach}><PaperclipIcon />Attach as context</ContextMenuItem>
@@ -61,6 +70,5 @@ export function FileContextMenu({ meta, path, directory = false, snapshot, child
           <ContextMenuItem disabled={snapshot !== undefined} onSelect={() => void call('sessions:openPath', meta.id, path, true).catch(fail)}><FolderOpenIcon />{isMac ? 'Show in Finder' : 'Show in folder'}</ContextMenuItem>
         </ContextMenuGroup>
       </ContextMenuContent>
-    </ContextMenu>
   );
 }
