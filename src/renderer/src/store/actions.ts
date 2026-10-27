@@ -9,7 +9,7 @@ import { call, errText, modKey } from '@/lib/api';
 import { DESKTOP_COMMANDS, MODES, VIEW_MODES, type ViewMode } from '@/lib/constants';
 import { changeStats } from '@/lib/diff';
 import { fmtTok, fname, relPath } from '@/lib/format';
-import { currentSession, getApp, isWork, setApp, setPref, updateSession, type AppState } from './app';
+import { currentSession, getApp, isWork, read, savePref, setApp, setPref, updateSession, type AppState } from './app';
 import { dialogs } from './dialogs';
 import { activeDraft, drafts, getDraft, sessionDraftKey, useDrafts } from './drafts';
 import { forgetPanels, writePanels } from './layout';
@@ -193,7 +193,11 @@ export async function bootstrap() {
     const f = st.prefs.workFolder;
     if (f === undefined || (f && !folders.some((x) => x.path === f))) st.prefs.workFolder = folders[0]?.path ?? null;
   });
-  showWelcome();
+  // Reopen where the user left off instead of the new-session page.
+  const last = read<string | null>('pd_last_session', null);
+  const lastSession = last ? getApp().sessions[last] : undefined;
+  if (lastSession && !lastSession.meta.archived) void openSession(last!);
+  else showWelcome();
   await loadModels();
 }
 
@@ -273,6 +277,7 @@ export function showWelcome() {
     st.current = null;
     st.lastByView[st.view] = null;
   });
+  savePref('pd_last_session', null);
   activateDraftFor();
   void refreshImportable();
 }
@@ -301,6 +306,7 @@ export async function openSession(id: string, fresh = false) {
   } catch {
     // Storage can be unavailable; the in-memory preference still applies.
   }
+  savePref('pd_last_session', id);
   activateDraftFor();
   resumeSuggestion();
   if (s.loaded && !fresh) return;

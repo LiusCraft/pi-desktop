@@ -54,6 +54,7 @@ function Column({ ids, s, expanded, setExpanded }: { ids: CardId[]; s: SessionVi
 /** The tool workspace beside the conversation: one or two resizable columns of cards. */
 export function Workspace({ s }: { s: SessionView }) {
   const expanded = s.expanded;
+  const columns = useDefaultLayout({ id: `${s.meta.id}:columns` });
   const setExpanded = (card: CardId | null) => expandCard(s.meta.id, card);
   const { primary, secondary } = openCards(s);
   const all = [...primary, ...secondary];
@@ -63,7 +64,7 @@ export function Workspace({ s }: { s: SessionView }) {
   }
   if (!primary.length || !secondary.length) return <div className="h-full px-1"><Column ids={all} s={s} expanded={expanded} setExpanded={setExpanded} /></div>;
   return (
-    <ResizablePanelGroup orientation="horizontal" id={`${s.meta.id}:columns`} className="px-1">
+    <ResizablePanelGroup orientation="horizontal" id={`${s.meta.id}:columns`} defaultLayout={columns.defaultLayout} onLayoutChanged={columns.onLayoutChanged} className="px-1">
       <ResizablePanel id="primary" minSize={220}>
         <Column ids={primary} s={s} expanded={expanded} setExpanded={setExpanded} />
       </ResizablePanel>

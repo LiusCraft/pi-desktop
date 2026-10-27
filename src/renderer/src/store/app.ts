@@ -10,7 +10,7 @@ import type { SessionView } from './types';
 
 // ------------------------------------------------------------ local preferences
 
-const read = <T,>(key: string, fallback: T): T => {
+export const read = <T,>(key: string, fallback: T): T => {
   try {
     const v = localStorage.getItem(key);
     return v === null ? fallback : (JSON.parse(v) as T);

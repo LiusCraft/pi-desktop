@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { usePanelRef } from 'react-resizable-panels';
+import { useDefaultLayout, usePanelRef } from 'react-resizable-panels';
 import { PERMISSION_CHOICES } from '@shared/protocol';
 import { CommandPalette } from '@/components/dialogs/CommandPalette';
 import { DialogHost } from '@/components/dialogs/DialogHost';
@@ -76,6 +76,7 @@ export function App() {
   useShortcuts();
   const collapsed = useApp((s) => s.sidebarCollapsed);
   const sidebar = usePanelRef();
+  const shell = useDefaultLayout({ id: 'shell' });
 
   useEffect(() => {
     const offHost = bridge.on('host:event', handleHostEvent);
@@ -104,7 +105,7 @@ export function App() {
   return (
     <TooltipProvider delayDuration={400}>
       <div className="h-screen w-screen" data-platform={bridge.platform}>
-        <ResizablePanelGroup orientation="horizontal" id="shell">
+        <ResizablePanelGroup orientation="horizontal" id="shell" defaultLayout={shell.defaultLayout} onLayoutChanged={shell.onLayoutChanged}>
           <ResizablePanel
             id="sidebar"
             panelRef={sidebar}

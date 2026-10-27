@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, Notification, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, Notification, screen, shell } from 'electron';
 import {
   HOST_CHANNELS, MAIN_CHANNELS, SUGGESTION_DEFAULT_CONTEXT,
   type ApiArgs, type ApiResult, type BootPayload, type HostEvent, type Project, type PushChannel, type PushEvents,
@@ -153,11 +153,49 @@ function harden(w: BrowserWindow) {
   });
 }
 
+interface WindowState { x: number; y: number; width: number; height: number; maximized: boolean }
+
+/** The last size and position, if that spot is still on a connected display. */
+function savedWindowState(): WindowState | null {
+  const s = store.get<WindowState | null>('windowState', null);
+  if (!s || ![s.x, s.y, s.width, s.height].every(Number.isFinite)) return null;
+  const visible = screen.getAllDisplays().some((d) => {
+    const a = d.workArea;
+    return s.x < a.x + a.width - 80 && s.x + s.width > a.x + 80 && s.y >= a.y - 20 && s.y < a.y + a.height - 80;
+  });
+  return visible ? s : null;
+}
+function trackWindowState(w: BrowserWindow) {
+  let timer: NodeJS.Timeout | undefined;
+  const save = () => {
+    if (w.isDestroyed() || w.isMinimized() || w.isFullScreen()) return;
+    const maximized = w.isMaximized();
+    // While maximized, keep the normal bounds so un-maximizing returns to them.
+    const prev = store.get<WindowState | null>('windowState', null);
+    const b = maximized && prev ? prev : w.getBounds();
+    store.set('windowState', { x: b.x, y: b.y, width: b.width, height: b.height, maximized });
+  };
+  const later = () => {
+    clearTimeout(timer);
+    timer = setTimeout(save, 400);
+  };
+  w.on('resize', later);
+  w.on('move', later);
+  w.on('maximize', later);
+  w.on('unmaximize', later);
+  w.on('close', () => {
+    clearTimeout(timer);
+    save();
+  });
+}
+
 function createWindow() {
   const dark = isDark();
+  const saved = savedWindowState();
   win = new BrowserWindow({
-    width: 1440,
-    height: 920,
+    width: saved?.width ?? 1440,
+    height: saved?.height ?? 920,
+    ...(saved ? { x: saved.x, y: saved.y } : {}),
     minWidth: 720,
     minHeight: 480,
     title: 'Pi Desktop',
@@ -166,6 +204,8 @@ function createWindow() {
     ...(isMac ? { trafficLightPosition: { x: 18, y: 16 } } : { titleBarOverlay: overlay(dark) }),
     webPreferences: { preload: PRELOAD, contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
+  if (saved?.maximized) win.maximize();
+  trackWindowState(win);
   load(win, 'index');
   harden(win);
   win.on('closed', () => (win = null));
