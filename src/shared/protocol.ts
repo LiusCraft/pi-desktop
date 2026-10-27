@@ -9,6 +9,8 @@ import type { ActivityLog } from './activity';
 import type { Attachment, DecodedUserContent, PromptSubmission } from './attachments';
 import type { Forge } from './forge';
 import type { PetDef } from './pets';
+import type { ArtifactMeta } from './artifacts';
+import type { ObjectStorageDraft, ObjectStorageInfo } from './storage';
 import type { RemoteActive, RemoteConnectionDraft, RemoteConnectionInfo, RemoteLinkState, RemoteListing, RemoteServeSettings, RemoteServeState } from './remote';
 import type { ScheduledTask, TaskDraft } from './schedule';
 import type { SearchResult } from './text-search';
@@ -761,6 +763,10 @@ export interface Api {
   'diagram:open'(svg: string): void;
   /** The SVG a diagram window was opened with, looked up by the token in its URL. */
   'diagram:get'(token: string): string | null;
+  /** Opens a saved artifact in its own preview window (local files, so only for the machine this app runs on). */
+  'artifacts:preview'(id: string): void;
+  /** A screenshot of the artifact's page as a data URL (made once per version), or null when it cannot be rendered here. */
+  'artifacts:thumbnail'(id: string): string | null;
 
   'projects:list'(): Project[];
   'projects:add'(): AddProjectResult;
@@ -896,6 +902,18 @@ export interface Api {
   'tasks:remove'(id: string): ScheduledTask[];
   /** Start a run now; resolves with the session it opened. */
   'tasks:run'(id: string): SessionMeta;
+  // ---- artifacts
+  'artifacts:list'(): ArtifactMeta[];
+  /** Deletes the artifact; the uploaded copy is taken down first when `unpublish` is set. */
+  'artifacts:remove'(id: string, unpublish: boolean): ArtifactMeta[];
+  /** Uploads the current version to the user's bucket; fails with a readable message while none is set up. */
+  'artifacts:publish'(id: string): ArtifactMeta;
+  'artifacts:unpublish'(id: string): ArtifactMeta;
+  // ---- object storage (the user's S3-compatible bucket)
+  'storage:get'(): ObjectStorageInfo;
+  'storage:save'(draft: ObjectStorageDraft): ObjectStorageInfo;
+  /** Checks the connection; with a draft it tests the unsaved form values. */
+  'storage:test'(draft?: ObjectStorageDraft): void;
   'models:list'(): { models: ModelInfo[]; defaultModel: string | null };
   'models:levels'(model: string | null): ThinkingLevel[];
   // ---- model management (pi's auth.json + models.json, shared with the CLI)
@@ -928,6 +946,7 @@ export const HOST_CHANNELS = [
   'customize:list', 'customize:readFile', 'customize:skillSetDisabled', 'customize:skillCreate', 'customize:connectorSave',
   'customize:connectorSetEnabled', 'customize:connectorRemove', 'customize:pluginInstall', 'customize:pluginRemove', 'customize:pluginUpdate',
   'activity:get', 'tasks:list', 'tasks:save', 'tasks:setEnabled', 'tasks:remove', 'tasks:run',
+  'artifacts:list', 'artifacts:remove', 'artifacts:publish', 'artifacts:unpublish', 'storage:get', 'storage:save', 'storage:test',
   'models:list', 'models:levels',
   'models:catalog', 'models:login', 'models:loginRespond', 'models:loginCancel', 'models:logout',
   'models:endpointSave', 'models:endpointRemove', 'models:endpointDiscover', 'models:refresh',
@@ -935,7 +954,7 @@ export const HOST_CHANNELS = [
 
 export const MAIN_CHANNELS = [
   'app:info', 'app:notify', 'app:openExternal', 'app:revealPath', 'app:pickFolder',
-  'settings:open', 'settings:get', 'settings:set', 'pets:save', 'pets:remove', 'settings:close', 'diagram:open', 'diagram:get',
+  'settings:open', 'settings:get', 'settings:set', 'pets:save', 'pets:remove', 'settings:close', 'diagram:open', 'diagram:get', 'artifacts:preview', 'artifacts:thumbnail',
   'projects:list', 'projects:add', 'projects:adoptWorktree', 'projects:remove', 'projects:addPath',
   'work:folders', 'work:addFolder', 'work:useFolder', 'work:removeFolder', 'work:addPath', 'remote:browse',
   'remote:list', 'remote:save', 'remote:remove', 'remote:connect', 'remote:disconnect', 'remote:serveGet', 'remote:serveSet', 'remote:serveRotate',

@@ -94,6 +94,8 @@ export interface AppState {
   archived: boolean;
   /** The Activity heatmap page replaces the conversation area while it is open. */
   activity: boolean;
+  /** The Artifacts page (the model's saved pages, preview and publishing) replaces the conversation area while it is open. */
+  artifacts: boolean;
   /** An existing worktree of the selected project that the next new session will run in. */
   adopt: WorktreeInfo | null;
   tasks: ScheduledTask[];
@@ -132,6 +134,7 @@ export const useApp = create<AppState>()(
     scheduled: false,
     archived: false,
     activity: false,
+    artifacts: false,
     adopt: null,
     tasks: [],
     remote: boot.remote ?? null,

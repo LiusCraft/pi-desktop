@@ -93,6 +93,16 @@ export function sessionHandlers(ready: Promise<SessionHub>, getScheduler: () => 
     'tasks:setEnabled': withHub((_h, id, enabled) => scheduler().setEnabled(id, enabled)),
     'tasks:remove': withHub((_h, id) => scheduler().remove(id)),
     'tasks:run': withHub((_h, id) => scheduler().runNow(id)),
+    'artifacts:list': withHub((h) => h.artifacts.list()),
+    'artifacts:remove': withHub(async (h, id, unpublish) => {
+      await h.artifacts.remove(id, unpublish);
+      return h.artifacts.list();
+    }),
+    'artifacts:publish': withHub((h, id) => h.artifacts.publish(id)),
+    'artifacts:unpublish': withHub((h, id) => h.artifacts.unpublish(id)),
+    'storage:get': withHub((h) => h.storage.info()),
+    'storage:save': withHub((h, draft) => h.storage.save(draft)),
+    'storage:test': withHub((h, draft) => h.storage.test(draft)),
     'models:list': withHub((h) => h.listModels()),
     'models:levels': withHub((h, model) => h.thinkingLevels(model)),
     'models:catalog': withHub((h) => h.admin.catalog()),

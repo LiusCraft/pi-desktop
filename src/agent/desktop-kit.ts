@@ -20,7 +20,7 @@ import {
 import { StringEnum } from '@earendil-works/pi-ai';
 import { Type } from 'typebox';
 import { AGENT_TYPES, DEFAULT_AGENT, type AgentType } from './agents';
-import { registerManageTools, type CustomizeHost, type PetHost, type ScheduleHost } from './manage-tools';
+import { registerManageTools, type ArtifactHost, type CustomizeHost, type PetHost, type ScheduleHost } from './manage-tools';
 import {
   PLAN_CHOICES,
   type OutputStyle, type PermissionMode, type SessionKind, type SubagentProgress, type TaskUpdate, type UiRequestInput, type UiResponse,
@@ -91,6 +91,8 @@ export interface KitHost {
   customize?: CustomizeHost;
   /** The custom pet skins; omit it (subagents) to leave out the pet tools. */
   pets?: PetHost;
+  /** The saved artifacts; omit it (subagents) to leave out the artifact tools. */
+  artifacts?: ArtifactHost;
 }
 
 // Appended to the system prompt for the current turn. These change how Pi Desktop talks,

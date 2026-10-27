@@ -10,6 +10,8 @@ import { Type, type Static } from 'typebox';
 import type { CustomizeCatalog, SessionKind } from '@shared/protocol';
 import { describeSchedule, validateSchedule, type ScheduledTask, type TaskDraft, type TaskSchedule } from '@shared/schedule';
 import { PERMISSION_MODES } from '@shared/protocol';
+import { publishState, type ArtifactMeta } from '@shared/artifacts';
+import { STORAGE_NOT_CONFIGURED } from '@shared/storage';
 import { BUILTIN_PETS, PET_GRID, PET_LIMITS, PET_PARTS, type PetDef } from '@shared/pets';
 
 export interface ScheduleHost {
@@ -42,6 +44,16 @@ export interface PetHost {
   /** Validates, stores and returns the skin; throws a readable message for a bad definition. */
   save(raw: unknown): PetDef;
   remove(id: string): void;
+}
+
+export interface ArtifactHost {
+  list(): ArtifactMeta[];
+  save(input: { id?: string; title?: string; source: string }): ArtifactMeta;
+  publish(id: string): Promise<ArtifactMeta>;
+  unpublish(id: string): Promise<ArtifactMeta>;
+  remove(id: string, unpublish?: boolean): Promise<void>;
+  /** Whether the user's bucket is set up, i.e. whether publishing can work at all. */
+  storageReady(): boolean;
 }
 
 const text = (t: string, details: unknown = {}) => ({ content: [{ type: 'text' as const, text: t }], details });
@@ -334,8 +346,79 @@ function registerPets(pi: ExtensionAPI, host: PetHost) {
   });
 }
 
-export function registerManageTools(pi: ExtensionAPI, host: { schedule?: ScheduleHost; customize?: CustomizeHost; pets?: PetHost }) {
+// ------------------------------------------------------------ artifacts
+
+const ARTIFACT_STATE_LABEL = { draft: 'not published', published: 'published', outdated: 'published, newer version not uploaded' } as const;
+
+function describeArtifact(a: ArtifactMeta) {
+  const state = ARTIFACT_STATE_LABEL[publishState(a)];
+  return `- ${a.id} · ${a.title} · v${a.version} · ${a.files.length} file(s) · ${state}${a.publishedUrl ? ` · ${a.publishedUrl}` : ''}`;
+}
+
+function registerArtifacts(pi: ExtensionAPI, host: ArtifactHost) {
+  pi.registerTool({
+    name: 'pidesk_artifact_list',
+    label: 'Artifacts',
+    description: 'List the saved artifacts (id, title, version, whether and where each is published) and whether publishing is set up.',
+    parameters: Type.Object({}),
+    annotations: { readOnlyHint: true },
+    async execute() {
+      const artifacts = host.list();
+      const storage = host.storageReady() ? 'Publishing is set up.' : 'Publishing is NOT set up (the user configures a bucket in Settings → Storage); artifacts can still be previewed.';
+      return text([storage, ...(artifacts.length ? artifacts.map(describeArtifact) : ['There are no artifacts.'])].join('\n'), { artifacts });
+    },
+  });
+
+  pi.registerTool({
+    name: 'pidesk_artifact_manage',
+    label: 'Manage artifact',
+    description:
+      'An artifact is a web page (or small site) shown to the user in a preview window and, once published, at a link anyone can open. ' +
+      'Build it as an ordinary file first (a self-contained .html with inline CSS and JS works best; external scripts only from a CDN), then: ' +
+      'save needs path (the .html file, or a folder with an index.html; optional title) and creates an artifact, or id to save a new version of an existing one; ' +
+      'publish / unpublish need id and upload / take down the copy in the user\'s own S3 bucket; delete needs id. ' +
+      'Publishing only works when the user has configured a bucket in Settings → Storage, and it makes the page public: publish only when the user asked to share it. ' +
+      'Saving does not need any setup, so save first and tell the user they can open it from the Artifacts page in the sidebar.',
+    promptSnippet: 'Save web pages as artifacts the user can preview and publish',
+    parameters: Type.Object({
+      action: StringEnum(['save', 'publish', 'unpublish', 'delete'] as const),
+      id: Type.Optional(Type.String({ description: 'Artifact id; for save it updates that artifact instead of creating one' })),
+      path: Type.Optional(Type.String({ description: 'save: the .html file, or a folder that contains index.html' })),
+      title: Type.Optional(Type.String({ description: 'save: the name shown to the user' })),
+    }),
+    annotations: { destructiveHint: true },
+    async execute(_id, p) {
+      const need = () => {
+        if (!p.id) throw new Error(`${p.action} needs the artifact id (pidesk_artifact_list shows them)`);
+        return p.id;
+      };
+      switch (p.action) {
+        case 'save': {
+          if (!p.path) throw new Error('save needs path');
+          const a = host.save({ id: p.id, title: p.title, source: p.path });
+          const next = host.storageReady() ? 'Publish it when the user wants a link.' : 'Publishing is not set up yet, so it is preview-only.';
+          return text(`Saved artifact "${a.title}" (${a.id}) as version ${a.version}, ${a.files.length} file(s). The user can open it from the Artifacts page in the sidebar. ${next}`, { artifact: a });
+        }
+        case 'publish': {
+          if (!host.storageReady()) throw new Error(STORAGE_NOT_CONFIGURED);
+          const a = await host.publish(need());
+          return text(`Published "${a.title}" (version ${a.version}): ${a.publishedUrl}`, { artifact: a });
+        }
+        case 'unpublish': {
+          const a = await host.unpublish(need());
+          return text(`Took "${a.title}" down from the bucket. The local artifact is kept.`, { artifact: a });
+        }
+        case 'delete':
+          await host.remove(need());
+          return text(`Deleted artifact ${p.id}.`);
+      }
+    },
+  });
+}
+
+export function registerManageTools(pi: ExtensionAPI, host: { schedule?: ScheduleHost; customize?: CustomizeHost; pets?: PetHost; artifacts?: ArtifactHost }) {
   if (host.schedule) registerSchedule(pi, host.schedule);
   if (host.customize) registerCustomize(pi, host.customize);
   if (host.pets) registerPets(pi, host.pets);
+  if (host.artifacts) registerArtifacts(pi, host.artifacts);
 }

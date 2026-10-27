@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { call } from '@/lib/api';
 import { ago, fmtTok } from '@/lib/format';
-import { groupStats, groupSummary, isFileTool, toolLabel, type ToolState } from '@/lib/tools';
+import { bareName, groupStats, groupSummary, isFileTool, toolLabel, type ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
 import { useApp, updateSession } from '@/store/app';
 import { forgeName, forgeOfUrl } from '@shared/forge';
@@ -337,6 +337,21 @@ const Stat = ({ add, del }: { add?: number; del?: number }) => (
 /** What a read tool returned for an image file, so the viewer can show files outside the session too. */
 const readImageSrc = (tool: ToolState) => (tool.preview?.type === 'image' ? tool.preview.images[0]?.src : undefined);
 
+/** Tool name and action of the call that saves an artifact; its result names the id in parentheses. */
+const ARTIFACT_TOOL = 'artifact_manage';
+const ARTIFACT_SAVE = 'save';
+const ARTIFACT_RESULT_ID = /\(([a-z0-9][a-z0-9-]*)\)/;
+
+function ArtifactPreviewButton({ tool }: { tool: ToolState }) {
+  const id = ARTIFACT_RESULT_ID.exec(tool.output ?? '')?.[1];
+  if (!id) return null;
+  return (
+    <button className="w-full border-t px-3 py-1 text-left text-xs text-primary hover:bg-accent" onClick={() => void call('artifacts:preview', id).catch(() => {})}>
+      预览
+    </button>
+  );
+}
+
 function ToolDetail({ sid, tool }: { sid: string; tool: ToolState }) {
   if (tool.preview) return <ToolPreviewView preview={tool.preview} path={tool.path ?? ''} sid={sid} onOpenImage={(src) => void openFileRef(tool.path!, undefined, src)} />;
   if (tool.kind === 'bash') return <TermOutput cmd={tool.cmd} out={tool.output ?? ''} />;
@@ -402,6 +417,7 @@ const ToolRow = memo(function ToolRow({ sid, tool }: { sid: string; tool: ToolSt
         <div className="px-3 pb-3">
           <div className="overflow-hidden rounded-lg border bg-code">
             <ToolDetail sid={sid} tool={tool} />
+            {bareName(tool.name) === ARTIFACT_TOOL && tool.args?.action === ARTIFACT_SAVE && tool.status === 'done' && <ArtifactPreviewButton tool={tool} />}
             {isFileTool(tool) && tool.status === 'done' && tool.kind !== 'read' && (
               <button className="w-full border-t px-3 py-1 text-left text-xs text-primary hover:bg-accent" onClick={() => openDiffRef(tool.path!)}>
                 View diff

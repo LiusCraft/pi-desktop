@@ -3,7 +3,7 @@ import path, { isAbsolute, relative, resolve } from "node:path";
 import { DefaultPackageManager, DefaultResourceLoader, ModelRuntime, ProjectTrustStore, SessionManager, SettingsManager, createAgentSession, createAgentSessionFromServices, createAgentSessionRuntime, createAgentSessionServices, createCodemodeExtension, createLocalBashOperations, createLocalPowerShellOperations, createMcpExtension, createToolSearchExtension, estimateTokens, formatSkillsForPrompt, getAgentDir, hasTrustRequiringProjectResources, parseFrontmatter, resizeImage } from "@earendil-works/pi-coding-agent";
 import { execFile, execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
-import crypto from "node:crypto";
+import crypto, { createHash, createHmac, randomBytes } from "node:crypto";
 import { StringEnum, fauxAssistantMessage, fauxProvider, fauxText, fauxThinking, fauxToolCall, getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { TextDecoder } from "node:util";
@@ -91,6 +91,13 @@ var HOST_CHANNELS = [
 	"tasks:setEnabled",
 	"tasks:remove",
 	"tasks:run",
+	"artifacts:list",
+	"artifacts:remove",
+	"artifacts:publish",
+	"artifacts:unpublish",
+	"artifacts:storageGet",
+	"artifacts:storageSave",
+	"artifacts:storageTest",
 	"models:list",
 	"models:levels",
 	"models:catalog",
@@ -1324,6 +1331,16 @@ function sessionHandlers(ready, getScheduler) {
 		"tasks:setEnabled": withHub((_h, id, enabled) => scheduler().setEnabled(id, enabled)),
 		"tasks:remove": withHub((_h, id) => scheduler().remove(id)),
 		"tasks:run": withHub((_h, id) => scheduler().runNow(id)),
+		"artifacts:list": withHub((h) => h.artifacts.list()),
+		"artifacts:remove": withHub(async (h, id, unpublish) => {
+			await h.artifacts.remove(id, unpublish);
+			return h.artifacts.list();
+		}),
+		"artifacts:publish": withHub((h, id) => h.artifacts.publish(id)),
+		"artifacts:unpublish": withHub((h, id) => h.artifacts.unpublish(id)),
+		"artifacts:storageGet": withHub((h) => h.artifacts.storage()),
+		"artifacts:storageSave": withHub((h, draft) => h.artifacts.saveStorage(draft)),
+		"artifacts:storageTest": withHub((h, draft) => h.artifacts.testStorage(draft)),
 		"models:list": withHub((h) => h.listModels()),
 		"models:levels": withHub((h, model) => h.thinkingLevels(model)),
 		"models:catalog": withHub((h) => h.admin.catalog()),
@@ -1726,6 +1743,10 @@ var appExtensionsDir = (dataDir) => path.join(dataDir, "extensions");
 var appAgentsDir = (dataDir) => path.join(dataDir, "agents");
 /** User-made desktop pets: one JSON file each (see `@shared/pets`). */
 var appPetsDir = (dataDir) => path.join(dataDir, "pets");
+/** Artifacts the model built: one folder each (see `@shared/artifacts`). */
+var appArtifactsDir = (dataDir) => path.join(dataDir, "artifacts");
+/** Where the user's S3 connection for publishing artifacts is kept. */
+var appArtifactStorageFile = (dataDir) => path.join(dataDir, "artifact-storage.json");
 /** Scratch workspaces for Work tasks started without a folder. */
 var appWorkDir = (dataDir) => path.join(dataDir, "work");
 var defaultWorktreeDir = (dataDir) => path.join(dataDir, WORKTREE_DIR_NAME);
@@ -2048,6 +2069,63 @@ function describeSchedule(s) {
 		case "once": return `一次 · ${new Date(s.at).toLocaleString()}`;
 		case "cron": return `cron ${s.expr}`;
 	}
+}
+// src/shared/artifacts.ts
+/**
+* Artifacts: web pages (or small sites) the model builds for the user. They live in the app's data
+* folder and open in a preview window; publishing them to the user's own S3-compatible bucket is
+* what turns one into a link others can open, so only that step needs the storage to be configured.
+*/
+/** The page an artifact opens on; a single-file artifact is stored under this name. */
+var ARTIFACT_ENTRY = "index.html";
+/** Folder (inside an artifact's own folder) that holds the files that get previewed and published. */
+var ARTIFACT_SITE_DIR = "site";
+var ARTIFACT_LIMITS = {
+	/** Files in one artifact. */
+	files: 100,
+	/** Size of one file, bytes. */
+	fileBytes: 10485760,
+	/** Size of the whole artifact, bytes. */
+	totalBytes: 52428800,
+	title: 80
+};
+/** Folder and file names a directory artifact never takes along. */
+var ARTIFACT_SKIP = [
+	"node_modules",
+	".git",
+	".DS_Store"
+];
+var ARTIFACT_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
+var EMPTY_STORAGE = {
+	endpoint: "",
+	region: "auto",
+	bucket: "",
+	accessKeyId: "",
+	publicBaseUrl: "",
+	prefix: "artifacts",
+	pathStyle: true
+};
+/** The first missing setting, or null when the config is complete enough to publish with. */
+function missingStorageField(c, secretSet) {
+	if (!c.endpoint.trim()) return "endpoint";
+	if (!c.bucket.trim()) return "bucket";
+	if (!c.accessKeyId.trim()) return "accessKeyId";
+	if (!secretSet) return "secretAccessKey";
+	if (!c.publicBaseUrl.trim()) return "publicBaseUrl";
+	return null;
+}
+var STORAGE_NOT_CONFIGURED = "Publishing needs an S3-compatible bucket. Ask the user to set one up in Settings → Storage (endpoint, bucket, access key, public URL); until then the artifact can only be previewed locally.";
+function artifactUrl(c, id, file) {
+	return [
+		c.publicBaseUrl.trim().replace(/\/+$/, ""),
+		c.prefix.trim().replace(/^\/+|\/+$/g, ""),
+		id,
+		file.split("/").map(encodeURIComponent).join("/")
+	].filter(Boolean).join("/");
+}
+function publishState(a) {
+	if (a.publishedVersion === null) return "draft";
+	return a.publishedVersion === a.version ? "published" : "outdated";
 }
 // src/shared/pets.ts
 /** Parts the stylesheet knows how to animate. */
@@ -2806,10 +2884,81 @@ function registerPets(pi, host) {
 		}
 	});
 }
+var ARTIFACT_STATE_LABEL = {
+	draft: "not published",
+	published: "published",
+	outdated: "published, newer version not uploaded"
+};
+function describeArtifact(a) {
+	const state = ARTIFACT_STATE_LABEL[publishState(a)];
+	return `- ${a.id} · ${a.title} · v${a.version} · ${a.files.length} file(s) · ${state}${a.publishedUrl ? ` · ${a.publishedUrl}` : ""}`;
+}
+function registerArtifacts(pi, host) {
+	pi.registerTool({
+		name: "pidesk_artifact_list",
+		label: "Artifacts",
+		description: "List the saved artifacts (id, title, version, whether and where each is published) and whether publishing is set up.",
+		parameters: Type.Object({}),
+		annotations: { readOnlyHint: true },
+		async execute() {
+			const artifacts = host.list();
+			return text([host.storageReady() ? "Publishing is set up." : "Publishing is NOT set up (the user configures a bucket in Settings → Storage); artifacts can still be previewed.", ...artifacts.length ? artifacts.map(describeArtifact) : ["There are no artifacts."]].join("\n"), { artifacts });
+		}
+	});
+	pi.registerTool({
+		name: "pidesk_artifact_manage",
+		label: "Manage artifact",
+		description: "An artifact is a web page (or small site) shown to the user in a preview window and, once published, at a link anyone can open. Build it as an ordinary file first (a self-contained .html with inline CSS and JS works best; external scripts only from a CDN), then: save needs path (the .html file, or a folder with an index.html; optional title) and creates an artifact, or id to save a new version of an existing one; publish / unpublish need id and upload / take down the copy in the user's own S3 bucket; delete needs id. Publishing only works when the user has configured a bucket in Settings → Storage, and it makes the page public: publish only when the user asked to share it. Saving does not need any setup, so save first and tell the user they can open it from the Artifacts page in the sidebar.",
+		promptSnippet: "Save web pages as artifacts the user can preview and publish",
+		parameters: Type.Object({
+			action: StringEnum([
+				"save",
+				"publish",
+				"unpublish",
+				"delete"
+			]),
+			id: Type.Optional(Type.String({ description: "Artifact id; for save it updates that artifact instead of creating one" })),
+			path: Type.Optional(Type.String({ description: "save: the .html file, or a folder that contains index.html" })),
+			title: Type.Optional(Type.String({ description: "save: the name shown to the user" }))
+		}),
+		annotations: { destructiveHint: true },
+		async execute(_id, p) {
+			const need = () => {
+				if (!p.id) throw new Error(`${p.action} needs the artifact id (pidesk_artifact_list shows them)`);
+				return p.id;
+			};
+			switch (p.action) {
+				case "save": {
+					if (!p.path) throw new Error("save needs path");
+					const a = host.save({
+						id: p.id,
+						title: p.title,
+						source: p.path
+					});
+					const next = host.storageReady() ? "Publish it when the user wants a link." : "Publishing is not set up yet, so it is preview-only.";
+					return text(`Saved artifact "${a.title}" (${a.id}) as version ${a.version}, ${a.files.length} file(s). The user can open it from the Artifacts page in the sidebar. ${next}`, { artifact: a });
+				}
+				case "publish": {
+					if (!host.storageReady()) throw new Error(STORAGE_NOT_CONFIGURED);
+					const a = await host.publish(need());
+					return text(`Published "${a.title}" (version ${a.version}): ${a.publishedUrl}`, { artifact: a });
+				}
+				case "unpublish": {
+					const a = await host.unpublish(need());
+					return text(`Took "${a.title}" down from the bucket. The local artifact is kept.`, { artifact: a });
+				}
+				case "delete":
+					await host.remove(need());
+					return text(`Deleted artifact ${p.id}.`);
+			}
+		}
+	});
+}
 function registerManageTools(pi, host) {
 	if (host.schedule) registerSchedule(pi, host.schedule);
 	if (host.customize) registerCustomize(pi, host.customize);
 	if (host.pets) registerPets(pi, host.pets);
+	if (host.artifacts) registerArtifacts(pi, host.artifacts);
 }
 // src/agent/desktop-kit.ts
 /**
@@ -3922,6 +4071,414 @@ function removePet(dir, id) {
 	if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) throw new Error("Invalid pet id");
 	fs.rmSync(file(dir, id), { force: true });
 }
+// src/agent/s3.ts
+/**
+* A minimal S3 client: AWS Signature V4 over `fetch`, just the three calls publishing needs
+* (PutObject, DeleteObject, a one-key ListObjectsV2 to test the connection). Written out here
+* instead of pulling in the AWS SDK, which is far larger than the host process otherwise needs.
+*/
+var SERVICE = "s3";
+var ALGORITHM = "AWS4-HMAC-SHA256";
+var REQUEST_TIMEOUT_MS = 6e4;
+var EMPTY_PAYLOAD_SHA256 = createHash("sha256").update("").digest("hex");
+var sha256 = (data) => createHash("sha256").update(data).digest("hex");
+var hmac = (key, data) => createHmac("sha256", key).update(data).digest();
+/** RFC 3986 encoding, which is what SigV4 wants (encodeURIComponent leaves ! ' ( ) * alone). */
+var encode = (s) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+/** The `Authorization` header value for a request. */
+function signV4(i) {
+	const headers = { host: i.url.host };
+	for (const [k, v] of Object.entries(i.headers)) headers[k.toLowerCase()] = v.trim().replace(/\s+/g, " ");
+	const names = Object.keys(headers).sort();
+	const canonicalHeaders = names.map((n) => `${n}:${headers[n]}\n`).join("");
+	const signedHeaders = names.join(";");
+	const canonicalUri = i.url.pathname.split("/").map((seg) => encode(decodeURIComponent(seg))).join("/") || "/";
+	const canonicalQuery = [...i.url.searchParams.entries()].map(([k, v]) => [encode(k), encode(v)]).sort((a, b) => a[0] === b[0] ? a[1] < b[1] ? -1 : 1 : a[0] < b[0] ? -1 : 1).map(([k, v]) => `${k}=${v}`).join("&");
+	const canonical = [
+		i.method,
+		canonicalUri,
+		canonicalQuery,
+		canonicalHeaders,
+		signedHeaders,
+		i.payloadHash
+	].join("\n");
+	const day = i.amzDate.slice(0, 8);
+	const scope = `${day}/${i.region}/${SERVICE}/aws4_request`;
+	const toSign = [
+		ALGORITHM,
+		i.amzDate,
+		scope,
+		sha256(canonical)
+	].join("\n");
+	const key = hmac(hmac(hmac(hmac(`AWS4${i.secretAccessKey}`, day), i.region), SERVICE), "aws4_request");
+	const signature = createHmac("sha256", key).update(toSign).digest("hex");
+	return `${ALGORITHM} Credential=${i.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+}
+var amzDateNow = () => (/* @__PURE__ */ new Date()).toISOString().replace(/[:-]|\.\d{3}/g, "");
+/** URL of an object (or of the bucket when `key` is empty). */
+function objectUrl(t, key = "") {
+	const base = new URL(t.endpoint.includes("://") ? t.endpoint : `https://${t.endpoint}`);
+	const path = key.split("/").map(encode).join("/");
+	if (t.pathStyle) base.pathname = `${base.pathname.replace(/\/+$/, "")}/${encode(t.bucket)}${key ? `/${path}` : ""}`;
+	else {
+		base.hostname = `${t.bucket}.${base.hostname}`;
+		base.pathname = `${base.pathname.replace(/\/+$/, "")}${key ? `/${path}` : "/"}`;
+	}
+	return base;
+}
+async function request(t, method, url, body, extra = {}) {
+	const payloadHash = body ? sha256(body) : EMPTY_PAYLOAD_SHA256;
+	const amzDate = amzDateNow();
+	const headers = {
+		...extra,
+		"x-amz-content-sha256": payloadHash,
+		"x-amz-date": amzDate
+	};
+	const authorization = signV4({
+		method,
+		url,
+		headers,
+		payloadHash,
+		region: t.region,
+		accessKeyId: t.accessKeyId,
+		secretAccessKey: t.secretAccessKey,
+		amzDate
+	});
+	const res = await fetch(url, {
+		method,
+		headers: {
+			...headers,
+			authorization
+		},
+		body: body ? new Uint8Array(body) : void 0,
+		signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+	});
+	if (res.ok) return res;
+	throw new Error(await describeFailure(res));
+}
+/** The service's own message (S3 answers with a small XML document), not just the status line. */
+async function describeFailure(res) {
+	const body = await res.text().catch(() => "");
+	const detail = [/<Code>([^<]*)<\/Code>/.exec(body)?.[1], /<Message>([^<]*)<\/Message>/.exec(body)?.[1]].filter(Boolean).join(": ");
+	return `Storage answered ${res.status}${detail ? ` (${detail})` : res.statusText ? ` (${res.statusText})` : ""}`;
+}
+async function putObject(t, key, body, contentType) {
+	await request(t, "PUT", objectUrl(t, key), body, { "content-type": contentType });
+}
+async function deleteObject(t, key) {
+	await request(t, "DELETE", objectUrl(t, key));
+}
+/** Lists at most one key: proves the endpoint, bucket and credentials work together. */
+async function checkBucket(t) {
+	const url = objectUrl(t);
+	url.searchParams.set("list-type", "2");
+	url.searchParams.set("max-keys", "1");
+	await request(t, "GET", url);
+}
+var CONTENT_TYPES = {
+	html: "text/html; charset=utf-8",
+	htm: "text/html; charset=utf-8",
+	css: "text/css; charset=utf-8",
+	js: "text/javascript; charset=utf-8",
+	mjs: "text/javascript; charset=utf-8",
+	json: "application/json; charset=utf-8",
+	txt: "text/plain; charset=utf-8",
+	md: "text/markdown; charset=utf-8",
+	csv: "text/csv; charset=utf-8",
+	xml: "application/xml; charset=utf-8",
+	svg: "image/svg+xml",
+	png: "image/png",
+	jpg: "image/jpeg",
+	jpeg: "image/jpeg",
+	gif: "image/gif",
+	webp: "image/webp",
+	avif: "image/avif",
+	ico: "image/x-icon",
+	woff: "font/woff",
+	woff2: "font/woff2",
+	ttf: "font/ttf",
+	otf: "font/otf",
+	mp3: "audio/mpeg",
+	wav: "audio/wav",
+	mp4: "video/mp4",
+	webm: "video/webm",
+	pdf: "application/pdf",
+	wasm: "application/wasm"
+};
+function contentTypeFor(file) {
+	return CONTENT_TYPES[file.slice(file.lastIndexOf(".") + 1).toLowerCase()] ?? "application/octet-stream";
+}
+// src/agent/artifacts.ts
+/**
+* Artifacts: `<app data>/artifacts/<id>/artifact.json` plus the files in `<id>/site/`.
+* The model's `pidesk_artifact_*` tools and the Settings page both go through this service,
+* so what is saved, previewed and published is the same everywhere. Previewing needs nothing
+* else; publishing needs the user's S3 bucket (`artifact-storage.json`, secret included, kept
+* private to the user the way pi keeps its own auth.json).
+*/
+var META_FILE = "artifact.json";
+var slug = (s) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+/** Everything under `dir` as forward-slash relative paths; throws when it is too big to be an artifact. */
+function walk(dir, rel = "", out = []) {
+	for (const entry of fs.readdirSync(path.join(dir, rel), { withFileTypes: true })) {
+		if (ARTIFACT_SKIP.includes(entry.name)) continue;
+		const r = rel ? `${rel}/${entry.name}` : entry.name;
+		if (entry.isDirectory()) walk(dir, r, out);
+		else if (entry.isFile()) out.push({
+			rel: r,
+			size: fs.statSync(path.join(dir, r)).size
+		});
+		if (out.length > ARTIFACT_LIMITS.files) throw new Error(`An artifact can have at most ${ARTIFACT_LIMITS.files} files`);
+	}
+	return out;
+}
+var ArtifactService = class {
+	dataDir;
+	constructor(dataDir) {
+		this.dataDir = dataDir;
+	}
+	get root() {
+		return appArtifactsDir(this.dataDir);
+	}
+	folder(id) {
+		if (!ARTIFACT_ID_PATTERN.test(id)) throw new Error(`Invalid artifact id "${id}"`);
+		return path.join(this.root, id);
+	}
+	/** Folder whose files are previewed and uploaded. */
+	siteDir(id) {
+		return path.join(this.folder(id), ARTIFACT_SITE_DIR);
+	}
+	metaFile(id) {
+		return path.join(this.folder(id), META_FILE);
+	}
+	list() {
+		let ids;
+		try {
+			ids = fs.readdirSync(this.root);
+		} catch {
+			return [];
+		}
+		const out = [];
+		for (const id of ids) {
+			const meta = this.find(id);
+			if (meta) out.push(meta);
+		}
+		return out.sort((a, b) => b.updatedAt - a.updatedAt);
+	}
+	find(id) {
+		try {
+			const meta = JSON.parse(fs.readFileSync(this.metaFile(id), "utf8"));
+			return meta.id === id ? meta : null;
+		} catch {
+			return null;
+		}
+	}
+	get(id) {
+		const meta = this.find(id);
+		if (!meta) throw new Error(`No artifact ${id} (pidesk_artifact_list shows them)`);
+		return meta;
+	}
+	write(meta) {
+		const file = this.metaFile(meta.id);
+		fs.mkdirSync(path.dirname(file), { recursive: true });
+		fs.writeFileSync(`${file}.tmp`, JSON.stringify(meta, null, 2));
+		fs.renameSync(`${file}.tmp`, file);
+	}
+	/** Copy a page (or site folder) in as a new artifact, or as the next version of `input.id`. */
+	save(input) {
+		const source = path.resolve(input.source);
+		let stat;
+		try {
+			stat = fs.statSync(source);
+		} catch {
+			throw new Error(`Cannot find ${input.source}`);
+		}
+		let files;
+		if (stat.isDirectory()) {
+			if (!fs.existsSync(path.join(source, "index.html"))) throw new Error(`${input.source} has no ${ARTIFACT_ENTRY}; an artifact folder needs one`);
+			files = walk(source).map((f) => ({
+				...f,
+				abs: path.join(source, f.rel)
+			}));
+		} else {
+			if (!/\.html?$/i.test(source)) throw new Error(`${input.source} is not an HTML file`);
+			files = [{
+				rel: ARTIFACT_ENTRY,
+				abs: source,
+				size: stat.size
+			}];
+		}
+		const total = files.reduce((n, f) => n + f.size, 0);
+		const big = files.find((f) => f.size > ARTIFACT_LIMITS.fileBytes);
+		if (big) throw new Error(`${big.rel} is over ${ARTIFACT_LIMITS.fileBytes / 1024 / 1024} MB`);
+		if (total > ARTIFACT_LIMITS.totalBytes) throw new Error(`An artifact can be at most ${ARTIFACT_LIMITS.totalBytes / 1024 / 1024} MB`);
+		const existing = input.id ? this.get(input.id) : null;
+		const title = (input.title ?? existing?.title ?? path.basename(source, path.extname(source))).trim().slice(0, ARTIFACT_LIMITS.title) || "Untitled";
+		const id = existing?.id ?? this.newId(title);
+		const site = this.siteDir(id);
+		fs.rmSync(site, {
+			recursive: true,
+			force: true
+		});
+		for (const f of files) {
+			const dest = path.join(site, f.rel);
+			fs.mkdirSync(path.dirname(dest), { recursive: true });
+			fs.copyFileSync(f.abs, dest);
+		}
+		const now = Date.now();
+		const meta = {
+			id,
+			title,
+			files: files.map((f) => f.rel).sort(),
+			bytes: total,
+			version: (existing?.version ?? 0) + 1,
+			createdAt: existing?.createdAt ?? now,
+			updatedAt: now,
+			publishedVersion: existing?.publishedVersion ?? null,
+			publishedAt: existing?.publishedAt ?? null,
+			publishedUrl: existing?.publishedUrl ?? null,
+			publishedFiles: existing?.publishedFiles ?? []
+		};
+		this.write(meta);
+		return meta;
+	}
+	newId(title) {
+		for (;;) {
+			const id = `${slug(title) || "artifact"}-${randomBytes(2).toString("hex")}`;
+			if (!fs.existsSync(this.folder(id))) return id;
+		}
+	}
+	/** Delete locally; with `unpublish` the uploaded copy goes too (a failure there keeps the local one). */
+	async remove(id, unpublish = true) {
+		const meta = this.get(id);
+		if (unpublish && meta.publishedFiles.length) await this.unpublish(id);
+		fs.rmSync(this.folder(id), {
+			recursive: true,
+			force: true
+		});
+	}
+	readStorage() {
+		try {
+			const { secretAccessKey, ...rest } = JSON.parse(fs.readFileSync(appArtifactStorageFile(this.dataDir), "utf8"));
+			return {
+				config: {
+					...EMPTY_STORAGE,
+					...rest
+				},
+				secret: secretAccessKey ?? ""
+			};
+		} catch {
+			return {
+				config: { ...EMPTY_STORAGE },
+				secret: ""
+			};
+		}
+	}
+	storage() {
+		const { config, secret } = this.readStorage();
+		return {
+			...config,
+			secretSet: !!secret,
+			ready: missingStorageField(config, !!secret) === null
+		};
+	}
+	saveStorage(draft) {
+		const { secret: saved } = this.readStorage();
+		const config = {
+			endpoint: draft.endpoint.trim().replace(/\/+$/, ""),
+			region: draft.region.trim() || EMPTY_STORAGE.region,
+			bucket: draft.bucket.trim(),
+			accessKeyId: draft.accessKeyId.trim(),
+			publicBaseUrl: draft.publicBaseUrl.trim().replace(/\/+$/, ""),
+			prefix: draft.prefix.trim().replace(/^\/+|\/+$/g, ""),
+			pathStyle: !!draft.pathStyle
+		};
+		for (const [name, value] of [["endpoint", config.endpoint], ["publicBaseUrl", config.publicBaseUrl]]) if (value && !/^https?:\/\//i.test(value)) throw new Error(`${name} must start with http:// or https://`);
+		const file = appArtifactStorageFile(this.dataDir);
+		fs.mkdirSync(path.dirname(file), { recursive: true });
+		fs.writeFileSync(file, JSON.stringify({
+			...config,
+			secretAccessKey: draft.secretAccessKey.trim() || saved
+		}, null, 2), { mode: 384 });
+		return this.storage();
+	}
+	/** Sign a one-key listing with the saved settings; resolves when the bucket answers. */
+	async testStorage(draft) {
+		const saved = this.readStorage();
+		const target = draft ? {
+			...draft,
+			secretAccessKey: draft.secretAccessKey.trim() || saved.secret
+		} : {
+			...saved.config,
+			secretAccessKey: saved.secret
+		};
+		const missing = missingStorageField(target, !!target.secretAccessKey);
+		if (missing && missing !== "publicBaseUrl") throw new Error(`Fill in ${missing} first`);
+		await checkBucket(this.target(target, target.secretAccessKey));
+	}
+	target(c, secretAccessKey) {
+		return {
+			endpoint: c.endpoint,
+			region: c.region,
+			bucket: c.bucket,
+			accessKeyId: c.accessKeyId,
+			secretAccessKey,
+			pathStyle: c.pathStyle
+		};
+	}
+	/** Storage that is ready to publish with; otherwise the message that says how to get there. */
+	ready() {
+		const { config, secret } = this.readStorage();
+		if (missingStorageField(config, !!secret)) throw new Error(STORAGE_NOT_CONFIGURED);
+		return {
+			config,
+			target: this.target(config, secret)
+		};
+	}
+	/** Upload the current version, drop files the previous publish had and this one does not, and return the page's URL. */
+	async publish(id) {
+		const { config, target } = this.ready();
+		const meta = this.get(id);
+		const site = this.siteDir(id);
+		const key = (file) => [
+			config.prefix,
+			id,
+			file
+		].filter(Boolean).join("/");
+		for (const file of meta.files) await putObject(target, key(file), fs.readFileSync(path.join(site, file)), contentTypeFor(file));
+		for (const old of meta.publishedFiles.filter((f) => !meta.files.includes(f))) await deleteObject(target, key(old)).catch(() => {});
+		const next = {
+			...meta,
+			publishedVersion: meta.version,
+			publishedAt: Date.now(),
+			publishedUrl: artifactUrl(config, id, ARTIFACT_ENTRY),
+			publishedFiles: [...meta.files]
+		};
+		this.write(next);
+		return next;
+	}
+	/** Take the uploaded copy down; the local artifact stays. */
+	async unpublish(id) {
+		const meta = this.get(id);
+		if (meta.publishedFiles.length) {
+			const { config, target } = this.ready();
+			for (const file of meta.publishedFiles) await deleteObject(target, [
+				config.prefix,
+				id,
+				file
+			].filter(Boolean).join("/"));
+		}
+		const next = {
+			...meta,
+			publishedVersion: null,
+			publishedAt: null,
+			publishedUrl: null,
+			publishedFiles: []
+		};
+		this.write(next);
+		return next;
+	}
+};
 // src/agent/events.ts
 function toWireEvent(event) {
 	if (event.type === "entry_appended") return null;
@@ -5479,6 +6036,8 @@ var SessionHub = class {
 	store;
 	/** What the user did each day; fed by the handlers, so tasks, peers and PR watches never count. */
 	activity;
+	/** The model's web pages and the user's bucket they are published to. */
+	artifacts;
 	settings;
 	metas;
 	live = /* @__PURE__ */ new Map();
@@ -5502,6 +6061,7 @@ var SessionHub = class {
 		this.agentDir = opts.agentDir ?? getAgentDir();
 		this.store = new Store(opts.dataDir);
 		this.activity = new ActivityRecorder(this.store);
+		this.artifacts = new ArtifactService(opts.dataDir);
 		this.metas = this.store.get("sessions", []);
 		this.trust = new ProjectTrustStore(this.agentDir);
 	}
@@ -5895,6 +6455,14 @@ var SessionHub = class {
 				list: () => listPets(appPetsDir(this.opts.dataDir)),
 				save: (raw) => savePet(appPetsDir(this.opts.dataDir), raw),
 				remove: (id) => removePet(appPetsDir(this.opts.dataDir), id)
+			},
+			artifacts: {
+				list: () => hub.artifacts.list(),
+				save: (input) => hub.artifacts.save(input),
+				publish: (id) => hub.artifacts.publish(id),
+				unpublish: (id) => hub.artifacts.unpublish(id),
+				remove: (id, unpublish) => hub.artifacts.remove(id, unpublish),
+				storageReady: () => hub.artifacts.storage().ready
 			},
 			taskUpdate: (update) => {
 				if (!live.disposed) this.emit({

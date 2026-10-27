@@ -12,7 +12,7 @@ import { call, isMac, modKey } from '@/lib/api';
 import { ago, fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
-  archiveSession, deleteSession, openSession, removeProject, renameSession, selectProject, setView, showActivity, showArchived, showCustomize, showScheduled, showWelcome, toggleSidebar,
+  archiveSession, deleteSession, openSession, removeProject, renameSession, selectProject, setView, showActivity, showArchived, showArtifacts, showCustomize, showScheduled, showWelcome, toggleSidebar,
 } from '@/store/actions';
 import { setApp, useApp } from '@/store/app';
 import type { SessionKind } from '@shared/protocol';
@@ -103,7 +103,7 @@ function NavItem({ icon, children, onClick, hint, soon, active }: { icon: React.
 }
 
 /** Which full-page view (if any) replaces the conversation. */
-const usePage = () => useApp((s) => (s.scheduled ? 'scheduled' : s.customize ? 'customize' : s.archived ? 'archived' : s.activity ? 'activity' : null));
+const usePage = () => useApp((s) => (s.scheduled ? 'scheduled' : s.customize ? 'customize' : s.archived ? 'archived' : s.activity ? 'activity' : s.artifacts ? 'artifacts' : null));
 
 function CodeNav() {
   const page = usePage();
@@ -172,7 +172,7 @@ function WorkNav() {
       <nav className="space-y-0.5 px-2">
         <NavItem icon={<PlusIcon className="size-4" />} onClick={showWelcome}>New</NavItem>
         <NavItem icon={<BoxIcon className="size-4" />} soon hint="Projects 即将推出">Projects</NavItem>
-        <NavItem icon={<ShapesIcon className="size-4" />} soon hint="Artifacts 即将推出">Artifacts</NavItem>
+        <NavItem icon={<ShapesIcon className="size-4" />} active={page === 'artifacts'} onClick={showArtifacts} hint="Artifacts：模型做的页面，预览与发布">Artifacts</NavItem>
         <NavItem icon={<ClockIcon className="size-4" />} active={page === 'scheduled'} onClick={showScheduled} hint="Scheduled：按计划自动运行的任务">Scheduled</NavItem>
         <NavItem icon={<ShapesIcon className="size-4" />} active={page === 'customize'} onClick={showCustomize} hint="Customize：技能、连接器与插件">Customize</NavItem>
         <NavItem icon={<ArchiveIcon className="size-4" />} active={page === 'archived'} onClick={showArchived} hint="已归档的会话">Archived</NavItem>

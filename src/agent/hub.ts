@@ -29,6 +29,8 @@ import * as customize from './customize';
 import { agentCatalog, agentPrompt, loadAgents, removeAgent, saveAgent } from './agents';
 import type { CustomizeHost, ScheduleHost } from './manage-tools';
 import { listPets, removePet, savePet } from './pets';
+import { ArtifactService } from './artifacts';
+import { ObjectStorage } from './storage';
 import { createDesktopKit, type KitHost, type KitState, type SubagentRun } from './desktop-kit';
 import { toWireEvent } from './events';
 import { readSessionFile, readSessionImage, resolveInside, searchSessionFiles } from './files';
@@ -121,6 +123,10 @@ export class SessionHub {
   private readonly store: Store;
   /** What the user did each day; fed by the handlers, so tasks, peers and PR watches never count. */
   readonly activity: ActivityRecorder;
+  /** The user's S3-compatible bucket, for everything the app keeps off this machine. */
+  readonly storage: ObjectStorage;
+  /** The model's web pages, which can be published to that bucket. */
+  readonly artifacts: ArtifactService;
   private settings!: SettingsManager;
   private metas: SessionMeta[];
   private readonly live = new Map<string, Live>();
@@ -144,6 +150,8 @@ export class SessionHub {
     this.agentDir = opts.agentDir ?? getAgentDir();
     this.store = new Store(opts.dataDir);
     this.activity = new ActivityRecorder(this.store);
+    this.storage = new ObjectStorage(opts.dataDir);
+    this.artifacts = new ArtifactService(opts.dataDir, this.storage);
     this.metas = this.store.get<SessionMeta[]>('sessions', []);
     this.trust = new ProjectTrustStore(this.agentDir);
   }
@@ -480,6 +488,14 @@ export class SessionHub {
         list: () => listPets(appPetsDir(this.opts.dataDir)),
         save: (raw) => savePet(appPetsDir(this.opts.dataDir), raw),
         remove: (id) => removePet(appPetsDir(this.opts.dataDir), id),
+      },
+      artifacts: {
+        list: () => hub.artifacts.list(),
+        save: (input) => hub.artifacts.save(input),
+        publish: (id) => hub.artifacts.publish(id),
+        unpublish: (id) => hub.artifacts.unpublish(id),
+        remove: (id, unpublish) => hub.artifacts.remove(id, unpublish),
+        storageReady: () => hub.storage.info().ready,
       },
       taskUpdate: (update) => {
         if (!live.disposed) this.emit({ type: 'task', sessionId: live.id, update });

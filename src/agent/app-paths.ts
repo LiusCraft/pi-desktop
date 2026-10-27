@@ -40,6 +40,12 @@ export const appExtensionsDir = (dataDir: string) => path.join(dataDir, 'extensi
 export const appAgentsDir = (dataDir: string) => path.join(dataDir, 'agents');
 /** User-made desktop pets: one JSON file each (see `@shared/pets`). */
 export const appPetsDir = (dataDir: string) => path.join(dataDir, 'pets');
+/** Artifacts the model built: one folder each (see `@shared/artifacts`). */
+export const appArtifactsDir = (dataDir: string) => path.join(dataDir, 'artifacts');
+/** The user's S3-compatible bucket connection, shared by everything the app stores remotely. */
+export const appObjectStorageFile = (dataDir: string) => path.join(dataDir, 'object-storage.json');
+/** Where that connection lived while it only served artifacts; still read when the new file is missing. */
+export const appLegacyArtifactStorageFile = (dataDir: string) => path.join(dataDir, 'artifact-storage.json');
 /** Scratch workspaces for Work tasks started without a folder. */
 export const appWorkDir = (dataDir: string) => path.join(dataDir, 'work');
 /** Copies of the bundled demo project and demo Work folder. */

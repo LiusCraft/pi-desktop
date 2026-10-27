@@ -13,14 +13,17 @@ import {
   type Settings, type SettingsPayload, type WorktreeInfo,
 } from '@shared/protocol';
 import { DEFAULT_PET_ID } from '@shared/pets';
+import { ARTIFACT_ENTRY, ARTIFACT_ID_PATTERN, ARTIFACT_SITE_DIR, ARTIFACT_THUMBNAIL, artifactThumbnailName } from '@shared/artifacts';
 import {
   isRemotePort, normalizeRemoteUrl, REMOTE_DEFAULT_PORT, REMOTE_PORT_RANGE, REMOTE_WORKSPACE_METHODS,
   type RemoteActive, type RemoteConnection, type RemoteConnectionDraft, type RemoteConnectionInfo, type RemoteServeSettings, type RemoteServeState, type RemoteWorkspaceMethod,
 } from '@shared/remote';
 import { childEnv } from '../agent/env';
 import { listPets, removePet, savePet } from '../agent/pets';
+import { ArtifactService } from '../agent/artifacts';
+import { ObjectStorage } from '../agent/storage';
 import {
-  appDataDir, appDemoDir, appExtensionsDir, appPetsDir, defaultWorktreeDir, expandHome, piAgentDir, worktreeDir,
+  appDataDir, appDemoDir, appExtensionsDir, appPetsDir, appArtifactsDir, defaultWorktreeDir, expandHome, piAgentDir, worktreeDir,
 } from '../agent/app-paths';
 import { resolveInside } from '../agent/files';
 import { localPath } from '../agent/local-path';
@@ -294,6 +297,116 @@ function openDiagram(svg: string) {
   w.once('ready-to-show', () => w.show());
   harden(w);
   w.on('closed', () => diagrams.delete(token));
+}
+
+/** Artifact previews, by artifact id: one window each, reloaded when the artifact is opened again. */
+const artifactWindows = new Map<string, BrowserWindow>();
+
+/**
+ * An artifact is arbitrary HTML the model wrote, so it opens in a plain sandboxed window: no preload (nothing of
+ * this app is reachable from it), no Node, and it may only show its own files. Links to the web open in the browser.
+ */
+function openArtifact(id: string) {
+  if (!ARTIFACT_ID_PATTERN.test(id)) return;
+  const dir = path.join(appArtifactsDir(dataDir()), id, ARTIFACT_SITE_DIR);
+  const entry = path.join(dir, ARTIFACT_ENTRY);
+  if (!fs.existsSync(entry)) throw new Error('This artifact has no page to show');
+  const existing = artifactWindows.get(id);
+  if (existing && !existing.isDestroyed()) {
+    existing.show();
+    existing.focus();
+    void existing.loadFile(entry);
+    return;
+  }
+  const w = new BrowserWindow({
+    width: 1100,
+    height: 780,
+    minWidth: 360,
+    minHeight: 280,
+    title: 'Artifact',
+    backgroundColor: '#ffffff',
+    autoHideMenuBar: true,
+    show: false,
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, partition: 'artifact-preview' },
+  });
+  const inside = (url: string) => {
+    try {
+      const target = fileURLToPath(url);
+      return target === dir || target.startsWith(dir + path.sep);
+    } catch {
+      return false;
+    }
+  };
+  w.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/.test(url)) void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  w.webContents.on('will-navigate', (e, url) => {
+    if (inside(url)) return;
+    e.preventDefault();
+    if (/^https?:/.test(url)) void shell.openExternal(url);
+  });
+  w.webContents.session.setPermissionRequestHandler((_wc, _permission, deny) => deny(false));
+  w.webContents.on('page-title-updated', (_e, title) => {
+    if (title.trim()) w.setTitle(title);
+  });
+  void w.loadFile(entry);
+  w.once('ready-to-show', () => w.show());
+  w.on('closed', () => artifactWindows.delete(id));
+  artifactWindows.set(id, w);
+}
+
+/** One screenshot at a time: each one is a whole hidden page, and a grid of cards asks for many at once. */
+let thumbnailQueue: Promise<unknown> = Promise.resolve();
+const thumbnailRuns = new Map<string, Promise<string | null>>();
+
+/** The artifact's page rendered offscreen once per version and kept as a small JPEG next to it. */
+function artifactThumbnail(id: string): Promise<string | null> {
+  if (!ARTIFACT_ID_PATTERN.test(id)) return Promise.resolve(null);
+  const meta = new ArtifactService(dataDir(), new ObjectStorage(dataDir())).find(id);
+  if (!meta) return Promise.resolve(null);
+  const file = path.join(appArtifactsDir(dataDir()), id, artifactThumbnailName(meta.version));
+  const asUrl = (buf: Buffer) => `data:image/jpeg;base64,${buf.toString('base64')}`;
+  try {
+    return Promise.resolve(asUrl(fs.readFileSync(file)));
+  } catch {
+    // Not captured yet.
+  }
+  const key = `${id}:${meta.version}`;
+  const running = thumbnailRuns.get(key);
+  if (running) return running;
+  const run = thumbnailQueue.then(async () => {
+    const entry = path.join(appArtifactsDir(dataDir()), id, ARTIFACT_SITE_DIR, ARTIFACT_ENTRY);
+    const { width, height, scaledWidth, quality, settleMs, timeoutMs } = ARTIFACT_THUMBNAIL;
+    const w = new BrowserWindow({
+      width, height, show: false, backgroundColor: '#ffffff',
+      webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, partition: 'artifact-preview', backgroundThrottling: false },
+    });
+    try {
+      w.webContents.setAudioMuted(true);
+      w.webContents.session.setPermissionRequestHandler((_wc, _permission, deny) => deny(false));
+      w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+      await Promise.race([
+        w.loadFile(entry).then(() => new Promise((r) => setTimeout(r, settleMs))),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('thumbnail timed out')), timeoutMs)),
+      ]);
+      const image = (await w.webContents.capturePage()).resize({ width: scaledWidth, quality: 'good' });
+      const jpeg = image.toJPEG(quality);
+      // Older versions' shots are of no use any more.
+      for (const old of fs.readdirSync(path.dirname(file))) if (/^thumbnail-\d+\.jpg$/.test(old)) fs.rmSync(path.join(path.dirname(file), old), { force: true });
+      fs.writeFileSync(file, jpeg);
+      return asUrl(jpeg);
+    } catch (err) {
+      console.error('[main] artifact thumbnail failed:', err);
+      return null;
+    } finally {
+      if (!w.isDestroyed()) w.destroy();
+      thumbnailRuns.delete(key);
+    }
+  });
+  thumbnailQueue = run;
+  thumbnailRuns.set(key, run);
+  return run;
 }
 
 /** Side chats (/btw) that were popped out of their session, by session id. */
@@ -582,6 +695,8 @@ const handlers: MainHandlers = {
   },
   'side:windows': () => [...sideWindows].filter(([, w]) => !w.isDestroyed()).map(([id, w]) => ({ sessionId: id, pinned: w.isAlwaysOnTop() })),
   'diagram:get': (token) => diagrams.get(token) ?? null,
+  'artifacts:preview': (id) => openArtifact(String(id)),
+  'artifacts:thumbnail': (id) => artifactThumbnail(String(id)),
 
   'projects:list': () => projects(),
   'projects:add': async () => {

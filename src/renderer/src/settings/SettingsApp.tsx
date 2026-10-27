@@ -1,7 +1,7 @@
 // Settings window. Every value comes from the main process (single source of
 // truth), so the main window and this one can never disagree.
 import { useEffect, useState, type ReactNode } from 'react';
-import { BrainIcon, FolderIcon, InfoIcon, MonitorSmartphoneIcon, MoonIcon, PlusIcon, SettingsIcon, Trash2Icon } from 'lucide-react';
+import { BrainIcon, DatabaseIcon, FolderIcon, InfoIcon, MonitorSmartphoneIcon, MoonIcon, PlusIcon, SettingsIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AppInfo, Project, Settings, SettingsPayload, SuggestionModelMode, TerminalShell } from '@shared/protocol';
 import { SUGGESTION_DEFAULT_CONTEXT, SUGGESTION_MAX_CONTEXT } from '@shared/protocol';
@@ -23,14 +23,16 @@ import { allPets, PetSprite } from '@/components/composer/Clawd';
 import { ModelPicker } from './ModelPicker';
 import { ModelsSection } from './ModelsSection';
 import { RemoteSection } from './RemoteSection';
+import { StorageSection } from './StorageSection';
 
-type Section = 'appearance' | 'general' | 'models' | 'projects' | 'remote' | 'about';
+type Section = 'appearance' | 'general' | 'models' | 'projects' | 'remote' | 'storage' | 'about';
 const SECTIONS: { id: Section; label: string; icon: ReactNode }[] = [
   { id: 'appearance', label: '外观', icon: <MoonIcon className="size-4" /> },
   { id: 'general', label: '通用', icon: <SettingsIcon className="size-4" /> },
   { id: 'models', label: '模型管理', icon: <BrainIcon className="size-4" /> },
   { id: 'projects', label: '项目与文件夹', icon: <FolderIcon className="size-4" /> },
   { id: 'remote', label: '远程', icon: <MonitorSmartphoneIcon className="size-4" /> },
+  { id: 'storage', label: '对象存储', icon: <DatabaseIcon className="size-4" /> },
   { id: 'about', label: '关于', icon: <InfoIcon className="size-4" /> },
 ];
 // `keys` was the old section id: keep old links working.
@@ -342,6 +344,8 @@ export function SettingsApp() {
     );
   } else if (section === 'models') {
     body = <ModelsSection />;
+  } else if (section === 'storage') {
+    body = <StorageSection />;
   } else if (section === 'remote') {
     body = <RemoteSection />;
   } else if (section === 'projects') {
