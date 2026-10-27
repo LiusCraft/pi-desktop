@@ -74,7 +74,7 @@ describe('pidesk_customize_*', () => {
   let tools: Map<string, any>;
   beforeAll(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-manage-'));
-    env = { agentDir: path.join(root, 'agent'), project: path.join(root, 'project'), projectTrusted: true };
+    env = { agentDir: path.join(root, 'agent'), project: path.join(root, 'project'), projectTrusted: true, claudeSkillsDeclined: true };
     fs.mkdirSync(env.agentDir, { recursive: true });
     fs.mkdirSync(env.project!, { recursive: true });
     tools = new Map();

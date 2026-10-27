@@ -379,18 +379,24 @@ export interface CustomizeCatalog {
   connectors: ConnectorInfo[];
   plugins: PluginInfo[];
   prompts: PromptInfo[];
-  /** Folders for the "open folder" buttons. */
-  dirs: { agent: string; skills: string; prompts: string };
+  /** Folders for the "open folder" buttons. `agentsSkills` is the `~/.agents/skills` folder shared with Codex and opencode. */
+  dirs: { agent: string; skills: string; agentsSkills: string; prompts: string };
+  /** Claude Code skills found on this machine that the user has neither imported nor declined; null when there is nothing to offer. */
+  claudeSkills: { dir: string; count: number } | null;
   /** Project that project-level entries belong to; null when none is selected. */
   project: string | null;
   /** Project resources only load once the project is trusted. */
   projectTrusted: boolean;
 }
+/** Which skills folder a new skill goes in: pi's own (`.pi/skills`) or the one shared with other agents (`.agents/skills`). */
+export type SkillHome = 'pi' | 'agents';
 export interface SkillDraft {
   name: string;
   description: string;
   body: string;
   scope: 'user' | 'project';
+  /** Defaults to pi's own folder. */
+  home?: SkillHome;
 }
 
 /** Estimated split of the context window (like Claude Code's /context). */
@@ -937,6 +943,8 @@ export interface Api {
   'customize:readFile'(file: string): string;
   'customize:skillSetDisabled'(file: string, disabled: boolean, project: string | null): CustomizeCatalog;
   'customize:skillCreate'(draft: SkillDraft, project: string | null): CustomizeCatalog;
+  'customize:claudeImport'(project: string | null): CustomizeCatalog;
+  'customize:claudeDismiss'(project: string | null): CustomizeCatalog;
   'customize:connectorSave'(draft: ConnectorDraft, project: string | null): CustomizeCatalog;
   'customize:connectorSetEnabled'(name: string, scope: 'user' | 'project', enabled: boolean, project: string | null): CustomizeCatalog;
   'customize:connectorRemove'(name: string, scope: 'user' | 'project', project: string | null): CustomizeCatalog;
@@ -991,7 +999,7 @@ export const HOST_CHANNELS = [
   'sessions:changes', 'sessions:commits', 'sessions:commitChanges', 'sessions:changeContent', 'sessions:pr', 'sessions:prThreads', 'sessions:prReply', 'sessions:prResolve', 'sessions:files', 'sessions:readFile', 'sessions:search', 'sessions:readImage',
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
   'sessions:import', 'git:branch', 'git:branches', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove',
-  'customize:list', 'customize:readFile', 'customize:skillSetDisabled', 'customize:skillCreate', 'customize:connectorSave',
+  'customize:list', 'customize:readFile', 'customize:skillSetDisabled', 'customize:skillCreate', 'customize:claudeImport', 'customize:claudeDismiss', 'customize:connectorSave',
   'customize:connectorSetEnabled', 'customize:connectorRemove', 'customize:pluginInstall', 'customize:pluginRemove', 'customize:pluginUpdate',
   'activity:get', 'tasks:list', 'tasks:save', 'tasks:setEnabled', 'tasks:remove', 'tasks:run',
   'artifacts:list', 'artifacts:remove', 'artifacts:publish', 'artifacts:unpublish', 'storage:get', 'storage:save', 'storage:test',

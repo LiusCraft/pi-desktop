@@ -9,6 +9,7 @@ import { Markdown } from '@/components/common/Markdown';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
@@ -69,7 +70,7 @@ function SkillDetail({ skill, onBack }: { skill: SkillInfo; onBack: () => void }
 }
 
 function SkillForm({ project, onDone, onCatalog }: Omit<Props, 'catalog'> & { onDone: () => void }) {
-  const [draft, setDraft] = useState<SkillDraft>({ name: '', description: '', body: '', scope: 'user' });
+  const [draft, setDraft] = useState<SkillDraft>({ name: '', description: '', body: '', scope: 'user', home: 'pi' });
   const [busy, setBusy] = useState(false);
   const set = (patch: Partial<SkillDraft>) => setDraft({ ...draft, ...patch });
   const save = async () => {
@@ -89,8 +90,11 @@ function SkillForm({ project, onDone, onCatalog }: Omit<Props, 'catalog'> & { on
       <BackButton onClick={onDone}>返回技能列表</BackButton>
       <Heading title="新建技能" sub="技能是一份写给模型看的说明书：描述决定它什么时候被用到，正文告诉它怎么做。" />
       <div className="space-y-4 rounded-xl border bg-card p-4">
-        <Field label="保存位置" hint={draft.scope === 'user' ? '所有项目都能用，保存在 pi 的 skills 文件夹。' : `只在 ${project ? fname(project) : '当前项目'} 里生效，保存在项目的 .pi/skills。`}>
+        <Field label="保存位置" hint={draft.scope === 'user' ? '所有项目都能用。' : `只在 ${project ? fname(project) : '当前项目'} 里生效。`}>
           <Segmented value={draft.scope} onChange={(scope) => set({ scope })} options={[{ id: 'user', label: '个人' }, { id: 'project', label: '项目', disabled: !project }]} />
+        </Field>
+        <Field label="存放在" hint={draft.home === 'agents' ? `保存在 ${draft.scope === 'user' ? '~' : ''}/.agents/skills，Codex、opencode 等工具也会读取。` : `只给 pi 用，保存在 ${draft.scope === 'user' ? 'pi 的 skills 文件夹' : '项目的 .pi/skills'}。`}>
+          <Segmented value={draft.home ?? 'pi'} onChange={(home) => set({ home })} options={[{ id: 'pi', label: 'pi' }, { id: 'agents', label: '.agents（通用）' }]} />
         </Field>
         <Field label="名称" hint="字母、数字、- 和 _；用 /skill:名称 手动调用。">
           <Input value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder="release-notes" spellCheck={false} />
@@ -133,6 +137,15 @@ export function SkillsSection({ catalog, project, onCatalog }: Props) {
       else next.add(origin);
       return next;
     });
+  const claude = async (action: 'customize:claudeImport' | 'customize:claudeDismiss') => {
+    try {
+      onCatalog(await call(action, project));
+      if (action === 'customize:claudeImport') toast.success('已引入 Claude Code 的技能，新建的会话会用上它们');
+    } catch (err) {
+      toast.error(errText(err));
+    }
+  };
+  const reveal = (dir: string) => call('app:revealPath', dir).catch((e) => toast.error(errText(e)));
   const scopes: CustomizeScope[] = ['user', 'project', 'package'];
   return (
     <>
@@ -141,11 +154,27 @@ export function SkillsSection({ catalog, project, onCatalog }: Props) {
         sub="教模型按你的方式做事的说明书。停用的技能留在磁盘上，只是不再加载。"
         action={
           <div className="flex shrink-0 gap-2">
-            <Button size="sm" variant="outline" onClick={() => call('app:revealPath', catalog.dirs.skills).catch((e) => toast.error(errText(e)))}><FolderOpenIcon className="size-4" />打开文件夹</Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild><Button size="sm" variant="outline"><FolderOpenIcon className="size-4" />打开文件夹</Button></DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => void reveal(catalog.dirs.skills)}>pi 的 skills</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void reveal(catalog.dirs.agentsSkills)}>~/.agents/skills（通用）</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button size="sm" onClick={() => setCreating(true)}><PlusIcon className="size-4" />新建技能</Button>
           </div>
         }
       />
+      {catalog.claudeSkills && (
+        <div className="mb-6 flex items-center gap-3 rounded-xl border bg-muted/30 px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium">发现 {catalog.claudeSkills.count} 个 Claude Code 的技能，要引入吗？</div>
+            <div className="mt-0.5 truncate text-xs text-muted-foreground" title={catalog.claudeSkills.dir}>引入后直接读取 {catalog.claudeSkills.dir}，不会复制；在这里随时可以逐个停用。</div>
+          </div>
+          <Button size="sm" onClick={() => void claude('customize:claudeImport')}>引入</Button>
+          <Button size="sm" variant="ghost" onClick={() => void claude('customize:claudeDismiss')}>不用了</Button>
+        </div>
+      )}
       {!catalog.skills.length && <Panel><Empty>还没有技能。点「新建技能」写一个，或在 Plugins 里装带技能的包。</Empty></Panel>}
       <div className="space-y-6">
         {scopes.map((scope) => {

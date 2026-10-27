@@ -51,6 +51,8 @@ import * as sideChat from './side-chat';
 const NAMES = ['trusting-maxwell', 'eager-lovelace', 'quiet-hopper', 'brave-turing', 'calm-knuth', 'swift-ritchie', 'bold-curie', 'keen-dijkstra'];
 /** Tools on top of pi's defaults (read, bash, edit, write). */
 const EXTRA_TOOLS = ['+grep', '+find', '+ls'];
+/** Store key: the user said no to importing Claude Code's skills. */
+const CLAUDE_SKILLS_DECLINED = 'claudeSkillsDeclined';
 /** Defaults minus editing; MCP and other extension tools stay (the plan-mode gate lets only read-only ones run). */
 const SUBAGENT_TOOLS = ['-edit', '-write', '+grep', '+find', '+ls'];
 
@@ -683,10 +685,18 @@ export class SessionHub {
   /** Where the Customize page reads and writes: pi's agent dir plus the selected project. */
   customizeEnv(project: string | null): customize.CustomizeEnv {
     const dir = project && fs.existsSync(project) ? project : null;
-    return { agentDir: this.agentDir, project: dir, projectTrusted: !!dir && (!hasTrustRequiringProjectResources(dir) || this.trust.get(dir) === true) };
+    return {
+      agentDir: this.agentDir, project: dir, projectTrusted: !!dir && (!hasTrustRequiringProjectResources(dir) || this.trust.get(dir) === true),
+      claudeSkillsDeclined: this.store.get<boolean>(CLAUDE_SKILLS_DECLINED, false),
+    };
   }
   customize = {
     list: (project: string | null) => customize.catalog(this.customizeEnv(project)),
+    importClaudeSkills: (project: string | null) => customize.importClaudeSkills(this.customizeEnv(project)),
+    dismissClaudeSkills: (project: string | null) => {
+      this.store.set(CLAUDE_SKILLS_DECLINED, true);
+      return customize.catalog(this.customizeEnv(project));
+    },
     setSkillDisabled: (file: string, disabled: boolean, project: string | null) => customize.setSkillDisabled(this.customizeEnv(project), file, disabled),
     createSkill: (draft: SkillDraft, project: string | null) => customize.createSkill(this.customizeEnv(project), draft),
     saveConnector: (draft: ConnectorDraft, project: string | null) => customize.saveConnector(this.customizeEnv(project), draft),

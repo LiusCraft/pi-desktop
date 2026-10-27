@@ -5,6 +5,7 @@
  * and written in pi's own files, so the CLI and the desktop always agree.
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {
   DefaultPackageManager, DefaultResourceLoader, parseFrontmatter, SettingsManager,
@@ -19,7 +20,14 @@ export interface CustomizeEnv {
   project: string | null;
   /** Project settings and resources are only honoured for trusted projects. */
   projectTrusted: boolean;
+  /** The user declined the offer to import Claude Code's skills. */
+  claudeSkillsDeclined: boolean;
 }
+
+/** Same home folder pi uses to find `~/.agents/skills`. */
+const homeDir = () => process.env.HOME || os.homedir();
+const agentsSkillsDir = () => path.join(homeDir(), '.agents', 'skills');
+const claudeSkillsDir = () => path.join(process.env.CLAUDE_CONFIG_DIR?.trim() || path.join(homeDir(), '.claude'), 'skills');
 
 const NAME = /^[a-z0-9][a-z0-9_-]*$/i;
 const userSettings = (env: CustomizeEnv) => path.join(env.agentDir, 'settings.json');
@@ -139,11 +147,41 @@ export async function createSkill(env: CustomizeEnv, draft: SkillDraft) {
   if (!description) throw new Error('请填写描述：模型靠它判断什么时候用这个技能');
   if (!body) throw new Error('请填写技能的内容');
   if (draft.scope === 'project' && !env.project) throw new Error('请先选择一个项目');
-  const root = draft.scope === 'project' ? path.join(env.project!, '.pi', 'skills') : path.join(env.agentDir, 'skills');
+  const root = draft.home === 'agents'
+    ? (draft.scope === 'project' ? path.join(env.project!, '.agents', 'skills') : agentsSkillsDir())
+    : (draft.scope === 'project' ? path.join(env.project!, '.pi', 'skills') : path.join(env.agentDir, 'skills'));
   const dir = path.join(root, name);
   if (fs.existsSync(dir)) throw new Error(`已经有名为 ${name} 的技能`);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${JSON.stringify(name)}\ndescription: ${JSON.stringify(description)}\n---\n\n${body}\n`, 'utf8');
+  return catalog(env);
+}
+
+/**
+ * Claude Code's skills are never loaded on their own. They are offered once: `claudeSkillsDir()` is
+ * listed here until it is added to pi's skill paths (import) or the user declines.
+ */
+function claudeSkillsOffer(env: CustomizeEnv): { dir: string; count: number } | null {
+  if (env.claudeSkillsDeclined) return null;
+  const dir = claudeSkillsDir();
+  const settings = readJson(userSettings(env));
+  const paths: unknown[] = Array.isArray(settings.skills) ? settings.skills : [];
+  if (paths.some((e) => typeof e === 'string' && !e.startsWith('-') && norm(path.resolve(env.agentDir, e)) === norm(dir))) return null;
+  try {
+    const count = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory() && fs.existsSync(path.join(dir, e.name, 'SKILL.md'))).length;
+    return count ? { dir, count } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Load Claude Code's skills in place (a path in pi's settings), so edits made in either tool stay in sync. */
+export async function importClaudeSkills(env: CustomizeEnv) {
+  const file = userSettings(env);
+  const settings = readJson(file);
+  const list: unknown[] = Array.isArray(settings.skills) ? settings.skills : [];
+  settings.skills = [...list, claudeSkillsDir()];
+  writeJson(file, settings);
   return catalog(env);
 }
 
@@ -291,8 +329,10 @@ export async function catalog(env: CustomizeEnv): Promise<CustomizeCatalog> {
     dirs: {
       agent: env.agentDir,
       skills: path.join(env.agentDir, 'skills'),
+      agentsSkills: agentsSkillsDir(),
       prompts: path.join(env.agentDir, 'prompts'),
     },
+    claudeSkills: claudeSkillsOffer(env),
     project: env.project,
     projectTrusted: env.projectTrusted,
   };
