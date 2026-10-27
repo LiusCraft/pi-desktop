@@ -28,21 +28,24 @@ jobs:
 
       - run: npm ci
 
-      - name: Tag must match package.json
+      # The tag is the source of truth for the version: it ends up in the
+      # packaged package.json, the artifact names and app.getVersion().
+      - name: Version from tag
         if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          version=$(node -p "require('./package.json').version")
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match v$version"
-            exit 1
-          fi
+        run: npm pkg set version="${GITHUB_REF_NAME#v}"
 
       # Both architectures are cross-built on the arm64 runner: nothing is
       # compiled per architecture (npmRebuild is off), only Electron's zip
       # differs. Empty secrets make electron-builder skip signing and our
       # afterSign hook skip notarization, so the same job works without them.
+      # An unset secret still arrives as CSC_LINK="", which electron-builder
+      # resolves to the cwd ("... not a file"), so unset the empty ones first.
       - name: Build dmgs
-        run: npm run dist:mac -- --arm64 --x64
+        run: |
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            [ -n "${!v}" ] || unset "$v"
+          done
+          npm run dist:mac -- --arm64 --x64
         env:
           CSC_LINK: ${{ secrets.MAC_CERT_P12 }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
@@ -90,8 +93,18 @@ jobs:
 
       - run: npm ci
 
+      - name: Version from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: npm pkg set version="${GITHUB_REF_NAME#v}"
+
       - name: Build installer
-        run: npm run dist:win
+        shell: bash
+        run: |
+          for v in CSC_LINK CSC_KEY_PASSWORD; do
+            [ -n "${!v}" ] || unset "$v"
+          done
+          npm run dist:win
         env:
           CSC_LINK: ${{ secrets.WIN_CERT_PFX }}
           CSC_KEY_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
