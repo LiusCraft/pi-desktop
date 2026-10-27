@@ -12,6 +12,7 @@ import type { PetDef } from './pets';
 import type { ArtifactMeta } from './artifacts';
 import type { ObjectStorageDraft, ObjectStorageInfo } from './storage';
 import type { LanguageSetting, Locale } from './i18n';
+import type { SearchEngine, WebSearchDraft, WebSearchInfo } from './web-search';
 import type { RemoteActive, RemoteConnectionDraft, RemoteConnectionInfo, RemoteLinkState, RemoteListing, RemoteServeSettings, RemoteServeState } from './remote';
 import type { ScheduledTask, TaskDraft } from './schedule';
 import type { SearchResult } from './text-search';
@@ -995,6 +996,11 @@ export interface Api {
   'storage:save'(draft: ObjectStorageDraft): ObjectStorageInfo;
   /** Checks the connection; with a draft it tests the unsaved form values. */
   'storage:test'(draft?: ObjectStorageDraft): void;
+  // ---- web search (the model's search engines and the user's API keys)
+  'web:get'(): WebSearchInfo;
+  'web:save'(draft: WebSearchDraft): WebSearchInfo;
+  /** One test search with the saved key, or with `key` when the form holds an unsaved one. */
+  'web:test'(engine: SearchEngine, key?: string): void;
   'models:list'(): { models: ModelInfo[]; defaultModel: string | null };
   'models:levels'(model: string | null): ThinkingLevel[];
   // ---- model management (pi's auth.json + models.json, shared with the CLI)
@@ -1028,6 +1034,7 @@ export const HOST_CHANNELS = [
   'customize:connectorSetEnabled', 'customize:connectorRemove', 'customize:pluginInstall', 'customize:pluginRemove', 'customize:pluginUpdate',
   'activity:get', 'tasks:list', 'tasks:save', 'tasks:setEnabled', 'tasks:remove', 'tasks:run',
   'artifacts:list', 'artifacts:remove', 'artifacts:publish', 'artifacts:unpublish', 'storage:get', 'storage:save', 'storage:test',
+  'web:get', 'web:save', 'web:test',
   'models:list', 'models:levels',
   'models:catalog', 'models:login', 'models:loginRespond', 'models:loginCancel', 'models:logout',
   'models:endpointSave', 'models:endpointRemove', 'models:endpointDiscover', 'models:refresh',

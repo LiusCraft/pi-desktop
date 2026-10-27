@@ -44,6 +44,8 @@ export const appPetsDir = (dataDir: string) => path.join(dataDir, 'pets');
 export const appArtifactsDir = (dataDir: string) => path.join(dataDir, 'artifacts');
 /** The user's S3-compatible bucket connection, shared by everything the app stores remotely. */
 export const appObjectStorageFile = (dataDir: string) => path.join(dataDir, 'object-storage.json');
+/** The web search engine choice and the user's API keys for them (see `@shared/web-search`). */
+export const appWebSearchFile = (dataDir: string) => path.join(dataDir, 'web-search.json');
 /** Scratch workspaces for Work tasks started without a folder. */
 export const appWorkDir = (dataDir: string) => path.join(dataDir, 'work');
 /** Copies of the bundled demo project and demo Work folder. */
