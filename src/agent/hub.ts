@@ -29,6 +29,7 @@ import * as customize from './customize';
 import { agentCatalog, agentPrompt, loadAgents, removeAgent, saveAgent } from './agents';
 import type { CustomizeHost, ScheduleHost } from './manage-tools';
 import { listPets, removePet, savePet } from './pets';
+import { createOpencodeHeaders } from './opencode-headers';
 import { createDesktopKit, type KitHost, type KitState, type SubagentRun } from './desktop-kit';
 import { toWireEvent } from './events';
 import { readSessionFile, readSessionImage, resolveInside } from './files';
@@ -414,6 +415,7 @@ export class SessionHub {
             createCodemodeExtension(),
             createToolSearchExtension(),
             createMcpExtension(),
+            createOpencodeHeaders(),
           ],
           // Pi Desktop's own extensions; pi's <agentDir>/extensions still load as before.
           additionalExtensionPaths: [appExtensionsDir(this.opts.dataDir)],
@@ -686,6 +688,7 @@ export class SessionHub {
           createDesktopKit({ state: kit, ask: async () => ({ cancelled: true }), setMode: () => {} }),
           createToolSearchExtension(),
           createMcpExtension(),
+          createOpencodeHeaders(),
         ],
         appendSystemPrompt: [agentPrompt(agent)],
       });
