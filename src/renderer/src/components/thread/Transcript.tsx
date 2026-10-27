@@ -165,7 +165,7 @@ export function Transcript({ s }: { s: SessionView }) {
   return (
     <div className="relative min-h-0 flex-1">
       <div ref={scroller} onScroll={onScroll} className="h-full overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-6 pt-6 pb-4">
+        <div className="mx-auto flex w-full max-w-[786px] flex-col gap-4 px-6 pt-6 pb-4">
           {s.items.map((item, i) => (
             <div key={item.key} className="transcript-item">{renderItem(s.meta.id, item, s.items, i, view)}</div>
           ))}

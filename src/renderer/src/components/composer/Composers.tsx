@@ -113,7 +113,7 @@ export function CodeComposer() {
     ? `↵ to send, ${modKey}↵ to queue for later`
     : s ? (s.meta.kind === 'work' ? 'Reply to Pi Desktop, or type / for commands' : 'Type / for commands') : 'Describe a task or ask a question';
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 pb-3">
+    <div className="mx-auto w-full max-w-[786px] px-6 pb-3">
       {!s && <NewSessionChips />}
       {/* The pet walks on whatever is topmost: the PR bar when shown, else the input box. */}
       <div className="relative">
