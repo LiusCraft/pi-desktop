@@ -1416,7 +1416,8 @@ export class SessionHub {
   async changes(id: string): Promise<ChangeSet> {
     const m = this.meta(id);
     // Session-base diff for the Diff panel, plus live working-tree state for the branch bar.
-    const [files, state] = await Promise.all([git.changes(m.cwd, m.baseCommit), git.workState(m.cwd)]);
+    const base = await git.diffBase(m.cwd, m.baseCommit, m.baseBranch);
+    const [files, state] = await Promise.all([git.changes(m.cwd, base), git.workState(m.cwd)]);
     return { files, state };
   }
   async prStatus(id: string) {
@@ -1562,10 +1563,16 @@ export class SessionHub {
     if (!info) throw new Error('Not a pi session file');
     const root = await git.repoRoot(info.cwd);
     const branch = root ? await git.currentBranch(root) : null;
+    let baseBranch = branch;
+    let baseCommit = root ? await git.head(root) : null;
+    // On a feature branch the earlier work is what the diff should show: measure from where it left the default branch.
+    const trunk = root && branch && branch !== 'HEAD' ? await git.defaultBranch(root) : null;
+    const fork = trunk && trunk !== branch ? await git.mergeBase(root!, trunk) : null;
+    if (trunk && fork) { baseBranch = trunk; baseCommit = fork; }
     const meta: SessionMeta = {
       id: crypto.randomUUID(), kind: 'code', ...this.titleState(info.name || info.firstPrompt?.slice(0, 60) || 'Imported session', false, 'Imported session'),
-      projectPath: info.cwd, cwd: info.cwd, branch, baseBranch: branch,
-      baseCommit: root ? await git.head(root) : null, worktree: false, mode: 'auto', outputStyle: 'default', sessionFile: file,
+      projectPath: info.cwd, cwd: info.cwd, branch, baseBranch,
+      baseCommit, worktree: false, mode: 'auto', outputStyle: 'default', sessionFile: file,
       createdAt: info.mtime, updatedAt: info.mtime, pr: null, imported: true,
     };
     this.metas.unshift(meta);

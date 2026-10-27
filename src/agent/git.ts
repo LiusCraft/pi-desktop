@@ -76,6 +76,14 @@ export async function mergeBase(cwd: string, other: string) {
   return out ? out.trim() : null;
 }
 
+/** The repository's default branch: what origin points at, else a main/master that exists. */
+export async function defaultBranch(dir: string) {
+  const origin = (await gitSafe(dir, 'symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'))?.trim();
+  if (origin && (await resolveRef(dir, origin))) return origin;
+  for (const name of ['main', 'master', 'origin/main', 'origin/master']) if (await resolveRef(dir, name)) return name;
+  return null;
+}
+
 /** Commits `ref` has that no remote branch and not `base` has: work that would be lost with the branch. */
 export async function unpushedCommits(cwd: string, ref: string, base: string | null) {
   const out = await gitSafe(cwd, 'rev-list', '--count', ref, '--not', '--remotes', ...(base ? [base] : []));
@@ -94,9 +102,25 @@ export async function deleteBranch(repo: string, branch: string, base: string | 
   return (await gitSafe(repo, 'branch', '-D', branch)) !== null;
 }
 
-/** Files changed in `cwd` relative to `base` (a commit), including untracked files. */
+/**
+ * The commit the session's changes are measured from: where HEAD left `baseBranch` (so a base that moved on,
+ * or was merged into the branch, does not leak its own commits into the diff). Falls back to the recorded
+ * `base` when there is no distinct base branch to compare with.
+ */
+export async function diffBase(cwd: string, base: string | null, baseBranch: string | null): Promise<string | null> {
+  if (baseBranch && baseBranch !== (await currentBranch(cwd))) {
+    const fork = (await resolveRef(cwd, baseBranch)) && (await mergeBase(cwd, baseBranch));
+    if (fork) return fork;
+  }
+  return base;
+}
+
+/** Files changed in the working tree relative to `base` (a commit), including untracked files. */
 export async function changes(cwd: string, base: string | null): Promise<FileChange[]> {
-  if (!base || !(await repoRoot(cwd))) return [];
+  const root = base ? await repoRoot(cwd) : null;
+  if (!base || !root) return [];
+  // Git reports paths from the repository root; resolve everything there, not from a sub-folder.
+  cwd = root;
   const files = new Map<string, string>();
   const status = (await gitSafe(cwd, 'diff', '--name-status', '-z', '--no-renames', base)) || '';
   const parts = status.split('\0').filter(Boolean);
