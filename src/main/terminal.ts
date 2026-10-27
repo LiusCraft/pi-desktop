@@ -149,6 +149,12 @@ export class Terminals {
     if (!t.exited) try { t.proc.kill(); } catch {}
   }
 
+  /** A deleted session leaves no shell behind. */
+  closeSession(sessionId: string) {
+    for (const t of this.list(sessionId)) this.close(t.id);
+    this.counter.delete(sessionId);
+  }
+
   closeAll() {
     for (const id of [...this.terms.keys()]) this.close(id);
   }

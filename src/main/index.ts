@@ -496,7 +496,11 @@ function registerIpc() {
     ipcMain.handle(channel, (_e, ...args) => fn(...args));
   }
   for (const channel of HOST_CHANNELS) {
-    ipcMain.handle(channel, (_e, ...args) => agent.call(channel, ...args));
+    ipcMain.handle(channel, (_e, ...args) => {
+      // Shells go first: one sitting in the session's worktree would keep it from being deleted.
+      if (channel === 'sessions:remove') terminals.closeSession(String(args[0]));
+      return agent.call(channel, ...args);
+    });
   }
 }
 
