@@ -30,6 +30,9 @@
     "publish:win": "npm run build && electron-builder --win nsis --publish always",
     "dist": "npm run build && electron-builder"
   },
+  "overrides": {
+    "@pierre/theming": "1.0.2"
+  },
   "dependencies": {
     "@earendil-works/pi-ai": "1.4.0",
     "@earendil-works/pi-coding-agent": "1.4.0",
