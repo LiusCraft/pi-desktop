@@ -14,6 +14,7 @@ import { openDiffPanel, openPrComments, send, sessionDraftKey, setPrAuto } from 
 import { updateSession } from '@/store/app';
 import { drafts } from '@/store/drafts';
 import type { SessionView } from '@/store/types';
+import { forgeName, forgeWords } from '@shared/forge';
 import { gitActions, type GitAction, type GitActionItem } from './pr-actions';
 import { fmtLines, prBadge, prCiLine, prRepo, prSize, type PrBadge, type PrLike, type PrTone } from '@shared/pr-status';
 
@@ -39,7 +40,7 @@ export function PrBar({ s }: { s: SessionView }) {
   const id = s.meta.id;
   const st = s.gitState;
   const pr = s.pr;
-  const { actions, primary } = gitActions({ branch: s.meta.branch, baseBranch: s.meta.baseBranch, st, pr });
+  const { actions, primary } = gitActions({ branch: s.meta.branch, baseBranch: s.meta.baseBranch, st, pr, forge: pr?.forge ?? st?.forge });
   const current = actions.find((a) => a.act === primary);
   const ask = (text: string) => {
     drafts.setText(sessionDraftKey(id), text);
@@ -189,7 +190,7 @@ function CiPanel({ s, pr, open, ask }: { s: SessionView; pr: PrLike; open: () =>
       <PopoverContent side="top" align="end" sideOffset={8} className="w-72 p-0">
         <div className="flex items-center gap-2 border-b px-3 py-2">
           <span className="text-[11.5px] font-medium">CI monitoring</span>
-          <button className="ml-auto rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="Open checks on GitHub" onClick={open}>
+          <button className="ml-auto rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title={`Open checks on ${forgeName(pr.forge)}`} onClick={open}>
             <SquareArrowOutUpRightIcon className="size-3.5" />
           </button>
         </div>
@@ -204,7 +205,7 @@ function CiPanel({ s, pr, open, ask }: { s: SessionView; pr: PrLike; open: () =>
                 <div key={c.n} className="flex items-center gap-2 py-0.5 text-[11.5px]">
                   <span className={cn('size-1.5 shrink-0 rounded-full', DOT[c.st])} />
                   {c.url ? (
-                    <button className="min-w-0 truncate text-left hover:text-foreground hover:underline" title={`在 GitHub 打开 ${c.n}`} onClick={() => call('app:openExternal', c.url!)}>{c.n}</button>
+                    <button className="min-w-0 truncate text-left hover:text-foreground hover:underline" title={`在 ${forgeName(pr.forge)} 打开 ${c.n}`} onClick={() => call('app:openExternal', c.url!)}>{c.n}</button>
                   ) : (
                     <span className="min-w-0 truncate" title={c.n}>{c.n}</span>
                   )}
@@ -229,7 +230,7 @@ function CiPanel({ s, pr, open, ask }: { s: SessionView; pr: PrLike; open: () =>
             <div className="border-t" />
             <button
               className="w-full px-3 py-2 text-left text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              onClick={() => ask(`用 gh pr checks ${pr.num} 和 gh run view --log-failed 读出 PR #${pr.num} 的失败原因，修好代码后提交并推送；未解决的评审意见一并处理，直到检查不再失败。`)}
+              onClick={() => ask(`用 ${forgeWords(pr.forge).checks(pr.num)} 读出 PR #${pr.num} 的失败原因，修好代码后提交并推送；未解决的评审意见一并处理，直到检查不再失败。`)}
             >
               让 Pi 现在处理这一次
             </button>

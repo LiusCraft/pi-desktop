@@ -63,7 +63,7 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 | `src/agent/models-dev.ts` | models.dev 目录（按天缓存）：按模型 ID / canonical ID 匹配上下文、输出上限和价格 |
 | `src/agent/scheduler.ts` / `src/shared/schedule.ts` | 定时任务：任务存储与调度循环（host 内）；计划类型、cron 解析、下次运行时间（host 与界面共用的纯函数） |
 | `src/agent/customize.ts` / `src/agent/agents.ts` | Customize 页后端（技能 / MCP / 插件 / 提示模板读写 pi 自己的文件）；子 agent 身份加载 |
-| `src/agent/pr-watch.ts` | host 内的 PR watcher（轮询 `gh pr view`，必要时起 turn） |
+| `src/agent/pr-watch.ts` | host 内的 PR watcher（轮询 `gh pr view` / `glab mr view`，必要时起 turn） |
 | `src/agent/naming.ts` / `src/agent/suggest.ts` | 后台小请求：会话命名与下一句输入预测（`completeSimple`，不进会话上下文） |
 | `src/agent/side-model.ts` | 给后台请求挑同 provider 里最便宜的小模型 |
 | `src/agent/demo-model.ts` | 离线演示模型：pi-ai 的 faux provider 注册到共享的 `ModelRuntime`，按脚本调用 pi 的**真实工具** |
@@ -158,7 +158,7 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 
 Code 会话输入框上方的 PR 条报告当前分支的 PR：状态颜色、`+2,504 −132` 这样的改动规模、评审意见数，以及一个 CI 圆点（未开 PR 时这里显示工作区里待提交的改动）。点编号在 GitHub 打开 PR。
 
-悬停编号会展开一张卡片：`Merge conflicts` / `Draft` / `Checks failing` / `Ready to merge` 这类状态、PR 标题、作者、改动行数和文件数、最近更新时间。数据来自 `gh pr view`，token 读不到的字段就不显示，条本身照常工作。
+悬停编号会展开一张卡片：`Merge conflicts` / `Draft` / `Checks failing` / `Ready to merge` 这类状态、PR 标题、作者、改动行数和文件数、最近更新时间。数据来自 `gh pr view`（GitLab 仓库用 `glab mr view` 和 `glab api`，Merge Request 在这里同样叫 PR；未解决的讨论按「Changes requested」处理，没有行数统计），token 读不到的字段就不显示，条本身照常工作。
 
 点 **CI** 打开检查面板：逐条列出每个检查的结果（点名字直接打开那一条的日志），一行说明是全部通过、几个在跑还是几个失败，右上角通往 GitHub 的 checks 页。面板底部两个开关保存在会话里，重启后仍然有效：
 
@@ -331,7 +331,7 @@ xattr -cr /Applications/Pi\ Desktop.app   # 只在你自己确认过来源的情
 - Work 还没接日历、邮箱这类连接器；可以通过 pi 的 MCP（`~/.pi/agent/mcp.json`）或扩展接入。
 - **Cloud 环境**还没实现，菜单里是禁用状态。
 - pi 的 `find` 工具依赖 `fd`，pi 会自动下载；在离线环境下这一项会失败（`grep` 用系统里的 `rg`）。
-- **PR / CI 状态**依赖 `gh` CLI 已登录。
+- **PR / CI 状态**依赖 `gh`（GitHub）或 `glab`（GitLab，含自建实例）CLI 已登录。按 `origin` 的域名判断用哪个；域名里没有 github/gitlab 字样的自建主机会依次尝试两者。
 - **预览**面板只允许 `localhost` 地址。
 - React 重写版已在 Windows 11 上用真实窗口跑通离线 demo（Code 修 bug + Diff 面板、Work 整理收件箱 + 权限确认），并加载了用户自己的 pi 扩展；macOS 打包版尚未在重写后重新验证。旧版的 Playwright 界面测试（`test/ui-*.js`）随旧界面一起移除，界面自动化测试待补。
 - 没有自动更新：升级靠重新下载 dmg。要接 `electron-updater` 得再产一个 `zip` target（dmg 不能做增量更新），并加一个设置项。

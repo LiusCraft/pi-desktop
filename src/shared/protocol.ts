@@ -6,6 +6,7 @@
 // forwarded unchanged to the agent host; the rest are handled by the main process.
 // Host → renderer traffic is a single stream of `HostEvent`s.
 import type { Attachment, DecodedUserContent, PromptSubmission } from './attachments';
+import type { Forge } from './forge';
 import type { ScheduledTask, TaskDraft } from './schedule';
 
 export type SessionKind = 'code' | 'work';
@@ -37,7 +38,9 @@ export interface PrStatus extends PrSummary {
   additions?: number;
   deletions?: number;
   files?: number;
-  /** GitHub's verdict on merging this branch; 'conflicting' is the one the card calls out. */
+  /** Which host reported it (a GitLab merge request is a PR here); decides the CLI the prompts name. */
+  forge?: Forge;
+  /** The host's verdict on merging this branch; 'conflicting' is the one the card calls out. */
   mergeable?: 'clean' | 'conflicting' | 'unknown';
   /** Review state, so the bar can address a change request without waiting for CI to fail. */
   review?: 'approved' | 'changes' | 'required';
@@ -427,6 +430,8 @@ export interface GitState {
   ahead: number;
   /** Upstream ref, or null when the branch tracks nothing yet. */
   upstream: string | null;
+  /** The code host `origin` points at, when its name says so. */
+  forge?: Forge;
 }
 
 /** Everything the Diff panel and branch bar need, in one round trip. */

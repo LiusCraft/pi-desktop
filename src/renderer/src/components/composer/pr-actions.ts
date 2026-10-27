@@ -1,5 +1,6 @@
 // What the branch bar can do next — PR, commit, push — and which one its main button runs.
-// Each action becomes a prompt: the agent runs git/gh, the bar only decides what to ask for.
+// Each action becomes a prompt: the agent runs git/gh/glab, the bar only decides what to ask for.
+import { forgeWords, type Forge } from '@shared/forge';
 import type { GitState, PrSummary } from '@shared/protocol';
 
 export type GitAction = 'pr' | 'commit' | 'push';
@@ -17,15 +18,18 @@ export interface BranchWork {
   baseBranch: string | null;
   /** Live working-tree state; null before the first refresh. */
   st: GitState | null;
-  /** This branch's PR, as `gh` reported it. */
+  /** This branch's PR, as `gh` / `glab` reported it. */
   pr: Pick<PrSummary, 'num' | 'state'> | null;
+  /** The code host, when known: decides gh or glab in the prompts. */
+  forge?: Forge | null;
 }
 
 /**
  * The three ways to send the branch's work, plus the one the bar offers by default.
  * `primary` is null when the branch owes nothing — the bar then reports status only.
  */
-export function gitActions({ branch, baseBranch, st, pr }: BranchWork): { actions: GitActionItem[]; primary: GitAction | null } {
+export function gitActions({ branch, baseBranch, st, pr, forge }: BranchWork): { actions: GitActionItem[]; primary: GitAction | null } {
+  const w = forgeWords(forge);
   const onBase = !baseBranch || branch === baseBranch;
   const dirty = st?.dirty.length ?? 0;
   const ahead = st?.ahead ?? 0;
@@ -44,18 +48,18 @@ export function gitActions({ branch, baseBranch, st, pr }: BranchWork): { action
   if (pr && open) {
     prLabel = 'Update PR';
     prHint = `${dirty > 0 ? '提交、' : ''}推送并更新 PR #${pr.num}`;
-    prPrompt = `${commitFirst}把分支 ${branch} 推送到 origin，让 PR #${pr.num} 带上这些新提交；PR 标题或描述需要同步就用 gh pr edit 更新，最后告诉我 PR 链接。`;
+    prPrompt = `${commitFirst}把分支 ${branch} 推送到 origin，让 PR #${pr.num} 带上这些新提交；PR 标题或描述需要同步就用 ${w.edit} 更新，最后告诉我 PR 链接。`;
   } else if (pr) {
     prLabel = 'New PR';
     prHint = `PR #${pr.num} 已${pr.state === 'merged' ? '合入' : '关闭'}，重新提一个`;
-    prPrompt = `PR #${pr.num} 已经${pr.state === 'merged' ? '合入' : '关闭'}：${commitFirst}从当前分支创建新分支并推送，然后用 gh pr create 创建新的 PR${target}，最后告诉我 PR 链接。`;
+    prPrompt = `PR #${pr.num} 已经${pr.state === 'merged' ? '合入' : '关闭'}：${commitFirst}从当前分支创建新分支并推送，然后用 ${w.create} 创建新的 PR${target}，最后告诉我 PR 链接。`;
   } else if (onBase) {
     prHint = dirty > 0 ? '新建分支后提交并提 PR' : '新建分支后提 PR';
     prPrompt = dirty > 0
-      ? `当前在 ${baseBranch} 上，不要直接往它提交：基于当前改动建一个功能分支，在新分支上提交并推送，然后用 gh pr create 创建 PR${target}，最后告诉我 PR 链接。`
-      : `当前在 ${baseBranch} 上：创建一个包含当前提交的功能分支并推送到 origin，然后用 gh pr create 从该分支创建 PR${target}，最后告诉我 PR 链接。`;
+      ? `当前在 ${baseBranch} 上，不要直接往它提交：基于当前改动建一个功能分支，在新分支上提交并推送，然后用 ${w.create} 创建 PR${target}，最后告诉我 PR 链接。`
+      : `当前在 ${baseBranch} 上：创建一个包含当前提交的功能分支并推送到 origin，然后用 ${w.create} 从该分支创建 PR${target}，最后告诉我 PR 链接。`;
   } else {
-    prPrompt = `${commitFirst}把分支 ${branch} 推送到 origin，然后用 gh pr create 创建 PR${target}，最后告诉我 PR 链接。`;
+    prPrompt = `${commitFirst}把分支 ${branch} 推送到 origin，然后用 ${w.create} 创建 PR${target}，最后告诉我 PR 链接。`;
   }
   const actions: GitActionItem[] = [
     // With a PR already open, a fresh one only makes sense once there is something new to put in it.
