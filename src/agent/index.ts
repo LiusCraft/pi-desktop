@@ -92,6 +92,7 @@ const handlers: Record<HostMethod, Handler> = {
   'sessions:importable': withHub((h, dir) => h.importable(dir)),
   'sessions:import': withHub((h, file) => h.importSession(file)),
   'git:branch': (dir) => git.currentBranch(dir),
+  'git:branches': (dir) => git.branches(dir),
   'agents:list': withHub((h) => h.agentCatalog()),
   'agents:tools': withHub((h) => h.toolOptions()),
   'agents:save': withHub((h, draft) => h.saveAgent(draft)),

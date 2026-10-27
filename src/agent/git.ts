@@ -32,6 +32,20 @@ export async function currentBranch(dir: string) {
   return out ? out.trim() : null;
 }
 
+/** Local branches first, then remote-tracking ones (without the remote's HEAD alias). */
+export async function branches(dir: string) {
+  const out = await gitSafe(dir, 'for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes');
+  const refs = (out ?? '').split('\n').map((x) => x.trim()).filter(Boolean);
+  const local = refs.filter((r) => r.startsWith('refs/heads/')).map((r) => r.slice('refs/heads/'.length));
+  const remote = refs.filter((r) => r.startsWith('refs/remotes/') && !r.endsWith('/HEAD')).map((r) => r.slice('refs/remotes/'.length));
+  return [...local, ...remote.filter((r) => !local.includes(r.slice(r.indexOf('/') + 1)))];
+}
+/** The commit a branch or ref points at, or null when it does not exist. */
+export async function resolveRef(dir: string, ref: string) {
+  const out = await gitSafe(dir, 'rev-parse', '--verify', '--quiet', `${ref}^{commit}`);
+  return out ? out.trim() : null;
+}
+
 export async function addWorktree(repo: string, dest: string, branch: string, base = 'HEAD') {
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   await git(repo, 'worktree', 'add', '-b', branch, dest, base);

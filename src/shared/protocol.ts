@@ -105,6 +105,8 @@ export interface CreateSessionOptions {
   outputStyle?: OutputStyle;
   /** Code: use this existing worktree of the project instead of creating one. */
   adoptPath?: string;
+  /** Code: the branch (or ref) the new worktree starts from; the project's current HEAD when omitted. */
+  baseRef?: string;
   parentId?: string;
 }
 
@@ -738,6 +740,7 @@ export interface Api {
   'sessions:stopTask'(id: string, toolCallId: string): boolean;
   'sessions:importable'(projectPath: string): ImportableSession[];
   'git:branch'(dir: string): string | null;
+  'git:branches'(dir: string): string[];
   'sessions:import'(file: string): SessionMeta;
   'agents:list'(): AgentCatalog;
   /** Tools worth suggesting in an allowlist: the built-ins plus whatever open sessions have loaded (MCP included). */
@@ -788,7 +791,7 @@ export const HOST_CHANNELS = [
   'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:bash',
   'sessions:changes', 'sessions:pr', 'sessions:files', 'sessions:readFile', 'sessions:readImage',
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
-  'sessions:import', 'git:branch', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove',
+  'sessions:import', 'git:branch', 'git:branches', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove',
   'customize:list', 'customize:readFile', 'customize:skillSetDisabled', 'customize:skillCreate', 'customize:connectorSave',
   'customize:connectorSetEnabled', 'customize:connectorRemove', 'customize:pluginInstall', 'customize:pluginRemove', 'customize:pluginUpdate',
   'tasks:list', 'tasks:save', 'tasks:setEnabled', 'tasks:remove', 'tasks:run',

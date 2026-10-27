@@ -267,7 +267,7 @@ export class SessionHub {
       let baseCommit = headCommit;
       let cwd = projectPath;
       let branch = root ? await git.currentBranch(root) : null;
-      const baseBranch = branch;
+      let baseBranch = branch;
       let external = false;
       let worktreeSetup: SessionMeta['worktreeSetup'];
       if (root && headCommit && opts.adoptPath) {
@@ -279,10 +279,16 @@ export class SessionHub {
         external = true;
       } else if (root && headCommit && opts.worktree !== false) {
         branch = `claude/${slug}`;
+        if (opts.baseRef) {
+          const from = await git.resolveRef(root, opts.baseRef);
+          if (!from) throw new Error(`Branch not found: ${opts.baseRef}`);
+          baseCommit = from;
+          baseBranch = opts.baseRef;
+        }
         // The root is configurable in Settings; existing sessions keep their recorded cwd.
         cwd = path.join(this.worktreeRoot(), `${path.basename(root)}-${slug}`);
         // git is slow here: the first start makes the worktree, so creating the session returns at once.
-        worktreeSetup = { root, base: headCommit };
+        worktreeSetup = { root, base: baseCommit ?? headCommit };
       }
       meta = {
         ...base, kind: 'code', ...this.titleState(opts.title, opts.autoName, 'New session'),

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ArrowUpIcon, CircleStopIcon, CornerDownLeftIcon, FolderIcon, FolderPlusIcon, GitBranchIcon, InfoIcon, LaptopIcon, PlusIcon, XIcon } from 'lucide-react';
+import { ArrowUpIcon, ChevronDownIcon, CircleStopIcon, CornerDownLeftIcon, FolderIcon, FolderPlusIcon, GitBranchIcon, InfoIcon, LaptopIcon, PlusIcon, XIcon } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -36,6 +36,8 @@ function NewSessionChips() {
   const project = useApp((st) => st.prefs.project);
   const worktree = useApp((st) => st.prefs.worktree);
   const branch = useApp((st) => st.projectBranch);
+  const branches = useApp((st) => st.projectBranches);
+  const baseRef = useApp((st) => st.baseRef);
   const adopt = useApp((st) => (st.adopt && st.adopt.mainRoot === st.prefs.project ? st.adopt : null));
   return (
     <div className="mb-2.5 flex flex-wrap items-center gap-2">
@@ -80,10 +82,33 @@ function NewSessionChips() {
       )}
       {project && !adopt && (
         <div className="flex h-8 items-center rounded-lg bg-muted/80 text-sm text-foreground/85">
-          <span className="flex items-center gap-1.5 pr-2 pl-2.5" title={branch ? `Current branch: ${branch}` : 'Not a git repository'}>
-            <GitBranchIcon className="size-4 shrink-0" />
-            <span className="max-w-32 truncate">{branch ?? 'no git'}</span>
-          </span>
+          {branch && worktree ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex h-full items-center gap-1.5 rounded-l-lg pr-2 pl-2.5 hover:bg-accent data-[state=open]:bg-accent" title={`新 worktree 基于：${baseRef ?? branch}`}>
+                  <GitBranchIcon className="size-4 shrink-0" />
+                  <span className="max-w-32 truncate">{baseRef ?? branch}</span>
+                  <ChevronDownIcon className="size-3 text-muted-foreground" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="top" className="max-h-80 w-64 overflow-y-auto">
+                <DropdownMenuLabel className="text-xs text-muted-foreground">基于哪个分支创建 worktree</DropdownMenuLabel>
+                <DropdownMenuItem onSelect={() => setApp((st) => void (st.baseRef = null))} className={cn(!baseRef && 'font-medium')}>
+                  <GitBranchIcon className="size-3.5" /><span className="truncate">{branch}</span><span className="ml-auto text-xs text-muted-foreground">当前</span>
+                </DropdownMenuItem>
+                {branches.filter((b) => b !== branch).map((b) => (
+                  <DropdownMenuItem key={b} onSelect={() => setApp((st) => void (st.baseRef = b))} className={cn(b === baseRef && 'font-medium')}>
+                    <GitBranchIcon className="size-3.5" /><span className="truncate">{b}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <span className="flex items-center gap-1.5 pr-2 pl-2.5" title={branch ? `Current branch: ${branch}` : 'Not a git repository'}>
+              <GitBranchIcon className="size-4 shrink-0" />
+              <span className="max-w-32 truncate">{branch ?? 'no git'}</span>
+            </span>
+          )}
           {branch && (
             <>
               <span className="h-3.5 w-px bg-border" />

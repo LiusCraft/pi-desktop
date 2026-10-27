@@ -423,6 +423,7 @@ async function createSession(firstPrompt: string, draftKey: string) {
     projectPath: work ? st.prefs.workFolder || null : st.prefs.project,
     worktree: !work && st.prefs.worktree,
     adoptPath: !work && st.adopt && st.adopt.mainRoot === st.prefs.project ? st.adopt.path : undefined,
+    baseRef: !work && st.prefs.worktree && st.baseRef && st.baseRef !== st.projectBranch ? st.baseRef : undefined,
     title: firstPrompt.replace(/@\S+/g, '').trim().slice(0, 60) || 'New session',
     autoName: true,
     model: st.prefs.model,
@@ -442,6 +443,7 @@ async function createSession(firstPrompt: string, draftKey: string) {
       { id: 'agent', label: '启动 Agent，加载扩展与工具', state: meta.worktreeSetup ? 'pending' : 'running' },
     ];
     x.adopt = null;
+    x.baseRef = null;
   });
   const active = useDrafts.getState().active === draftKey;
   drafts.rekey(draftKey, sessionDraftKey(meta.id));
@@ -923,6 +925,7 @@ export async function runTerminal(id: string, cmd: string) {
 // ------------------------------------------------------------ projects and folders
 
 export function selectProject(path: string) {
+  if (getApp().prefs.project !== path) setApp((st) => void (st.baseRef = null));
   setPref('project', path);
   // An adopted worktree belongs to the project it came with.
   if (getApp().adopt && getApp().adopt!.mainRoot !== path) setApp((st) => void (st.adopt = null));
@@ -1026,11 +1029,18 @@ export async function dismissSuggested(sid: string, item: { toolCallId: string }
 
 export async function refreshImportable() {
   const project = getApp().prefs.project;
-  if (!project || getApp().view !== 'code') return setApp((st) => void ((st.importable = []), (st.projectBranch = null)));
-  const [list, branch] = await Promise.all([call('sessions:importable', project).catch(() => []), call('git:branch', project).catch(() => null)]);
+  if (!project || getApp().view !== 'code') return setApp((st) => void ((st.importable = []), (st.projectBranch = null), (st.projectBranches = []), (st.baseRef = null)));
+  const [list, branch, branches] = await Promise.all([
+    call('sessions:importable', project).catch(() => []),
+    call('git:branch', project).catch(() => null),
+    call('git:branches', project).catch(() => [] as string[]),
+  ]);
   setApp((st) => {
     st.importable = list;
     st.projectBranch = branch && branch !== 'HEAD' ? branch : null;
+    st.projectBranches = branches;
+    // A choice made for another project (or a branch that is gone) does not carry over.
+    if (st.baseRef && !branches.includes(st.baseRef)) st.baseRef = null;
   });
 }
 
