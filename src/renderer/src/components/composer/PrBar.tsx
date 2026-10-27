@@ -31,6 +31,12 @@ const TONE: Record<PrTone, string> = {
   merged: 'bg-[#8957e5]/15 text-[#8957e5]',
   closed: 'bg-destructive/15 text-destructive',
 };
+/** The bar itself takes on the colour of the states that matter most; the rest stay neutral. */
+const BAR_TONE: Partial<Record<PrTone, string>> = {
+  merged: 'border-[#8957e5]/40 bg-[#8957e5]/10 hover:bg-[#8957e5]/15',
+  conflict: 'border-warning/40 bg-warning/10 hover:bg-warning/15',
+  closed: 'border-destructive/30 bg-destructive/5 hover:bg-destructive/10',
+};
 const STATE_COLOR: Record<string, string> = { open: 'text-success', merged: 'text-[#8957e5]', closed: 'text-destructive' };
 const CHECK_LABEL: Record<string, string> = { pass: 'passed', fail: 'failed', pending: 'running' };
 
@@ -94,7 +100,7 @@ export function PrBar({ s }: { s: SessionView }) {
   const color = pr.draft ? 'text-muted-foreground' : STATE_COLOR[pr.state] ?? 'text-muted-foreground';
   const Icon = pr.state === 'merged' ? GitMergeIcon : GitPullRequestIcon;
   return (
-    <div className="group/pr mb-2 flex items-center gap-2 rounded-lg border bg-card/60 px-2.5 py-1.5 text-xs transition-colors hover:bg-card">
+    <div className={cn('group/pr mb-2 flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors', BAR_TONE[badge.tone] ?? 'bg-card/60 hover:bg-card')}>
       <div className="flex min-w-0 items-center gap-1.5">
         <Tooltip>
           <TooltipTrigger asChild>
@@ -123,8 +129,20 @@ export function PrBar({ s }: { s: SessionView }) {
           <MessageSquareIcon className="size-3.5" />{pr.comments}
         </button>
       )}
+      {badge.tone === 'conflict' && (
+        <Button
+          size="xs"
+          variant="outline"
+          className="h-6 shrink-0 gap-1 border-warning/50 px-2 text-xs text-warning hover:text-warning"
+          disabled={s.running}
+          title="Let Pi merge the base branch in and resolve the conflicts"
+          onClick={() => ask(`PR #${pr.num} 与 ${s.meta.baseBranch ?? '目标分支'} 存在合并冲突。把最新的 ${s.meta.baseBranch ?? '目标分支'} 合并进当前分支，逐个解决冲突并确认构建/测试通过，然后提交并推送。`)}
+        >
+          <TriangleAlertIcon className="size-3" />Fix conflicts
+        </Button>
+      )}
       <CiPanel s={s} pr={pr} open={open} ask={ask} />
-      {current && <SplitButton s={s} current={current} actions={actions} primary={primary} run={ask} />}
+      {current &&<SplitButton s={s} current={current} actions={actions} primary={primary} run={ask} />}
       {hide}
     </div>
   );
