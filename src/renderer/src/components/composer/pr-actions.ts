@@ -1,5 +1,6 @@
 // What the branch bar can do next — PR, commit, push — and which one its main button runs.
 // Each action becomes a prompt: the agent runs git/gh/glab, the bar only decides what to ask for.
+import type { BuiltinCommand } from '@shared/command-message';
 import { forgeWords, type Forge } from '@shared/forge';
 import type { GitState, PrSummary } from '@shared/protocol';
 
@@ -9,6 +10,7 @@ export interface GitActionItem {
   act: GitAction;
   label: string;
   hint: string;
+  command: BuiltinCommand;
   prompt: string;
   enabled: boolean;
 }
@@ -44,13 +46,16 @@ export function gitActions({ branch, baseBranch, st, pr, forge }: BranchWork): {
   const commitFirst = dirty > 0 ? '提交当前所有改动（写一个清晰的 commit message），' : '';
   let prLabel = 'Create PR';
   let prHint = '提交、推送并创建 PR';
+  let prCommand: BuiltinCommand = 'create-pr';
   let prPrompt: string;
   if (pr && open) {
     prLabel = 'Update PR';
+    prCommand = 'update-pr';
     prHint = `${dirty > 0 ? '提交、' : ''}推送并更新 PR #${pr.num}`;
     prPrompt = `${commitFirst}把分支 ${branch} 推送到 origin，让 PR #${pr.num} 带上这些新提交；PR 标题或描述需要同步就用 ${w.edit} 更新，最后告诉我 PR 链接。`;
   } else if (pr) {
     prLabel = 'New PR';
+    prCommand = 'new-pr';
     prHint = `PR #${pr.num} 已${pr.state === 'merged' ? '合入' : '关闭'}，重新提一个`;
     prPrompt = `PR #${pr.num} 已经${pr.state === 'merged' ? '合入' : '关闭'}：${commitFirst}从当前分支创建新分支并推送，然后用 ${w.create} 创建新的 PR${target}，最后告诉我 PR 链接。`;
   } else if (onBase) {
@@ -63,9 +68,9 @@ export function gitActions({ branch, baseBranch, st, pr, forge }: BranchWork): {
   }
   const actions: GitActionItem[] = [
     // With a PR already open, a fresh one only makes sense once there is something new to put in it.
-    { act: 'pr', label: prLabel, hint: prHint, prompt: prPrompt, enabled: pr ? work : work || !onBase },
-    { act: 'commit', label: 'Commit', hint: dirty > 0 ? `提交 ${dirty} 个未提交的改动` : '没有需要提交的改动', prompt: commitPrompt, enabled: dirty > 0 },
-    { act: 'push', label: 'Push', hint: unpushed ? (ahead > 0 ? `推送 ${ahead} 个已提交的改动` : '首次推送这个分支') : '没有待推送的提交', prompt: pushPrompt, enabled: unpushed },
+    { act: 'pr', label: prLabel, hint: prHint, command: prCommand, prompt: prPrompt, enabled: pr ? work : work || !onBase },
+    { act: 'commit', label: 'Commit', hint: dirty > 0 ? `提交 ${dirty} 个未提交的改动` : '没有需要提交的改动', command: 'commit', prompt: commitPrompt, enabled: dirty > 0 },
+    { act: 'push', label: 'Push', hint: unpushed ? (ahead > 0 ? `推送 ${ahead} 个已提交的改动` : '首次推送这个分支') : '没有待推送的提交', command: 'push', prompt: pushPrompt, enabled: unpushed },
   ];
   // Submit the PR by default; on the base branch itself that would mean branching off, so
   // the default there is the smaller direct git step instead.

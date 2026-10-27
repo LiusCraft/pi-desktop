@@ -17,7 +17,8 @@ import type {
   AgentDraft, ConnectorDraft, SkillDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
   PrStatus, PrSummary, SessionCleanup, SessionMeta, SessionRemoval, SessionStats, SetupStep, Settings, SideChat, SpawnTask, SubagentProgress, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
 } from '@shared/protocol';
-import { decodePeerMessage, encodePeerMessage, isPeerMessage } from '@shared/peer-message';
+import { decodeCommandMessage, isCommandMessage } from '@shared/command-message';
+import { decodePeerMessage,encodePeerMessage, isPeerMessage } from '@shared/peer-message';
 import { decodePrEvent, encodePrEvent, isPrEvent } from '@shared/pr-event';
 import { appAgentsDir, appPetsDir, appWorkDir, appExtensionsDir, worktreeDir as resolveWorktreeDir } from './app-paths';
 import { validatePromptPayload } from './attachments';
@@ -868,7 +869,7 @@ export class SessionHub {
   private maybeNameFromPrompt(id: string, message: string) {
     const m = this.meta(id);
     const text = message.trim();
-    if (!m.autoName || m.titleLocked || m.nameAttempted || !text || text.startsWith('/') || isPeerMessage(text) || isPrEvent(text)) return;
+    if (!m.autoName || m.titleLocked || m.nameAttempted || !text || text.startsWith('/') || isPeerMessage(text) || isPrEvent(text) || isCommandMessage(text)) return;
     const placeholder = naming.titleFromPrompt(text);
     if (!placeholder) return;
     m.nameAttempted = true;
@@ -1617,6 +1618,8 @@ export function readTranscript(file: string, limit: number): TranscriptLine[] {
         // A turn the PR watcher started reads as what happened, not as a wall of instructions.
         const event = decodePrEvent(text);
         if (event) text = `(PR #${event.num} · ${event.summary}) ${event.instruction ?? ''}`.trim();
+        const command = decodeCommandMessage(text);
+        if (command) text = `(/${command.name}) ${command.prompt}`;
       } else if (!text) {
         const tools = blocks.filter((b) => b.type === 'toolCall').map((b) => b.name);
         if (!tools.length) continue;

@@ -1,6 +1,7 @@
 import { memo, useState } from 'react';
-import { ArrowUpRightIcon, BookmarkIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CircleAlertIcon, GitForkIcon, GitMergeIcon, LightbulbIcon, LoaderCircleIcon, MessagesSquareIcon, RotateCcwIcon, XIcon } from 'lucide-react';
+import { ArrowUpRightIcon, BookmarkIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CircleAlertIcon, GitForkIcon, GitMergeIcon, LightbulbIcon, LoaderCircleIcon, MessagesSquareIcon, RotateCcwIcon, TerminalIcon, XIcon } from 'lucide-react';
 import { PLAN_CHOICES } from '@shared/protocol';
+import { BUILTIN_COMMAND_INFO, decodeCommandMessage, type CommandMessage } from '@shared/command-message';
 import { decodePeerMessage, type PeerMessage } from '@shared/peer-message';
 import * as previews from '@shared/tool-previews';
 import { Markdown } from '@/components/common/Markdown';
@@ -10,6 +11,7 @@ import { DiffRows, TermOutput, ToolPreviewView } from '@/components/common/CodeV
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Kbd } from '@/components/ui/kbd';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { call } from '@/lib/api';
@@ -32,6 +34,8 @@ export const UserItem = memo(function UserItem({ sid, item }: { sid: string; ite
   const busy = useApp((state) => !!(state.sessions[sid]?.running || state.sessions[sid]?.historyBusy || state.sessions[sid]?.pendingUser.length));
   const peer = decodePeerMessage(item.text);
   if (peer) return <PeerMessageCard peer={peer} />;
+  const command = decodeCommandMessage(item.text);
+  if (command) return <CommandMessageChip command={command} queued={item.queued} />;
   return (
     <div className={cn('flex flex-col items-end gap-1.5', item.queued && 'opacity-60')} title={item.queued ? '排队中：Pi Desktop 完成当前步骤后处理' : undefined}>
       <AttachmentTiles attachments={item.attachments} />
@@ -72,6 +76,28 @@ export const UserItem = memo(function UserItem({ sid, item }: { sid: string; ite
     </div>
   );
 });
+
+/** A button of Pi Desktop's own (Commit, Create PR, ...) shown as the command it ran; click to read the instruction it expanded to. */
+function CommandMessageChip({ command, queued }: { command: CommandMessage; queued?: boolean }) {
+  return (
+    <div className={cn('flex justify-end', queued && 'opacity-60')}>
+      <Popover>
+        <PopoverTrigger asChild>
+          <button className="flex items-center gap-1.5 rounded-2xl bg-user-bubble px-3.5 py-2 font-mono text-sm transition-colors hover:bg-accent data-[state=open]:bg-accent" title="查看这条命令展开后的内容">
+            <TerminalIcon className="size-3.5 text-muted-foreground" />/{command.name}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-96 p-0">
+          <div className="border-b px-3 py-2">
+            <div className="font-mono text-xs font-medium">/{command.name}</div>
+            <div className="text-xs text-muted-foreground">{BUILTIN_COMMAND_INFO[command.name]}</div>
+          </div>
+          <div data-selectable className="max-h-72 overflow-y-auto px-3 py-2 text-xs whitespace-pre-wrap break-words">{command.prompt}</div>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
 
 /** A message another session of the project sent: shown as theirs, with a way back to them. */
 function PeerMessageCard({ peer }: { peer: PeerMessage }) {

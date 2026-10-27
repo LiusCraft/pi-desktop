@@ -14,6 +14,7 @@ import { openDiffPanel, openPrComments, send, sessionDraftKey, setPrAuto } from 
 import { updateSession } from '@/store/app';
 import { drafts } from '@/store/drafts';
 import type { SessionView } from '@/store/types';
+import { encodeCommandMessage, type BuiltinCommand } from '@shared/command-message';
 import { forgeName, forgeWords } from '@shared/forge';
 import { gitActions, type GitAction, type GitActionItem } from './pr-actions';
 import { fmtLines, prBadge, prCiLine, prRepo, prSize, type PrBadge, type PrLike, type PrTone } from '@shared/pr-status';
@@ -48,8 +49,8 @@ export function PrBar({ s }: { s: SessionView }) {
   const pr = s.pr;
   const { actions, primary } = gitActions({ branch: s.meta.branch, baseBranch: s.meta.baseBranch, st, pr, forge: pr?.forge ?? st?.forge });
   const current = actions.find((a) => a.act === primary);
-  const ask = (text: string) => {
-    drafts.setText(sessionDraftKey(id), text);
+  const ask = (command: BuiltinCommand, text: string) => {
+    drafts.setText(sessionDraftKey(id), encodeCommandMessage(command, text));
     void send(false);
   };
   // Files already dirty before this session are not in `changes`; count those instead.
@@ -136,7 +137,7 @@ export function PrBar({ s }: { s: SessionView }) {
           className="h-6 shrink-0 gap-1 border-warning/50 px-2 text-xs text-warning hover:text-warning"
           disabled={s.running}
           title="Let Pi merge the base branch in and resolve the conflicts"
-          onClick={() => ask(`PR #${pr.num} 与 ${s.meta.baseBranch ?? '目标分支'} 存在合并冲突。把最新的 ${s.meta.baseBranch ?? '目标分支'} 合并进当前分支，逐个解决冲突并确认构建/测试通过，然后提交并推送。`)}
+          onClick={() => ask('fix-conflicts', `PR #${pr.num} 与 ${s.meta.baseBranch ?? '目标分支'} 存在合并冲突。把最新的 ${s.meta.baseBranch ?? '目标分支'} 合并进当前分支，逐个解决冲突并确认构建/测试通过，然后提交并推送。`)}
         >
           <TriangleAlertIcon className="size-3" />Fix conflicts
         </Button>
@@ -192,7 +193,7 @@ function Lines({ add, del, title, onClick }: { add: number; del: number; title?:
 }
 
 /** CI status in a chip, and the panel behind it: the checks themselves plus what the bar may do on its own. */
-function CiPanel({ s, pr, open, ask }: { s: SessionView; pr: PrLike; open: () => void; ask: (text: string) => void }) {
+function CiPanel({ s, pr, open, ask }: { s: SessionView; pr: PrLike; open: () => void; ask: (command: BuiltinCommand, text: string) => void }) {
   const checks = pr.checks ?? [];
   return (
     <Popover>
@@ -248,7 +249,7 @@ function CiPanel({ s, pr, open, ask }: { s: SessionView; pr: PrLike; open: () =>
             <div className="border-t" />
             <button
               className="w-full px-3 py-2 text-left text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              onClick={() => ask(`用 ${forgeWords(pr.forge).checks(pr.num)} 读出 PR #${pr.num} 的失败原因，修好代码后提交并推送；未解决的评审意见一并处理，直到检查不再失败。`)}
+              onClick={() => ask('fix-ci', `用 ${forgeWords(pr.forge).checks(pr.num)} 读出 PR #${pr.num} 的失败原因，修好代码后提交并推送；未解决的评审意见一并处理，直到检查不再失败。`)}
             >
               让 Pi 现在处理这一次
             </button>
@@ -270,12 +271,12 @@ function SplitButton({ s, current, actions, primary, run }: {
   current: GitActionItem;
   actions: GitActionItem[];
   primary: GitAction | null;
-  run: (text: string) => void;
+  run: (command: BuiltinCommand, text: string) => void;
 }) {
   const { branch, baseBranch } = s.meta;
   return (
     <div className="flex shrink-0">
-      <Button size="xs" variant="outline" className="h-6 rounded-r-none px-2 text-xs" disabled={s.running} title={current.hint} onClick={() => run(current.prompt)}>
+      <Button size="xs" variant="outline" className="h-6 rounded-r-none px-2 text-xs" disabled={s.running} title={current.hint} onClick={() => run(current.command, current.prompt)}>
         {current.label}
       </Button>
       <DropdownMenu>
@@ -292,7 +293,7 @@ function SplitButton({ s, current, actions, primary, run }: {
           {actions.map((a) => {
             const Icon = ACTION_ICON[a.act];
             return (
-              <DropdownMenuItem key={a.act} disabled={!a.enabled} onSelect={() => run(a.prompt)} className="items-start gap-2 py-1.5">
+              <DropdownMenuItem key={a.act} disabled={!a.enabled} onSelect={() => run(a.command, a.prompt)} className="items-start gap-2 py-1.5">
                 <CheckIcon className={cn('mt-0.5 size-3.5 shrink-0', a.act !== primary && 'invisible')} />
                 <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
                 <span className="min-w-0">
