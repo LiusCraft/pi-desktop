@@ -22,6 +22,7 @@ import { decodePeerMessage,encodePeerMessage, isPeerMessage } from '@shared/peer
 import { decodePrEvent, encodePrEvent, isPrEvent } from '@shared/pr-event';
 import { appAgentsDir, appPetsDir, appWorkDir, appExtensionsDir, worktreeDir as resolveWorktreeDir } from './app-paths';
 import { validatePromptPayload } from './attachments';
+import toolsPrompt from './tools-prompt.md?raw';
 import workPrompt from './work-prompt.md?raw';
 import { registerDemoModel } from './demo-model';
 import { applyChildPath } from './env';
@@ -434,7 +435,7 @@ export class SessionHub {
           ],
           // Pi Desktop's own extensions; pi's <agentDir>/extensions still load as before.
           additionalExtensionPaths: [appExtensionsDir(this.opts.dataDir)],
-          ...(m.kind === 'work' ? { appendSystemPrompt: [workPrompt] } : {}),
+          appendSystemPrompt: m.kind === 'work' ? [toolsPrompt, workPrompt] : [toolsPrompt],
         },
       });
       const created = await createAgentSessionFromServices({

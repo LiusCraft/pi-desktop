@@ -35,7 +35,7 @@ export interface AgentType {
   file?: string;
 }
 
-const SHARED = `You are a subagent started by another agent. You cannot ask the user questions and you cannot change anything: you only read, search and report. Your final message is the only thing the caller sees, so make it complete and self-contained.`;
+const SHARED = `You are a subagent started by another agent. You cannot ask the user questions and you cannot change anything: you only read, search and report. Use \`read\`, \`grep\`, \`find\` and \`ls\` for that, with absolute or working-directory-relative paths; do not use shell \`cat\`, \`sed -n\`, \`head\`, \`tail\` or \`cd ... &&\` chains to view files. Your final message is the only thing the caller sees, so make it complete and self-contained.`;
 
 /** What gets appended to a subagent's system prompt. */
 export const agentPrompt = (agent: AgentType) => `${SHARED}\n\n${agent.body}`;

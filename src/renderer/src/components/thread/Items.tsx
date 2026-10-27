@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { call } from '@/lib/api';
 import { ago, fmtTok } from '@/lib/format';
-import { bareName, groupStats, groupSummary, isFileTool, toolLabel, type ToolState } from '@/lib/tools';
+import { bareName, groupStats, groupSummary, isFileTool, toolLabel, toolScope, type ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
 import { useApp, updateSession } from '@/store/app';
 import { forgeName, forgeOfUrl } from '@shared/forge';
@@ -376,6 +376,7 @@ const ToolRow = memo(function ToolRow({ sid, tool }: { sid: string; tool: ToolSt
   const running = tool.status === 'running';
   const err = tool.status === 'err', denied = tool.status === 'denied';
   const [verb, subject] = splitLabel(tool);
+  const scope = toolScope(tool);
   const toggle = () => (tool.kind === 'agent' ? openAgent(sid, tool.id) : toggleTool(sid, tool.id));
   const extra = tool.kind === 'agent' && (
     <>
@@ -409,6 +410,7 @@ const ToolRow = memo(function ToolRow({ sid, tool }: { sid: string; tool: ToolSt
             {subject}
           </button>
         ) : <span className={cn('min-w-0 truncate text-foreground/90', err && 'text-destructive', denied && 'line-through')}>{subject}</span>)}
+        {scope && <span className="min-w-0 shrink truncate text-xs" title={scope}>{scope}</span>}
         {extra}
         <Stat add={tool.add} del={tool.del} />
         <Chevron open={tool.open && tool.kind !== 'agent'} />

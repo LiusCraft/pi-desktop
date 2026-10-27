@@ -66,6 +66,20 @@ export function toolLabel(t: ToolState) {
   }
 }
 
+/** Scope of a read / search call shown next to its label, e.g. "L100–220" or "in src/agent · *.ts". */
+export function toolScope(t: ToolState): string {
+  const a = t.args;
+  if (t.kind === 'read') {
+    const start = Number(a.offset) || 1;
+    const count = Number(a.limit);
+    if (count > 0) return `L${start}–${start + count - 1}`;
+    return a.offset ? `L${start}+` : '';
+  }
+  if (t.kind === 'grep') return [a.path && `in ${a.path}`, a.glob].filter(Boolean).join(' · ');
+  if (t.kind === 'glob') return a.path ? `in ${a.path}` : '';
+  return '';
+}
+
 /** "Ran 2 commands, read 3 files, edited a file". */
 export function groupSummary(tools: ToolState[]) {
   const c = { cmd: 0, fail: 0, read: new Set<string>(), edit: new Set<string>(), write: new Set<string>(), search: 0, agent: 0, other: 0 };
