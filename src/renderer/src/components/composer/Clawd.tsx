@@ -17,11 +17,19 @@ export function moodOf(s: SessionView | undefined): Mood {
     if (item.kind !== 'group') continue;
     const tool = item.tools.findLast((t) => t.status === 'running');
     if (!tool) break;
-    if (tool.kind === 'edit' || tool.kind === 'write') return 'typing';
-    if (tool.kind === 'read' || tool.kind === 'grep' || tool.kind === 'glob' || tool.kind === 'ls') return 'reading';
-    return 'running';
+    return toolMood(tool.kind);
   }
-  return s.statusText.startsWith('Responding') ? 'talking' : 'thinking';
+  if (s.statusText.startsWith('Responding')) return 'talking';
+  // A finished tool keeps its pose until the next thing (text, another tool) shows up.
+  const last = s.items.at(-1);
+  const lastTool = last?.kind === 'group' ? last.tools.at(-1) : undefined;
+  return lastTool ? toolMood(lastTool.kind) : 'thinking';
+}
+
+function toolMood(kind: string): Mood {
+  if (kind === 'edit' || kind === 'write') return 'typing';
+  if (kind === 'read' || kind === 'grep' || kind === 'glob' || kind === 'ls') return 'reading';
+  return 'running';
 }
 
 /** Sprite units are 1.727px wide at size 1; the viewBox is symmetric around the body so mirroring it keeps the body put. */
