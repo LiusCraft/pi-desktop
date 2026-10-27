@@ -342,18 +342,12 @@ export async function openSession(id: string, fresh = false) {
 
 // ------------------------------------------------------------ sending
 
-/** Quote a passage of the conversation into the composer, ready to be answered. */
-export function replyWith(sid: string, passage: string) {
+/** Reply to a passage of the conversation: it joins the composer as a card, with the reply typed in the popup. */
+export function replyWith(sid: string, passage: string, comment = '') {
   const key = sessionDraftKey(sid);
-  const quote = passage.trim().split('\n').map((line) => `> ${line}`).join('\n');
-  const current = getDraft(key).text;
-  const text = current.trim() ? `${current.replace(/\s+$/, '')}\n\n${quote}\n\n` : `${quote}\n\n`;
-  drafts.setText(key, text);
-  requestAnimationFrame(() => {
-    const el = document.querySelector<HTMLTextAreaElement>('textarea[data-composer-input]');
-    el?.focus();
-    el?.setSelectionRange(text.length, text.length);
-  });
+  const added = drafts.addReference(key, { id: crypto.randomUUID(), kind: 'quote', path: '', text: passage.trim(), comment: comment.trim() || undefined });
+  if (!added) throw new Error(getDraft(key).errors.at(-1) ?? '无法添加回复');
+  requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('textarea[data-composer-input]')?.focus());
 }
 
 const HELP = () => `### Shortcuts

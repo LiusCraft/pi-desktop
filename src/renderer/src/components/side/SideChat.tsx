@@ -4,6 +4,7 @@ import type { SideTurn } from '@shared/protocol';
 import { Markdown } from '@/components/common/Markdown';
 import { Button } from '@/components/ui/button';
 import { call, errText } from '@/lib/api';
+import { useDrag } from '@/lib/drag';
 import { cn } from '@/lib/utils';
 import { askSide, dockSide, hideSide, popOutSide, useSide, useSideChat } from '@/store/side';
 
@@ -23,6 +24,7 @@ function Turn({ turn }: { turn: SideTurn }) {
  */
 export function SideChatView({ sid, mode }: { sid: string; mode: 'embedded' | 'window' }) {
   const chat = useSideChat(sid);
+  const drag = useDrag();
   const pinned = useSide((s) => s.windows[sid]?.pinned ?? false);
   const [text, setText] = useState('');
   const [failed, setFailed] = useState<string | null>(null);
@@ -55,8 +57,8 @@ export function SideChatView({ sid, mode }: { sid: string; mode: 'embedded' | 'w
   const icon = 'size-7 text-muted-foreground';
 
   return (
-    <div className={cn('flex min-h-0 flex-col bg-card', mode === 'embedded' ? 'h-full rounded-xl border shadow-xl' : 'h-screen')} data-testid="side-chat" data-mode={mode}>
-      <header className="flex shrink-0 items-center gap-1 border-b py-1.5 pr-1.5 pl-3">
+    <div className={cn('flex min-h-0 flex-col bg-card', mode === 'embedded' ? 'h-full rounded-xl border shadow-xl' : 'h-screen')} data-testid="side-chat" data-mode={mode} style={mode === 'embedded' ? drag.style : undefined}>
+      <header {...(mode === 'embedded' ? drag.handle : {})} className={cn('flex shrink-0 items-center gap-1 border-b py-1.5 pr-1.5 pl-3', mode === 'embedded' && drag.handle.className)}>
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium">Side chat</div>
           <div className="truncate text-[11px] text-muted-foreground">不会写入会话{chat.title ? ` · ${chat.title}` : ''}</div>

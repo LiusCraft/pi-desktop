@@ -3,7 +3,8 @@ import { MessageCircleQuestionIcon, ReplyIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { errText } from '@/lib/api';
 import { replyWith } from '@/store/actions';
-import { quoteSide } from '@/store/side';
+import { askSide } from '@/store/side';
+import { SelectionPrompt, type PromptMode } from './SelectionPrompt';
 
 interface Picked {
   text: string;
@@ -13,10 +14,12 @@ interface Picked {
 
 /**
  * Selecting text in the conversation offers two things: ask about it in a side chat
- * (the session is not interrupted) or reply to it in the composer as a quote.
+ * (the session is not interrupted) or reply to it, which lands in the composer as a card.
+ * Either one is typed in a small draggable popup.
  */
 export function SelectionMenu({ sid, scope }: { sid: string; scope: RefObject<HTMLElement | null> }) {
   const [picked, setPicked] = useState<Picked | null>(null);
+  const [prompt, setPrompt] = useState<(Picked & { mode: PromptMode }) | null>(null);
   const menu = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -50,10 +53,36 @@ export function SelectionMenu({ sid, scope }: { sid: string; scope: RefObject<HT
       document.removeEventListener('selectionchange', onChange);
     };
   }, [scope, sid]);
-  useEffect(() => setPicked(null), [sid]);
+  useEffect(() => {
+    setPicked(null);
+    setPrompt(null);
+  }, [sid]);
 
+  if (prompt) {
+    const close = () => setPrompt(null);
+    return (
+      <SelectionPrompt
+        mode={prompt.mode}
+        quote={prompt.text}
+        x={prompt.x}
+        y={prompt.y + 32}
+        onClose={close}
+        onSubmit={async (text) => {
+          try {
+            if (prompt.mode === 'side') await askSide(sid, text, prompt.text);
+            else replyWith(sid, prompt.text, text);
+          } catch (err) {
+            toast.error(errText(err));
+            throw err;
+          }
+          close();
+        }}
+      />
+    );
+  }
   if (!picked) return null;
-  const done = () => {
+  const open = (mode: PromptMode) => {
+    setPrompt({ ...picked, mode });
     window.getSelection()?.removeAllRanges();
     setPicked(null);
   };
@@ -72,21 +101,14 @@ export function SelectionMenu({ sid, scope }: { sid: string; scope: RefObject<HT
       <button
         role="menuitem"
         className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-accent"
-        onClick={() => {
-          const text = picked.text;
-          done();
-          quoteSide(sid, text).catch((err) => toast.error(errText(err)));
-        }}
+        onClick={() => open('side')}
       >
         <MessageCircleQuestionIcon className="size-3.5" />Send side chat
       </button>
       <button
         role="menuitem"
         className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-accent"
-        onClick={() => {
-          replyWith(sid, picked.text);
-          done();
-        }}
+        onClick={() => open('reply')}
       >
         <ReplyIcon className="size-3.5" />Reply
       </button>
