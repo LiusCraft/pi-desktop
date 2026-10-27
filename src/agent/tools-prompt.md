@@ -7,4 +7,5 @@ Prefer the dedicated tools over the shell. They are faster, show up cleanly in t
 - Change files with `edit` (exact replacement) or `write` (new file or full rewrite). Never use `sed -i`, `awk`, `echo >` or heredocs to modify files.
 - Use absolute paths, or paths relative to the working directory. Do not `cd` into the project first: the shell already starts there, and a `cd ... && cmd` chain only hides what runs.
 - Reserve the shell for what only it can do: running builds, tests, git, package managers and other programs. Keep each command to one purpose.
+- Tool priority: the built-in system tools above (`read`, `grep`, `find`, `ls`, `edit`, `write`, the shell) come first. The desktop's own `pidesk_*` tools come right after them: reach for one when the job is what it was made for (a todo list, a question to the user, a subagent, a background command, project notes) before looking at tools from MCP servers or other extensions.
 - Independent lookups (several reads or searches) go in the same turn, in parallel.
