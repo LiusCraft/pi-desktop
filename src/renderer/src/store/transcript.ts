@@ -150,6 +150,7 @@ export function toolEnd(
     if ('firstChangedLine' in preview) t.firstChangedLine = preview.firstChangedLine;
     if (preview.type === 'diff') { t.add = preview.add; t.del = preview.del; }
   }
+  if (t.kind === 'websearch' && !ev.isError) t.count = ev.result?.details?.hits?.length;
   if (t.kind === 'bash') t.output = text;
   else if (t.kind === 'edit' || t.kind === 'write') {
     if (!ev.isError && t.path) {

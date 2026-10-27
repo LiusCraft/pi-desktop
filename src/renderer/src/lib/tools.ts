@@ -3,7 +3,7 @@ import type { ToolPreview } from '@shared/tool-previews';
 import { fname } from './format';
 import { t } from './i18n';
 
-export type ToolKind = 'read' | 'edit' | 'write' | 'bash' | 'grep' | 'glob' | 'ls' | 'agent' | 'other';
+export type ToolKind = 'read' | 'edit' | 'write' | 'bash' | 'grep' | 'glob' | 'ls' | 'agent' | 'websearch' | 'other';
 export type ToolStatus = 'running' | 'done' | 'err' | 'denied';
 
 export interface ToolState {
@@ -18,6 +18,8 @@ export interface ToolState {
   q: string;
   desc: string;
   prompt?: string;
+  /** Number of hits a web search returned. */
+  count?: number;
   /** Read / edit / write result normalised for display. */
   preview?: ToolPreview;
   /** Text output for bash and generic tools. */
@@ -36,7 +38,7 @@ export interface ToolState {
   sh?: { command: string; output: string; exitCode?: number | null };
 }
 
-const KIND: Record<string, ToolKind> = { read: 'read', edit: 'edit', write: 'write', bash: 'bash', powershell: 'bash', bg_shell: 'agent', grep: 'grep', find: 'glob', ls: 'ls', task: 'agent' };
+const KIND: Record<string, ToolKind> = { read: 'read', edit: 'edit', write: 'write', bash: 'bash', powershell: 'bash', bg_shell: 'agent', grep: 'grep', find: 'glob', ls: 'ls', task: 'agent', web_search: 'websearch' };
 
 /** Desktop-owned tools are named `pidesk_*`; older sessions recorded them without the prefix. */
 export const bareName = (name: string) => name.replace(/^pidesk_/, '');
@@ -45,7 +47,7 @@ export function toolFromArgs(id: string, toolName: string, args: Record<string, 
   const name = bareName(toolName);
   return {
     id, name: toolName, kind: KIND[name] ?? 'other', args: args ?? {}, status: 'running', open: false,
-    path: args?.path || args?.file_path, cmd: args?.command || '', q: args?.pattern || args?.path || '',
+    path: args?.path || args?.file_path, cmd: args?.command || '', q: args?.pattern || args?.path || args?.query || '',
     desc: args?.description || (name === 'bg_shell' ? args?.command : '') || t('toolLabel.subagent'), prompt: args?.prompt ?? (name === 'bg_shell' ? args?.command : undefined),
     ...(name === 'bg_shell' ? { sh: { command: args?.command ?? '', output: '' } } : {}),
   };
@@ -63,6 +65,7 @@ export function toolLabel(tool: ToolState) {
     case 'ls': return t('toolLabel.listed', { q: tool.q || '.' });
     case 'bash': return t(run ? 'toolLabel.running' : 'toolLabel.ran', { cmd: tool.cmd });
     case 'agent': return t('toolLabel.agent', { desc: tool.desc });
+    case 'websearch': return t(run ? 'toolLabel.webSearching' : 'toolLabel.webSearched', { q: tool.q });
     default: return t(run ? 'toolLabel.using' : 'toolLabel.used', { name: tool.name });
   }
 }
@@ -89,7 +92,7 @@ export function groupSummary(tools: ToolState[]) {
     else if (t.kind === 'read') c.read.add(t.path ?? '');
     else if (t.kind === 'edit') c.edit.add(t.path ?? '');
     else if (t.kind === 'write') c.write.add(t.path ?? '');
-    else if (t.kind === 'grep' || t.kind === 'glob' || t.kind === 'ls') c.search++;
+    else if (t.kind === 'grep' || t.kind === 'glob' || t.kind === 'ls' || t.kind === 'websearch') c.search++;
     else if (t.kind === 'agent') c.agent++;
     else c.other++;
   }

@@ -380,6 +380,7 @@ function ToolDetail({ sid, tool }: { sid: string; tool: ToolState }) {
 function splitLabel(tool: ToolState): [string, string] {
   if (tool.kind === 'agent') return [tr(tool.status === 'running' ? 'tool.runningAgent' : 'tool.ranAgent'), tool.desc];
   if (tool.kind === 'other') return [toolLabel(tool), ''];
+  if (tool.kind === 'websearch') return [tr(tool.status === 'running' ? 'toolLabel.webSearching.verb' : 'toolLabel.webSearched.verb'), tool.q];
   const label = toolLabel(tool);
   const cut = label.indexOf(' ');
   return cut < 0 ? [label, ''] : [label.slice(0, cut), label.slice(cut + 1)];
@@ -429,6 +430,7 @@ const ToolRow = memo(function ToolRow({ sid, tool }: { sid: string; tool: ToolSt
           </button>
         ) : <span className={cn('min-w-0 truncate text-foreground/90', err && 'text-destructive', denied && 'line-through')}>{subject}</span>)}
         {scope && <span className="min-w-0 shrink truncate text-xs" title={scope}>{scope}</span>}
+        {tool.kind === 'websearch' && tool.count != null && <span className="shrink-0 text-xs">{t(tool.count === 1 ? 'tool.result' : 'tool.results', { n: tool.count })}</span>}
         {extra}
         <Stat add={tool.add} del={tool.del} />
         <Chevron open={tool.open && tool.kind !== 'agent'} />
