@@ -198,6 +198,23 @@ Code 会话输入框上方的 PR 条报告当前分支的 PR：状态颜色、`+
 - **后台运行**：`pidesk_task` 可带 `run_in_background`，立即返回，报告稍后作为任务通知唤醒模型。`pidesk_bg_shell` / `pidesk_bg_output` / `pidesk_bg_kill` 用来跑长期存活的 shell 命令。两类任务共用 **Background tasks** 面板，可查看、停止，并且不随发起它们的那一轮结束。
 - 内置工具统一使用 `pidesk_` 前缀；transcript 仍能读懂旧会话里记录的裸名称。
 
+### 远程（Remote）
+
+一台电脑上的 Pi Desktop 可以遥控另一台电脑上的会话，会话始终在**被遥控的那台**运行（文件、shell、模型凭据都在那边），这边只是界面。有两种被遥控的对象，对 Desktop 客户端来说协议完全相同：
+
+- **另一台 Pi Desktop**：设置 → 远程 →「共享这台电脑」开启，把地址和访问令牌告诉对方。
+- **只装了 pi 命令行的电脑**：安装 `pi-remote` 插件（`pi install "<Pi Desktop 安装目录>/plugin/pi-remote"`，设置 → 远程 里有现成命令；开发时是仓库里的 `plugin/pi-remote`），在 pi 里执行 `/remote start [--lan] [--port N]`，或用 `pi --remote` 启动即自动开启；`/remote status | token | rotate | stop`。插件在 pi 进程内跑一个无头的 session hub（共用 pi 的登录与模型配置，状态放 `~/.pi-remote`，`PI_REMOTE_HOME` 可改），pi 退出服务即停止。
+
+连接端：设置 → 远程 →「连接到远程」添加地址 + 令牌并点「连接」，主窗口整体切换为对方的项目与会话（侧边栏底部显示连接状态与「断开」）；断开后回到本机。断线会自动重连，重连后重新读取对方的会话状态。
+
+协议（`src/shared/remote.ts`，实现在 `src/agent/remote/`）：不引入新依赖，纯 HTTP —— `POST /v1/rpc {method,args}` 对应 agent host 的一次调用，`GET /v1/events` 是 SSE 事件流（即 `HostEvent`），`GET /v1/ping` 免令牌用于识别。凭 `Authorization: Bearer <令牌>` 鉴权。服务端只放行 `HOST_CHANNELS`、项目/文件夹列表与 `remote:browse`；浏览器登录类调用（`models:login*`）因需要对方本机界面而不开放。`ProjectBook` 保存对方的项目列表，所以远程添加项目是在对方的目录树里选。
+
+跨网络连接：Pi Desktop 的远程功能**默认关闭**（不监听任何端口）。要从外网连，开启「通过 Cloudflare Tunnel 公开」（插件用 `/remote start --tunnel`）：本机用 `cloudflared tunnel --url` 起一个免账号的 `https://xxx.trycloudflare.com` 快速隧道，设置页显示该地址，对方当作连接地址填入即可（HTTPS，无需端口映射）。需先安装 `cloudflared`；地址每次启动都会变。隧道对公网可达，所以令牌就是唯一的门，别泄露。
+
+安全模型：**令牌等于对方那台电脑上的命令执行权限**（会话能跑 shell），按密码保管。默认只监听 `127.0.0.1`（可配合 SSH 隧道 / Tailscale）；开启「局域网访问」后监听所有网卡，但连接**不加密**，不要暴露到公网。
+
+远程模式下的限制：终端面板、「在编辑器中打开」、「在访达中显示」作用于本机文件系统，不可用；文件附件是本机路径，对方读不到（图片内联，可用）；定时任务只在 Pi Desktop 主机上有，插件主机没有；插件模式下 `models:login*` 需在那台电脑上用 `pi` 完成登录。
+
 ### 其他界面细节
 
 - **Mermaid**：回复里的 `mermaid` 代码块渲染成图。

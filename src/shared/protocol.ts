@@ -8,6 +8,7 @@
 import type { Attachment, DecodedUserContent, PromptSubmission } from './attachments';
 import type { Forge } from './forge';
 import type { PetDef } from './pets';
+import type { RemoteActive, RemoteConnectionDraft, RemoteConnectionInfo, RemoteLinkState, RemoteListing, RemoteServeSettings, RemoteServeState } from './remote';
 import type { ScheduledTask, TaskDraft } from './schedule';
 
 export type SessionKind = 'code' | 'work';
@@ -514,6 +515,8 @@ export type HostEvent =
   | { type: 'models_changed' }
   | { type: 'editor_text'; sessionId: string; text: string }
   | { type: 'extension_error'; sessionId: string; error: string }
+  /** The link to the remote host the windows are showing changed (only while one is active). */
+  | { type: 'remote_link'; state: RemoteLinkState }
   | { type: 'host_exit'; code: number | null; stderr: string };
 
 // ------------------------------------------------------------ settings and app info
@@ -699,6 +702,8 @@ export interface AppInfo {
 export interface BootPayload {
   settings: SettingsPayload;
   info: Pick<AppInfo, 'platform' | 'version' | 'demo' | 'agentDir'>;
+  /** The remote host this window is driving, if any (the whole app switches, so it is known at boot). */
+  remote: RemoteActive | null;
 }
 export type OpenTarget =
   | 'vscode' | 'vscode-insiders' | 'cursor' | 'windsurf' | 'trae' | 'antigravity' | 'vscodium' | 'zed' | 'sublime'
@@ -742,10 +747,27 @@ export interface Api {
   /** After `projects:add` found a worktree: add its repository and use it as a session, or add the folder as its own project. */
   'projects:adoptWorktree'(choice: 'session' | 'project'): { project: Project; adopt: WorktreeInfo | null } | null;
   'projects:remove'(path: string): Project[];
+  /** Add a project by path: the way to name a folder on a remote machine, where no native picker exists. */
+  'projects:addPath'(path: string): Project;
   'work:folders'(): Project[];
   'work:addFolder'(): Project | null;
   'work:useFolder'(path: string): Project | null;
   'work:removeFolder'(path: string): Project[];
+  'work:addPath'(path: string): Project;
+  /** Folders of the host being driven (the machine itself, or a remote one). */
+  'remote:browse'(dir?: string): RemoteListing;
+
+  // ---- remote access
+  'remote:list'(): { connections: RemoteConnectionInfo[]; active: RemoteActive | null };
+  'remote:save'(draft: RemoteConnectionDraft): RemoteConnectionInfo[];
+  'remote:remove'(id: string): RemoteConnectionInfo[];
+  /** Switch every window to the remote's sessions; resolves once it answered. */
+  'remote:connect'(id: string): RemoteActive;
+  /** Back to this machine's own sessions. */
+  'remote:disconnect'(): void;
+  'remote:serveGet'(): RemoteServeState;
+  'remote:serveSet'(patch: Partial<RemoteServeSettings>): RemoteServeState;
+  'remote:serveRotate'(): RemoteServeState;
 
   'attachments:import'(sources: AttachmentSource[]): AttachmentImportResult;
   'attachments:pick'(): AttachmentImportResult;
@@ -885,8 +907,9 @@ export const HOST_CHANNELS = [
 export const MAIN_CHANNELS = [
   'app:info', 'app:notify', 'app:openExternal', 'app:revealPath', 'app:pickFolder',
   'settings:open', 'settings:get', 'settings:set', 'pets:save', 'pets:remove', 'settings:close', 'diagram:open', 'diagram:get',
-  'projects:list', 'projects:add', 'projects:adoptWorktree', 'projects:remove',
-  'work:folders', 'work:addFolder', 'work:useFolder', 'work:removeFolder',
+  'projects:list', 'projects:add', 'projects:adoptWorktree', 'projects:remove', 'projects:addPath',
+  'work:folders', 'work:addFolder', 'work:useFolder', 'work:removeFolder', 'work:addPath', 'remote:browse',
+  'remote:list', 'remote:save', 'remote:remove', 'remote:connect', 'remote:disconnect', 'remote:serveGet', 'remote:serveSet', 'remote:serveRotate',
   'attachments:import', 'attachments:pick', 'attachments:clipboard',
   'app:openTargets', 'terminal:shells', 'terminal:list', 'terminal:create', 'terminal:attach', 'terminal:write', 'terminal:resize', 'terminal:close', 'sessions:openIn', 'sessions:openPath', 'side:pop', 'side:pin', 'side:dock', 'side:windows',
 ] as const satisfies readonly ApiChannel[];

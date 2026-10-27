@@ -13,6 +13,10 @@ import {
   type Settings, type SettingsPayload, type WorktreeInfo,
 } from '@shared/protocol';
 import { DEFAULT_PET_ID } from '@shared/pets';
+import {
+  isRemotePort, normalizeRemoteUrl, REMOTE_DEFAULT_PORT, REMOTE_PORT_RANGE, REMOTE_WORKSPACE_METHODS,
+  type RemoteActive, type RemoteConnection, type RemoteConnectionDraft, type RemoteConnectionInfo, type RemoteServeSettings, type RemoteServeState, type RemoteWorkspaceMethod,
+} from '@shared/remote';
 import { childEnv } from '../agent/env';
 import { listPets, removePet, savePet } from '../agent/pets';
 import {
@@ -20,6 +24,10 @@ import {
 } from '../agent/app-paths';
 import { resolveInside } from '../agent/files';
 import { localPath } from '../agent/local-path';
+import { RemoteClient, pingRemote } from '../agent/remote/client';
+import { Tunnel } from '../agent/remote/tunnel';
+import { newRemoteToken, remoteUrls, RemoteServer } from '../agent/remote/server';
+import { browse, existingFolder, ProjectBook, workspaceCall } from '../agent/remote/workspace';
 import { Store } from '../agent/store';
 import { AgentClient } from './agent-client';
 import { migrateLegacyKeys } from './agent-auth';
@@ -48,26 +56,12 @@ let pendingWorktree: WorktreeInfo | null = null;
 
 // ------------------------------------------------------------ projects and folders
 
-const exists = (p: Project) => fs.existsSync(p.path);
-function projects() {
-  return store.get<Project[]>('projects', []).filter(exists);
-}
-function addProject(dir: string) {
-  const list = store.get<Project[]>('projects', []).filter((p) => p.path !== dir);
-  const project = { path: dir, name: path.basename(dir), addedAt: Date.now() };
-  store.set('projects', [project, ...list]);
-  return project;
-}
+let book: ProjectBook;
+const projects = () => book.projects();
+const addProject = (dir: string) => book.addProject(dir);
 /** Work folders the user has worked in, most recent first. */
-function workFolders() {
-  return store.get<Project[]>('workFolders', []).filter(exists);
-}
-function addWorkFolder(dir: string) {
-  const list = store.get<Project[]>('workFolders', []).filter((p) => p.path !== dir);
-  const folder = { path: dir, name: path.basename(dir), addedAt: Date.now() };
-  store.set('workFolders', [folder, ...list].slice(0, 12));
-  return folder;
-}
+const workFolders = () => book.workFolders();
+const addWorkFolder = (dir: string) => book.addWorkFolder(dir);
 const demoSource = (name: string) => path.join(app.getAppPath(), 'demo', name);
 /** Pi Desktop's own data folder; Electron's profile stays at the platform default. */
 const dataDir = () => appDataDir();
@@ -348,6 +342,149 @@ function applyThemeToWindows() {
   }
 }
 
+// ------------------------------------------------------------ remote access
+
+const REMOTE_CONNECTIONS_KEY = 'remoteConnections';
+const REMOTE_SERVE_KEY = 'remoteServe';
+
+/** The remote host every window is currently showing; null while they show this machine. */
+interface ActiveRemote {
+  client: RemoteClient;
+  info: RemoteActive;
+}
+let activeRemote: ActiveRemote | null = null;
+
+const connections = () => store.get<RemoteConnection[]>(REMOTE_CONNECTIONS_KEY, []);
+const connectionInfos = (): RemoteConnectionInfo[] => connections().map(({ token, ...rest }) => ({ ...rest, hasToken: !!token }));
+
+/** Windows drop everything they show of the old host and boot again against the new one. */
+function resetWindows() {
+  terminals.closeAll();
+  for (const w of sideWindows.values()) if (!w.isDestroyed()) w.close();
+  if (win && !win.isDestroyed()) win.webContents.reload();
+}
+function closeRemote() {
+  activeRemote?.client.close();
+  activeRemote = null;
+}
+async function connectRemote(id: string): Promise<RemoteActive> {
+  const conn = connections().find((c) => c.id === id);
+  if (!conn) throw new Error('This connection no longer exists.');
+  const ping = await pingRemote(conn.url);
+  const client: RemoteClient = new RemoteClient({
+    url: conn.url,
+    token: conn.token,
+    onEvent: (event) => {
+      if (activeRemote?.client === client) broadcast('host:event', event);
+    },
+    onState: (state) => {
+      if (activeRemote?.client !== client) return;
+      activeRemote.info.state = state;
+      broadcast('host:event', { type: 'remote_link', state });
+    },
+  });
+  await client.start();
+  closeRemote();
+  activeRemote = { client, info: { id: conn.id, name: conn.name, kind: ping.kind, host: ping.host, state: 'connected' } };
+  resetWindows();
+  return activeRemote.info;
+}
+function disconnectRemote() {
+  if (!activeRemote) return;
+  closeRemote();
+  resetWindows();
+}
+function saveConnection(draft: RemoteConnectionDraft): RemoteConnectionInfo[] {
+  const list = connections();
+  const existing = draft.id ? list.find((c) => c.id === draft.id) : undefined;
+  const token = draft.token?.trim() || existing?.token || '';
+  if (!token) throw new Error('Enter the access token shown by the remote.');
+  const url = normalizeRemoteUrl(draft.url);
+  const entry: RemoteConnection = { id: existing?.id ?? randomUUID(), name: draft.name.trim() || new URL(url).host, url, token };
+  store.set(REMOTE_CONNECTIONS_KEY, existing ? list.map((c) => (c.id === entry.id ? entry : c)) : [...list, entry]);
+  return connectionInfos();
+}
+function removeConnection(id: string): RemoteConnectionInfo[] {
+  if (activeRemote?.info.id === id) disconnectRemote();
+  store.set(REMOTE_CONNECTIONS_KEY, connections().filter((c) => c.id !== id));
+  return connectionInfos();
+}
+
+// What this machine offers to others.
+
+let remoteServer: RemoteServer | null = null;
+let remoteListening = false;
+let remoteServeError: string | undefined;
+const remoteTunnel = new Tunnel(childEnv());
+
+function serveSettings(): RemoteServeSettings {
+  const saved = store.get<Partial<RemoteServeSettings>>(REMOTE_SERVE_KEY, {});
+  const settings: RemoteServeSettings = {
+    enabled: saved.enabled === true,
+    port: saved.port ?? REMOTE_DEFAULT_PORT,
+    lan: saved.lan === true,
+    tunnel: saved.tunnel === true,
+    // The first read mints the token, so it is already there when the owner turns sharing on.
+    token: saved.token || newRemoteToken(),
+  };
+  if (!saved.token) store.set(REMOTE_SERVE_KEY, settings);
+  return settings;
+}
+function serveState(): RemoteServeState {
+  const settings = serveSettings();
+  const pluginDir = path.join(app.getAppPath(), 'plugin', 'pi-remote');
+  return {
+    ...settings,
+    listening: remoteListening,
+    error: remoteServeError,
+    urls: [...(remoteTunnel.current.url ? [remoteTunnel.current.url] : []), ...remoteUrls(settings.port, settings.lan)],
+    tunnelState: remoteTunnel.current.state,
+    tunnelUrl: remoteTunnel.current.url,
+    tunnelError: remoteTunnel.current.error,
+    clients: remoteServer?.clients ?? 0,
+    pluginDir: fs.existsSync(path.join(pluginDir, 'index.js')) ? pluginDir : null,
+  };
+}
+/** What other machines may ask of this one: the agent host and the project lists. */
+const serveBackend = {
+  kind: 'desktop' as const,
+  call: async (method: string, args: unknown[]) => {
+    if ((REMOTE_WORKSPACE_METHODS as readonly string[]).includes(method)) return workspaceCall(book, method as RemoteWorkspaceMethod, args);
+    if (method === 'sessions:remove') terminals.closeSession(String(args[0]));
+    return agent.call(method as Parameters<AgentClient['call']>[0], ...args);
+  },
+};
+async function applyServe(): Promise<RemoteServeState> {
+  remoteTunnel.stop();
+  await remoteServer?.stop();
+  remoteServer = null;
+  remoteListening = false;
+  remoteServeError = undefined;
+  const settings = serveSettings();
+  if (settings.enabled) {
+    const server = new RemoteServer({ backend: serveBackend, token: settings.token, port: settings.port, lan: settings.lan });
+    remoteServer = server;
+    try {
+      await server.start();
+      remoteListening = true;
+      // The tunnel takes a few seconds to come up; the settings page polls for its address.
+      if (settings.tunnel) void remoteTunnel.start(server.port);
+    } catch (err) {
+      remoteServer = null;
+      remoteServeError = (err as NodeJS.ErrnoException).code === 'EADDRINUSE' ? `Port ${settings.port} is already in use.` : (err as Error).message;
+    }
+  }
+  return serveState();
+}
+async function setServe(patch: Partial<RemoteServeSettings>) {
+  const next = { ...serveSettings(), ...patch };
+  if (!isRemotePort(next.port)) {
+    throw new Error(`The port must be between ${REMOTE_PORT_RANGE.min} and ${REMOTE_PORT_RANGE.max}.`);
+  }
+  store.set(REMOTE_SERVE_KEY, next);
+  return applyServe();
+}
+
 // ------------------------------------------------------------ IPC
 
 /** Folders the app may open or reveal: its own data, pi's config, projects and Work folders. */
@@ -469,6 +606,17 @@ const handlers: MainHandlers = {
     store.set('projects', store.get<Project[]>('projects', []).filter((p) => p.path !== dir));
     return projects();
   },
+  'projects:addPath': (dir) => addProject(existingFolder(dir)),
+  'work:addPath': (dir) => addWorkFolder(existingFolder(dir)),
+  'remote:browse': (dir) => browse(dir),
+  'remote:list': () => ({ connections: connectionInfos(), active: activeRemote?.info ?? null }),
+  'remote:save': (draft) => saveConnection(draft),
+  'remote:remove': (id) => removeConnection(id),
+  'remote:connect': (id) => connectRemote(id),
+  'remote:disconnect': () => disconnectRemote(),
+  'remote:serveGet': () => serveState(),
+  'remote:serveSet': (patch) => setServe(patch || {}),
+  'remote:serveRotate': () => setServe({ token: newRemoteToken() }),
   'work:folders': () => workFolders(),
   'work:addFolder': async () => {
     const dir = await pickFolder();
@@ -515,6 +663,11 @@ const handlers: MainHandlers = {
   },
 };
 
+/** Main-handled calls a remote host answers itself. */
+const REMOTE_ROUTED = new Set<string>(REMOTE_WORKSPACE_METHODS);
+/** Calls that act on this machine's own files and windows, and so have no remote counterpart. */
+const LOCAL_ONLY = new Set<string>(['projects:add', 'projects:adoptWorktree', 'work:addFolder', 'terminal:create', 'sessions:openIn', 'sessions:openPath']);
+
 function registerIpc() {
   // Read synchronously by the preload: every window boots with the right theme,
   // sidebar state and default mode instead of flashing a fallback first.
@@ -522,14 +675,23 @@ function registerIpc() {
     e.returnValue = {
       settings: settingsPayload(),
       info: { platform: process.platform, version: app.getVersion(), demo: DEMO, agentDir: piAgentDir() },
+      remote: activeRemote?.info ?? null,
     } satisfies BootPayload;
   });
   for (const channel of MAIN_CHANNELS) {
     const fn = handlers[channel] as (...args: unknown[]) => unknown;
-    ipcMain.handle(channel, (_e, ...args) => fn(...args));
+    ipcMain.handle(channel, (_e, ...args) => {
+      if (activeRemote) {
+        // The remote owns the folder lists; what needs this machine's own shell or file manager has no meaning there.
+        if (REMOTE_ROUTED.has(channel)) return activeRemote.client.call(channel, ...args);
+        if (LOCAL_ONLY.has(channel)) throw new Error('Not available while driving a remote host.');
+      }
+      return fn(...args);
+    });
   }
   for (const channel of HOST_CHANNELS) {
     ipcMain.handle(channel, (_e, ...args) => {
+      if (activeRemote) return activeRemote.client.call(channel, ...args);
       // Shells go first: one sitting in the session's worktree would keep it from being deleted.
       if (channel === 'sessions:remove') terminals.closeSession(String(args[0]));
       return agent.call(channel, ...args);
@@ -544,6 +706,7 @@ app.on('second-instance', showMainWindow);
 
 void app.whenReady().then(async () => {
   store = new Store(dataDir());
+  book = new ProjectBook(store);
   migrateLegacyKeys(store);
   // Own folders only; Electron's Chromium profile is left to its platform default.
   fs.mkdirSync(appExtensionsDir(dataDir()), { recursive: true });
@@ -558,12 +721,17 @@ void app.whenReady().then(async () => {
   agent = new AgentClient(
     path.join(here, 'agent.mjs'),
     () => ({ dataDir: dataDir(), agentDir: piAgentDir(), demo: DEMO_ALLOWED }),
-    (event: HostEvent) => broadcast('host:event', event),
+    (event: HostEvent) => {
+      // While a remote host is shown, this machine's own sessions stay out of the windows (but still reach the clients it serves).
+      if (!activeRemote) broadcast('host:event', event);
+      remoteServer?.publish(event);
+    },
   );
   void agent.start().catch((err) => console.error('[main] agent host failed to start:', err));
   if (DEMO || (DEMO_ALLOWED && !projects().length)) ensureDemoProject();
   if (DEMO || (DEMO_ALLOWED && !workFolders().length)) ensureDemoWork();
   registerIpc();
+  void applyServe();
   nativeTheme.on('updated', () => {
     // Following the system: repaint both windows and tell the renderers.
     if (settingsValue().theme === 'light' || settingsValue().theme === 'dark') return;
@@ -580,6 +748,9 @@ app.on('before-quit', async (e) => {
   e.preventDefault();
   quitting = true;
   terminals.closeAll();
+  closeRemote();
+  remoteTunnel.stop();
+  await remoteServer?.stop().catch(() => {});
   await agent?.stop().catch(() => {});
   app.quit();
 });

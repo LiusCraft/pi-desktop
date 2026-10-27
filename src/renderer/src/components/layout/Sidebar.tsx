@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   ArchiveIcon, BoxIcon, ChevronDownIcon, ClockIcon, CodeXmlIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon, BrainIcon,
-  ListChecksIcon, MoonIcon, MoreHorizontalIcon, PanelLeftIcon, PencilIcon, PlusIcon, SearchIcon, SettingsIcon, ShapesIcon, SunIcon,
+  ListChecksIcon, MonitorSmartphoneIcon, MoonIcon, MoreHorizontalIcon, PanelLeftIcon, PencilIcon, PlusIcon, SearchIcon, SettingsIcon, ShapesIcon, SunIcon,
   Trash2Icon, TriangleAlertIcon,
 } from 'lucide-react';
 import {
@@ -224,9 +224,32 @@ function UserMenu() {
           {theme === 'dark' ? <SunIcon /> : <MoonIcon />}切换深色 / 浅色
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => call('settings:open', 'models')}><BrainIcon />模型管理…</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => call('settings:open', 'remote')}><MonitorSmartphoneIcon />远程…</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => call('settings:open')}><SettingsIcon />设置<span className="ml-auto text-xs text-muted-foreground">{modKey},</span></DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+const LINK_LABEL = { connecting: '连接中…', connected: '已连接', reconnecting: '连接断开，正在重连…' } as const;
+
+/** Shown while the app drives another machine's sessions: whose they are, whether the link is up, and the way back. */
+function RemoteBar() {
+  const remote = useApp((s) => s.remote);
+  if (!remote) return null;
+  const up = remote.state === 'connected';
+  return (
+    <div className="mx-2 mb-2 flex items-center gap-2 rounded-lg border border-sidebar-border bg-sidebar-accent/60 px-2.5 py-2 text-xs">
+      <MonitorSmartphoneIcon className="size-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-medium" title={remote.host}>{remote.name}</div>
+        <div className="flex items-center gap-1.5 text-muted-foreground">
+          <span className={cn('size-1.5 rounded-full', up ? 'bg-success' : 'animate-pulse bg-warning')} />
+          {LINK_LABEL[remote.state]}
+        </div>
+      </div>
+      <button className="shrink-0 rounded-md px-2 py-1 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground" onClick={() => void call('remote:disconnect')}>断开</button>
+    </div>
   );
 }
 
@@ -257,6 +280,7 @@ export function Sidebar() {
       </Tabs>
       {/* Re-keyed so the list fades in when the tab changes. */}
       <div key={view} className="min-h-0 flex-1 animate-in overflow-y-auto pb-3 duration-200 fade-in-0">{view === 'work' ? <WorkNav /> : <CodeNav />}</div>
+      <RemoteBar />
       <div className="flex items-center gap-1 border-t border-sidebar-border p-2">
         <UserMenu />
         {view === 'code' && (

@@ -47,6 +47,13 @@ export function handleHostEvent(ev: HostEvent) {
     void loadModels();
     return;
   }
+  if (ev.type === 'remote_link') {
+    const was = getApp().remote?.state;
+    setApp((st) => void (st.remote && (st.remote.state = ev.state)));
+    // Events were missed while the link was down: reload what the host holds.
+    if (ev.state === 'connected' && was && was !== 'connected') void resyncRemote();
+    return;
+  }
   queue.push(ev);
   if (scheduled) return;
   scheduled = true;
@@ -67,7 +74,7 @@ function flushEvents() {
         st.tasks = ev.tasks;
         continue;
       }
-      if (ev.type === 'auth_prompt' || ev.type === 'auth_event' || ev.type === 'models_changed') continue;
+      if (ev.type === 'auth_prompt' || ev.type === 'auth_event' || ev.type === 'models_changed' || ev.type === 'remote_link') continue;
       if (ev.type === 'host_exit') {
         for (const s of Object.values(st.sessions)) {
           if (s.running) settle(s, true, view);
@@ -205,6 +212,33 @@ export async function bootstrap() {
   if (lastSession && !lastSession.meta.archived) void openSession(last!);
   else showWelcome();
   await loadModels();
+}
+
+/** After the link to a remote host came back: its sessions moved on without us, so read them again. */
+async function resyncRemote() {
+  try {
+    const [sessions, projects, folders] = await Promise.all([call('sessions:list'), call('projects:list'), call('work:folders')]);
+    setApp((st) => {
+      st.projects = projects;
+      st.workFolders = folders;
+      for (const meta of sessions) {
+        const known = st.sessions[meta.id];
+        if (!known) {
+          st.sessions[meta.id] = emptySession(meta);
+          st.sessions[meta.id].running = meta.status === 'running';
+          continue;
+        }
+        known.meta = meta;
+        known.running = meta.status === 'running';
+        known.loaded = false;
+      }
+    });
+    const cur = getApp().current;
+    if (cur && getApp().sessions[cur]) await openSession(cur);
+    await loadModels();
+  } catch (err) {
+    fail(err);
+  }
 }
 
 export async function loadModels() {
@@ -1027,7 +1061,44 @@ export function selectProject(path: string) {
   void refreshImportable();
 }
 
+/** Pick a folder on the remote host: there is no native dialog for another machine, so walk its folders. */
+async function pickRemoteFolder(): Promise<string | null> {
+  const host = getApp().remote?.name ?? '远程';
+  let listing = await call('remote:browse');
+  for (;;) {
+    const options = [
+      { label: '选择此文件夹', hint: listing.path },
+      { label: '输入路径…', hint: '直接键入 ' + host + ' 上的绝对路径' },
+      ...(listing.parent ? [{ label: '↑ 上一级', hint: listing.parent }] : []),
+      ...listing.dirs.map((d) => ({ label: `${d.name}/` })),
+    ];
+    const choice = await dialogs.choose(`${host}：${listing.path}`, options);
+    if (choice === null) return null;
+    if (choice === 0) return listing.path;
+    if (choice === 1) {
+      const typed = await dialogs.prompt(`${host} 上的文件夹路径`, listing.path, { action: '选择' });
+      if (typed === null) return null;
+      if (typed.trim()) return typed.trim();
+      continue;
+    }
+    const target = choice === 2 && listing.parent ? listing.parent : listing.dirs[choice - (listing.parent ? 3 : 2)].path;
+    listing = await call('remote:browse', target);
+  }
+}
+
 export async function addProject() {
+  if (getApp().remote) {
+    try {
+      const dir = await pickRemoteFolder();
+      if (!dir) return;
+      const project = await call('projects:addPath', dir);
+      setApp((st) => void (st.projects = [project, ...st.projects.filter((p) => p.path !== project.path)]));
+      selectProject(project.path);
+    } catch (err) {
+      fail(err);
+    }
+    return;
+  }
   try {
     const added = await call('projects:add');
     if (!added) return;
@@ -1161,7 +1232,13 @@ export function setWorkFolder(folder: string | null) {
 
 export async function addWorkFolder() {
   try {
-    const folder = await call('work:addFolder');
+    let folder;
+    if (getApp().remote) {
+      const dir = await pickRemoteFolder();
+      folder = dir ? await call('work:addPath', dir) : null;
+    } else {
+      folder = await call('work:addFolder');
+    }
     if (!folder) return;
     const folders = await call('work:folders');
     setApp((st) => void (st.workFolders = folders));

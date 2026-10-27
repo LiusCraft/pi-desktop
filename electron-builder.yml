@@ -16,6 +16,8 @@ directories:
 files:
   - out/**
   - package.json
+  # The pi-remote plugin (built by `npm run build:plugin`): Settings → Remote points a plain pi at it.
+  - plugin/pi-remote/**
   # Dependency leftovers nothing loads at runtime: sourcemaps and type declarations.
   - '!**/node_modules/**/*.map'
   - '!**/node_modules/**/*.d.{ts,mts,cts}'

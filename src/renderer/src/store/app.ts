@@ -3,6 +3,7 @@ import { immer } from 'zustand/middleware/immer';
 import type {
   AppInfo, ImportableSession, ModelInfo, OutputStyle, PermissionMode, Project, SessionKind, SettingsPayload, ThinkingLevel, WorktreeInfo,
 } from '@shared/protocol';
+import type { RemoteActive } from '@shared/remote';
 import type { ScheduledTask } from '@shared/schedule';
 import { bridge } from '@/lib/api';
 import type { ViewMode } from '@/lib/constants';
@@ -96,6 +97,8 @@ export interface AppState {
   /** An existing worktree of the selected project that the next new session will run in. */
   adopt: WorktreeInfo | null;
   tasks: ScheduledTask[];
+  /** The remote host the whole app is driving (fixed for the life of the window), or null for this machine. */
+  remote: RemoteActive | null;
 }
 
 const boot = bridge?.boot ?? {};
@@ -131,6 +134,7 @@ export const useApp = create<AppState>()(
     archived: false,
     adopt: null,
     tasks: [],
+    remote: boot.remote ?? null,
     sidebarCollapsed: boot.settings?.sidebarCollapsed ?? read('cc_collapsed', false),
   })),
 );
