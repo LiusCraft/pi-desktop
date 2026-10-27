@@ -116,6 +116,16 @@ function flushEvents() {
         case 'setup':
           s.setup = ev.steps;
           break;
+        case 'pr':
+          if (ev.status) {
+            // A PR that did not exist when the bar was hidden is news: show the bar again.
+            if (s.pr?.num !== ev.status.num) s.prHidden = false;
+            s.pr = ev.status;
+            s.meta.pr = { num: ev.status.num, url: ev.status.url, state: ev.status.state, draft: ev.status.draft };
+          } else {
+            s.pr = null;
+          }
+          break;
         case 'status':
           if (ev.status === 'idle' && s.running) effects.push([s.meta.id, settle(s, false, view)]);
           break;
@@ -146,7 +156,6 @@ function runEffects(id: string, fx: Effects) {
   if (fx.scheduleChanges) scheduleChanges(id);
   if (fx.refreshStats) void refreshStats(id);
   if (fx.prCreated) call('sessions:update', id, { pr: fx.prCreated }).catch(() => {});
-  if (fx.pollPr !== undefined) void pollPr(id, fx.pollPr);
   if (fx.editorText !== undefined) drafts.setText(sessionDraftKey(id), fx.editorText);
   // Away = another session is open, or the window is hidden / not in front.
   const away = !isCur || document.hidden || !document.hasFocus();
@@ -289,10 +298,7 @@ export async function openSession(id: string, fresh = false) {
   }
   activateDraftFor();
   resumeSuggestion();
-  if (s.loaded && !fresh) {
-    void pollPr(id);
-    return;
-  }
+  if (s.loaded && !fresh) return;
   try {
     const r = await call('sessions:open', id);
     setApp((st) => {
@@ -312,7 +318,6 @@ export async function openSession(id: string, fresh = false) {
     });
     call('sessions:commands', id).then((commands) => updateSession(id, (x) => void (x.commands = commands.filter((c) => !['desktop-mode', 'desktop-output-style'].includes(c.name))))).catch(() => {});
     if (s.meta.kind === 'code') void loadChanges(id);
-    void pollPr(id);
   } catch (err) {
     setApp((st) => {
       const x = st.sessions[id];
@@ -872,39 +877,13 @@ export async function refreshStats(id: string) {
   }
 }
 
-const prTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const prState = new Map<string, { retries: number; request: number }>();
-export async function pollPr(id: string, retries = 0) {
-  clearTimeout(prTimers.get(id));
-  const s = getApp().sessions[id];
-  if (!s || isWork(s) || s.meta.archived) return;
-  const st = prState.get(id) ?? { retries: 0, request: 0 };
-  st.retries = Math.max(st.retries, retries);
-  const request = ++st.request;
-  prState.set(id, st);
+/** The CI panel's switches; the host's PR watcher picks them up and does the rest. */
+export async function setPrAuto(id: string, patch: { fixCi?: boolean; merge?: boolean }) {
   try {
-    const pr = await call('sessions:pr', id);
-    if (request !== st.request) return;
-    if (pr) {
-      st.retries = 0;
-      const prevCi = getApp().sessions[id]?.pr?.ci;
-      updateSession(id, (v) => {
-        // A PR that did not exist when the bar was hidden is news: show the bar again.
-        if (v.pr?.num !== pr.num) v.prHidden = false;
-        v.pr = pr;
-        v.meta.pr = { num: pr.num, url: pr.url, state: pr.state, draft: pr.draft };
-      });
-      if (prevCi === 'pending' && pr.ci === 'fail') toast.error(`PR #${pr.num} · CI failed`);
-      if (pr.state === 'open') prTimers.set(id, setTimeout(() => void pollPr(id), pr.ci === 'pending' ? 15000 : 60000));
-      return;
-    }
-  } catch {
-    // Polling failures are handled by the retry timer below.
-  }
-  if (request === st.request && (st.retries || getApp().sessions[id]?.pr?.state === 'open')) {
-    const retry = st.retries > 0;
-    if (retry) st.retries--;
-    prTimers.set(id, setTimeout(() => void pollPr(id), retry ? 1500 : 60000));
+    const meta = await call('sessions:update', id, { prAuto: patch });
+    updateSession(id, (v) => void (v.meta = meta));
+  } catch (err) {
+    fail(err);
   }
 }
 

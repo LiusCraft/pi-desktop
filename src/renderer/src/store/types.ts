@@ -2,6 +2,7 @@ import type { Attachment, DecodedAttachment } from '@shared/attachments';
 import type {
   FileChange, GitState, PrStatus, PrSummary, SessionMeta, SetupStep, SlashCommand, SpawnTask, ThinkingLevel, UiRequest,
 } from '@shared/protocol';
+import type { PrEvent } from '@shared/pr-event';
 import type { ToolState } from '@/lib/tools';
 import type { DraftSubmission } from './drafts';
 
@@ -48,6 +49,8 @@ export type Item =
   | { kind: 'plan'; key: string; toolCallId: string | null; title: string; md: string; requestId: string | null; resolved: string | null }
   /** Tasks the agent suggests; what the user did with each lives in `meta.suggestions`. */
   | { kind: 'suggest'; key: string; toolCallId: string; tasks: SpawnTask[] }
+  /** A turn the PR watcher started: shown as an incoming event, never as something the user typed. */
+  | { kind: 'prEvent'; key: string; event: PrEvent; at: number }
   | { kind: 'foot'; key: string; t: number; usage?: string };
 
 export type ItemOf<K extends Item['kind']> = Extract<Item, { kind: K }>;

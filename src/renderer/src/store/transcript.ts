@@ -2,6 +2,7 @@
 // SessionView; anything that needs IPC or global UI is returned as an Effect.
 import { decodeUserContent } from '@shared/attachments';
 import type { AgentMessage, PiEvent, PrSummary, SessionMeta, TaskUpdate, UiRequest } from '@shared/protocol';
+import { decodePrEvent } from '@shared/pr-event';
 import * as previews from '@shared/tool-previews';
 import { fmtDur, fmtTok, relPath } from '@/lib/format';
 import { bareName, toolFromArgs, toolLabel, type ToolState } from '@/lib/tools';
@@ -11,7 +12,6 @@ import type { Item, ItemOf, SessionView, ThinkStep, Todo } from './types';
 export interface Effects {
   scheduleChanges?: boolean;
   refreshStats?: boolean;
-  pollPr?: number;
   prCreated?: PrSummary;
   settled?: { aborted: boolean };
   waiting?: boolean;
@@ -161,7 +161,6 @@ export function toolEnd(
         s.meta.pr = pr;
         fx.prCreated = pr;
       }
-      fx.pollPr = 3;
     }
   }
   return fx;
@@ -246,6 +245,12 @@ function assistantDelta(s: SessionView, ame: any, view: ViewMode) {
 function userFromMessage(s: SessionView, m: AgentMessage, view: ViewMode) {
   const user = decodeUserContent(m.content);
   if (user.text.startsWith('[pi-desktop]')) return;
+  const event = decodePrEvent(user.text);
+  if (event) {
+    // Pi Desktop's own PR watcher started this turn: an event in the conversation, not a user bubble.
+    push(s, { kind: 'prEvent', key: newKey(), event, at: m.timestamp || Date.now() }, view);
+    return;
+  }
   const pending = s.pendingUser
     .map((key) => findByKey(s, key))
     .filter((i): i is ItemOf<'user'> => i?.kind === 'user');
@@ -358,7 +363,7 @@ export function settle(s: SessionView, aborted: boolean, view: ViewMode): Effect
   }
   push(s, { kind: 'foot', key: newKey(), t: Date.now(), usage: `${fmtDur(Date.now() - s.t0)} · ${fmtTok(s.tokens)} tokens` }, view);
   s.meta.updatedAt = Date.now();
-  return { settled: { aborted }, refreshStats: true, scheduleChanges: true, pollPr: 0 };
+  return { settled: { aborted }, refreshStats: true, scheduleChanges: true };
 }
 
 // ------------------------------------------------------------ questions
@@ -417,6 +422,11 @@ export function replay(s: SessionView, messages: AgentMessage[], view: ViewMode)
       if (sawAssistant) s.items.push({ kind: 'foot', key: newKey(), t: m.timestamp || Date.now() });
       sawAssistant = false;
       s.todosKey = null;
+      const event = decodePrEvent(user.text);
+      if (event) {
+        s.items.push({ kind: 'prEvent', key: newKey(), event, at: m.timestamp || Date.now() });
+        continue;
+      }
       s.items.push({ kind: 'user', key: newKey(), ...user, entryId: m.entryId, timestamp: m.timestamp, delivered: true });
     } else if (m.role === 'assistant') {
       sawAssistant = true;

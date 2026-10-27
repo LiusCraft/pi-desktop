@@ -29,8 +29,21 @@ export interface PrSummary {
 }
 export interface PrStatus extends PrSummary {
   ci: 'none' | 'pass' | 'fail' | 'pending';
-  checks: { n: string; st: 'pass' | 'fail' | 'pending' }[];
+  checks: { n: string; st: 'pass' | 'fail' | 'pending'; url?: string }[];
   comments: number;
+  /** Everything below is what the composer's PR card shows; a token that cannot read it leaves it out. */
+  title?: string;
+  author?: string;
+  additions?: number;
+  deletions?: number;
+  files?: number;
+  /** GitHub's verdict on merging this branch; 'conflicting' is the one the card calls out. */
+  mergeable?: 'clean' | 'conflicting' | 'unknown';
+  /** Review state, so the bar can address a change request without waiting for CI to fail. */
+  review?: 'approved' | 'changes' | 'required';
+  /** Head commit: CI results belong to it, so auto-fix acts once per commit. */
+  head?: string;
+  updatedAt?: number;
 }
 
 export interface SessionMeta {
@@ -59,6 +72,11 @@ export interface SessionMeta {
   createdAt: number;
   updatedAt: number;
   pr: PrSummary | null;
+  /** CI automation the user switched on in the PR bar: fix a red run, merge once it is green. */
+  autoFixCi?: boolean;
+  autoMerge?: boolean;
+  /** What that automation already handled: the fixed commit and the merged PR, so a restart cannot repeat it. */
+  prAutoDone?: { fix?: string; merge?: number };
   archived?: boolean;
   imported?: boolean;
   /** The session this one was spun off from (a suggested task), for the sidebar. */
@@ -437,6 +455,8 @@ export type HostEvent =
   | { type: 'ui_request'; sessionId: string; request: UiRequest }
   | { type: 'ui_resolved'; sessionId: string; requestId: string; label: string }
   | { type: 'status'; sessionId: string; status: 'idle' | 'running' }
+  /** Fresh PR state from the host's watcher: the bar reads this instead of polling `gh` itself. */
+  | { type: 'pr'; sessionId: string; status: PrStatus | null }
   | { type: 'meta'; sessionId: string; meta: SessionMeta }
   /** Start-up progress of a session; null once it is ready. */
   | { type: 'setup'; sessionId: string; steps: SetupStep[] | null }
@@ -688,7 +708,7 @@ export interface Api {
   'sessions:respond'(id: string, requestId: string, response: UiResponse): void;
   'sessions:setMode'(id: string, mode: PermissionMode): void;
   'sessions:setStyle'(id: string, style: OutputStyle): void;
-  'sessions:update'(id: string, patch: { title?: string; pr?: PrSummary | null; suggestion?: { key: string; state: 'here' | 'dismissed' } }): SessionMeta;
+  'sessions:update'(id: string, patch: { title?: string; pr?: PrSummary | null; suggestion?: { key: string; state: 'here' | 'dismissed' }; prAuto?: { fixCi?: boolean; merge?: boolean; fixDone?: string; mergeDone?: number } }): SessionMeta;
   'sessions:archive'(id: string): void;
   'sessions:unarchive'(id: string): SessionMeta;
   'sessions:inspect'(id: string): SessionCleanup;

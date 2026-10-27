@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { ArrowUpRightIcon, BookmarkIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, GitForkIcon, LightbulbIcon, MessagesSquareIcon, RotateCcwIcon, XIcon } from 'lucide-react';
+import { ArrowUpRightIcon, BookmarkIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CircleAlertIcon, GitForkIcon, GitMergeIcon, LightbulbIcon, LoaderCircleIcon, MessagesSquareIcon, RotateCcwIcon, XIcon } from 'lucide-react';
 import { PLAN_CHOICES } from '@shared/protocol';
 import { decodePeerMessage, type PeerMessage } from '@shared/peer-message';
 import * as previews from '@shared/tool-previews';
@@ -12,6 +12,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Kbd } from '@/components/ui/kbd';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { call } from '@/lib/api';
 import { ago, fmtTok } from '@/lib/format';
 import { groupStats, groupSummary, isFileTool, toolLabel, type ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
@@ -90,6 +91,78 @@ function PeerMessageCard({ peer }: { peer: PeerMessage }) {
     </div>
   );
 }
+
+// ------------------------------------------------------------ PR events
+
+/**
+ * A turn Pi Desktop started because something happened on the pull request. It belongs to
+ * the agent side of the conversation: no user bubble, and it says what it is doing now.
+ */
+export const PrEventItem = memo(function PrEventItem({ sid, item }: { sid: string; item: ItemOf<'prEvent'> }) {
+  const running = useApp((st) => !!st.sessions[sid]?.running);
+  const waiting = useApp((st) => !!st.sessions[sid]?.waiting);
+  const [open, setOpen] = useState(false);
+  const { event } = item;
+  const look = {
+    'ci-fail': { Icon: CircleAlertIcon, tone: 'text-destructive', label: 'CI 失败' },
+    notes: { Icon: MessagesSquareIcon, tone: 'text-info', label: '新的评审意见' },
+    merge: { Icon: GitMergeIcon, tone: 'text-success', label: '可以合并' },
+  }[event.kind];
+  return (
+    <div className="flex justify-start">
+      <div className="w-full max-w-[85%] rounded-xl border border-dashed bg-card/60 px-3.5 py-2.5 text-sm">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <look.Icon className={cn('size-3.5 shrink-0', look.tone)} />
+          <span className={cn('font-medium', look.tone)}>{look.label}</span>
+          <span className="opacity-50">·</span>
+          <button className="truncate hover:text-foreground" title="在 GitHub 打开" onClick={() => void call('app:openExternal', event.url)}>PR #{event.num}</button>
+          <span className="ml-auto shrink-0 tabular-nums">{ago(item.at)}</span>
+        </div>
+        <div className="mt-1.5 text-foreground">{event.summary}</div>
+        {!!event.failed?.length && (
+          <ul className="mt-1 space-y-0.5 text-xs">
+            {event.failed.map((f) => (
+              <li key={f.name} className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                <span className="size-1.5 shrink-0 rounded-full bg-destructive" />
+                {f.url ? (
+                  <button className="truncate hover:text-foreground hover:underline" title="打开失败日志" onClick={() => void call('app:openExternal', f.url!)}>{f.name}</button>
+                ) : (
+                  <span className="truncate">{f.name}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {!!event.notes?.length && (
+          <ul className="mt-1.5 space-y-1.5">
+            {event.notes.map((n) => (
+              <li key={n.id} className="rounded-lg bg-muted/50 px-2.5 py-1.5 text-xs">
+                <span className="text-muted-foreground">@{n.author}</span>
+                <div className="mt-0.5 line-clamp-3 whitespace-pre-wrap break-words text-foreground/90">{n.body}</div>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="mt-2 flex items-center gap-2 text-xs">
+          {waiting ? (
+            <span className="flex items-center gap-1.5 text-warning"><CircleAlertIcon className="size-3.5" />等待你的确认</span>
+          ) : running ? (
+            <span className="flex items-center gap-1.5 text-muted-foreground"><LoaderCircleIcon className="size-3.5 animate-spin" />Pi 正在处理…</span>
+          ) : (
+            <span className="text-muted-foreground">由 Pi Desktop 的 PR 监听触发</span>
+          )}
+          <button className="ml-auto flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground" onClick={() => setOpen(!open)}>
+            {open ? '收起' : '查看交给 Pi 的说明'}
+            <ChevronDownIcon className={cn('size-3 transition-transform', open && 'rotate-180')} />
+          </button>
+        </div>
+        {open && (
+          <div data-selectable className="mt-1.5 rounded-lg bg-muted/40 px-2.5 py-2 text-xs whitespace-pre-wrap text-muted-foreground">{event.instruction}</div>
+        )}
+      </div>
+    </div>
+  );
+});
 
 // ------------------------------------------------------------ suggested tasks
 

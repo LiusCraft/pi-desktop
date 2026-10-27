@@ -15,9 +15,10 @@ import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import { buildMessage, decodeUserContent } from '@shared/attachments';
 import type {
   AgentDraft, ConnectorDraft, SkillDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
-  PrSummary, SessionCleanup, SessionMeta, SessionRemoval, SessionStats, SetupStep, Settings, SpawnTask, SubagentProgress, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
+  PrStatus, PrSummary, SessionCleanup, SessionMeta, SessionRemoval, SessionStats, SetupStep, Settings, SpawnTask, SubagentProgress, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
 } from '@shared/protocol';
 import { decodePeerMessage, encodePeerMessage, isPeerMessage } from '@shared/peer-message';
+import { decodePrEvent, encodePrEvent, isPrEvent } from '@shared/pr-event';
 import { appAgentsDir, appWorkDir, appExtensionsDir, worktreeDir as resolveWorktreeDir } from './app-paths';
 import { validatePromptPayload } from './attachments';
 import workPrompt from './work-prompt.md?raw';
@@ -29,6 +30,7 @@ import { toWireEvent } from './events';
 import { readSessionFile, readSessionImage, resolveInside } from './files';
 import * as git from './git';
 import { ModelAdmin } from './model-admin';
+import { PrWatcher, type PrPending } from './pr-watch';
 import * as naming from './naming';
 import { pickSideModel } from './side-model';
 import { Store } from './store';
@@ -89,6 +91,19 @@ export interface HubOptions {
   demoModel?: boolean;
 }
 
+
+interface PrWatchEntry {
+  watcher: PrWatcher;
+  /** The PR this entry is watching: a different number means a different comment history. */
+  num?: number;
+  timer?: ReturnType<typeof setTimeout>;
+  /** The `gh` call in flight: disposing has to wait for it, or Windows keeps the worktree locked. */
+  read?: Promise<unknown>;
+  /** A look is running; another request waits for it instead of reading the same snapshot twice. */
+  busy?: boolean;
+  again?: boolean;
+}
+
 export class SessionHub {
   readonly agentDir: string;
   models!: ModelRuntime;
@@ -105,6 +120,11 @@ export class SessionHub {
   private suggesters = new Map<string, AbortController>();
   /** Model catalog refreshes are serialized: a refresh reloads models.json, so two in flight can drop a provider. */
   private modelRefresh: Promise<unknown> = Promise.resolve();
+  /**
+   * One PR watcher per live Code session. GitHub is the event source: the bar reads its status,
+   * and the session's switches decide which of its changes are worth a turn of their own.
+   */
+  private readonly prWatches = new Map<string, PrWatchEntry>();
 
   constructor(private readonly opts: HubOptions) {
     this.agentDir = opts.agentDir ?? getAgentDir();
@@ -348,6 +368,7 @@ export class SessionHub {
       await this.dispose(id);
       throw new Error('This session was closed while it was starting');
     }
+    this.startPrWatch(id);
     return live;
   }
 
@@ -462,6 +483,8 @@ export class SessionHub {
     if (live.status === status) return;
     live.status = status;
     this.emit({ type: 'status', sessionId: live.id, status });
+    // A turn may have pushed commits: look at the PR soon, and deliver anything that waited.
+    if (status === 'idle') this.kickPrWatch(live.id, 2_000);
   }
 
   // ------------------------------------------------------------ interactive requests
@@ -762,6 +785,7 @@ export class SessionHub {
     m.updatedAt = Date.now();
     this.save();
     this.maybeNameFromPrompt(id, message);
+    this.kickPrWatch(id, 1_000);
     const busy = session.isStreaming || live.status === 'running';
     // follow_up queues while streaming, but does not start an idle agent.
     if (busy && behavior === 'followUp') return { disposition: await session.followUp(message, images) };
@@ -792,7 +816,7 @@ export class SessionHub {
   private maybeNameFromPrompt(id: string, message: string) {
     const m = this.meta(id);
     const text = message.trim();
-    if (!m.autoName || m.titleLocked || m.nameAttempted || !text || text.startsWith('/') || isPeerMessage(text)) return;
+    if (!m.autoName || m.titleLocked || m.nameAttempted || !text || text.startsWith('/') || isPeerMessage(text) || isPrEvent(text)) return;
     const placeholder = naming.titleFromPrompt(text);
     if (!placeholder) return;
     m.nameAttempted = true;
@@ -962,10 +986,19 @@ export class SessionHub {
     this.emitMeta(m);
   }
 
-  update(id: string, patch: { title?: string; pr?: PrSummary | null; suggestion?: { key: string; state: 'here' | 'dismissed' } }) {
+  update(id: string, patch: { title?: string; pr?: PrSummary | null; suggestion?: { key: string; state: 'here' | 'dismissed' }; prAuto?: { fixCi?: boolean; merge?: boolean; fixDone?: string; mergeDone?: number } }) {
     const m = this.meta(id);
     if (patch.pr !== undefined) m.pr = patch.pr;
+    if (patch.prAuto) {
+      const a = patch.prAuto;
+      if (a.fixCi !== undefined) m.autoFixCi = a.fixCi;
+      if (a.merge !== undefined) m.autoMerge = a.merge;
+      if (a.fixDone || a.mergeDone) {
+        m.prAutoDone = { ...m.prAutoDone, ...(a.fixDone ? { fix: a.fixDone } : {}), ...(a.mergeDone ? { merge: a.mergeDone } : {}) };
+      }
+    }
     if (patch.suggestion) m.suggestions = { ...m.suggestions, [patch.suggestion.key]: { state: patch.suggestion.state } };
+    if (patch.prAuto || patch.pr !== undefined) this.kickPrWatch(id, 0);
     if (patch.title?.trim()) {
       // A title set by the user is final: stop the placeholder/auto-naming path.
       Object.assign(m, { title: patch.title.trim(), titleLocked: true, autoName: false });
@@ -1100,6 +1133,10 @@ export class SessionHub {
   }
 
   private async dispose(id: string) {
+    const watch = this.prWatches.get(id);
+    this.stopPrWatch(id);
+    // A gh process running with the worktree as its cwd blocks deleting that worktree.
+    await watch?.read;
     const live = this.live.get(id);
     if (!live) return;
     this.abortSuggestion(id);
@@ -1260,10 +1297,7 @@ export class SessionHub {
   async prStatus(id: string) {
     const m = this.meta(id);
     const pr = await git.prStatus(m.cwd);
-    if (pr) {
-      m.pr = { num: pr.num, url: pr.url, state: pr.state, draft: pr.draft };
-      this.save();
-    }
+    if (pr) this.publishPr(m, pr);
     return pr;
   }
   files(id: string) {
@@ -1278,6 +1312,102 @@ export class SessionHub {
   /** Absolute path of something inside the session folder (for main to open or reveal). */
   resolvePath(id: string, rel: string) {
     return resolveInside(this.meta(id).cwd, rel);
+  }
+
+  // ------------------------------------------------------------ PR watch
+
+  private startPrWatch(id: string) {
+    const m = this.meta(id);
+    if (m.kind !== 'code' || m.archived || !m.branch || !this.live.has(id)) return;
+    if (!this.prWatches.has(id)) this.prWatches.set(id, { watcher: new PrWatcher() });
+    this.kickPrWatch(id, 0);
+  }
+
+  private stopPrWatch(id: string) {
+    const entry = this.prWatches.get(id);
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    this.prWatches.delete(id);
+  }
+
+  /** Look sooner than the schedule says, e.g. right after a turn that may have pushed. */
+  private kickPrWatch(id: string, delay = 0) {
+    const entry = this.prWatches.get(id);
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    entry.timer = setTimeout(() => void this.prTick(id), delay);
+    entry.timer.unref?.();
+  }
+
+  private async prTick(id: string) {
+    const entry = this.prWatches.get(id);
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    // Two overlapping looks could deliver the same event twice: the running one looks again instead.
+    if (entry.busy) {
+      entry.again = true;
+      return;
+    }
+    entry.busy = true;
+    try {
+      await this.prLook(id, entry);
+    } finally {
+      entry.busy = false;
+      if (entry.again) {
+        entry.again = false;
+        entry.timer = setTimeout(() => void this.prTick(id), 500);
+        entry.timer.unref?.();
+      }
+    }
+  }
+
+  private async prLook(id: string, entry: PrWatchEntry) {
+    const m = this.meta(id);
+    if (m.kind !== 'code' || m.archived || !m.branch || !this.live.has(id)) return this.stopPrWatch(id);
+    entry.read = git.readPr(m.cwd).catch(() => null);
+    const snapshot = (await entry.read) as Awaited<ReturnType<typeof git.readPr>>;
+    entry.read = undefined;
+    // A look can outlive its session, or be overtaken by a newer one: drop the result then.
+    if (this.prWatches.get(id) !== entry) return;
+    // A different PR (the branch got a new one) has its own comment history: baseline it again.
+    if (snapshot && snapshot.status.num !== entry.num) {
+      entry.num = snapshot.status.num;
+      entry.watcher.reset();
+    }
+    const result = entry.watcher.observe(snapshot, { autoFixCi: m.autoFixCi, autoMerge: m.autoMerge, done: m.prAutoDone });
+    this.publishPr(m, result.status);
+    if (result.pending) void this.deliverPrEvent(id, entry, result.pending);
+    if (result.done) return;
+    entry.timer = setTimeout(() => void this.prTick(id), result.after);
+    entry.timer.unref?.();
+  }
+
+  /** Keep the session's PR summary and the bar in step; the summary also survives a restart. */
+  private publishPr(m: SessionMeta, status: PrStatus | null) {
+    const summary = status ? { num: status.num, url: status.url, state: status.state, draft: status.draft } : null;
+    if (summary && JSON.stringify(summary) !== JSON.stringify(m.pr)) {
+      m.pr = summary;
+      this.save();
+    }
+    this.emit({ type: 'pr', sessionId: m.id, status });
+  }
+
+  /** Hand an event to the agent as a turn of its own — unless the user is already in the middle of something. */
+  private async deliverPrEvent(id: string, entry: PrWatchEntry, pending: PrPending) {
+    const live = this.live.get(id);
+    const busy = !live || live.status === 'running' || live.historyBusy || live.pending.size > 0;
+    if (busy) return; // the next look tries again, so nothing is lost
+    entry.watcher.accept(pending);
+    const m = this.meta(id);
+    if (pending.mark) {
+      m.prAutoDone = { ...m.prAutoDone, ...pending.mark };
+      this.save();
+    }
+    try {
+      await this.prompt(id, { text: encodePrEvent(pending.event), attachments: [] }, 'followUp');
+    } catch (err) {
+      this.emit({ type: 'notify', sessionId: id, message: `PR 事件没能交给 Pi：${err instanceof Error ? err.message : String(err)}`, level: 'warning' });
+    }
   }
 
   // ------------------------------------------------------------ CLI session import
@@ -1348,6 +1478,9 @@ export function readTranscript(file: string, limit: number): TranscriptLine[] {
         if (text.startsWith('[pi-desktop]')) continue;
         const peer = decodePeerMessage(text);
         if (peer) text = `(message from session "${peer.fromTitle}") ${peer.text}`;
+        // A turn the PR watcher started reads as what happened, not as a wall of instructions.
+        const event = decodePrEvent(text);
+        if (event) text = `(PR #${event.num} · ${event.summary}) ${event.instruction ?? ''}`.trim();
       } else if (!text) {
         const tools = blocks.filter((b) => b.type === 'toolCall').map((b) => b.name);
         if (!tools.length) continue;

@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { FileChange, GitState, PrStatus, WorktreeInfo } from '@shared/protocol';
+import type { PrNote } from '@shared/pr-event';
 import { childEnv } from './env';
 
 const MAX_FILE = 512 * 1024;
@@ -139,9 +140,34 @@ export async function listFiles(cwd: string, limit = 3000): Promise<string[]> {
   return res;
 }
 
+/**
+ * Everything the PR watcher needs in one `gh` call: the status the bar shows, the comments and
+ * reviews it has to diff for new ones, and who "we" are so a turn's own reply is not news.
+ */
+export interface PrSnapshot {
+  status: PrStatus;
+  notes: PrNote[];
+}
+
+/** The logged-in GitHub account; asked once per host process, since it cannot change mid-run. */
+let viewerLogin: Promise<string | null> | null = null;
+function viewer(cwd: string): Promise<string | null> {
+  viewerLogin ??= run('gh', ['api', 'user', '-q', '.login'], cwd, { allowFail: true })
+    .then((out) => out?.trim() || null)
+    .catch(() => null);
+  return viewerLogin;
+}
+
 /** PR state for the current branch via the GitHub CLI; null when gh or a PR is unavailable. */
 export async function prStatus(cwd: string): Promise<PrStatus | null> {
-  let out = await run('gh', ['pr', 'view', '--json', 'number,url,state,isDraft,statusCheckRollup,comments,reviews'], cwd, { allowFail: true });
+  return (await readPr(cwd))?.status ?? null;
+}
+
+export async function readPr(cwd: string): Promise<PrSnapshot | null> {
+  const full = 'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author,additions,deletions,changedFiles,mergeable,reviewDecision,headRefOid,updatedAt';
+  let out = await run('gh', ['pr', 'view', '--json', full], cwd, { allowFail: true });
+  // Older gh builds reject a field they do not know; the card is worth more than the full query, so ask for less.
+  if (!out) out = await run('gh', ['pr', 'view', '--json', 'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author'], cwd, { allowFail: true });
   // Some tokens can read the PR but not CI/reviews. Still expose its identity/state.
   if (!out) out = await run('gh', ['pr', 'view', '--json', 'number,url,state,isDraft'], cwd, { allowFail: true });
   if (!out) return null;
@@ -152,10 +178,14 @@ export async function prStatus(cwd: string): Promise<PrStatus | null> {
       const st: 'pass' | 'fail' | 'pending' = !c.conclusion && c.status && c.status !== 'COMPLETED' ? 'pending'
         : ['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(result) ? 'pass'
         : result === 'PENDING' || result === 'EXPECTED' ? 'pending' : 'fail';
-      return { n: c.name || c.context, st };
+      const url = c.detailsUrl || c.targetUrl;
+      return { n: c.name || c.context, st, ...(url ? { url } : {}) };
     });
     const ci = !checks.length ? 'none' : checks.some((c: any) => c.st === 'fail') ? 'fail' : checks.some((c: any) => c.st === 'pending') ? 'pending' : 'pass';
-    return {
+    const mergeable = { MERGEABLE: 'clean', CONFLICTING: 'conflicting' } as const;
+    const review = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes', REVIEW_REQUIRED: 'required' } as const;
+    const size = (n: unknown) => (typeof n === 'number' ? n : undefined);
+    const status: PrStatus = {
       num: pr.number,
       url: pr.url,
       state: String(pr.state).toLowerCase(),
@@ -163,7 +193,36 @@ export async function prStatus(cwd: string): Promise<PrStatus | null> {
       ci,
       checks,
       comments: (pr.comments || []).length + (pr.reviews || []).filter((r: any) => r.body).length,
+      title: typeof pr.title === 'string' && pr.title.trim() ? pr.title.trim() : undefined,
+      author: pr.author?.login || undefined,
+      additions: size(pr.additions),
+      deletions: size(pr.deletions),
+      files: size(pr.changedFiles),
+      mergeable: mergeable[String(pr.mergeable || '').toUpperCase() as keyof typeof mergeable] ?? (pr.mergeable ? 'unknown' : undefined),
+      review: review[String(pr.reviewDecision || '').toUpperCase() as keyof typeof review],
+      head: typeof pr.headRefOid === 'string' && pr.headRefOid ? pr.headRefOid : undefined,
+      updatedAt: pr.updatedAt ? Date.parse(pr.updatedAt) || undefined : undefined,
     };
+    const me = (pr.reviews ?? []).length ? await viewer(cwd) : null;
+    const mine = (login: string | undefined) => !!login && !!me && login === me;
+    const notes: PrNote[] = [];
+    for (const c of pr.comments ?? []) {
+      if (!c?.id) continue;
+      notes.push({ id: `c${c.id}`, author: c.author?.login ?? 'someone', body: String(c.body ?? ''), url: c.url, self: c.viewerDidAuthor === true || mine(c.author?.login) });
+    }
+    for (const r of pr.reviews ?? []) {
+      if (!r?.id) continue;
+      // An approval without words is not work; a change request always is.
+      if (!r.body && r.state !== 'CHANGES_REQUESTED') continue;
+      notes.push({
+        id: `r${r.id}`,
+        author: r.author?.login ?? 'someone',
+        body: r.body || `（只有行内评论，状态 ${r.state}：用 gh pr view ${pr.number} --comments 查看）`,
+        url: `${pr.url}#pullrequestreview-${r.id}`,
+        self: mine(r.author?.login),
+      });
+    }
+    return { status, notes };
   } catch {
     return null;
   }
