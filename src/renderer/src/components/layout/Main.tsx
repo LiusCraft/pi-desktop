@@ -1,7 +1,7 @@
 import { useState, type MouseEvent, type ReactNode } from 'react';
 import {
-  BotIcon, ChevronDownIcon, ExternalLinkIcon, FileTextIcon, FolderIcon, GlobeIcon, LaptopIcon, PanelRightIcon, PlusIcon,
-  SquareTerminalIcon, TerminalSquareIcon,
+  BotIcon, ChevronDownIcon, ExternalLinkIcon, FileTextIcon, FolderIcon, GlobeIcon, LaptopIcon, PanelRightIcon,
+  SquareTerminalIcon,
 } from 'lucide-react';
 import { CodeComposer, WorkComposer } from '@/components/composer/Composers';
 import { copyText } from '@/components/common/Copy';
@@ -11,7 +11,6 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup,
   DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Button } from '@/components/ui/button';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { useDefaultLayout } from 'react-resizable-panels';
 import { call, isMac, modKey } from '@/lib/api';
@@ -21,7 +20,7 @@ import { OpenTargetIcon } from '@/components/common/OpenTargetIcon';
 import { OPEN_TARGET_INFO, refreshOpenTargets, useOpenTargets } from '@/lib/open-targets';
 import { cn } from '@/lib/utils';
 import {
-  addProject, archiveSession, deleteSession, exportHtml, fail, importCliSession, renameSession, setOutputStyle, setViewMode,
+  archiveSession, deleteSession, exportHtml, fail, renameSession, setOutputStyle, setViewMode,
   togglePanel, welcomeDraftKey,
 } from '@/store/actions';
 import { useApp, useCurrent } from '@/store/app';
@@ -158,27 +157,13 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
 // ------------------------------------------------------------ welcome screens
 
 function CodeWelcome() {
-  const project = useApp((st) => st.prefs.project);
-  const importable = useApp((st) => st.importable);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-1 flex-col items-center justify-center gap-4 overflow-y-auto px-6">
         <h1 className="flex items-center gap-3 font-serif text-3xl font-normal tracking-tight">
           <span className="spark size-6!" aria-hidden />
-          {project ? fname(project) : 'Pick a project to start'}
+          Let’s build
         </h1>
-        {project ? (
-          <button
-            disabled={!importable.length}
-            onClick={() => void importCliSession()}
-            className="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm text-muted-foreground enabled:hover:bg-accent enabled:hover:text-foreground disabled:opacity-60"
-          >
-            <TerminalSquareIcon className="size-4" />
-            {importable.length ? `Import ${importable.length} pi CLI session${importable.length > 1 ? 's' : ''}` : 'No pi CLI sessions to import'}
-          </button>
-        ) : (
-          <Button variant="outline" onClick={() => void addProject()}><PlusIcon className="size-4" />Open folder…</Button>
-        )}
         <Inbox />
       </div>
       <CodeComposer />
