@@ -169,7 +169,9 @@ test('file menus, preview excerpts, diff comments, send, fork and rewind', async
   expect(JSON.stringify(sent)).toContain('Attached context:');
   expect(JSON.stringify(sent)).toContain('Preview review comment');
   expect(JSON.stringify(sent)).toContain('Diff review comment');
-  await expect(page.getByLabel('Attached context and comments')).toHaveCount(0);
+  // The composer starts empty again; the sent message keeps its own, read-only, cards in the transcript.
+  const composer = page.locator('[data-composer-input]').locator('xpath=../..');
+  await expect(composer.getByLabel('Attached context and comments')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Branch from here', exact: true }).last().click();
   await expect(page.getByPlaceholder('Type / for commands')).toHaveValue(/Attached context:/);
@@ -235,7 +237,10 @@ test('edits model context and free prices without catalog replacement', async ()
 });
 
 test('customize page: create a skill, switch it off, add and remove a connector', async () => {
-  await page.getByRole('button', { name: 'Customize', exact: true }).click();
+  // Customize sits in the sidebar's "More" submenu unless it has been pinned.
+  const sidebar = page.locator('aside');
+  await sidebar.getByRole('button', { name: 'More', exact: true }).click();
+  await sidebar.getByRole('button', { name: 'Customize', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Skills', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'New skill', exact: true }).click();
@@ -336,6 +341,7 @@ test('selecting a reply offers Reply and a side chat that can pop out and pin', 
   await expect(prompt).toHaveAttribute('data-mode', 'side');
   await prompt.getByLabel('Side chat message').fill('为什么这样改？');
   await prompt.getByLabel('Ask').click();
+  await expect(prompt).toHaveCount(0); // the popup closes with the question, not with the answer
   const panel = page.getByTestId('side-chat');
   await expect(panel).toHaveAttribute('data-mode', 'embedded');
   await expect(panel.getByText('为什么这样改？')).toBeVisible();

@@ -30,8 +30,20 @@ test.afterEach(async ({}, testInfo) => {
     await testInfo.attach('window', { body: await page.screenshot(), contentType: 'image/png' });
   }
   await app?.close();
-  fs.rmSync(temporary, { recursive: true, force: true });
+  removeTemporary(temporary);
 });
+
+/**
+ * Delete a test's temp folder. Windows can still hold a handle on the app's profile just after it closed (EPERM),
+ * so retry; a leftover temp folder must never turn the test body's result into a failure.
+ */
+function removeTemporary(dir: string) {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EPERM') throw error;
+  }
+}
 
 const sidebar = () => page.locator('aside');
 const row = (title: string) => sidebar().locator('div.group', { has: page.getByRole('button', { name: title, exact: true }) });
@@ -65,7 +77,7 @@ test('archive hides a session, the Archived page restores or deletes it', async 
   await expect(row(title)).toHaveCount(0);
 
   await sidebar().getByRole('button', { name: 'More' }).click();
-  await sidebar().getByRole('button', { name: 'Archived sessions' }).click();
+  await sidebar().getByRole('button', { name: 'Archived', exact: true }).click();
   const archived = page.getByText(title, { exact: true });
   await expect(archived.first()).toBeVisible();
 
@@ -97,7 +109,7 @@ test('removing a project archives its sessions and leaves the folder alone', asy
   expect(fs.existsSync(path.join(project, 'package.json'))).toBe(true);
 
   await sidebar().getByRole('button', { name: 'More' }).click();
-  await sidebar().getByRole('button', { name: 'Archived sessions' }).click();
+  await sidebar().getByRole('button', { name: 'Archived', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Unarchive' })).toHaveCount(1);
 });
 
