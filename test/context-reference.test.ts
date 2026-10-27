@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MAX_CONTEXT_CHARS, referenceLocation, referencePrompt, type ContextReference } from '../src/shared/context-reference';
+import { MAX_CONTEXT_CHARS, decodeReferencePrompt, referenceLocation, referencePrompt, type ContextReference } from '../src/shared/context-reference';
 import { drafts, getDraft, useDrafts } from '../src/renderer/src/store/drafts';
 
 vi.mock('@/lib/api', () => ({ errText: (error: unknown) => String(error) }));
@@ -74,5 +74,25 @@ describe('context references', () => {
     drafts.lock('session:one', false);
     drafts.removeReference('session:one', comment.id);
     expect(getDraft('session:one').references).toEqual([]);
+  });
+});
+
+describe('decodeReferencePrompt', () => {
+  it('turns a sent prompt back into the typed text and its cards', () => {
+    const quote: ContextReference = { id: 'q', kind: 'quote', path: '', text: '己改的\n\n(尤其 Clawd.tsx)', comment: 'hi' };
+    const file: ContextReference = { id: 'f', kind: 'path', path: 'src/', directory: true };
+    const decoded = decodeReferencePrompt(referencePrompt('看一下', [comment, quote, file]));
+    expect(decoded?.text).toBe('看一下');
+    expect(decoded?.references.map((r) => [r.kind, r.text, r.comment])).toEqual([
+      ['comment', comment.text, comment.comment],
+      ['quote', quote.text, 'hi'],
+      ['path', undefined, undefined],
+    ]);
+    expect(decoded?.references[2].directory).toBe(true);
+  });
+
+  it('handles context with no typed text and ignores plain messages', () => {
+    expect(decodeReferencePrompt(referencePrompt('', [comment]))?.text).toBe('');
+    expect(decodeReferencePrompt('just text')).toBeNull();
   });
 });

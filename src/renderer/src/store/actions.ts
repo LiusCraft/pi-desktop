@@ -3,7 +3,8 @@
 import { toast } from 'sonner';
 import { buildMessage, decodeUserContent, type Attachment } from '@shared/attachments';
 import type { HostEvent, OutputStyle, PermissionMode, PrThread, SessionKind, SessionMeta, SpawnTask, ThinkingLevel, UiResponse, WorkProjectPatch } from '@shared/protocol';
-import { referencePrompt } from '@shared/context-reference';
+import { referencePrompt, type ContextReference } from '@shared/context-reference';
+import { revealItem } from '@/lib/quote-links';
 import { positiveLine } from '@shared/tool-previews';
 import { call, errText, modKey } from '@/lib/api';
 import { DESKTOP_COMMANDS, MODES, VIEW_MODES, type ViewMode } from '@/lib/constants';
@@ -1084,6 +1085,14 @@ export function openDiffRef(path: string) {
   diffTarget.path = relPath(s.meta.cwd, path);
   diffTarget.seq++;
   togglePanel(s.meta.id, 'diff', true);
+}
+/** A card of a sent message: go to what it refers to. `quoted` is the transcript item a reply points at. */
+export function openContextReference(reference: ContextReference, quoted: string | null) {
+  if (reference.kind === 'quote') {
+    if (!quoted || !revealItem(quoted, reference.text)) toast.info('找不到被回复的原文');
+  } else if (reference.directory) toast.info('文件夹无法预览');
+  else if (reference.side) openDiffRef(reference.path);
+  else void openFileRef(reference.path, reference.startLine);
 }
 /** The PR bar's size chip: just show the diff. */
 export function openDiffPanel() {

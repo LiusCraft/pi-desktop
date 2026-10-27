@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { CheckIcon, ChevronDownIcon, CircleAlertIcon } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { CheckIcon, ChevronDownIcon, CircleAlertIcon, PinIcon } from 'lucide-react';
+import { findRange, markQuoted, quoteLinks, revealItem, type QuotePin } from '@/lib/quote-links';
 import type { SetupStep } from '@shared/protocol';
 import { fmtDur, fmtTok } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -12,9 +13,30 @@ import type { Item, ItemOf, SessionView } from '@/store/types';
 import { SelectionMenu } from './SelectionMenu';
 import { AskCard, FootItem, GroupItem, isPendingAsk, NoteItem, PermItem, PlanItem, PrEventItem, SuggestItem, TextItem, TodosItem, UserItem } from './Items';
 
-function renderItem(sid: string, item: Item, items: Item[], index: number, view: string) {
+/** Under a passage that was replied to: a pin per reply, which jumps to the message that quoted it. */
+function QuotePins({ pins }: { pins?: QuotePin[] }) {
+  if (!pins?.length) return null;
+  return (
+    <div data-quote-pins className="mt-1 flex flex-wrap gap-1.5">
+      {pins.map((pin) => (
+        <button
+          key={pin.userKey}
+          type="button"
+          onClick={() => revealItem(pin.userKey)}
+          title={pin.comment ? `被回复：${pin.comment}` : '被回复，点击查看'}
+          className="flex max-w-64 items-center gap-1 rounded-full border bg-muted/30 px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <PinIcon className="size-3 shrink-0" />
+          <span className="truncate">{pin.comment || '被回复'}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function renderItem(sid: string, item: Item, items: Item[], index: number, view: string, quoted?: (string | null)[]) {
   switch (item.kind) {
-    case 'user': return <UserItem sid={sid} item={item} />;
+    case 'user': return <UserItem sid={sid} item={item} quoted={quoted} />;
     case 'text': return <TextItem item={item} />;
     case 'note': return <NoteItem item={item} />;
     case 'group': return <GroupItem sid={sid} item={item} view={view} />;
@@ -127,6 +149,49 @@ export function Transcript({ s }: { s: SessionView }) {
   const jumping = useRef(false);
   const [atBottom, setAtBottom] = useState(true);
   const sid = s.meta.id;
+  const links = useMemo(() => quoteLinks(s.items), [s.items]);
+  const quoted = useRef<{ range: Range; userKey: string }[]>([]);
+
+  // The exact text that was replied to stays faintly marked.
+  useLayoutEffect(() => {
+    const root = scroller.current;
+    if (!root || !links.pins.size) return;
+    const marked: { range: Range; userKey: string }[] = [];
+    for (const [key, pins] of links.pins) {
+      const el = root.querySelector<HTMLElement>(`[data-item-key="${CSS.escape(key)}"]`);
+      for (const pin of pins) {
+        const range = el && findRange(el, pin.text);
+        if (range) marked.push({ range, userKey: pin.userKey });
+      }
+    }
+    quoted.current = marked;
+    const unmark = markQuoted(marked.map((m) => m.range));
+    return () => {
+      quoted.current = [];
+      unmark();
+    };
+  }, [links, s.items]);
+
+  /** The reply that quoted the text under the pointer, if it is on a marked passage. */
+  const replyAt = (x: number, y: number) => {
+    const caret = document.caretRangeFromPoint?.(x, y);
+    if (!caret) return undefined;
+    return quoted.current.find(({ range }) => range.isPointInRange(caret.startContainer, caret.startOffset))?.userKey;
+  };
+  const onQuoteClick = (e: React.MouseEvent) => {
+    if (!quoted.current.length || !window.getSelection()?.isCollapsed) return; // dragging a selection is not a click
+    const userKey = replyAt(e.clientX, e.clientY);
+    if (userKey) revealItem(userKey);
+  };
+  const hovering = useRef(false);
+  const onQuoteHover = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!quoted.current.length) return;
+    const on = !!replyAt(e.clientX, e.clientY);
+    if (on !== hovering.current) {
+      hovering.current = on;
+      e.currentTarget.style.cursor = on ? 'pointer' : '';
+    }
+  };
 
   // Opening a session returns to where it was left, unless it was at the bottom (or moved on
   // while it was closed, in which case openSession dropped the remembered spot).
@@ -179,10 +244,13 @@ export function Transcript({ s }: { s: SessionView }) {
   return (
     <div ref={frame} className="relative min-h-0 flex-1">
       <SelectionMenu sid={sid} scope={frame} />
-      <div ref={scroller} onScroll={onScroll} className="h-full overflow-y-auto">
+      <div ref={scroller} onScroll={onScroll} onClick={onQuoteClick} onMouseMove={onQuoteHover} className="h-full overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[786px] flex-col gap-4 px-6 pt-6 pb-4">
           {s.items.map((item, i) => (isPendingAsk(item) ? null : (
-            <div key={item.key} className="transcript-item">{renderItem(s.meta.id, item, s.items, i, view)}</div>
+            <div key={item.key} data-item-key={item.key} className="transcript-item">
+              {renderItem(s.meta.id, item, s.items, i, view, links.targets.get(item.key))}
+              <QuotePins pins={links.pins.get(item.key)} />
+            </div>
           )))}
           {s.setup && <SetupCard steps={s.setup} />}
           <StatusLine s={s} />

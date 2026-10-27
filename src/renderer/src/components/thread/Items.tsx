@@ -7,6 +7,8 @@ import * as previews from '@shared/tool-previews';
 import { Markdown } from '@/components/common/Markdown';
 import { CopyGlyph, useCopy } from '@/components/common/Copy';
 import { AttachmentTiles } from '@/components/common/Attachments';
+import { ContextCards } from '@/components/composer/ContextCards';
+import { decodeReferencePrompt } from '@shared/context-reference';
 import { DiffRows, TermOutput, ToolPreviewView } from '@/components/common/CodeView';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -22,7 +24,7 @@ import { cn } from '@/lib/utils';
 import { useApp, updateSession } from '@/store/app';
 import { forgeName, forgeOfUrl } from '@shared/forge';
 import {
-  answerUi, dismissSuggested, doSuggestedHere, forkSession, openAgent, openDiffRef, openFileRef, openPlan, openSession, sessionDraftKey, startSuggested, userMessageAction,
+  answerUi, dismissSuggested, doSuggestedHere, forkSession, openAgent, openContextReference, openDiffRef, openFileRef, openPlan, openSession, sessionDraftKey, startSuggested, userMessageAction,
 } from '@/store/actions';
 import { drafts } from '@/store/drafts';
 import { findByKey, findTool, permissionTitle } from '@/store/transcript';
@@ -30,19 +32,24 @@ import type { Item, ItemOf } from '@/store/types';
 
 // ------------------------------------------------------------ user
 
-export const UserItem = memo(function UserItem({ sid, item }: { sid: string; item: ItemOf<'user'> }) {
+/** `quoted`: for each reference of the message, the transcript item it replies to (see lib/quote-links). */
+export const UserItem = memo(function UserItem({ sid, item, quoted }: { sid: string; item: ItemOf<'user'>; quoted?: (string | null)[] }) {
   const { copied, copy } = useCopy();
   const busy = useApp((state) => !!(state.sessions[sid]?.running || state.sessions[sid]?.historyBusy || state.sessions[sid]?.pendingUser.length));
   const peer = decodePeerMessage(item.text);
   if (peer) return <PeerMessageCard peer={peer} />;
   const command = decodeCommandMessage(item.text);
   if (command) return <CommandMessageChip sid={sid} command={command}queued={item.queued} />;
+  // Context the user attached is shown as cards, like in the composer; only what they typed stays text.
+  const attached = decodeReferencePrompt(item.text);
+  const typed = attached ? attached.text : item.text;
   return (
     <div className={cn('flex flex-col items-end gap-1.5', item.queued && 'opacity-60')} title={item.queued ? '排队中：Pi Desktop 完成当前步骤后处理' : undefined}>
       <AttachmentTiles attachments={item.attachments} />
-      {item.text && (
+      {attached && <div className="flex max-w-[85%] justify-end"><ContextCards references={attached.references} onOpen={(reference) => openContextReference(reference, quoted?.[attached.references.indexOf(reference)] ?? null)} /></div>}
+      {typed && (
         <div data-selectable className="max-w-[85%] rounded-2xl bg-user-bubble px-4 py-2.5 whitespace-pre-wrap break-words">
-          {item.text.split(/(@[\w./-]+)/g).map((part, i) => (part.startsWith('@') ? <span key={i} className="text-primary">{part}</span> : part))}
+          {typed.split(/(@[\w./-]+)/g).map((part, i) => (part.startsWith('@') ? <span key={i} className="text-primary">{part}</span> : part))}
         </div>
       )}
       {item.delivered && !item.queued && (
