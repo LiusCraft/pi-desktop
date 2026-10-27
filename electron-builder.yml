@@ -66,8 +66,9 @@ dmg:
       path: /Applications
 
 win:
-  # electron-builder converts the 1024px png into a multi-size .ico.
-  icon: build/icon.png
+  # electron-builder converts the 1024px png into a multi-size .ico. The full-bleed variant: the
+  # macOS one carries a transparent margin that makes the taskbar icon look small.
+  icon: build/icon-win.png
   target:
     - target: nsis
       arch:

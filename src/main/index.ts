@@ -42,6 +42,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const PRELOAD = path.join(here, '../preload/index.js');
 const RENDERER = path.join(here, '../renderer');
 const DEV_URL = process.env.ELECTRON_RENDERER_URL;
+// A packaged app takes its window icon from the executable; an unpackaged one would show Electron's.
+const WINDOW_ICON = app.isPackaged ? undefined : path.join(here, '../../build/icon-win.png');
 
 app.setName('Pi Desktop');
 // Windows only shows (and groups) toasts for a registered app id.
@@ -218,6 +220,7 @@ function createWindow() {
   const dark = isDark();
   const saved = savedWindowState();
   win = new BrowserWindow({
+    icon: WINDOW_ICON,
     width: saved?.width ?? 1440,
     height: saved?.height ?? 920,
     ...(saved ? { x: saved.x, y: saved.y } : {}),
@@ -239,6 +242,7 @@ function createWindow() {
 function createSettingsWindow(section?: string) {
   const dark = isDark();
   settingsWin = new BrowserWindow({
+    icon: WINDOW_ICON,
     width: 960,
     height: 720,
     minWidth: 720,
@@ -283,6 +287,7 @@ function openDiagram(svg: string) {
   const token = randomUUID();
   diagrams.set(token, svg);
   const w = new BrowserWindow({
+    icon: WINDOW_ICON,
     width: 1100,
     height: 760,
     minWidth: 480,
@@ -319,6 +324,7 @@ function openArtifact(id: string) {
     return;
   }
   const w = new BrowserWindow({
+    icon: WINDOW_ICON,
     width: 1100,
     height: 780,
     minWidth: 360,
@@ -379,6 +385,7 @@ function artifactThumbnail(id: string): Promise<string | null> {
     const entry = path.join(appArtifactsDir(dataDir()), id, ARTIFACT_SITE_DIR, ARTIFACT_ENTRY);
     const { width, height, scaledWidth, quality, settleMs, timeoutMs } = ARTIFACT_THUMBNAIL;
     const w = new BrowserWindow({
+      icon: WINDOW_ICON,
       width, height, show: false, backgroundColor: '#ffffff',
       webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, partition: 'artifact-preview', backgroundThrottling: false },
     });
@@ -425,6 +432,7 @@ function openSide(sessionId: string) {
     return;
   }
   const w = new BrowserWindow({
+    icon: WINDOW_ICON,
     width: 440,
     height: 600,
     minWidth: 320,

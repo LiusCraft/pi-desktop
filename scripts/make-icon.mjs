@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Generates build/icon.png (1024×1024) and, on macOS, build/icon.icns.
+// Generates build/icon.png (1024×1024), build/icon-win.png (same mark, nearly full-bleed: Windows
+// does not crop the margin the macOS squircle needs) and, on macOS, build/icon.icns.
 // Dependency-free on purpose: the shape is drawn with signed distance fields
 // and encoded as PNG by hand, so `make icon` works before `npm install`.
 import fs from 'node:fs';
@@ -43,8 +44,8 @@ const TOP = hex('#dd8a68'); // app accent, light end
 const BOTTOM = hex('#b0553a'); // app accent, dark end
 const INK = hex('#fffdf9');
 
-const INSET = 100; // transparent margin around the macOS squircle
-const HALF = (SIZE - INSET * 2) / 2; // 412
+const MAC_INSET = 100; // transparent margin around the macOS squircle
+const WIN_INSET = 24; // taskbar and title bar draw the icon edge to edge
 const C = SIZE / 2;
 const RADIUS = 185;
 
@@ -57,7 +58,12 @@ const GLYPH = [
   [564, 655, 652, 655, 18], // right foot
 ];
 
-function render() {
+function render(INSET) {
+  const HALF = (SIZE - INSET * 2) / 2;
+  // The glyph and corner radius are authored for MAC_INSET; scale them with the body.
+  const k = HALF / ((SIZE - MAC_INSET * 2) / 2);
+  const rad = (v) => v * k;
+  const at = (v) => C + (v - C) * k;
   const rgba = Buffer.alloc(SIZE * SIZE * 4);
   for (let y = 0; y < SIZE; y++) {
     // Gradient + highlight are constant per row, so they are computed once.
@@ -66,7 +72,7 @@ function render() {
     const gloss = 0.16 * Math.max(0, 1 - t * 2.6); // soft light from the top
     const shade = 0.06 * Math.max(0, (t - 0.72) / 0.28); // slight foot shading
     for (let x = 0; x < SIZE; x++) {
-      const body = cover(sdRoundRect(x, y, C, C, HALF, HALF, RADIUS));
+      const body = cover(sdRoundRect(x, y, C, C, HALF, HALF, rad(RADIUS)));
       if (body <= 0) continue;
       let r = mix(base[0], 255, gloss);
       let g = mix(base[1], 255, gloss);
@@ -77,8 +83,8 @@ function render() {
 
       // Composite the glyph over the squircle, clipped to the body alpha.
       let glyph = 0;
-      for (const [ax, ay, bx, by, rad] of GLYPH) {
-        glyph = Math.max(glyph, cover(sdCapsule(x, y, ax, ay, bx, by, rad)));
+      for (const [ax, ay, bx, by, r2] of GLYPH) {
+        glyph = Math.max(glyph, cover(sdCapsule(x, y, at(ax), at(ay), at(bx), at(by), rad(r2))));
         if (glyph >= 1) break;
       }
       glyph *= body;
@@ -178,6 +184,8 @@ function writeIcns(pngPath) {
 // ---------------------------------------------------------------- main
 fs.mkdirSync(OUT_DIR, { recursive: true });
 const pngPath = path.join(OUT_DIR, 'icon.png');
-fs.writeFileSync(pngPath, png(render(), SIZE, SIZE));
+fs.writeFileSync(pngPath, png(render(MAC_INSET), SIZE, SIZE));
 console.log(`build/icon.png written (${SIZE}×${SIZE})`);
+fs.writeFileSync(path.join(OUT_DIR, 'icon-win.png'), png(render(WIN_INSET), SIZE, SIZE));
+console.log('build/icon-win.png written');
 writeIcns(pngPath);
