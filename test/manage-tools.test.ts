@@ -1,6 +1,10 @@
 // The chat tools for the Scheduled and Customize pages drive the same backends as the pages.
-import { describe, expect, it } from 'vitest';
-import { registerManageTools, type ScheduleHost } from '../src/agent/manage-tools';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { catalog, createSkill, removeConnector, saveConnector, setConnectorEnabled, setSkillDisabled, type CustomizeEnv } from '../src/agent/customize';
+import { registerManageTools, type CustomizeHost, type ScheduleHost } from '../src/agent/manage-tools';
 import type { ScheduledTask, TaskDraft } from '../src/shared/schedule';
 
 function setup() {
@@ -9,7 +13,9 @@ function setup() {
   const schedule: ScheduleHost = {
     list: () => tasks,
     save: (d: TaskDraft) => {
-      tasks.unshift({ ...d, id: `t${tasks.length}`, enabled: true, createdAt: 0, nextRunAt: 1, lastRunAt: null, runs: [] } as ScheduledTask);
+      const existing = tasks.find((t) => t.id === d.id);
+      if (existing) Object.assign(existing, d);
+      else tasks.unshift({ ...d, id: `t${tasks.length}`, enabled: true, createdAt: 0, nextRunAt: 1, lastRunAt: null, runs: [] } as ScheduledTask);
       return tasks;
     },
     setEnabled: (id, enabled) => (tasks.find((t) => t.id === id)!.enabled = enabled, tasks),
@@ -41,5 +47,80 @@ describe('pidesk_schedule_manage', () => {
     const { tools } = setup();
     expect(tools.get('pidesk_schedule_manage').annotations).toEqual({ destructiveHint: true });
     expect(tools.get('pidesk_schedule_list').annotations).toEqual({ readOnlyHint: true });
+  });
+});
+
+describe('pidesk_schedule_manage, the rest of the actions', () => {
+  it('updates, switches, runs and deletes by id', async () => {
+    const { tools, tasks } = setup();
+    const manage = tools.get('pidesk_schedule_manage');
+    await manage.execute('c', { action: 'create', name: 'Daily', prompt: 'do it', schedule: { type: 'daily', time: '09:00' } });
+    const id = tasks[0].id;
+    await manage.execute('c', { action: 'update', id, prompt: 'new prompt', schedule: { type: 'weekdays', time: '08:30' } });
+    expect(tasks[0]).toMatchObject({ prompt: 'new prompt', schedule: { type: 'weekdays', time: '08:30' }, name: 'Daily' });
+    await manage.execute('c', { action: 'disable', id });
+    expect(tasks[0].enabled).toBe(false);
+    await manage.execute('c', { action: 'enable', id });
+    expect(tasks[0].enabled).toBe(true);
+    expect((await manage.execute('c', { action: 'run', id })).details).toEqual({ session: 's1' });
+    await manage.execute('c', { action: 'delete', id });
+    expect(tasks).toHaveLength(0);
+  });
+});
+
+describe('pidesk_customize_*', () => {
+  let root: string;
+  let env: CustomizeEnv;
+  let tools: Map<string, any>;
+  beforeAll(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-manage-'));
+    env = { agentDir: path.join(root, 'agent'), project: path.join(root, 'project'), projectTrusted: true };
+    fs.mkdirSync(env.agentDir, { recursive: true });
+    fs.mkdirSync(env.project!, { recursive: true });
+    tools = new Map();
+    const customize: CustomizeHost = {
+      list: () => catalog(env),
+      createSkill: (d) => createSkill(env, d),
+      setSkillDisabled: (f, d) => setSkillDisabled(env, f, d),
+      saveConnector: async (d) => saveConnector(env, d),
+      setConnectorEnabled: async (n, s, e) => setConnectorEnabled(env, n, s, e),
+      removeConnector: async (n, s) => removeConnector(env, n, s),
+      installPlugin: async () => {},
+      removePlugin: async () => {},
+    };
+    registerManageTools({ registerTool: (t: any) => tools.set(t.name, t) } as any, { customize });
+  });
+  afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  it('creates a skill, switches it off and shows both in the list', async () => {
+    const manage = tools.get('pidesk_customize_manage');
+    await manage.execute('c', { action: 'create_skill', name: 'gamma', description: 'Third', body: 'Do gamma.', scope: 'project' });
+    const file = path.join(env.project!, '.pi', 'skills', 'gamma', 'SKILL.md');
+    expect(fs.existsSync(file)).toBe(true);
+    const listed = (await tools.get('pidesk_customize_list').execute()).content[0].text as string;
+    expect(listed).toContain('gamma · project');
+    await manage.execute('c', { action: 'set_skill_disabled', file, disabled: true });
+    expect((await tools.get('pidesk_customize_list').execute()).content[0].text).toContain('gamma · project · off');
+  });
+
+  it('saves, switches off and removes a connector', async () => {
+    const manage = tools.get('pidesk_customize_manage');
+    await manage.execute('c', { action: 'save_connector', name: 'docs', transport: 'http', url: 'https://example.com/mcp' });
+    expect((await tools.get('pidesk_customize_list').execute()).content[0].text).toContain('docs · user · http · on');
+    await manage.execute('c', { action: 'set_connector_enabled', name: 'docs', enabled: false });
+    expect((await tools.get('pidesk_customize_list').execute()).content[0].text).toContain('docs · user · http · off');
+    await manage.execute('c', { action: 'remove_connector', name: 'docs' });
+    expect((await tools.get('pidesk_customize_list').execute()).content[0].text).not.toContain('docs · user');
+  });
+
+  it('names the missing field instead of guessing', async () => {
+    const manage = tools.get('pidesk_customize_manage');
+    await expect(manage.execute('c', { action: 'create_skill', name: 'x' })).rejects.toThrow('create_skill needs description');
+    await expect(manage.execute('c', { action: 'install_plugin' })).rejects.toThrow('install_plugin needs source');
+  });
+
+  it('marks the changing tool destructive and the listing read-only', () => {
+    expect(tools.get('pidesk_customize_manage').annotations).toEqual({ destructiveHint: true });
+    expect(tools.get('pidesk_customize_list').annotations).toEqual({ readOnlyHint: true });
   });
 });
