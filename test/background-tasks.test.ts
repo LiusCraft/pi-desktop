@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { createDesktopKit, type KitHost, type SubagentRun } from '../src/agent/desktop-kit';
+import { SessionHub } from '../src/agent/hub';
 import type { TaskUpdate } from '../src/shared/protocol';
 
 /** Loads the kit into a fake pi and exposes the tools it registered. */
@@ -81,5 +85,25 @@ describe('background tasks', () => {
     await until(() => messages.length > 0);
     expect(messages[0].message.content).toMatch(/the report/);
     expect(updates.at(-1)).toMatchObject({ state: 'done', text: 'the report' });
+  });
+
+  it('stopping the turn also stops its background tasks, so nothing wakes the session later', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-desktop-hub-stop-'));
+    const hub = new SessionHub({ dataDir: path.join(dir, 'data'), agentDir: path.join(dir, 'agent'), emit: () => {} });
+    const shell = new AbortController();
+    const subagent = new AbortController();
+    let abortedTurn = false;
+    // Only what abort() reads from a live session: its tracked tasks and its own session.
+    const live = {
+      id: 's1', pending: new Map(), tasks: new Map([['call-1', shell], ['call-2', subagent]]),
+      runtime: { session: { abort: async () => void (abortedTurn = true) } },
+    };
+    (hub as unknown as { live: Map<string, unknown> }).live.set('s1', live);
+
+    await hub.abort('s1');
+
+    expect(abortedTurn).toBe(true);
+    expect(shell.signal.aborted).toBe(true);
+    expect(subagent.signal.aborted).toBe(true);
   });
 });

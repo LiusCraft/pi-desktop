@@ -254,7 +254,7 @@ Code 会话输入框上方的 PR 条报告当前分支的 PR：状态颜色、`+
 ### 后台任务与子 agent
 
 - **子 agent**（`pidesk_task`）：内置 `explore`、`plan` 两种身份；自己的身份是 `~/.pi-desktop/agents/*.md`（frontmatter 写 `name`、`description`、可选 `model` 和 `tools` 白名单，正文是系统提示），可在 Customize → Subagents 里编辑。子 agent 始终运行在 plan 模式，配置不能放宽它能改的范围；只加载只读的 MCP 工具。
-- **后台运行**：`pidesk_task` 可带 `run_in_background`，立即返回，报告稍后作为任务通知唤醒模型。`pidesk_bg_shell` / `pidesk_bg_output` / `pidesk_bg_kill` 用来跑长期存活的 shell 命令。两类任务共用 **Background tasks** 面板，可查看、停止，并且不随发起它们的那一轮结束。
+- **后台运行**：`pidesk_task` 可带 `run_in_background`，立即返回，报告稍后作为任务通知唤醒模型。`pidesk_bg_shell` / `pidesk_bg_output` / `pidesk_bg_kill` 用来跑长期存活的 shell 命令。两类任务共用 **Background tasks** 面板，可查看、停止；它们不随发起它们的那一轮结束，但停止该轮时会一并停掉，避免任务事后又把会话唤醒。
 - 内置工具统一使用 `pidesk_` 前缀；transcript 仍能读懂旧会话里记录的裸名称。
 
 ### 远程（Remote）

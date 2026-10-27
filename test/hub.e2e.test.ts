@@ -288,7 +288,16 @@ describe('code sessions', { timeout: 120_000 }, () => {
     await driver.hub.open(meta.id);
     const before = (await driver.hub.open(meta.id)).messages.length;
     const from = driver.events.length;
-    await driver.hub.side(meta.id, { text: '刚才为什么这样做？', quote: '一段回复' });
+    driver.hub.side(meta.id, { text: '刚才为什么这样做？', quote: '一段回复' });
+    // The call returns as soon as the question is queued; the answer arrives as events.
+    const queued = driver.hub.sideGet(meta.id);
+    expect(queued.busy).toBe(true);
+    expect(queued.turns[0]).toEqual({ role: 'user', text: '刚才为什么这样做？', quote: '一段回复' });
+    await new Promise<void>((resolve) => {
+      const t = setInterval(() => {
+        if (!driver.hub.sideGet(meta.id).busy) { clearInterval(t); resolve(); }
+      }, 10);
+    });
     const chat = driver.hub.sideGet(meta.id);
     expect(chat.busy).toBe(false);
     expect(chat.turns[0]).toEqual({ role: 'user', text: '刚才为什么这样做？', quote: '一段回复' });

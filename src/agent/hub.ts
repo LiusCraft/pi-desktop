@@ -1176,12 +1176,13 @@ export class SessionHub {
   }
 
   /**
-   * Ask the side chat of a session. The question joins the host-held thread right away
-   * and the answer follows as another `side` event. The request carries a fresh
-   * transcript snapshot and no tools; the session is never prompted, so this works
-   * mid-turn and leaves its context alone. Failures land in the thread's `error`.
+   * Ask the side chat of a session. The question joins the host-held thread and this
+   * returns at once: the answer follows as another `side` event, so the sender is never
+   * held open while the model thinks. The request carries a fresh transcript snapshot and
+   * no tools; the session is never prompted, so this works mid-turn and leaves its context
+   * alone. Failures land in the thread's `error`.
    */
-  async side(id: string, input: { text: string; quote?: string }): Promise<void> {
+  side(id: string, input: { text: string; quote?: string }): void {
     const chat = this.sideState(id);
     const text = String(input?.text ?? '').trim();
     const quote = (input?.quote ?? chat.quote)?.trim() || undefined;
@@ -1194,6 +1195,11 @@ export class SessionHub {
     this.emitSide(chat);
     const controller = new AbortController();
     this.sideRuns.set(id, controller);
+    void this.answerSide(id, chat, controller).catch((err) => console.warn('[side] answerSide threw:', err));
+  }
+
+  /** The request behind one side question, from the model call to the `side` event that ends it. */
+  private async answerSide(id: string, chat: SideChat, controller: AbortController) {
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; controller.abort(); }, sideChat.SIDE_TIMEOUT_MS);
     try {
@@ -1416,16 +1422,23 @@ export class SessionHub {
     this.live.delete(id);
     this.cancelPending(live);
     // Background subagents and shells die with their session.
-    for (const stop of live.tasks.values()) stop.abort();
+    this.stopTasks(live);
     live.unsubscribe?.();
     this.setStatus(live, 'idle');
     await live.runtime.dispose().catch(() => {});
+  }
+
+  /** Nothing a session started may wake it later: used when the user stops the turn and on close. */
+  private stopTasks(live: Live) {
+    for (const stop of live.tasks.values()) stop.abort();
   }
 
   async abort(id: string) {
     const live = this.live.get(id);
     if (!live) return;
     this.cancelPending(live);
+    // Stopping the turn stops its background tasks too; their notifications would start a new turn.
+    this.stopTasks(live);
     await live.runtime.session.abort();
   }
   clearQueue(id: string) {

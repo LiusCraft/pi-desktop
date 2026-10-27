@@ -659,7 +659,8 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       description:
         'Start a long-running shell command (dev server, watcher, slow build or test run) in the background. ' +
         'It returns at once with a task id; read output with pidesk_bg_output, stop it with pidesk_bg_kill. ' +
-        'When the command exits you get a <task-notification> message. Use the normal shell tool for short commands.',
+        'When the command exits you get a <task-notification> message that starts your next turn, so end the turn after starting it: ' +
+        'never `sleep`, poll or re-run the command to wait. Use the normal shell tool for short commands.',
       promptSnippet: 'Run long-lived shell commands in the background',
       parameters: Type.Object({
         command: Type.String({ description: 'The command to run' }),
@@ -701,7 +702,7 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
             notify(id, `Background command "${title}" ${how}.`, task.state, `Last output:\n${task.output.slice(-4000) || '(no output)'}`);
           });
         return {
-          content: [{ type: 'text', text: `Started \`${params.command}\` in the background (task ${id}). Use pidesk_bg_output to read its output and pidesk_bg_kill to stop it; you will be notified when it exits.` }],
+          content: [{ type: 'text', text: `Started \`${params.command}\` in the background (task ${id}). Use pidesk_bg_output to read its output and pidesk_bg_kill to stop it; you will be notified when it exits, so end the turn instead of sleeping or polling.` }],
           details: { description: title, command: params.command, background: true },
         };
       },

@@ -927,7 +927,7 @@ export interface Api {
   'sessions:commands'(id: string): SlashCommand[];
   /** One tool-less request that guesses the user's next message; null when unavailable. */
   'sessions:suggest'(id: string, options: SuggestionOptions): { text: string } | null;
-  /** Ask the side chat (/btw) of a session; the answer arrives as `side` host events. The session itself is left untouched. */
+  /** Ask the side chat (/btw) of a session; returns once the question is queued, and the answer arrives as `side` host events. The session itself is left untouched. */
   'sessions:side'(id: string, input: { text: string; quote?: string }): void;
   'sessions:sideGet'(id: string): SideChat;
   /** Stage (or clear, with null) the passage the next side question is about. */
