@@ -232,6 +232,12 @@ export interface SideTurn {
   quote?: string;
 }
 /** The side conversation of a session. The host owns it so the panel and a popped-out window show the same thing. */
+/** A suggested Work task: the card's label and the prompt it puts in the composer. */
+export interface WorkIdea {
+  label: string;
+  prompt: string;
+}
+
 export interface SideChat {
   sessionId: string;
   title: string;
@@ -718,6 +724,8 @@ export type ThemeSetting = 'light' | 'dark' | 'system';
 /** How the next-message prediction picks its model. */
 export type SuggestionModelMode = 'auto' | 'session' | 'fixed';
 /** Default and maximum conversation depth of a prediction (number of messages). */
+/** Which model writes the Work welcome screen's ideas: the latest session's own, the cheap one, or one the user picked. */
+export type WorkIdeasModelMode = 'session' | 'auto' | 'fixed';
 export const SUGGESTION_DEFAULT_CONTEXT = 6;
 export const SUGGESTION_MAX_CONTEXT = 50;
 export interface Settings {
@@ -735,6 +743,12 @@ export interface Settings {
   suggestionContext: number;
   /** Send the whole conversation instead of the last `suggestionContext` messages. */
   suggestionFullContext: boolean;
+  /** Work welcome screen: draw the "Ideas for you" from the recent Work sessions; off hides the block. */
+  workIdeas: boolean;
+  /** session: the model of the latest Work session; auto: cheapest model of its provider; fixed: `workIdeasModelId`. */
+  workIdeasModel: WorkIdeasModelMode;
+  /** provider/model id used by `workIdeasModel: 'fixed'`; unavailable ids fall back to auto. */
+  workIdeasModelId: string | null;
   defaultMode: SessionKind;
   sidebarCollapsed: boolean;
   /** Root folder for Code-session git worktrees; null/empty uses `<dataDir>/.worktree`. */
@@ -915,6 +929,8 @@ export interface Api {
   'sessions:sideAbort'(id: string): void;
   /** Forget the side conversation and start over. */
   'sessions:sideReset'(id: string): void;
+  /** Task ideas drawn from the recent Work sessions; null when there is nothing to base them on or no model could answer. */
+  'sessions:workIdeas'(): WorkIdea[] | null;
   'sessions:changes'(id: string): ChangeSet;
   /** Commits made since the session's base, newest first. */
   'sessions:commits'(id: string): CommitInfo[];
@@ -999,7 +1015,7 @@ export const HOST_CHANNELS = [
   'sessions:list', 'sessions:create', 'sessions:open', 'sessions:prompt', 'sessions:respond',
   'sessions:setMode', 'sessions:setStyle', 'sessions:update', 'sessions:archive', 'sessions:unarchive', 'sessions:inspect', 'sessions:remove', 'sessions:spawn', 'sessions:abort',
   'sessions:clearQueue', 'sessions:newContext', 'sessions:compact', 'sessions:stats', 'sessions:exportHtml',
-  'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:side', 'sessions:sideGet', 'sessions:sideStage', 'sessions:sideAbort', 'sessions:sideReset',
+  'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:side', 'sessions:sideGet', 'sessions:sideStage', 'sessions:sideAbort', 'sessions:sideReset', 'sessions:workIdeas',
   'sessions:changes', 'sessions:commits', 'sessions:commitChanges', 'sessions:changeContent', 'sessions:pr', 'sessions:prThreads', 'sessions:prReply', 'sessions:prResolve', 'sessions:files', 'sessions:readFile', 'sessions:search', 'sessions:readImage',
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
   'sessions:import', 'git:branch', 'git:branches', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove',

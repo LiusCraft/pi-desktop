@@ -21,7 +21,7 @@ const STATE_TONE: Record<ArtifactPublishState, string> = {
 const kb = (bytes: number) => `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
 
 /** Screenshot of the page, taken by the app the first time a version is shown; a placeholder until it arrives. */
-function Thumbnail({ a }: { a: ArtifactMeta }) {
+export function Thumbnail({ a }: { a: ArtifactMeta }) {
   const [src, setSrc] = useState<string | null | undefined>(undefined);
   useEffect(() => {
     let live = true;

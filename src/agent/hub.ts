@@ -15,7 +15,7 @@ import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import { buildMessage, decodeUserContent } from '@shared/attachments';
 import type {
   AgentDraft, ConnectorDraft, SkillDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
-  PrStatus, PrSummary, SessionCleanup, SessionMeta, SessionRemoval, SessionStats, SetupStep, Settings, SideChat, SpawnTask, SubagentProgress, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
+  PrStatus, PrSummary, SessionCleanup, SessionMeta, SessionRemoval, SessionStats, SetupStep, Settings, SideChat, SpawnTask, SubagentProgress, WorkIdea, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
 } from '@shared/protocol';
 import { decodeCommandMessage, isCommandMessage } from '@shared/command-message';
 import { decodePeerMessage,encodePeerMessage, isPeerMessage } from '@shared/peer-message';
@@ -49,6 +49,7 @@ import { ProjectBook } from './remote/workspace';
 import { projectContext, remember } from './work-project';
 import * as prediction from './suggest';
 import * as sideChat from './side-chat';
+import * as workIdeas from './work-ideas';
 
 const NAMES = ['trusting-maxwell', 'eager-lovelace', 'quiet-hopper', 'brave-turing', 'calm-knuth', 'swift-ritchie', 'bold-curie', 'keen-dijkstra'];
 /** Tools on top of pi's defaults (read, bash, edit, write). */
@@ -993,6 +994,54 @@ export class SessionHub {
     now.autoNamed = true;
     this.save();
     this.setTitle(id, title);
+  }
+
+  // ------------------------------------------------------------ work ideas
+
+  /**
+   * Ideas for the Work welcome screen, drawn from the titles of the recent Work sessions.
+   * The answer is kept until those sessions change, so reopening the screen costs nothing.
+   * Null when there is nothing to go on or no model answered: the screen shows its fixed ideas.
+   */
+  async workIdeas(): Promise<WorkIdea[] | null> {
+    const settings = this.storedSettings();
+    if (!settings.workIdeas) return null;
+    const recent = this.metas
+      .filter((m) => m.kind === 'work' && !m.archived && !m.autoName)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, workIdeas.RECENT_SESSIONS);
+    if (!recent.length) return null;
+    const key = recent.map((m) => `${m.id}:${m.title}`).join('\n');
+    const cached = this.store.get<{ key: string; ideas: WorkIdea[] } | null>('workIdeas', null);
+    if (cached?.key === key) return cached.ideas;
+    const model = await this.workIdeasModel(settings, recent[0].model);
+    if (!model || model.provider === 'demo') return null;
+    const controller = new AbortController();
+    this.namers.add(controller);
+    const timer = setTimeout(() => controller.abort(), workIdeas.TIMEOUT_MS);
+    try {
+      const reply = await this.models.completeSimple(model, {
+        systemPrompt: workIdeas.SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: workIdeas.titlesText(recent.map((m) => m.title)), timestamp: Date.now() }],
+      }, { signal: controller.signal, maxTokens: 1024 });
+      if (reply.stopReason === 'error' || reply.stopReason === 'aborted') return null;
+      const ideas = workIdeas.parseIdeas(prediction.contentText(reply.content));
+      if (ideas) this.store.set('workIdeas', { key, ideas });
+      return ideas;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+      this.namers.delete(controller);
+    }
+  }
+
+  /** The model that writes the ideas, per the setting; a choice that cannot answer falls back to the cheap automatic one. */
+  private async workIdeasModel(settings: Settings, current: string | null | undefined) {
+    const requested = settings.workIdeasModel === 'fixed' ? settings.workIdeasModelId : settings.workIdeasModel === 'session' ? current : null;
+    const model = this.findModel(requested);
+    if (model && model.provider !== 'demo' && this.isAvailable(model)) return model;
+    return this.autoSideModel(current);
   }
 
   // ------------------------------------------------------------ next-message prediction

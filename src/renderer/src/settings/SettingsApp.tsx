@@ -1,9 +1,9 @@
 // Settings window. Every value comes from the main process (single source of
 // truth), so the main window and this one can never disagree.
 import { useEffect, useState, type ReactNode } from 'react';
-import { BrainIcon, DatabaseIcon, FolderIcon, InfoIcon, MonitorSmartphoneIcon, MoonIcon, PlusIcon, SettingsIcon, Trash2Icon } from 'lucide-react';
+import { BrainIcon, BriefcaseIcon, CodeIcon, DatabaseIcon, FolderIcon, InfoIcon, MonitorSmartphoneIcon, MoonIcon, PlusIcon, SettingsIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
-import type { AppInfo, Project, Settings, SettingsPayload, SuggestionModelMode, TerminalShell } from '@shared/protocol';
+import type { AppInfo, Project, Settings, SettingsPayload, SuggestionModelMode, TerminalShell, WorkIdeasModelMode } from '@shared/protocol';
 import { SUGGESTION_DEFAULT_CONTEXT, SUGGESTION_MAX_CONTEXT } from '@shared/protocol';
 import { BUILTIN_PETS, BUILTIN_PET_IDS, DEFAULT_PET_ID } from '@shared/pets';
 import { useCopy } from '@/components/common/Copy';
@@ -25,10 +25,12 @@ import { ModelsSection } from './ModelsSection';
 import { RemoteSection } from './RemoteSection';
 import { StorageSection } from './StorageSection';
 
-type Section = 'appearance' | 'general' | 'models' | 'projects' | 'remote' | 'storage' | 'about';
+type Section = 'appearance' | 'general' | 'work' | 'code' | 'models' | 'projects' | 'remote' | 'storage' | 'about';
 const SECTIONS: { id: Section; label: string; icon: ReactNode }[] = [
   { id: 'appearance', label: '外观', icon: <MoonIcon className="size-4" /> },
   { id: 'general', label: '通用', icon: <SettingsIcon className="size-4" /> },
+  { id: 'work', label: 'Work', icon: <BriefcaseIcon className="size-4" /> },
+  { id: 'code', label: 'Code', icon: <CodeIcon className="size-4" /> },
   { id: 'models', label: '模型管理', icon: <BrainIcon className="size-4" /> },
   { id: 'projects', label: '项目与文件夹', icon: <FolderIcon className="size-4" /> },
   { id: 'remote', label: '远程', icon: <MonitorSmartphoneIcon className="size-4" /> },
@@ -43,6 +45,12 @@ const SYSTEM_SHELL = 'system';
 const revealLabel = isMac ? '在 Finder 中显示' : '在资源管理器中显示';
 const SUGGESTION_MODES: { id: SuggestionModelMode; label: string; hint: string }[] = [
   { id: 'session', label: '跟随会话', hint: '用会话当前的模型（默认），更好但可能更贵' },
+  { id: 'auto', label: '自动', hint: '同 provider 里单价最低的小模型' },
+  { id: 'fixed', label: '指定', hint: '固定使用下面选择的模型' },
+];
+
+const WORK_IDEAS_MODES: { id: WorkIdeasModelMode; label: string; hint: string }[] = [
+  { id: 'session', label: '跟随会话', hint: '用最近一个 Work 会话的模型（默认）' },
   { id: 'auto', label: '自动', hint: '同 provider 里单价最低的小模型' },
   { id: 'fixed', label: '指定', hint: '固定使用下面选择的模型' },
 ];
@@ -271,7 +279,7 @@ export function SettingsApp() {
   } else if (section === 'general') {
     body = (
       <>
-        <Heading title="通用" sub="通知、默认视图、回复渲染与输入预测。" />
+        <Heading title="通用" sub="通知、默认视图、AI 工具、回复渲染与输入预测。" />
         <div className="space-y-6">
           <Group title="基础">
             <Row title="任务通知" hint="任务跑完且窗口不在最前面时，发送系统通知。">
@@ -283,21 +291,6 @@ export function SettingsApp() {
                 options={[{ id: 'code', label: 'Code' }, { id: 'work', label: 'Work' }]}
                 onChange={(m) => void patch({ defaultMode: m })}
               />
-            </Row>
-          </Group>
-
-          <Group title="终端">
-            <Row title="默认终端" hint="终端面板新建标签页时启动的 shell。已打开的终端不受影响。">
-              <Select value={settings.terminalShell ?? SYSTEM_SHELL} onValueChange={(v) => void patch({ terminalShell: v === SYSTEM_SHELL ? null : v })}>
-                <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectGroup>
-                  <SelectItem value={SYSTEM_SHELL}>系统默认</SelectItem>
-                  {shells.map((sh) => <SelectItem key={sh.file} value={sh.file}>{sh.label}</SelectItem>)}
-                  {settings.terminalShell && !shells.some((sh) => sh.file === settings.terminalShell) && (
-                    <SelectItem value={settings.terminalShell}>{settings.terminalShell}（未找到）</SelectItem>
-                  )}
-                </SelectGroup></SelectContent>
-              </Select>
             </Row>
           </Group>
 
@@ -350,6 +343,53 @@ export function SettingsApp() {
                 </Row>
               </>
             )}
+          </Group>
+        </div>
+      </>
+    );
+  } else if (section === 'work') {
+    body = (
+      <>
+        <Heading title="Work" sub="只在 Work 分区生效的设置。" />
+        <div className="space-y-6">
+          <Group title="Work 首页建议" sub="Work 首页的「Ideas for you」根据最近的 Work 会话标题生成；结果会缓存，会话有变化才重新生成。关闭后首页不再显示这一块。">
+            <Row title="根据最近的会话推荐">
+              <Switch checked={settings.workIdeas !== false} onCheckedChange={(v) => void patch({ workIdeas: v })} />
+            </Row>
+            {settings.workIdeas !== false && (
+              <>
+                <Row title="使用的模型" hint="跟随会话 = 最近一个 Work 会话用的模型；自动 = 同 provider 里最便宜的小模型；模型不可用时回退到自动。离线 Demo 模型不参与。">
+                  <Segmented value={settings.workIdeasModel ?? 'session'} options={WORK_IDEAS_MODES} onChange={(m) => void patch({ workIdeasModel: m })} />
+                </Row>
+                {(settings.workIdeasModel ?? 'session') === 'fixed' && (
+                  <Row title="指定模型" hint="只列出当前可用（已配置凭据）的模型。">
+                    <ModelPicker value={settings.workIdeasModelId ?? null} onChange={(id) => void patch({ workIdeasModelId: id })} emptyLabel="未指定（回退到自动）" label="生成建议使用的模型" className="w-64 shrink-0" />
+                  </Row>
+                )}
+              </>
+            )}
+          </Group>
+        </div>
+      </>
+    );
+  } else if (section === 'code') {
+    body = (
+      <>
+        <Heading title="Code" sub="只在 Code 分区生效的设置。" />
+        <div className="space-y-6">
+          <Group title="终端">
+            <Row title="默认终端" hint="终端面板新建标签页时启动的 shell。已打开的终端不受影响。">
+              <Select value={settings.terminalShell ?? SYSTEM_SHELL} onValueChange={(v) => void patch({ terminalShell: v === SYSTEM_SHELL ? null : v })}>
+                <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup>
+                  <SelectItem value={SYSTEM_SHELL}>系统默认</SelectItem>
+                  {shells.map((sh) => <SelectItem key={sh.file} value={sh.file}>{sh.label}</SelectItem>)}
+                  {settings.terminalShell && !shells.some((sh) => sh.file === settings.terminalShell) && (
+                    <SelectItem value={settings.terminalShell}>{settings.terminalShell}（未找到）</SelectItem>
+                  )}
+                </SelectGroup></SelectContent>
+              </Select>
+            </Row>
           </Group>
         </div>
       </>

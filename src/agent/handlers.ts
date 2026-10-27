@@ -55,6 +55,7 @@ export function sessionHandlers(ready: Promise<SessionHub>, getScheduler: () => 
     'sessions:sideStage': withHub((h, id, quote) => h.sideStage(id, quote)),
     'sessions:sideAbort': withHub((h, id) => h.sideAbort(id)),
     'sessions:sideReset': withHub((h, id) => h.sideReset(id)),
+    'sessions:workIdeas': withHub((h) => h.workIdeas()),
     'sessions:changes': withHub((h, id) => h.changes(id)),
     'sessions:commits': withHub((h, id) => h.commits(id)),
     'sessions:commitChanges': withHub((h, id, hash) => h.commitChanges(id, hash)),

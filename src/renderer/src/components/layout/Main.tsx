@@ -1,4 +1,4 @@
-import { useState, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import {
   BotIcon, ChevronDownIcon, ExternalLinkIcon, FileTextIcon, FolderIcon, GlobeIcon, LaptopIcon, PanelRightIcon,
   SquareTerminalIcon,
@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { useDefaultLayout } from 'react-resizable-panels';
-import { isMac, modKey } from '@/lib/api';
+import { call, isMac, modKey } from '@/lib/api';
 import { WORK_IDEAS, OUTPUT_STYLE_INFO, VIEW_MODES, type ViewMode } from '@/lib/constants';
 import { fname } from '@/lib/format';
 import { OpenInMenu } from '@/components/common/OpenInMenu';
@@ -27,12 +27,13 @@ import { useApp, useCurrent } from '@/store/app';
 import { drafts } from '@/store/drafts';
 import { hasThinking } from '@/store/transcript';
 import type { SessionView } from '@/store/types';
-import type { OutputStyle } from '@shared/protocol';
+import type { OutputStyle, WorkIdea } from '@shared/protocol';
 import { CustomizePage } from '@/customize/CustomizePage';
 import { ScheduledPage } from '@/scheduled/ScheduledPage';
 import { ActivityPage } from '@/activity/ActivityPage';
 import { ArchivedPage } from '@/archived/ArchivedPage';
 import { ArtifactsPage } from '@/artifacts/ArtifactsPage';
+import { RecentArtifacts } from '@/artifacts/RecentArtifacts';
 import { ProjectsPage } from '@/projects/ProjectsPage';
 import { SidebarToggle } from './Sidebar';
 import { Inbox } from './Inbox';
@@ -153,6 +154,35 @@ function CodeWelcome() {
   );
 }
 
+/** Ideas drawn from the recent Work sessions; the fixed ones show until (or unless) the model has some. */
+function WorkIdeas() {
+  const enabled = useApp((st) => st.settings.workIdeas !== false);
+  const [ideas, setIdeas] = useState<readonly WorkIdea[]>(WORK_IDEAS);
+  useEffect(() => {
+    if (!enabled) return;
+    let live = true;
+    void call('sessions:workIdeas').then((list) => live && list && setIdeas(list)).catch(() => {});
+    return () => { live = false; };
+  }, [enabled]);
+  if (!enabled) return null;
+  return (
+    <div className="mt-8">
+      <div className="mb-2 text-sm text-muted-foreground">Ideas for you</div>
+      <div className="grid gap-2 sm:grid-cols-3">
+        {ideas.map((idea) => (
+          <button
+            key={idea.label}
+            onClick={() => drafts.setText(welcomeDraftKey(), idea.prompt)}
+            className="rounded-xl border bg-card px-3.5 py-3 text-left text-sm hover:bg-accent"
+          >
+            {idea.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function WorkWelcome() {
   const h = new Date().getHours();
   return (
@@ -163,20 +193,8 @@ function WorkWelcome() {
           {h < 5 || h >= 22 ? 'Still up?' : 'You’re here!'}
         </h1>
         <WorkComposer />
-        <div className="mt-8">
-          <div className="mb-2 text-sm text-muted-foreground">Ideas for you</div>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {WORK_IDEAS.map((idea) => (
-              <button
-                key={idea.label}
-                onClick={() => drafts.setText(welcomeDraftKey(), idea.prompt)}
-                className="rounded-xl border bg-card px-3.5 py-3 text-left text-sm hover:bg-accent"
-              >
-                {idea.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <WorkIdeas />
+        <RecentArtifacts />
       </div>
     </div>
   );

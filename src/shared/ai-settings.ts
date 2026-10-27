@@ -3,10 +3,11 @@
  * Left out on purpose: the `ai*` switches (the model must not widen its own access), `terminalShell`
  * (an executable the app launches) and `worktreeDir` (a folder the app creates and writes into).
  */
-import { SUGGESTION_MAX_CONTEXT, type Settings, type SuggestionModelMode, type ThemeSetting } from './protocol';
+import { SUGGESTION_MAX_CONTEXT, type Settings, type SuggestionModelMode, type ThemeSetting, type WorkIdeasModelMode } from './protocol';
 
 const THEMES: readonly ThemeSetting[] = ['light', 'dark', 'system'];
 const SUGGESTION_MODES: readonly SuggestionModelMode[] = ['auto', 'session', 'fixed'];
+const WORK_IDEAS_MODES: readonly WorkIdeasModelMode[] = ['session', 'auto', 'fixed'];
 const SESSION_KINDS = ['code', 'work'] as const;
 
 interface Field {
@@ -30,6 +31,9 @@ export const AI_SETTING_FIELDS = {
   suggestionModelId: { hint: 'provider/model id, used when suggestionModel is fixed; null clears it', ok: (v) => v === null || (typeof v === 'string' && v.includes('/')) },
   suggestionContext: { hint: `integer 1..${SUGGESTION_MAX_CONTEXT}`, ok: (v) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= SUGGESTION_MAX_CONTEXT },
   suggestionFullContext: flag,
+  workIdeas: flag,
+  workIdeasModel: oneOf(WORK_IDEAS_MODES),
+  workIdeasModelId: { hint: 'provider/model id, used when workIdeasModel is fixed; null clears it', ok: (v) => v === null || (typeof v === 'string' && v.includes('/')) },
 } satisfies Partial<Record<keyof Settings, Field>>;
 
 export type AiSettingKey = keyof typeof AI_SETTING_FIELDS;
