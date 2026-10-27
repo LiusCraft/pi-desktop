@@ -1,5 +1,6 @@
 // The agent host's calls, bound to one session hub. Pi Desktop's host process and the `pi-remote` plugin
 // (a hub living inside a plain pi) serve the very same set, so a remote client cannot tell them apart.
+import { TEMPORARY_WORKSPACE } from '@shared/activity';
 import type { HOST_CHANNELS } from '@shared/protocol';
 import * as git from './git';
 import { readCustomizeFile } from './customize';
@@ -21,7 +22,13 @@ export function sessionHandlers(ready: Promise<SessionHub>, getScheduler: () => 
     'sessions:list': withHub((h) => h.list()),
     'sessions:create': withHub((h, opts) => h.create(opts)),
     'sessions:open': withHub((h, id) => h.open(id)),
-    'sessions:prompt': withHub((h, id, payload, behavior) => h.prompt(id, payload, behavior)),
+    // Only this call is the user typing; tasks, peers and PR events reach `hub.prompt` directly.
+    'sessions:prompt': withHub(async (h, id, payload, behavior) => {
+      const result = await h.prompt(id, payload, behavior);
+      const m = h.meta(id);
+      h.activity.recordPrompt(m.kind, id, m.scratch ? TEMPORARY_WORKSPACE : m.projectPath);
+      return result;
+    }),
     'sessions:respond': withHub((h, id, requestId, response) => h.respond(id, requestId, response)),
     'sessions:setMode': withHub((h, id, mode) => h.setMode(id, mode)),
     'sessions:setStyle': withHub((h, id, style) => h.setStyle(id, style)),
@@ -80,6 +87,7 @@ export function sessionHandlers(ready: Promise<SessionHub>, getScheduler: () => 
     'customize:pluginInstall': withHub((h, source, scope, project) => h.customize.installPlugin(source, scope, project)),
     'customize:pluginRemove': withHub((h, source, scope, project) => h.customize.removePlugin(source, scope, project)),
     'customize:pluginUpdate': withHub((h, source, project) => h.customize.updatePlugins(source, project)),
+    'activity:get': withHub((h) => h.activity.get()),
     'tasks:list': withHub(() => scheduler().list()),
     'tasks:save': withHub((_h, draft) => scheduler().save(draft)),
     'tasks:setEnabled': withHub((_h, id, enabled) => scheduler().setEnabled(id, enabled)),

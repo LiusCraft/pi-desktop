@@ -267,6 +267,7 @@ export function showCustomize() {
     st.customize = true;
     st.scheduled = false;
     st.archived = false;
+    st.activity = false;
     st.menu = null;
   });
 }
@@ -276,6 +277,17 @@ export function showScheduled() {
     st.scheduled = true;
     st.customize = false;
     st.archived = false;
+    st.activity = false;
+    st.menu = null;
+  });
+}
+
+export function showActivity() {
+  setApp((st) => {
+    st.activity = true;
+    st.archived = false;
+    st.customize = false;
+    st.scheduled = false;
     st.menu = null;
   });
 }
@@ -283,6 +295,7 @@ export function showScheduled() {
 export function showArchived() {
   setApp((st) => {
     st.archived = true;
+    st.activity = false;
     st.customize = false;
     st.scheduled = false;
     st.menu = null;
@@ -296,6 +309,7 @@ export function setView(view: SessionKind) {
     st.customize = false;
     st.scheduled = false;
     st.archived = false;
+    st.activity = false;
   });
   try {
     localStorage.setItem('cc_mode', JSON.stringify(view));
@@ -313,6 +327,7 @@ export function showWelcome() {
     st.customize = false;
     st.scheduled = false;
     st.archived = false;
+    st.activity = false;
     st.current = null;
     st.lastByView[st.view] = null;
   });
@@ -332,6 +347,7 @@ export async function openSession(id: string, fresh = false) {
     st.customize = false;
     st.scheduled = false;
     st.archived = false;
+    st.activity = false;
     st.current = id;
     st.view = view;
     // Starting a session is slow (extensions, MCP): show that it is happening instead of an empty page.

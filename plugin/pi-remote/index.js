@@ -85,6 +85,7 @@ var HOST_CHANNELS = [
 	"customize:pluginInstall",
 	"customize:pluginRemove",
 	"customize:pluginUpdate",
+	"activity:get",
 	"tasks:list",
 	"tasks:save",
 	"tasks:setEnabled",
@@ -135,6 +136,21 @@ var NOT_SERVED = /* @__PURE__ */ new Set([
 ]);
 var SERVED = new Set([...HOST_CHANNELS, ...REMOTE_WORKSPACE_METHODS].filter((m) => !NOT_SERVED.has(m)));
 var isServedMethod = (method) => typeof method === "string" && SERVED.has(method);
+var emptyDay = () => ({
+	prompts: {
+		code: 0,
+		work: 0
+	},
+	sessions: [],
+	hours: Array(24).fill(0),
+	projects: {}
+});
+var pad = (n) => String(n).padStart(2, "0");
+/** Local-time `YYYY-MM-DD`, so late-night work stays on the day it happened. */
+function dayKey(at) {
+	const d = typeof at === "number" ? new Date(at) : at;
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 // src/shared/forge.ts
 /** The forge a remote URL (https, ssh:// or scp-style) points at, or null for a host we cannot tell by name. */
 function forgeOfUrl(url) {
@@ -1238,7 +1254,12 @@ function sessionHandlers(ready, getScheduler) {
 		"sessions:list": withHub((h) => h.list()),
 		"sessions:create": withHub((h, opts) => h.create(opts)),
 		"sessions:open": withHub((h, id) => h.open(id)),
-		"sessions:prompt": withHub((h, id, payload, behavior) => h.prompt(id, payload, behavior)),
+		"sessions:prompt": withHub(async (h, id, payload, behavior) => {
+			const result = await h.prompt(id, payload, behavior);
+			const m = h.meta(id);
+			h.activity.recordPrompt(m.kind, id, m.scratch ? "" : m.projectPath);
+			return result;
+		}),
 		"sessions:respond": withHub((h, id, requestId, response) => h.respond(id, requestId, response)),
 		"sessions:setMode": withHub((h, id, mode) => h.setMode(id, mode)),
 		"sessions:setStyle": withHub((h, id, style) => h.setStyle(id, style)),
@@ -1297,6 +1318,7 @@ function sessionHandlers(ready, getScheduler) {
 		"customize:pluginInstall": withHub((h, source, scope, project) => h.customize.installPlugin(source, scope, project)),
 		"customize:pluginRemove": withHub((h, source, scope, project) => h.customize.removePlugin(source, scope, project)),
 		"customize:pluginUpdate": withHub((h, source, project) => h.customize.updatePlugins(source, project)),
+		"activity:get": withHub((h) => h.activity.get()),
 		"tasks:list": withHub(() => scheduler().list()),
 		"tasks:save": withHub((_h, draft) => scheduler().save(draft)),
 		"tasks:setEnabled": withHub((_h, id, enabled) => scheduler().setEnabled(id, enabled)),
@@ -5164,6 +5186,31 @@ function pickSideModel(models, current) {
 	const best = [...pool].sort((a, b) => score(a) - score(b) || (a.contextWindow || 0) - (b.contextWindow || 0))[0];
 	return best ? `${best.provider}/${best.id}` : null;
 }
+// src/agent/activity.ts
+var STORE_KEY = "activity";
+var ActivityRecorder = class {
+	store;
+	log;
+	constructor(store) {
+		this.store = store;
+		this.log = store.get(STORE_KEY, {});
+	}
+	/** The user sent a prompt in a session working in `project` (`TEMPORARY_WORKSPACE` for a scratch folder). */
+	recordPrompt(kind, sessionId, project, at = Date.now()) {
+		const key = dayKey(at);
+		const day = this.log[key] ??= emptyDay();
+		day.hours ??= Array(24).fill(0);
+		day.projects ??= {};
+		day.prompts[kind] = (day.prompts[kind] ?? 0) + 1;
+		day.hours[new Date(at).getHours()]++;
+		day.projects[project] = (day.projects[project] ?? 0) + 1;
+		if (!day.sessions.includes(sessionId)) day.sessions.push(sessionId);
+		this.store.set(STORE_KEY, this.log);
+	}
+	get() {
+		return this.log;
+	}
+};
 // src/agent/store.ts
 var Store = class {
 	dir;
@@ -5430,6 +5477,8 @@ var SessionHub = class {
 	/** Set by the host once it exists; it needs the hub, so the hub can't build it. */
 	scheduler = null;
 	store;
+	/** What the user did each day; fed by the handlers, so tasks, peers and PR watches never count. */
+	activity;
 	settings;
 	metas;
 	live = /* @__PURE__ */ new Map();
@@ -5452,6 +5501,7 @@ var SessionHub = class {
 		this.opts = opts;
 		this.agentDir = opts.agentDir ?? getAgentDir();
 		this.store = new Store(opts.dataDir);
+		this.activity = new ActivityRecorder(this.store);
 		this.metas = this.store.get("sessions", []);
 		this.trust = new ProjectTrustStore(this.agentDir);
 	}

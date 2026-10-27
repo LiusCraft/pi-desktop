@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  ArchiveIcon, BoxIcon, ChevronDownIcon, ClockIcon, CodeXmlIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon, BrainIcon,
+  ArchiveIcon, BoxIcon, ChevronDownIcon, ClockIcon, CodeXmlIcon, FlameIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon, BrainIcon,
   ListChecksIcon, MonitorSmartphoneIcon, MoonIcon, MoreHorizontalIcon, PanelLeftIcon, PencilIcon, PlusIcon, SearchIcon, SettingsIcon, ShapesIcon, SunIcon,
   Trash2Icon, TriangleAlertIcon,
 } from 'lucide-react';
@@ -12,7 +12,7 @@ import { call, isMac, modKey } from '@/lib/api';
 import { ago, fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
-  archiveSession, deleteSession, openSession, removeProject, renameSession, selectProject, setView, showArchived, showCustomize, showScheduled, showWelcome, toggleSidebar,
+  archiveSession, deleteSession, openSession, removeProject, renameSession, selectProject, setView, showActivity, showArchived, showCustomize, showScheduled, showWelcome, toggleSidebar,
 } from '@/store/actions';
 import { setApp, useApp } from '@/store/app';
 import type { SessionKind } from '@shared/protocol';
@@ -103,7 +103,7 @@ function NavItem({ icon, children, onClick, hint, soon, active }: { icon: React.
 }
 
 /** Which full-page view (if any) replaces the conversation. */
-const usePage = () => useApp((s) => (s.scheduled ? 'scheduled' : s.customize ? 'customize' : s.archived ? 'archived' : null));
+const usePage = () => useApp((s) => (s.scheduled ? 'scheduled' : s.customize ? 'customize' : s.archived ? 'archived' : s.activity ? 'activity' : null));
 
 function CodeNav() {
   const page = usePage();
@@ -208,6 +208,7 @@ function UserMenu() {
         <DropdownMenuItem onSelect={() => call('settings:set', { theme: theme === 'dark' ? 'light' : 'dark' })}>
           {theme === 'dark' ? <SunIcon /> : <MoonIcon />}切换深色 / 浅色
         </DropdownMenuItem>
+        <DropdownMenuItem onSelect={showActivity}><FlameIcon />活动</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => call('settings:open', 'models')}><BrainIcon />模型管理…</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => call('settings:open', 'remote')}><MonitorSmartphoneIcon />远程…</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => call('settings:open')}><SettingsIcon />设置<span className="ml-auto text-xs text-muted-foreground">{modKey},</span></DropdownMenuItem>

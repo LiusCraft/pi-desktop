@@ -5,6 +5,7 @@
 // Every renderer call is one entry of `Api`. Channels listed in HOST_CHANNELS are
 // forwarded unchanged to the agent host; the rest are handled by the main process.
 // Host → renderer traffic is a single stream of `HostEvent`s.
+import type { ActivityLog } from './activity';
 import type { Attachment, DecodedUserContent, PromptSubmission } from './attachments';
 import type { Forge } from './forge';
 import type { PetDef } from './pets';
@@ -888,6 +889,7 @@ export interface Api {
   'customize:pluginInstall'(source: string, scope: 'user' | 'project', project: string | null): CustomizeCatalog;
   'customize:pluginRemove'(source: string, scope: 'user' | 'project', project: string | null): CustomizeCatalog;
   'customize:pluginUpdate'(source: string | null, project: string | null): CustomizeCatalog;
+  'activity:get'(): ActivityLog;
   'tasks:list'(): ScheduledTask[];
   'tasks:save'(draft: TaskDraft): ScheduledTask[];
   'tasks:setEnabled'(id: string, enabled: boolean): ScheduledTask[];
@@ -925,7 +927,7 @@ export const HOST_CHANNELS = [
   'sessions:import', 'git:branch', 'git:branches', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove',
   'customize:list', 'customize:readFile', 'customize:skillSetDisabled', 'customize:skillCreate', 'customize:connectorSave',
   'customize:connectorSetEnabled', 'customize:connectorRemove', 'customize:pluginInstall', 'customize:pluginRemove', 'customize:pluginUpdate',
-  'tasks:list', 'tasks:save', 'tasks:setEnabled', 'tasks:remove', 'tasks:run',
+  'activity:get', 'tasks:list', 'tasks:save', 'tasks:setEnabled', 'tasks:remove', 'tasks:run',
   'models:list', 'models:levels',
   'models:catalog', 'models:login', 'models:loginRespond', 'models:loginCancel', 'models:logout',
   'models:endpointSave', 'models:endpointRemove', 'models:endpointDiscover', 'models:refresh',

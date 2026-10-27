@@ -30,6 +30,7 @@ import type { SessionView } from '@/store/types';
 import type { OutputStyle } from '@shared/protocol';
 import { CustomizePage } from '@/customize/CustomizePage';
 import { ScheduledPage } from '@/scheduled/ScheduledPage';
+import { ActivityPage } from '@/activity/ActivityPage';
 import { ArchivedPage } from '@/archived/ArchivedPage';
 import { SidebarToggle } from './Sidebar';
 import { Inbox } from './Inbox';
@@ -218,10 +219,11 @@ export function Main() {
   const customize = useApp((st) => st.customize);
   const scheduled = useApp((st) => st.scheduled);
   const archived = useApp((st) => st.archived);
+  const activity = useApp((st) => st.activity);
   return (
     <main className="flex h-full min-w-0 flex-col bg-background">
-      <Header s={customize || scheduled || archived ? undefined : s} title={customize ? 'Customize' : scheduled ? 'Scheduled' : archived ? 'Archived sessions' : undefined} />
-      <div className="flex min-h-0 flex-1 flex-col">{customize ? <CustomizePage /> : scheduled ? <ScheduledPage /> : archived ? <ArchivedPage /> : s ? <Thread key={s.meta.id} s={s} /> : view === 'work' ? <WorkWelcome /> : <CodeWelcome />}</div>
+      <Header s={customize || scheduled || archived || activity ? undefined : s} title={customize ? 'Customize' : scheduled ? 'Scheduled' : archived ? 'Archived sessions' : activity ? 'Activity' : undefined} />
+      <div className="flex min-h-0 flex-1 flex-col">{customize ? <CustomizePage /> : scheduled ? <ScheduledPage /> : archived ? <ArchivedPage /> : activity ? <ActivityPage /> : s ? <Thread key={s.meta.id} s={s} /> : view === 'work' ? <WorkWelcome /> : <CodeWelcome />}</div>
     </main>
   );
 }

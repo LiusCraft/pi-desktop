@@ -38,6 +38,7 @@ import { PrWatcher, type PrPending } from './pr-watch';
 import * as naming from './naming';
 import type { Scheduler } from './scheduler';
 import { pickSideModel } from './side-model';
+import { ActivityRecorder } from './activity';
 import { Store } from './store';
 import * as prediction from './suggest';
 import * as sideChat from './side-chat';
@@ -118,6 +119,8 @@ export class SessionHub {
   /** Set by the host once it exists; it needs the hub, so the hub can't build it. */
   scheduler: Scheduler | null = null;
   private readonly store: Store;
+  /** What the user did each day; fed by the handlers, so tasks, peers and PR watches never count. */
+  readonly activity: ActivityRecorder;
   private settings!: SettingsManager;
   private metas: SessionMeta[];
   private readonly live = new Map<string, Live>();
@@ -140,6 +143,7 @@ export class SessionHub {
   constructor(private readonly opts: HubOptions) {
     this.agentDir = opts.agentDir ?? getAgentDir();
     this.store = new Store(opts.dataDir);
+    this.activity = new ActivityRecorder(this.store);
     this.metas = this.store.get<SessionMeta[]>('sessions', []);
     this.trust = new ProjectTrustStore(this.agentDir);
   }
