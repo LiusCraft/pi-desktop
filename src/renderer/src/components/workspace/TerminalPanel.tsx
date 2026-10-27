@@ -6,6 +6,7 @@ import { Terminal, type ITheme } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import type { TerminalInfo } from '@shared/protocol';
 import { bridge, call } from '@/lib/api';
+import { t as tr, useT } from '@/lib/i18n';
 import { resolvedTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import { fail, togglePanel } from '@/store/actions';
@@ -17,7 +18,7 @@ const THEMES: Record<'light' | 'dark', ITheme> = {
   dark: { background: '#1f1e1d', foreground: '#e5e3dc', cursor: '#e5e3dc', selectionBackground: '#4a4842' },
 };
 const FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
-const EXIT_NOTICE = '\r\n\x1b[2m[进程已退出，关闭此标签页即可]\x1b[0m\r\n';
+const exitNotice = () => `\r\n\x1b[2m${tr('terminal.exited')}\x1b[0m\r\n`;
 
 function TermView({ id, active }: { id: string; active: boolean }) {
   const host = useRef<HTMLDivElement>(null);
@@ -44,7 +45,7 @@ function TermView({ id, active }: { id: string; active: boolean }) {
       if (queue) queue.push(e.data);
       else term.write(e.data);
     });
-    const offExit = bridge.on('terminal:exit', (e) => e.id === id && term.write(EXIT_NOTICE));
+    const offExit = bridge.on('terminal:exit', (e) => e.id === id && term.write(exitNotice()));
     const offTheme = bridge.on('settings:changed', () => void (term.options.theme = THEMES[resolvedTheme()]));
     term.onData((data) => void call('terminal:write', id, data).catch(() => {}));
 
@@ -54,7 +55,7 @@ function TermView({ id, active }: { id: string; active: boolean }) {
       term.write(r.backlog);
       for (const chunk of queue ?? []) term.write(chunk);
       queue = null;
-      if (r.exited) term.write(EXIT_NOTICE);
+      if (r.exited) term.write(exitNotice());
       refit();
     }).catch(fail);
 
@@ -78,6 +79,7 @@ function TermView({ id, active }: { id: string; active: boolean }) {
 }
 
 export function TerminalPanel({ s, ...card }: CardProps & { s: SessionView }) {
+  const tx = useT();
   const sessionId = s.meta.id;
   const [tabs, setTabs] = useState<TerminalInfo[]>([]);
   const [active, setActive] = useState<string | null>(null);
@@ -125,12 +127,12 @@ export function TerminalPanel({ s, ...card }: CardProps & { s: SessionView }) {
               className={cn('group flex h-7 shrink-0 items-center gap-1 rounded-md pl-2 pr-1 text-xs', t.id === active ? 'bg-accent text-foreground' : 'font-normal text-muted-foreground hover:bg-accent/50')}
             >
               <button type="button" onClick={() => setActive(t.id)} className="max-w-32 truncate">{t.title}</button>
-              <button type="button" aria-label="关闭终端" onClick={() => close(t.id)} className="flex size-4 items-center justify-center rounded hover:bg-muted">
+              <button type="button" aria-label={tx('terminal.close')} onClick={() => close(t.id)} className="flex size-4 items-center justify-center rounded hover:bg-muted">
                 <XIcon className="size-3" />
               </button>
             </div>
           ))}
-          <IconBtn title="新建终端" onClick={() => void add()}><PlusIcon className="size-3.5" /></IconBtn>
+          <IconBtn title={tx('terminal.new')} onClick={() => void add()}><PlusIcon className="size-3.5" /></IconBtn>
         </div>
       }
       onClose={() => togglePanel(sessionId, 'terminal', false)}

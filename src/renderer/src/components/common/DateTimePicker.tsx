@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -25,12 +26,13 @@ function Part({ value, options, label, onChange }: { value: string; options: str
 
 /** `HH:MM`, 24-hour. */
 export function TimePicker({ value, onChange, className }: { value: string; onChange: (time: string) => void; className?: string }) {
+  const t = useT();
   const [h = '09', m = '00'] = value.split(':');
   return (
     <div className={cn('flex items-center gap-1.5', className)}>
-      <Part value={pad(Number(h) || 0)} options={HOURS} label="小时" onChange={(v) => onChange(`${v}:${pad(Number(m) || 0)}`)} />
+      <Part value={pad(Number(h) || 0)} options={HOURS} label={t('time.hour')} onChange={(v) => onChange(`${v}:${pad(Number(m) || 0)}`)} />
       <span className="text-muted-foreground">:</span>
-      <Part value={pad(Number(m) || 0)} options={MINUTES} label="分钟" onChange={(v) => onChange(`${pad(Number(h) || 0)}:${v}`)} />
+      <Part value={pad(Number(m) || 0)} options={MINUTES} label={t('time.minute')} onChange={(v) => onChange(`${pad(Number(h) || 0)}:${v}`)} />
     </div>
   );
 }

@@ -5,9 +5,11 @@ import {
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { useT } from '@/lib/i18n';
 import { useDialogs, type DialogSpec } from '@/store/dialogs';
 
 function PromptDialog({ spec }: { spec: Extract<DialogSpec, { kind: 'prompt' }> }) {
+  const t = useT();
   const [value, setValue] = useState(spec.value);
   return (
     <Dialog open onOpenChange={(o) => !o && spec.resolve(null)}>
@@ -24,8 +26,8 @@ function PromptDialog({ spec }: { spec: Extract<DialogSpec, { kind: 'prompt' }> 
         >
           <Input autoFocus value={value} placeholder={spec.placeholder} onChange={(e) => setValue(e.target.value)} onFocus={(e) => e.currentTarget.select()} />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => spec.resolve(null)}>Cancel</Button>
-            <Button type="submit">{spec.action ?? 'OK'}</Button>
+            <Button type="button" variant="outline" onClick={() => spec.resolve(null)}>{t('dialog.cancel')}</Button>
+            <Button type="submit">{spec.action ?? t('dialog.ok')}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -34,6 +36,7 @@ function PromptDialog({ spec }: { spec: Extract<DialogSpec, { kind: 'prompt' }> 
 }
 
 export function DialogHost() {
+  const t = useT();
   const spec = useDialogs((s) => s.current);
   if (!spec) return null;
   switch (spec.kind) {
@@ -48,7 +51,7 @@ export function DialogHost() {
               <AlertDialogDescription className="break-words whitespace-pre-line">{spec.body}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => spec.resolve(false)}>Cancel</AlertDialogCancel>
+              <AlertDialogCancel onClick={() => spec.resolve(false)}>{t('dialog.cancel')}</AlertDialogCancel>
               <AlertDialogAction onClick={() => spec.resolve(true)}>{spec.action}</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

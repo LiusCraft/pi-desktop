@@ -5,6 +5,7 @@ import { Markdown } from '@/components/common/Markdown';
 import { Button } from '@/components/ui/button';
 import { call, errText } from '@/lib/api';
 import { useDrag } from '@/lib/drag';
+import { t as tr, useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { askSide, dockSide, hideSide, popOutSide, useSide, useSideChat } from '@/store/side';
 
@@ -23,6 +24,7 @@ function Turn({ turn }: { turn: SideTurn }) {
  * by default, can be popped out to a window of its own and pinned above other windows.
  */
 export function SideChatView({ sid, mode }: { sid: string; mode: 'embedded' | 'window' }) {
+  const t = useT();
   const chat = useSideChat(sid);
   const drag = useDrag();
   const pinned = useSide((s) => s.windows[sid]?.pinned ?? false);
@@ -40,7 +42,7 @@ export function SideChatView({ sid, mode }: { sid: string; mode: 'embedded' | 'w
     input.current?.focus();
   }, [sid, chat.quote]);
   useEffect(() => {
-    if (mode === 'window' && chat.title) document.title = `Side chat · ${chat.title}`;
+    if (mode === 'window' && chat.title) document.title = `${tr('side.title')} · ${chat.title}`;
   }, [mode, chat.title]);
 
   const send = () => {
@@ -60,27 +62,27 @@ export function SideChatView({ sid, mode }: { sid: string; mode: 'embedded' | 'w
     <div className={cn('flex min-h-0 flex-col bg-card', mode === 'embedded' ? 'h-full rounded-xl border shadow-xl' : 'h-screen')} data-testid="side-chat" data-mode={mode} style={mode === 'embedded' ? drag.style : undefined}>
       <header {...(mode === 'embedded' ? drag.handle : {})} className={cn('flex shrink-0 items-center gap-1 border-b py-1.5 pr-1.5 pl-3', mode === 'embedded' && drag.handle.className)}>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium">Side chat</div>
-          <div className="truncate text-[11px] text-muted-foreground">不会写入会话{chat.title ? ` · ${chat.title}` : ''}</div>
+          <div className="text-sm font-medium">{t('side.title')}</div>
+          <div className="truncate text-[11px] text-muted-foreground">{t('side.notSaved')}{chat.title ? ` · ${chat.title}` : ''}</div>
         </div>
-        <Button variant="ghost" size="icon" className={icon} title="重新开始" disabled={!chat.turns.length && !chat.busy} onClick={() => void call('sessions:sideReset', sid)}>
+        <Button variant="ghost" size="icon" className={icon} title={t('side.reset')} disabled={!chat.turns.length && !chat.busy} onClick={() => void call('sessions:sideReset', sid)}>
           <RotateCcwIcon className="size-3.5" />
         </Button>
         {mode === 'window' ? (
           <>
-            <Button variant="ghost" size="icon" className={cn(icon, pinned && 'bg-accent text-foreground')} title={pinned ? '取消置顶' : '置顶窗口'} aria-pressed={pinned} onClick={() => void call('side:pin', sid, !pinned)}>
+            <Button variant="ghost" size="icon" className={cn(icon, pinned && 'bg-accent text-foreground')} title={t(pinned ? 'side.unpin' : 'side.pin')} aria-pressed={pinned} onClick={() => void call('side:pin', sid, !pinned)}>
               {pinned ? <PinOffIcon className="size-3.5" /> : <PinIcon className="size-3.5" />}
             </Button>
-            <Button variant="ghost" size="icon" className={icon} title="放回会话" onClick={() => dockSide(sid)}>
+            <Button variant="ghost" size="icon" className={icon} title={t('side.dock')} onClick={() => dockSide(sid)}>
               <PanelBottomCloseIcon className="size-3.5" />
             </Button>
           </>
         ) : (
           <>
-            <Button variant="ghost" size="icon" className={icon} title="弹出为独立窗口" onClick={() => popOutSide(sid)}>
+            <Button variant="ghost" size="icon" className={icon} title={t('side.popOut')} onClick={() => popOutSide(sid)}>
               <ExternalLinkIcon className="size-3.5" />
             </Button>
-            <Button variant="ghost" size="icon" className={icon} title="关闭" onClick={() => hideSide(sid)}>
+            <Button variant="ghost" size="icon" className={icon} title={t('side.close')} onClick={() => hideSide(sid)}>
               <XIcon className="size-3.5" />
             </Button>
           </>
@@ -89,15 +91,15 @@ export function SideChatView({ sid, mode }: { sid: string; mode: 'embedded' | 'w
 
       <div ref={body} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
         {!chat.turns.length && !chat.busy && (
-          <p className="py-6 text-center text-xs text-muted-foreground">随口问一句关于当前会话的问题。<br />回答基于会话内容，不会打断主任务，也不会进入它的上下文。</p>
+          <p className="py-6 text-center text-xs text-muted-foreground">{t('side.empty')}<br />{t('side.empty2')}</p>
         )}
         {chat.turns.map((turn, i) => <Turn key={i} turn={turn} />)}
         {chat.busy && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className="spark spin" />
-            思考中…
+            {t('side.thinking')}
             <button className="ml-auto flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-accent hover:text-foreground" onClick={() => void call('sessions:sideAbort', sid)}>
-              <SquareIcon className="size-3" />停止
+              <SquareIcon className="size-3" />{t('side.stop')}
             </button>
           </div>
         )}
@@ -109,7 +111,7 @@ export function SideChatView({ sid, mode }: { sid: string; mode: 'embedded' | 'w
           <div className="mb-1.5 flex items-start gap-1.5 rounded-md bg-muted/60 px-2 py-1.5 text-xs">
             <QuoteIcon className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
             <div className="line-clamp-3 min-w-0 flex-1 whitespace-pre-wrap text-muted-foreground">{chat.quote}</div>
-            <button aria-label="移除引用" className="text-muted-foreground hover:text-foreground" onClick={() => void call('sessions:sideStage', sid, null)}><XIcon className="size-3.5" /></button>
+            <button aria-label={t('side.removeQuote')} className="text-muted-foreground hover:text-foreground" onClick={() => void call('sessions:sideStage', sid, null)}><XIcon className="size-3.5" /></button>
           </div>
         )}
         <div className="flex items-end gap-1.5 rounded-lg border bg-background px-2.5 py-1.5">
@@ -117,8 +119,8 @@ export function SideChatView({ sid, mode }: { sid: string; mode: 'embedded' | 'w
             ref={input}
             rows={1}
             value={text}
-            aria-label="Side chat message"
-            placeholder={chat.quote ? '问问这段内容…' : '问一个旁路问题…'}
+            aria-label={t('side.message')}
+            placeholder={t(chat.quote ? 'side.askQuote' : 'side.askSide')}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -128,7 +130,7 @@ export function SideChatView({ sid, mode }: { sid: string; mode: 'embedded' | 'w
             }}
             className="max-h-32 min-h-6 flex-1 resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground [field-sizing:content]"
           />
-          <Button size="icon" className="size-7 shrink-0 rounded-full" disabled={!text.trim() || chat.busy} aria-label="Send" onClick={send}>
+          <Button size="icon" className="size-7 shrink-0 rounded-full" disabled={!text.trim() || chat.busy} aria-label={t('side.send')} onClick={send}>
             <ArrowUpIcon className="size-4" />
           </Button>
         </div>

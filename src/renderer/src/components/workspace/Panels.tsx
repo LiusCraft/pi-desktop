@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { call, isMac } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import { contentOf, onContent, wantContent } from '@/lib/change-content';
 import { fileDiffOf } from '@/lib/file-diff';
 import { modeName } from '@/lib/constants';
@@ -59,6 +60,7 @@ export function Card({ title, tools, children, onClose, expanded, onExpand, body
   onClose?: () => void;
   bodyClass?: string;
 }) {
+  const t = useT();
   // Which edge of this card the dragged one would land on.
   const [drop, setDrop] = useState<DropPlace | null>(null);
   const movable = cardId && onMove;
@@ -110,11 +112,11 @@ export function Card({ title, tools, children, onClose, expanded, onExpand, body
       >
         <div className="flex min-w-0 flex-1 items-center gap-1.5 px-1 text-sm font-medium">{title}</div>
         {tools}
-        <IconBtn title={expanded ? 'Restore' : 'Expand (Ctrl+click: whole session)'} onClick={(e) => onExpand(e.ctrlKey || e.metaKey)}>
+        <IconBtn title={t(expanded ? 'panel.restore' : 'panel.expand')} onClick={(e) => onExpand(e.ctrlKey || e.metaKey)}>
           {expanded ? <Minimize2Icon className="size-3.5" /> : <Maximize2Icon className="size-3.5" />}
         </IconBtn>
         {onClose && (
-          <IconBtn title="Close" onClick={onClose}>
+          <IconBtn title={t('panel.close')} onClick={onClose}>
             <XIcon className="size-3.5" />
           </IconBtn>
         )}
@@ -179,11 +181,12 @@ const wrapIndex = (index: number, direction: 1 | -1, count: number) => (index + 
 
 // ------------------------------------------------------------ diff
 
-const GENERATED_LABEL: Record<GeneratedKind, string> = { lockfile: 'lockfile', minified: 'minified bundle', sourcemap: 'source map' };
+const GENERATED_LABEL = { lockfile: 'panel.gen.lockfile', minified: 'panel.gen.minified', sourcemap: 'panel.gen.sourcemap' } as const satisfies Record<GeneratedKind, string>;
 
 const STATUS_OF_CHANGE: Record<ChangedFile['status'], PathStatus> = { A: 'added', M: 'modified', D: 'deleted' };
 
 export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
+  const t = useT();
   // Generated files start collapsed; `flipped` holds the user's per-file overrides.
   const [flipped, setFlipped] = useState<Set<string>>(new Set());
   const [showTree, setShowTree] = useState(true);
@@ -322,35 +325,35 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const decorate = (path: string): FileTreeRowDecoration | null => {
     const f = byPath.get(path);
     if (!f) return null;
-    if (isBinary(f)) return { text: 'binary' };
+    if (isBinary(f)) return { text: t('panel.binary') };
     return { text: `+${f.add} −${f.del}`, parts: [{ text: `+${f.add}`, color: 'var(--success)' }, { text: ` −${f.del}`, color: 'var(--destructive)' }] };
   };
 
   const title = (
     <span className="flex min-w-0 items-center gap-1.5 text-sm font-normal">
-      <span className="truncate">{s.meta.baseBranch || 'base'}</span>
+      <span className="truncate">{s.meta.baseBranch || t('panel.base')}</span>
       <span className="text-muted-foreground">→</span>
       <span className="truncate">{s.meta.branch || fname(s.meta.cwd)}</span>
     </span>
   );
   const tools = (
     <>
-      <IconBtn title={`Find in the diff  ${findHint}`} onClick={openFind}><SearchIcon className="size-3.5" /></IconBtn>
-      <IconBtn title={allCollapsed ? 'Expand all' : 'Collapse all'} onClick={() => setAllCollapsed(!allCollapsed)}>
+      <IconBtn title={`${t('panel.findInDiff')}  ${findHint}`} onClick={openFind}><SearchIcon className="size-3.5" /></IconBtn>
+      <IconBtn title={t(allCollapsed ? 'panel.expandAll' : 'panel.collapseAll')} onClick={() => setAllCollapsed(!allCollapsed)}>
         {allCollapsed ? <ChevronsUpDownIcon className="size-3.5" /> : <ChevronsDownUpIcon className="size-3.5" />}
       </IconBtn>
-      <IconBtn title="Refresh" onClick={() => { setFlipped(new Set()); void loadChanges(id); }}><RefreshCwIcon className="size-3.5" /></IconBtn>
-      <OpenInMenu id={id}><IconBtn title="Open in…"><ExternalLinkIcon className="size-3.5" /></IconBtn></OpenInMenu>
+      <IconBtn title={t('panel.refresh')} onClick={() => { setFlipped(new Set()); void loadChanges(id); }}><RefreshCwIcon className="size-3.5" /></IconBtn>
+      <OpenInMenu id={id}><IconBtn title={t('panel.openIn')}><ExternalLinkIcon className="size-3.5" /></IconBtn></OpenInMenu>
     </>
   );
   const treeToggle = (
-    <IconBtn title={showTree ? 'Hide changed files' : 'Show changed files'} aria-pressed={showTree} className={cn(showTree && 'bg-info/15 text-info hover:bg-info/20 hover:text-info')} onClick={() => setShowTree((v) => !v)}>
+    <IconBtn title={t(showTree ? 'panel.hideChangedFiles' : 'panel.showChangedFiles')} aria-pressed={showTree} className={cn(showTree && 'bg-info/15 text-info hover:bg-info/20 hover:text-info')} onClick={() => setShowTree((v) => !v)}>
       <ListIcon className="size-4" />
     </IconBtn>
   );
   let content: ReactNode;
-  if (!s.meta.baseCommit) content = <Empty>{'这个项目不是 git 仓库\n初始化 git 后即可查看 Pi Desktop 的改动'}</Empty>;
-  else if (!s.changes.length) content = <Empty>{'No changes yet\nPi Desktop 修改的文件会出现在这里'}</Empty>;
+  if (!s.meta.baseCommit) content = <Empty>{t('panel.notGit')}</Empty>;
+  else if (!s.changes.length) content = <Empty>{t('panel.noChanges')}</Empty>;
   else {
     content = (
       <div className="flex h-full min-h-0 flex-col" {...findKeys(openFind)}>
@@ -361,7 +364,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
             onValue={setQuery}
             caseSensitive={caseSensitive}
             onCaseSensitive={setCaseSensitive}
-            placeholder="在改动中查找"
+            placeholder={t('panel.findInChangesPh')}
             status={query ? `${hits.length ? hit + 1 : 0}/${hits.length}${hits.length >= SEARCH_MAX_MATCHES ? '+' : ''}` : ''}
             onStep={(direction) => hits.length && showHit(wrapIndex(hit, direction, hits.length))}
             onClose={() => setFinding(false)}
@@ -392,13 +395,13 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
               <>
                 <ResizableHandle />
                 <ResizablePanel id="commits" defaultSize={COMMITS_START} minSize={COMMITS_MIN_PX} maxSize={COMMITS_MAX}>
-              <nav className="h-full overflow-y-auto p-1.5" aria-label="Commits">
-                <div className="px-2 py-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Commits · {commits.length}</div>
+              <nav className="h-full overflow-y-auto p-1.5" aria-label={t('panel.commits')}>
+                <div className="px-2 py-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{t('panel.commits')} · {commits.length}</div>
                 <button
                   className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] hover:bg-accent', !commit && 'bg-accent')}
                   onClick={() => void pickCommit(null)}
                 >
-                  <span className="truncate">All changes</span>
+                  <span className="truncate">{t('panel.allChanges')}</span>
                 </button>
                 {commits.map((c) => (
                   <button
@@ -420,7 +423,7 @@ ${c.subject}`}
         )}
       >
         <div className="relative h-full min-w-0">
-          {files.length === 0 && <Empty>这个提交没有文件改动</Empty>}
+          {files.length === 0 && <Empty>{t('panel.commitEmpty')}</Empty>}
           <ReviewCodeView
             ref={review}
             className="h-full"
@@ -430,7 +433,7 @@ ${c.subject}`}
             onNeed={need}
             onActiveChange={setActive}
             renderPrefix={(item) => (
-              <button className="flex items-center text-muted-foreground hover:text-foreground" aria-expanded={!isCollapsed(item.path)} title={isCollapsed(item.path) ? 'Show diff' : 'Hide diff'} onClick={() => toggle(item.path)}>
+              <button className="flex items-center text-muted-foreground hover:text-foreground" aria-expanded={!isCollapsed(item.path)} title={t(isCollapsed(item.path) ? 'panel.showDiff' : 'panel.hideDiff')} onClick={() => toggle(item.path)}>
                 {isCollapsed(item.path) ? <ChevronRightIcon className="size-3.5" /> : <ChevronDownIcon className="size-3.5" />}
               </button>
             )}
@@ -438,9 +441,9 @@ ${c.subject}`}
               const gen = generatedKind(item.path);
               return (
                 <span className="flex items-center gap-1.5">
-                  {gen && <span title={`Generated ${GENERATED_LABEL[gen]}`} className="text-[10px] font-medium tracking-wide text-muted-foreground/70">gen</span>}
+                  {gen && <span title={t('panel.generated', { kind: t(GENERATED_LABEL[gen]) })} className="text-[10px] font-medium tracking-wide text-muted-foreground/70">{t('panel.gen')}</span>}
                   {byPath.get(item.path)?.status !== 'D' && (
-                    <IconBtn title="Open file" className="size-6" onClick={() => void openFileRef(item.path)}><CodeIcon className="size-3.5" /></IconBtn>
+                    <IconBtn title={t('panel.openFile')} className="size-6" onClick={() => void openFileRef(item.path)}><CodeIcon className="size-3.5" /></IconBtn>
                   )}
                 </span>
               );
@@ -462,6 +465,7 @@ ${c.subject}`}
 // ------------------------------------------------------------ preview
 
 export function PreviewPanel({ s, ...card }: CardProps & { s: SessionView }) {
+  const t = useT();
   const saved = useApp((st) => st.prefs.previewUrl);
   const url = s.previewUrl || saved;
   const [value, setValue] = useState(url);
@@ -471,7 +475,7 @@ export function PreviewPanel({ s, ...card }: CardProps & { s: SessionView }) {
     e.preventDefault();
     let u = value.trim();
     if (!/^https?:\/\//.test(u)) u = `http://${u}`;
-    if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(u)) return void toast.warning('预览只支持 localhost');
+    if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(u)) return void toast.warning(t('panel.localhostOnly'));
     updateSession(s.meta.id, (v) => void (v.previewUrl = u));
     setPref('previewUrl', u);
   };
@@ -480,14 +484,14 @@ export function PreviewPanel({ s, ...card }: CardProps & { s: SessionView }) {
       {...card}
       title={
         <form onSubmit={submit} className="flex-1">
-          <Input value={value} onChange={(e) => setValue(e.target.value)} aria-label="Preview URL" spellCheck={false} className="h-7 font-mono text-xs" />
+          <Input value={value} onChange={(e) => setValue(e.target.value)} aria-label={t('panel.previewUrl')} spellCheck={false} className="h-7 font-mono text-xs" />
         </form>
       }
-      tools={<IconBtn title="Reload" onClick={() => setNonce((n) => n + 1)}><RefreshCwIcon className="size-3.5" /></IconBtn>}
+      tools={<IconBtn title={t('panel.reload')} onClick={() => setNonce((n) => n + 1)}><RefreshCwIcon className="size-3.5" /></IconBtn>}
       onClose={() => togglePanel(s.meta.id, 'preview', false)}
       bodyClass="overflow-hidden"
     >
-      <iframe key={`${url}#${nonce}`} src={url} title="Preview" className="size-full border-0 bg-white" sandbox="allow-scripts allow-forms allow-same-origin" />
+      <iframe key={`${url}#${nonce}`} src={url} title={t('panel.preview')} className="size-full border-0 bg-white" sandbox="allow-scripts allow-forms allow-same-origin" />
     </Card>
   );
 }
@@ -498,6 +502,7 @@ type FileDetail = Extract<NonNullable<SessionView['detail']>, { type: 'file' }>;
 
 /** One window for the project: the file tree on the left, the open files (as tabs) on the right. */
 export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
+  const t = useT();
   const id = s.meta.id;
   const d = s.detail?.type === 'file' ? s.detail : null;
   const [source, setSource] = useSourceToggle(d?.path ?? '');
@@ -571,13 +576,13 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
   }, [find, query, caseSensitive, id]);
 
   const treeToggle = (
-    <IconBtn title={showTree ? 'Hide file tree' : 'Show file tree'} aria-pressed={showTree} className={cn(showTree && 'bg-info/15 text-info hover:bg-info/20 hover:text-info')} onClick={() => setShowTree((v) => !v)}>
+    <IconBtn title={t(showTree ? 'panel.hideTree' : 'panel.showTree')} aria-pressed={showTree} className={cn(showTree && 'bg-info/15 text-info hover:bg-info/20 hover:text-info')} onClick={() => setShowTree((v) => !v)}>
       <ListIcon className="size-4" />
     </IconBtn>
   );
   const listing = find === 'all'
     ? <SearchResults result={result} busy={searching} onOpen={(path, line) => void openFileRef(path, line)} />
-    : !s.files ? <Empty>Loading files…</Empty> : !paths.length ? <Empty>No files</Empty> : (
+    : !s.files ? <Empty>{t('panel.loadingFiles')}</Empty> : !paths.length ? <Empty>{t('panel.noFiles')}</Empty> : (
       <PathTree
         className="min-h-0 flex-1"
         label="Project files"
@@ -594,11 +599,11 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
   return (
     <Card
       {...card}
-      title={<>{treeToggle}<span>Files</span></>}
+      title={<>{treeToggle}<span>{t('panel.files')}</span></>}
       tools={(
         <>
-          <IconBtn title={`Find in files  ${findHint} · ${isMac ? '⇧⌘' : 'Ctrl+Shift+'}F`} onClick={() => openFind(d ? 'file' : 'all')}><SearchIcon className="size-3.5" /></IconBtn>
-          <IconBtn title="Refresh" onClick={() => void loadFiles(id, true)}><RefreshCwIcon className="size-3.5" /></IconBtn>
+          <IconBtn title={`${t('panel.findInFiles')}  ${findHint} · ${isMac ? '⇧⌘' : 'Ctrl+Shift+'}F`} onClick={() => openFind(d ? 'file' : 'all')}><SearchIcon className="size-3.5" /></IconBtn>
+          <IconBtn title={t('panel.refresh')} onClick={() => void loadFiles(id, true)}><RefreshCwIcon className="size-3.5" /></IconBtn>
         </>
       )}
       onClose={() => { togglePanel(id, 'files', false); closeFiles(id); }}
@@ -614,7 +619,7 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
             onCaseSensitive={setCaseSensitive}
             scope={find}
             onScope={openFind}
-            placeholder={find === 'all' ? '在所有文件中搜索' : '在当前文件中查找'}
+            placeholder={t(find === 'all' ? 'panel.searchAllPh' : 'panel.searchFilePh')}
             status={status}
             onStep={find === 'file' ? (direction) => fileHits.length && showHit(wrapIndex(hit, direction, fileHits.length)) : undefined}
             onClose={closeFind}
@@ -639,7 +644,7 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
                         >
                           <span className={cn('truncate', !tab.pinned && 'italic')}>{fname(tab.path)}</span>
                           <button
-                            aria-label={`Close ${fname(tab.path)}`}
+                            aria-label={t('panel.closeTab', { name: fname(tab.path) })}
                             className="shrink-0 rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-accent focus-visible:opacity-100"
                             onClick={(event) => { event.stopPropagation(); closeFileTab(id, tab.path); }}
                           >
@@ -652,7 +657,7 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
                   </div>
                   <FileBody s={s} d={d} source={source} viewRef={view} />
                 </>
-              ) : <Empty>{'选择左侧的文件来预览\n双击保留标签页'}</Empty>}
+              ) : <Empty>{t('panel.pickFile')}</Empty>}
             </div>
           </TreeSplit>
         </div>
@@ -685,61 +690,63 @@ function useTicker(on: boolean) {
 const elapsed = (t: ToolState) => (t.sub ? fmtDur((t.sub.endedAt ?? Date.now()) - t.sub.startedAt) : '');
 
 function TaskMeta({ tool, onTranscript }: { tool: ToolState; onTranscript?: () => void }) {
+  const t = useT();
   const sub = tool.sub;
   const running = tool.status === 'running';
-  const state = running ? sub?.activity || 'Working' : tool.status === 'err' ? 'Failed' : tool.status === 'denied' ? 'Stopped' : 'Completed';
+  const state = running ? sub?.activity || t('tasks.working') : t(tool.status === 'err' ? 'tasks.failed' : tool.status === 'denied' ? 'tasks.stopped' : 'tasks.completed');
   return (
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-muted-foreground">
-      {sub && !tool.sh && <span><b className="font-medium text-foreground/80">{fmtTok(sub.tokens)}</b> tokens</span>}
-      {sub && !tool.sh && <span><b className="font-medium text-foreground/80">{sub.toolUses}</b> tool use{sub.toolUses === 1 ? '' : 's'}</span>}
+      {sub && !tool.sh && <span><b className="font-medium text-foreground/80">{fmtTok(sub.tokens)}</b> {t('tasks.tokens')}</span>}
+      {sub && !tool.sh && <span><b className="font-medium text-foreground/80">{sub.toolUses}</b> {t(sub.toolUses === 1 ? 'tasks.toolUse' : 'tasks.toolUses')}</span>}
       <span className={cn(running && 'shimmer', tool.status === 'err' && 'text-destructive')}>{state}</span>
-      {onTranscript && <button className="text-info hover:underline" onClick={onTranscript}>{tool.sh ? 'View output' : 'View transcript'}</button>}
+      {onTranscript && <button className="text-info hover:underline" onClick={onTranscript}>{t(tool.sh ? 'tasks.viewOutput' : 'tasks.viewTranscript')}</button>}
     </div>
   );
 }
 
 export function TasksPanel({ s, ...card }: CardProps & { s: SessionView }) {
+  const t = useT();
   const id = s.meta.id;
   const all = agentTools(s);
   const [cleared, setCleared] = useState<Set<string>>(new Set());
-  const running = all.filter((t) => t.status === 'running');
-  const done = all.filter((t) => t.status !== 'running' && !cleared.has(t.id));
+  const running = all.filter((task) => task.status === 'running');
+  const done = all.filter((task) => task.status !== 'running' && !cleared.has(task.id));
   useTicker(running.length > 0);
-  const row = (t: ToolState) => (
-    <div key={t.id} className="group rounded-lg border bg-muted/40 px-3 py-2.5">
+  const row = (task: ToolState) => (
+    <div key={task.id} className="group rounded-lg border bg-muted/40 px-3 py-2.5">
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium" title={t.desc}>{t.desc}</div>
+          <div className="truncate text-sm font-medium" title={task.desc}>{task.desc}</div>
           <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1">{t.sh ? <SquareTerminalIcon className="size-3" /> : <BotIcon className="size-3" />}{t.sh ? 'Shell' : `Agent${t.args?.subagent_type ? ` · ${t.args.subagent_type}` : ''}`}</span>
-            {t.sub && <span className="tabular-nums">{elapsed(t)}</span>}
+            <span className="flex items-center gap-1">{task.sh ? <SquareTerminalIcon className="size-3" /> : <BotIcon className="size-3" />}{task.sh ? t('tasks.shell') : `${t('tasks.agent')}${task.args?.subagent_type ? ` · ${task.args.subagent_type}` : ''}`}</span>
+            {task.sub && <span className="tabular-nums">{elapsed(task)}</span>}
           </div>
         </div>
-        {t.status === 'running' ? (
-          <IconBtn title="Stop this task" className="size-6 border bg-card" onClick={() => void stopTask(id, t.id)}><SquareIcon className="size-2.5 fill-current" /></IconBtn>
-        ) : t.status === 'done' ? <CheckIcon className="mt-0.5 size-4 text-success" /> : <XIcon className="mt-0.5 size-4 text-destructive" />}
+        {task.status === 'running' ? (
+          <IconBtn title={t('tasks.stop')} className="size-6 border bg-card" onClick={() => void stopTask(id, task.id)}><SquareIcon className="size-2.5 fill-current" /></IconBtn>
+        ) : task.status === 'done' ? <CheckIcon className="mt-0.5 size-4 text-success" /> : <XIcon className="mt-0.5 size-4 text-destructive" />}
       </div>
-      <div className="mt-1.5"><TaskMeta tool={t} onTranscript={() => openAgent(id, t.id)} /></div>
+      <div className="mt-1.5"><TaskMeta tool={task} onTranscript={() => openAgent(id, task.id)} /></div>
     </div>
   );
   return (
     <Card
       {...card}
-      title="Background tasks"
-      tools={<IconBtn title="Clear finished tasks" disabled={!done.length} className="disabled:opacity-40" onClick={() => setCleared(new Set(all.filter((t) => t.status !== 'running').map((t) => t.id)))}><Trash2Icon className="size-3.5" /></IconBtn>}
+      title={t('tasks.title')}
+      tools={<IconBtn title={t('tasks.clear')} disabled={!done.length} className="disabled:opacity-40" onClick={() => setCleared(new Set(all.filter((task) => task.status !== 'running').map((task) => task.id)))}><Trash2Icon className="size-3.5" /></IconBtn>}
       onClose={() => togglePanel(id, 'tasks', false)}
     >
-      {!running.length && !done.length ? <Empty>{'No background tasks\nSubagents and shell commands Pi Desktop runs in the background show up here'}</Empty> : (
+      {!running.length && !done.length ? <Empty>{t('tasks.empty')}</Empty> : (
         <div className="space-y-4 p-3">
           {running.length > 0 && (
             <section className="space-y-2">
-              <h3 className="px-0.5 text-xs text-muted-foreground">Running</h3>
+              <h3 className="px-0.5 text-xs text-muted-foreground">{t('tasks.running')}</h3>
               {running.map(row)}
             </section>
           )}
           {done.length > 0 && (
             <section className="space-y-2">
-              <h3 className="px-0.5 text-xs text-muted-foreground">Finished</h3>
+              <h3 className="px-0.5 text-xs text-muted-foreground">{t('tasks.finished')}</h3>
               {done.map(row)}
             </section>
           )}
@@ -753,6 +760,7 @@ const STEP_ICON: Record<string, typeof FileIcon> = { bash: SquareTerminalIcon, r
 
 /** A subagent's prompt, every tool call and message it produced, then its report. */
 function AgentTranscript({ s, tool, card, close }: { s: SessionView; tool: ToolState; card: CardProps; close: () => void }) {
+  const t = useT();
   const running = tool.status === 'running';
   useTicker(running);
   const body = useRef<HTMLDivElement>(null);
@@ -765,8 +773,8 @@ function AgentTranscript({ s, tool, card, close }: { s: SessionView; tool: ToolS
   return (
     <Card
       {...card}
-      title={<><IconBtn title="Back" onClick={close}><ArrowLeftIcon className="size-3.5" /></IconBtn><span className="truncate">{tool.desc}</span>{tool.sub && <span className="shrink-0 text-xs font-normal text-muted-foreground tabular-nums">{elapsed(tool)}</span>}</>}
-      tools={running && <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => void stopTask(s.meta.id, tool.id)}>Stop</Button>}
+      title={<><IconBtn title={t('tasks.back')} onClick={close}><ArrowLeftIcon className="size-3.5" /></IconBtn><span className="truncate">{tool.desc}</span>{tool.sub && <span className="shrink-0 text-xs font-normal text-muted-foreground tabular-nums">{elapsed(tool)}</span>}</>}
+      tools={running && <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => void stopTask(s.meta.id, tool.id)}>{t('tasks.stopBtn')}</Button>}
       onClose={close}
       bodyClass="overflow-hidden"
     >
@@ -774,7 +782,7 @@ function AgentTranscript({ s, tool, card, close }: { s: SessionView; tool: ToolS
         <div className="space-y-3 p-4">
           <TaskMeta tool={tool} />
           <div className={cn('rounded-lg bg-muted px-3 py-2 text-xs whitespace-pre-wrap text-muted-foreground', tool.sh && 'font-mono')}>{tool.prompt}</div>
-          {tool.sh && <pre className="max-h-[60vh] overflow-auto rounded-lg border bg-card p-3 font-mono text-xs whitespace-pre-wrap">{tool.sh.output || (running ? 'Waiting for output…' : 'No output')}{!running && tool.sh.exitCode != null ? '\n[exit ' + tool.sh.exitCode + ']' : ''}</pre>}
+          {tool.sh && <pre className="max-h-[60vh] overflow-auto rounded-lg border bg-card p-3 font-mono text-xs whitespace-pre-wrap">{tool.sh.output || t(running ? 'tasks.waitingOutput' : 'tasks.noOutput')}{!running && tool.sh.exitCode != null ? '\n[exit ' + tool.sh.exitCode + ']' : ''}</pre>}
           {shown.length > 0 && (
             <div className="space-y-1.5 border-l pl-3">
               {shown.map((step, i) => {
@@ -790,10 +798,10 @@ function AgentTranscript({ s, tool, card, close }: { s: SessionView; tool: ToolS
               })}
             </div>
           )}
-          {tool.sh ? null : running ? <div className="text-sm"><span className="shimmer">{tool.sub?.activity || tool.summary || 'Working…'}</span></div> : (
+          {tool.sh ? null : running ? <div className="text-sm"><span className="shimmer">{tool.sub?.activity || tool.summary || t('tasks.workingEllipsis')}</span></div> : (
             <>
               {tool.summary && <div className="text-xs text-muted-foreground">{tool.summary}</div>}
-              {tool.md ? <Markdown text={tool.md} /> : !steps.length && <div className="text-sm text-muted-foreground">No transcript was recorded for this task.</div>}
+              {tool.md ? <Markdown text={tool.md} /> : !steps.length && <div className="text-sm text-muted-foreground">{t('tasks.noTranscript')}</div>}
             </>
           )}
         </div>
@@ -805,6 +813,7 @@ function AgentTranscript({ s, tool, card, close }: { s: SessionView; tool: ToolS
 // ------------------------------------------------------------ detail: plan, subagent, file
 
 export function DetailPanel({ s, ...card }: CardProps & { s: SessionView }) {
+  const t = useT();
   const d = s.detail!;
   const id = s.meta.id;
   const close = () => closeDetail(id);
@@ -813,12 +822,12 @@ export function DetailPanel({ s, ...card }: CardProps & { s: SessionView }) {
     const plan = findByKey(s, d.key);
     if (plan?.kind !== 'plan') return null;
     return (
-      <Card {...card} title="Plan" onClose={close} tools={<IconBtn title={copied ? 'Copied' : 'Copy plan'} onClick={() => copy(plan.md)}><CopyGlyph copied={copied} /></IconBtn>}>
+      <Card {...card} title={t('plan.title')} onClose={close} tools={<IconBtn title={t(copied ? 'plan.copied' : 'plan.copy')} onClick={() => copy(plan.md)}><CopyGlyph copied={copied} /></IconBtn>}>
         <div className="space-y-4 p-4">
           <div className="flex items-start gap-2 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
-            <MessageSquareIcon className="mt-0.5 size-3.5 shrink-0" />Review the plan. Approve it to let Pi Desktop start, or keep planning and reply with changes.
+            <MessageSquareIcon className="mt-0.5 size-3.5 shrink-0" />{t('plan.review')}
           </div>
-          <Markdown text={plan.md || '_Waiting for the plan…_'} />
+          <Markdown text={plan.md || t('plan.waiting')} />
           {plan.requestId && !plan.resolved && <PlanActions sid={id} itemKey={plan.key} />}
         </div>
       </Card>
@@ -844,30 +853,32 @@ function useSourceToggle(path: string) {
 }
 
 function FileTools({ s, d, source, onSource }: { s: SessionView; d: FileDetail; source: boolean; onSource: (on: boolean) => void }) {
+  const t = useT();
   const hasDiff = s.changes.some((f) => f.path === d.path);
   return (
     <>
       {HTML_FILE.test(d.path) && d.text != null && (
-        <IconBtn title={source ? '查看渲染效果' : '查看源码'} onClick={() => onSource(!source)}>{source ? <EyeIcon className="size-3.5" /> : <CodeIcon className="size-3.5" />}</IconBtn>
+        <IconBtn title={t(source ? 'file.viewRendered' : 'file.viewSource')} onClick={() => onSource(!source)}>{source ? <EyeIcon className="size-3.5" /> : <CodeIcon className="size-3.5" />}</IconBtn>
       )}
-      {hasDiff && <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => openDiffRef(d.path)}>Diff</Button>}
+      {hasDiff && <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => openDiffRef(d.path)}>{t('file.diff')}</Button>}
     </>
   );
 }
 
 function FileBody({ s, d, source, viewRef }: { s: SessionView; d: FileDetail; source: boolean; viewRef?: Ref<ReviewHandle> }) {
+  const t = useT();
   const target = useMemo(() => (d.line > FIRST_LINE ? { id: d.path, line: d.line } : null), [d.path, d.line]);
   const items = useMemo<ReviewItem[]>(() => (d.text != null ? [{ id: d.path, kind: 'file', path: d.path, text: d.text }] : []), [d.path, d.text]);
-  if (d.loading) return <Empty>Loading current file…</Empty>;
-  if (d.error) return <div className="p-4 text-sm text-destructive">Unable to open current file.<pre className="mt-2 text-xs whitespace-pre-wrap">{d.error}</pre></div>;
+  if (d.loading) return <Empty>{t('file.loading')}</Empty>;
+  if (d.error) return <div className="p-4 text-sm text-destructive">{t('file.unable')}<pre className="mt-2 text-xs whitespace-pre-wrap">{d.error}</pre></div>;
   if (d.image !== undefined) {
     return d.image ? (
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-[repeating-conic-gradient(var(--muted)_0_25%,transparent_0_50%)] bg-[length:20px_20px] p-4">
         <img src={d.image} alt={fname(d.path)} className="max-h-full max-w-full object-contain shadow-sm" />
       </div>
-    ) : <Empty>{'Image preview unavailable\nNot a supported image, outside the session folder, or larger than 20 MiB'}</Empty>;
+    ) : <Empty>{t('file.noImage')}</Empty>;
   }
-  if (d.text == null) return <Empty>{'File preview unavailable\nBinary, non-text, or larger than 1 MiB'}</Empty>;
+  if (d.text == null) return <Empty>{t('file.noPreview')}</Empty>;
   if (HTML_FILE.test(d.path) && !source) {
     return <iframe key={d.path} srcDoc={d.text} title={fname(d.path)} className="min-h-0 flex-1 border-0 bg-white" sandbox="allow-scripts" />;
   }
@@ -894,51 +905,52 @@ function FileViewer({ s, ...card }: CardProps & { s: SessionView }) {
 // ------------------------------------------------------------ work progress
 
 export function WorkPanel({ s, ...card }: CardProps & { s: SessionView }) {
+  const t = useT();
   const models = useApp((st) => st.models);
   const todos = s.lastTodos;
-  const done = todos.filter((t) => t.status === 'completed').length;
+  const done = todos.filter((todo) => todo.status === 'completed').length;
   const outputs = [...s.outputs].sort((a, b) => b.t - a.t);
   const id = s.meta.id;
-  const folderName = s.meta.scratch ? 'Temporary workspace' : fname(s.meta.cwd);
+  const folderName = s.meta.scratch ? t('progress.tempWorkspace') : fname(s.meta.cwd);
   return (
-    <Card {...card} title="Progress" onClose={() => togglePanel(id, 'progress', false)}>
+    <Card {...card} title={t('progress.title')} onClose={() => togglePanel(id, 'progress', false)}>
       <div className="divide-y">
         <section className="space-y-2 p-4">
           <h3 className="flex items-center justify-between text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-            Progress{todos.length > 0 && <span>{done}/{todos.length}</span>}
+            {t('progress.title')}{todos.length > 0 && <span>{done}/{todos.length}</span>}
           </h3>
           {todos.length ? (
             <>
               <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${(done / todos.length) * 100}%` }} /></div>
               <TodoList items={todos} />
             </>
-          ) : <p className="text-sm text-muted-foreground">{s.running ? 'Pi Desktop 正在了解任务…' : '多步骤的任务会在这里显示进度。'}</p>}
+          ) : <p className="text-sm text-muted-foreground">{t(s.running ? 'progress.learning' : 'progress.multiStep')}</p>}
         </section>
         <section className="space-y-1 p-4">
-          <h3 className="flex items-center justify-between text-xs font-semibold tracking-wide text-muted-foreground uppercase">Files{outputs.length > 0 && <span>{outputs.length}</span>}</h3>
+          <h3 className="flex items-center justify-between text-xs font-semibold tracking-wide text-muted-foreground uppercase">{t('progress.files')}{outputs.length > 0 && <span>{outputs.length}</span>}</h3>
           {outputs.length ? outputs.map((o) => (
             <div key={o.path} className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-accent">
               <button className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => void openFileRef(o.path)}>
                 <FileIcon className="size-4 shrink-0 text-muted-foreground" />
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium">{fname(o.path)}</span>
-                  <span className="block truncate text-xs text-muted-foreground">{fdir(o.path) || folderName} · {o.kind === 'write' ? 'created' : 'edited'}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{fdir(o.path) || folderName} · {t(o.kind === 'write' ? 'progress.created' : 'progress.edited')}</span>
                 </span>
               </button>
-              <IconBtn title="Open" onClick={() => call('sessions:openPath', id, o.path, false).catch(fail)}><ExternalLinkIcon className="size-3.5" /></IconBtn>
-              <IconBtn title="Show in folder" onClick={() => call('sessions:openPath', id, o.path, true).catch(fail)}><FolderIcon className="size-3.5" /></IconBtn>
+              <IconBtn title={t('progress.open')} onClick={() => call('sessions:openPath', id, o.path, false).catch(fail)}><ExternalLinkIcon className="size-3.5" /></IconBtn>
+              <IconBtn title={t('progress.reveal')} onClick={() => call('sessions:openPath', id, o.path, true).catch(fail)}><FolderIcon className="size-3.5" /></IconBtn>
             </div>
-          )) : <p className="text-sm text-muted-foreground">Pi Desktop 创建或修改的文件会出现在这里。</p>}
+          )) : <p className="text-sm text-muted-foreground">{t('progress.filesEmpty')}</p>}
         </section>
         <section className="space-y-1 p-4">
-          <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Context</h3>
+          <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{t('progress.context')}</h3>
           <button className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-accent" onClick={() => call('sessions:openPath', id, '.', false).catch(fail)}>
             <FolderIcon className="size-4 shrink-0 text-muted-foreground" />
             <span className="min-w-0"><span className="block truncate text-sm font-medium">{folderName}</span><span className="block truncate text-xs text-muted-foreground">{s.meta.cwd}</span></span>
           </button>
           <div className="flex items-center gap-2 px-2 py-1.5">
             <CodeIcon className="size-4 shrink-0 text-muted-foreground" />
-            <span className="min-w-0"><span className="block truncate text-sm font-medium">{modelName(models, s.model)}</span><span className="block text-xs text-muted-foreground">{modeName(s.meta.mode)} · {s.ctxPct != null ? `${Math.round(s.ctxPct)}% context used` : 'context'}</span></span>
+            <span className="min-w-0"><span className="block truncate text-sm font-medium">{modelName(models, s.model)}</span><span className="block text-xs text-muted-foreground">{modeName(s.meta.mode)} · {s.ctxPct != null ? t('progress.contextUsed', { pct: Math.round(s.ctxPct) }) : t('progress.context1')}</span></span>
           </div>
         </section>
       </div>

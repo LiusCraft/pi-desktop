@@ -6,6 +6,7 @@ import type { AgentMessage, PiEvent, PrSummary, Question, SessionMeta, TaskUpdat
 import { decodePrEvent } from '@shared/pr-event';
 import * as previews from '@shared/tool-previews';
 import { fmtDur, fmtTok, relPath } from '@/lib/format';
+import { t } from '@/lib/i18n';
 import { bareName, toolFromArgs, toolLabel, type ToolState } from '@/lib/tools';
 import type { ViewMode } from '@/lib/constants';
 import { readArrangement, readPanels } from './layout';
@@ -223,7 +224,7 @@ function assistantDelta(s: SessionView, ame: any, view: ViewMode) {
   switch (ame.type) {
     case 'thinking_start':
       addThought();
-      s.statusText = 'Thinking…';
+      s.statusText = t('status.thinking');
       break;
     case 'thinking_delta':
       if (!thought()) addThought();
@@ -239,7 +240,7 @@ function assistantDelta(s: SessionView, ame: any, view: ViewMode) {
     }
     case 'text_start':
       c.text = push(s, { kind: 'text', key: newKey(), text: '', live: true }, view).key;
-      s.statusText = 'Responding…';
+      s.statusText = t('status.responding');
       break;
     case 'text_delta': {
       if (!liveText()) c.text = push(s, { kind: 'text', key: newKey(), text: '', live: true }, view).key;
@@ -257,7 +258,7 @@ function assistantDelta(s: SessionView, ame: any, view: ViewMode) {
       break;
     }
     case 'toolcall_start':
-      s.statusText = `Preparing ${ame.toolName || 'tool'}…`;
+      s.statusText = t('status.preparing', { name: ame.toolName || 'tool' });
       break;
   }
 }
@@ -294,7 +295,7 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
         s.tokens = 0;
       }
       s.todosKey = null;
-      s.statusText = 'Thinking…';
+      s.statusText = t('status.thinking');
       return {};
     case 'message_start':
       if (ev.message?.role === 'assistant') s.cur = { thinkGroup: null, thinkIndex: -1, text: null };
@@ -322,7 +323,7 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
         if (step && !step.done) finishThought(step, view);
         if (m.usage?.output) s.tokens += Number(m.usage.output) || 0;
         if (m.stopReason === 'error' && m.errorMessage) push(s, { kind: 'note', key: newKey(), level: 'error', text: `Error: ${m.errorMessage}` }, view);
-        if (m.stopReason === 'aborted') push(s, { kind: 'note', key: newKey(), text: 'Interrupted · 告诉 Pi Desktop 接下来该怎么做' }, view);
+        if (m.stopReason === 'aborted') push(s, { kind: 'note', key: newKey(), text: t('status.interrupted') }, view);
         s.cur = null;
       } else if (m.role === 'custom' && m.display) push(s, { kind: 'note', key: newKey(), text: textOf(m.content) }, view);
       return {};
@@ -342,10 +343,10 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
     case 'tool_execution_end':
       return ev.parentToolCallId ? {} : toolEnd(s, ev as any, view);
     case 'auto_retry_start':
-      push(s, { kind: 'note', key: newKey(), text: `Retrying (${ev.attempt}/${ev.maxAttempts}) — ${ev.errorMessage || ''}` }, view);
+      push(s, { kind: 'note', key: newKey(), text: t('status.retrying', { attempt: ev.attempt, max: ev.maxAttempts, error: ev.errorMessage || '' }) }, view);
       return {};
     case 'compaction_start':
-      s.statusText = 'Compacting context…';
+      s.statusText = t('status.compacting');
       return {};
     case 'compaction_end':
       if (!ev.aborted) push(s, { kind: 'note', key: newKey(), text: ev.errorMessage ? `Compaction failed: ${ev.errorMessage}` : 'Context compacted' }, view);
@@ -381,7 +382,7 @@ export function settle(s: SessionView, aborted: boolean, view: ViewMode): Effect
     const p = findByKey(s, key);
     if (p?.kind === 'user' && !p.queued && !p.delivered) p.failed = true;
   }
-  push(s, { kind: 'foot', key: newKey(), t: Date.now(), usage: `${fmtDur(Date.now() - s.t0)} · ${fmtTok(s.tokens)} tokens` }, view);
+  push(s, { kind: 'foot', key: newKey(), t: Date.now(), usage: t('status.tokens', { dur: fmtDur(Date.now() - s.t0), tokens: fmtTok(s.tokens) }) }, view);
   s.meta.updatedAt = Date.now();
   return { settled: { aborted }, refreshStats: true, scheduleChanges: true };
 }
@@ -390,10 +391,10 @@ export function settle(s: SessionView, aborted: boolean, view: ViewMode): Effect
 
 export function permissionTitle(tool: ToolState | undefined, raw: string) {
   if (!tool) return raw;
-  if (tool.kind === 'bash') return 'Allow Pi Desktop to run this command?';
-  if (tool.kind === 'edit') return `Allow Pi Desktop to edit ${tool.path}?`;
-  if (tool.kind === 'write') return `Allow Pi Desktop to write ${tool.path}?`;
-  return `Allow Pi Desktop to use ${tool.name}?`;
+  if (tool.kind === 'bash') return t('perm.runCommand');
+  if (tool.kind === 'edit') return t('perm.edit', { path: tool.path ?? '' });
+  if (tool.kind === 'write') return t('perm.write', { path: tool.path ?? '' });
+  return t('perm.use', { name: tool.name });
 }
 
 export function addUiRequest(s: SessionView, req: UiRequest, view: ViewMode): { openPlan?: string } {

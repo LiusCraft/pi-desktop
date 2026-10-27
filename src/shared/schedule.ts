@@ -1,5 +1,6 @@
 // Scheduled tasks: the saved task shape and the schedule maths, shared by the agent host (which
 // fires them) and the renderer (which shows "next run"). Pure functions, local time throughout.
+import { tr } from './i18n/runtime';
 import type { PermissionMode, SessionKind } from './protocol';
 
 export type TaskSchedule =
@@ -56,7 +57,9 @@ export interface TaskDraft {
   schedule: TaskSchedule;
 }
 
-export const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'] as const;
+const WEEKDAY_KEYS = ['schedule.sun', 'schedule.mon', 'schedule.tue', 'schedule.wed', 'schedule.thu', 'schedule.fri', 'schedule.sat'] as const;
+/** Day 0 is Sunday; the name follows the language of the running process. */
+export const weekdayName = (day: number) => (WEEKDAY_KEYS[day] ? tr(WEEKDAY_KEYS[day]) : '');
 export const MAX_TASK_RUNS = 30;
 /** A task whose app was closed catches up on at most one run, and only if the miss is this recent. */
 export const CATCH_UP_MS = 7 * 24 * 3600_000;
@@ -73,11 +76,11 @@ export function parseTime(time: string): { h: number; m: number } | null {
 // ------------------------------------------------------------ cron
 
 const FIELDS = [
-  { name: '分钟', min: 0, max: 59 },
-  { name: '小时', min: 0, max: 23 },
-  { name: '日', min: 1, max: 31 },
-  { name: '月', min: 1, max: 12 },
-  { name: '星期', min: 0, max: 6 },
+  { name: 'schedule.field.minute', min: 0, max: 59 },
+  { name: 'schedule.field.hour', min: 0, max: 23 },
+  { name: 'schedule.field.day', min: 1, max: 31 },
+  { name: 'schedule.field.month', min: 1, max: 12 },
+  { name: 'schedule.field.weekday', min: 0, max: 6 },
 ] as const;
 
 function parseField(text: string, f: (typeof FIELDS)[number]): Set<number> {
@@ -85,16 +88,16 @@ function parseField(text: string, f: (typeof FIELDS)[number]): Set<number> {
   for (const part of text.split(',')) {
     const [range, step, extra] = part.split('/');
     const n = step === undefined ? 1 : Number(step);
-    if (extra !== undefined || !Number.isInteger(n) || n < 1) throw new Error(`“${f.name}”字段的步长无效：${part}`);
+    if (extra !== undefined || !Number.isInteger(n) || n < 1) throw new Error(tr('schedule.err.step', { field: tr(f.name), part }));
     let lo: number, hi: number;
     if (range === '*') [lo, hi] = [f.min, f.max];
     else {
       const [a, b, more] = range.split('-');
       lo = Number(a);
       hi = b === undefined ? (step === undefined ? lo : f.max) : Number(b);
-      if (more !== undefined || !/^\d+$/.test(a) || (b !== undefined && !/^\d+$/.test(b))) throw new Error(`“${f.name}”字段无效：${part}（星期和月份请写数字）`);
+      if (more !== undefined || !/^\d+$/.test(a) || (b !== undefined && !/^\d+$/.test(b))) throw new Error(tr('schedule.err.field', { field: tr(f.name), part }));
     }
-    if (lo < f.min || hi > f.max || lo > hi) throw new Error(`“${f.name}”字段超出范围 ${f.min}-${f.max}：${part}`);
+    if (lo < f.min || hi > f.max || lo > hi) throw new Error(tr('schedule.err.range', { field: tr(f.name), min: f.min, max: f.max, part }));
     for (let v = lo; v <= hi; v += n) out.add(v);
   }
   return out;
@@ -113,7 +116,7 @@ export interface Cron {
 /** Five fields — minute hour day-of-month month day-of-week (0 is Sunday) — in local time. */
 export function parseCron(expr: string): Cron {
   const parts = expr.trim().split(/\s+/);
-  if (parts.length !== 5) throw new Error('cron 表达式需要 5 个字段：分 时 日 月 星期');
+  if (parts.length !== 5) throw new Error(tr('schedule.err.fields'));
   const [minute, hour, dom, month, dow] = parts.map((p, i) => parseField(p, FIELDS[i]));
   return { minute, hour, dom, month, dow, domAny: parts[2] === '*', dowAny: parts[4] === '*' };
 }
@@ -151,17 +154,17 @@ export function validateSchedule(s: TaskSchedule, now = Date.now()): string | nu
       return null;
     case 'daily':
     case 'weekdays':
-      return parseTime(s.time) ? null : '时间格式应为 HH:MM';
+      return parseTime(s.time) ? null : tr('schedule.err.time');
     case 'weekly':
-      return parseTime(s.time) && Number.isInteger(s.day) && s.day >= 0 && s.day <= 6 ? null : '请选择星期和时间';
+      return parseTime(s.time) && Number.isInteger(s.day) && s.day >= 0 && s.day <= 6 ? null : tr('schedule.err.weekTime');
     case 'once':
-      return Number.isFinite(s.at) && s.at > now ? null : '一次性任务的时间必须在未来';
+      return Number.isFinite(s.at) && s.at > now ? null : tr('schedule.err.future');
     case 'cron':
       try {
         const c = parseCron(s.expr);
         const a = nextCron(c, now);
         const b = a && nextCron(c, a);
-        if (a && b && b - a < HOUR) return '运行间隔不能小于 1 小时';
+        if (a && b && b - a < HOUR) return tr('schedule.err.interval');
         return null;
       } catch (err) {
         return err instanceof Error ? err.message : String(err);
@@ -209,12 +212,12 @@ export function nextRun(s: TaskSchedule, after: number): number | null {
 
 export function describeSchedule(s: TaskSchedule): string {
   switch (s.type) {
-    case 'manual': return '仅手动运行';
-    case 'hourly': return '每小时';
-    case 'daily': return `每天 ${s.time}`;
-    case 'weekdays': return `工作日 ${s.time}`;
-    case 'weekly': return `每${WEEKDAYS[s.day] ?? ''} ${s.time}`;
-    case 'once': return `一次 · ${new Date(s.at).toLocaleString()}`;
+    case 'manual': return tr('schedule.manual');
+    case 'hourly': return tr('schedule.hourly');
+    case 'daily': return tr('schedule.daily', { time: s.time });
+    case 'weekdays': return tr('schedule.weekdays', { time: s.time });
+    case 'weekly': return tr('schedule.weekly', { day: weekdayName(s.day), time: s.time });
+    case 'once': return tr('schedule.once', { at: new Date(s.at).toLocaleString() });
     case 'cron': return `cron ${s.expr}`;
   }
 }

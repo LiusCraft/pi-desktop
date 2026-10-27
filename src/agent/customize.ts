@@ -4,6 +4,7 @@
  * (`mcp.json`), plugins are pi packages (`packages` in settings.json). Everything is read
  * and written in pi's own files, so the CLI and the desktop always agree.
  */
+import { tr } from '@shared/i18n/runtime';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -34,7 +35,7 @@ const userSettings = (env: CustomizeEnv) => path.join(env.agentDir, 'settings.js
 const projectSettings = (env: CustomizeEnv) => (env.project ? path.join(env.project, '.pi', 'settings.json') : null);
 const mcpFile = (env: CustomizeEnv, scope: 'user' | 'project') => {
   if (scope === 'user') return path.join(env.agentDir, 'mcp.json');
-  if (!env.project) throw new Error('请先选择一个项目，项目级的配置保存在项目的 .pi 文件夹里');
+  if (!env.project) throw new Error(tr('ag.needProject'));
   return path.join(env.project, '.pi', 'mcp.json');
 };
 
@@ -143,15 +144,15 @@ export async function createSkill(env: CustomizeEnv, draft: SkillDraft) {
   const name = draft.name.trim();
   const description = draft.description.trim().replace(/\s+/g, ' ');
   const body = draft.body.trim();
-  if (!NAME.test(name)) throw new Error('名称只能包含字母、数字、- 和 _，且以字母或数字开头');
-  if (!description) throw new Error('请填写描述：模型靠它判断什么时候用这个技能');
-  if (!body) throw new Error('请填写技能的内容');
-  if (draft.scope === 'project' && !env.project) throw new Error('请先选择一个项目');
+  if (!NAME.test(name)) throw new Error(tr('ag.nameRule'));
+  if (!description) throw new Error(tr('ag.skillNeedDescription'));
+  if (!body) throw new Error(tr('ag.skillNeedBody'));
+  if (draft.scope === 'project' && !env.project) throw new Error(tr('ag.needProjectShort'));
   const root = draft.home === 'agents'
     ? (draft.scope === 'project' ? path.join(env.project!, '.agents', 'skills') : agentsSkillsDir())
     : (draft.scope === 'project' ? path.join(env.project!, '.pi', 'skills') : path.join(env.agentDir, 'skills'));
   const dir = path.join(root, name);
-  if (fs.existsSync(dir)) throw new Error(`已经有名为 ${name} 的技能`);
+  if (fs.existsSync(dir)) throw new Error(tr('ag.skillExists', { name }));
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${JSON.stringify(name)}\ndescription: ${JSON.stringify(description)}\n---\n\n${body}\n`, 'utf8');
   return catalog(env);
@@ -187,9 +188,9 @@ export async function importClaudeSkills(env: CustomizeEnv) {
 
 /** Only files that belong to the catalog may be previewed. */
 export function readCustomizeFile(file: string): string {
-  if (!/\.(md|json)$/i.test(file)) throw new Error('只能查看 Markdown 或 JSON 文件');
+  if (!/\.(md|json)$/i.test(file)) throw new Error(tr('ag.onlyMdJson'));
   const text = fs.readFileSync(file, 'utf8');
-  return text.length > 200_000 ? `${text.slice(0, 200_000)}\n\n…（已截断）` : text;
+  return text.length > 200_000 ? `${text.slice(0, 200_000)}\n\n${tr('ag.truncated')}` : text;
 }
 
 // ------------------------------------------------------------ connectors (MCP servers)
@@ -231,18 +232,18 @@ const splitPair = (line: string, sep: string): [string, string] | null => {
 
 export function saveConnector(env: CustomizeEnv, draft: ConnectorDraft) {
   const name = draft.name.trim();
-  if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new Error('名称只能包含字母、数字、- 和 _');
+  if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new Error(tr('ag.nameRuleShort'));
   const file = mcpFile(env, draft.scope);
   const config = readJson(file);
   const servers: Record<string, any> = config.mcpServers && typeof config.mcpServers === 'object' ? config.mcpServers : {};
   const key = (n: string) => n.replace(/-/g, '_').toLowerCase();
   const clash = Object.keys(servers).find((n) => key(n) === key(name) && n !== (draft.originalName ?? ''));
-  if (clash) throw new Error(`已经有名为 ${clash} 的连接器`);
+  if (clash) throw new Error(tr('ag.connectorExists', { name: clash }));
   const previous = draft.originalName ? servers[draft.originalName] : undefined;
   const entry: Record<string, any> = {};
   if (draft.transport === 'http') {
     const url = draft.url?.trim() ?? '';
-    if (!/^https?:\/\//i.test(url)) throw new Error('请填写以 http:// 或 https:// 开头的地址');
+    if (!/^https?:\/\//i.test(url)) throw new Error(tr('ag.needHttpUrl'));
     entry.url = url;
     const headers = Object.fromEntries((draft.pairs ?? []).map((l) => splitPair(l, ':')).filter((p): p is [string, string] => !!p));
     if (Object.keys(headers).length) entry.headers = headers;
@@ -250,7 +251,7 @@ export function saveConnector(env: CustomizeEnv, draft: ConnectorDraft) {
     for (const k of ['auth', 'oauth']) if (previous?.[k]) entry[k] = previous[k];
   } else {
     const command = draft.command?.trim() ?? '';
-    if (!command) throw new Error('请填写要运行的命令');
+    if (!command) throw new Error(tr('ag.needCommand'));
     entry.command = command;
     if (draft.args?.length) entry.args = draft.args;
     const env_ = Object.fromEntries((draft.pairs ?? []).map((l) => splitPair(l, '=')).filter((p): p is [string, string] => !!p));
@@ -269,7 +270,7 @@ export function setConnectorEnabled(env: CustomizeEnv, name: string, scope: 'use
   const file = mcpFile(env, scope);
   const config = readJson(file);
   const entry = config.mcpServers?.[name];
-  if (!entry) throw new Error(`找不到连接器 ${name}`);
+  if (!entry) throw new Error(tr('ag.connectorMissing', { name }));
   if (enabled) delete entry.enabled;
   else entry.enabled = false;
   writeJson(file, config);
@@ -294,15 +295,15 @@ function packageManager(env: CustomizeEnv) {
 
 export async function installPlugin(env: CustomizeEnv, source: string, scope: 'user' | 'project') {
   const s = source.trim();
-  if (!s) throw new Error('请填写包名或地址，例如 npm:pi-web-access 或 git:github.com/user/repo');
-  if (scope === 'project' && !env.project) throw new Error('请先选择一个项目');
+  if (!s) throw new Error(tr('ag.needPackage'));
+  if (scope === 'project' && !env.project) throw new Error(tr('ag.needProjectShort'));
   await packageManager(env).installAndPersist(s, { local: scope === 'project' });
   return catalog(env);
 }
 
 export async function removePlugin(env: CustomizeEnv, source: string, scope: 'user' | 'project') {
   const removed = await packageManager(env).removeAndPersist(source, { local: scope === 'project' });
-  if (!removed) throw new Error(`${source} 不在${scope === 'project' ? '项目' : '全局'}配置里`);
+  if (!removed) throw new Error(tr('ag.pluginNotIn', { source, scope: tr(scope === 'project' ? 'ag.scopeProject' : 'ag.scopeGlobal') }));
   return catalog(env);
 }
 

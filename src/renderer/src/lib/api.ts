@@ -1,4 +1,5 @@
 import type { ApiArgs, ApiChannel, ApiResult } from '@shared/protocol';
+import { tr } from '@shared/i18n/runtime';
 
 export const bridge = window.piDesktop;
 export const platform = bridge?.platform ?? 'darwin';
@@ -12,5 +13,5 @@ export function call<K extends ApiChannel>(channel: K, ...args: ApiArgs<K>): Pro
 
 /** Electron prefixes remote errors; show only the message itself. */
 export function errText(err: unknown) {
-  return String((err as Error)?.message ?? err).replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '') || '操作失败';
+  return String((err as Error)?.message ?? err).replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '') || tr('error.fallback');
 }

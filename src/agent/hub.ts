@@ -1,6 +1,7 @@
 // Session hub: every desktop session is an in-process pi AgentSession (through an
 // AgentSessionRuntime, so /clear and forks can replace it), plus the session
 // metadata, worktrees, CLI-session import and naming around it.
+import { tr } from '@shared/i18n/runtime';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -364,8 +365,8 @@ export class SessionHub {
     const m = this.meta(id);
     if (m.archived) throw new Error('This session is archived');
     const steps: SetupStep[] = [];
-    if (m.worktreeSetup) steps.push({ id: 'worktree', label: `创建 git worktree（${m.branch}）`, state: 'running' });
-    steps.push({ id: 'agent', label: '启动 Agent，加载扩展与工具', state: m.worktreeSetup ? 'pending' : 'running' });
+    if (m.worktreeSetup) steps.push({ id: 'worktree', label: tr('ag.stepWorktree', { branch: m.branch ?? '' }), state: 'running' });
+    steps.push({ id: 'agent', label: tr('ag.stepAgent'), state: m.worktreeSetup ? 'pending' : 'running' });
     const send = () => this.emit({ type: 'setup', sessionId: id, steps: steps.map((x) => ({ ...x })) });
     const report = (stage: SetupStep['id'], state: SetupStep['state'], detail?: string) => {
       const step = steps.find((x) => x.id === stage);
@@ -685,8 +686,8 @@ export class SessionHub {
   /** Suggestions for an agent's tool allowlist. */
   toolOptions(): ToolOption[] {
     const tools = new Map<string, string>([
-      ['read', '读取文件'], ['grep', '按内容搜索'], ['find', '按文件名查找'], ['ls', '列出目录'],
-      [process.platform === 'win32' ? 'powershell' : 'bash', '运行命令（子代理里只读）'],
+      ['read', tr('ag.toolRead')], ['grep', tr('ag.toolGrep')], ['find', tr('ag.toolFind')], ['ls', tr('ag.toolLs')],
+      [process.platform === 'win32' ? 'powershell' : 'bash', tr('ag.toolShell')],
     ]);
     for (const live of this.live.values()) {
       for (const t of live.runtime.session.getAllTools()) {
@@ -856,19 +857,19 @@ export class SessionHub {
     const live = await this.ensure(id);
     const session = live.runtime.session;
     if (live.historyBusy || live.status === 'running' || !session.isIdle || live.tasks.size) {
-      throw new Error('请等待当前任务完成后再调整对话历史');
+      throw new Error(tr('ag.waitTask'));
     }
     const projected = session.sessionManager.buildSessionProjection().entries.find((item) => item.sourceEntry.id === entryId);
     const entry = projected?.sourceEntry;
     const message = projected?.messages.find((item) => item.role === 'user');
-    if (entry?.type !== 'message' || entry.message.role !== 'user' || !message) throw new Error('这条用户消息已不在当前对话中，请重新打开会话');
+    if (entry?.type !== 'message' || entry.message.role !== 'user' || !message) throw new Error(tr('ag.messageGone'));
     const draft = decodeUserContent(message.content);
     live.historyBusy = true;
     live.generation++;
     try {
       if (action === 'rewind') {
         const result = await session.navigateTree(entryId, { summarize: false });
-        if (result.cancelled) throw new Error('回退已取消');
+        if (result.cancelled) throw new Error(tr('ag.rewindCancelled'));
         // Branch navigation alone only changes memory. A state-only entry makes
         // the new leaf survive reopening, even before another prompt is sent.
         session.sessionManager.appendCustomEntry('pi-desktop-rewind', { entryId });
@@ -878,12 +879,12 @@ export class SessionHub {
       }
       const original = this.meta(id);
       const sourceFile = session.sessionFile;
-      if (!sourceFile || !fs.existsSync(sourceFile)) throw new Error('请等待这条消息保存后再创建分支');
+      if (!sourceFile || !fs.existsSync(sourceFile)) throw new Error(tr('ag.waitSaved'));
       const manager = SessionManager.open(sourceFile, undefined, original.cwd);
       if (entry.parentId) manager.createBranchedSession(entry.parentId);
       else manager.newSession({ parentSession: sourceFile });
       const meta: SessionMeta = {
-        ...original, id: crypto.randomUUID(), title: `${original.title} · 分支`,
+        ...original, id: crypto.randomUUID(), title: tr('ag.branchSuffix', { title: original.title }),
         autoName: false, titleLocked: true, autoNamed: false, nameAttempted: true,
         sessionFile: manager.getSessionFile() ?? null, createdAt: Date.now(), updatedAt: Date.now(),
       };
@@ -901,7 +902,7 @@ export class SessionHub {
     const live = await this.ensure(id);
     // The ghost text predicted the previous turn; a real message makes it stale.
     this.abortSuggestion(id);
-    if (live.historyBusy) throw new Error('正在调整对话历史，请稍后发送');
+    if (live.historyBusy) throw new Error(tr('ag.historyBusy'));
     const generation = live.generation;
     const normalized = await validatePromptPayload(payload);
     const { message, images } = buildMessage(normalized);
@@ -1686,7 +1687,7 @@ export class SessionHub {
     try {
       await this.prompt(id, { text: encodePrEvent(pending.event), attachments: [] }, 'followUp');
     } catch (err) {
-      this.emit({ type: 'notify', sessionId: id, message: `PR 事件没能交给 Pi：${err instanceof Error ? err.message : String(err)}`, level: 'warning' });
+      this.emit({ type: 'notify', sessionId: id, message: tr('ag.prEventFail', { error: err instanceof Error ? err.message : String(err) }), level: 'warning' });
     }
   }
 

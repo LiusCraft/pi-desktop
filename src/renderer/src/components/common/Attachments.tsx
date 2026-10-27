@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { imageSource, type Attachment, type DecodedAttachment } from '@shared/attachments';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { sizeLabel } from '@/lib/format';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 type AnyAttachment = Attachment | DecodedAttachment;
@@ -13,11 +14,12 @@ export function AttachmentTiles({ attachments, onRemove, disabled }: {
   onRemove?: (index: number) => void;
   disabled?: boolean;
 }) {
+  const t = useT();
   const [preview, setPreview] = useState<AnyAttachment | null>(null);
   if (!attachments.length) return null;
   const open = (a: AnyAttachment) => {
     if (imageSource(a)) setPreview(a);
-    else if (a.kind !== 'file') toast.warning('Image unavailable');
+    else if (a.kind !== 'file') toast.warning(t('attach.unavailable'));
   };
   return (
     <>
@@ -27,7 +29,7 @@ export function AttachmentTiles({ attachments, onRemove, disabled }: {
           const missing = 'missing' in a && a.missing;
           return (
             <div key={a.id} className={cn('group relative flex h-14 max-w-56 items-center gap-2 overflow-hidden rounded-lg border bg-card pr-3 text-left', missing && 'opacity-60')}>
-              <button type="button" onClick={() => open(a)} title={a.kind === 'file' ? `${a.path} · 本机引用，移动或删除后不可用` : a.name} className="flex h-full min-w-0 items-center gap-2">
+              <button type="button" onClick={() => open(a)} title={a.kind === 'file' ? t('attach.localRef', { path: a.path }) : a.name} className="flex h-full min-w-0 items-center gap-2">
                 {src ? (
                   <img src={src} alt={a.name} className="h-full w-14 shrink-0 object-cover" />
                 ) : (
@@ -38,7 +40,7 @@ export function AttachmentTiles({ attachments, onRemove, disabled }: {
                 <span className="min-w-0">
                   <span className="block truncate text-xs font-medium">{a.name}</span>
                   <span className="block text-[11px] text-muted-foreground">
-                    {missing ? 'Image unavailable' : a.kind === 'file' ? `Local file · ${sizeLabel(a.size)}` : sizeLabel(a.size)}
+                    {missing ? t('attach.unavailable') : a.kind === 'file' ? t('attach.localFile', { size: sizeLabel(a.size) }) : sizeLabel(a.size)}
                   </span>
                 </span>
               </button>

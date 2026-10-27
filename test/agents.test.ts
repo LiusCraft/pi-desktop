@@ -3,6 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadAgents } from '../src/agent/agents';
+import { setActiveLocale } from '../src/shared/i18n/runtime';
+
+// These assertions read the host's Chinese messages.
+setActiveLocale('zh');
 
 let dir: string;
 beforeAll(() => {

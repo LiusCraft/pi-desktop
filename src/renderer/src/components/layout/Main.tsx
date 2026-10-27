@@ -15,7 +15,8 @@ import {
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { useDefaultLayout } from 'react-resizable-panels';
 import { call, isMac, modKey } from '@/lib/api';
-import { WORK_IDEAS, OUTPUT_STYLE_INFO, VIEW_MODES, type ViewMode } from '@/lib/constants';
+import { workIdeas, OUTPUT_STYLE_INFO, VIEW_MODES, type ViewMode } from '@/lib/constants';
+import { useT } from '@/lib/i18n';
 import { fname } from '@/lib/format';
 import { OpenInMenu } from '@/components/common/OpenInMenu';
 import { cn } from '@/lib/utils';
@@ -54,6 +55,7 @@ function HeaderButton({ on, children, ...props }: React.ComponentProps<'button'>
  * the pointer (or under the button, for a keyboard activation).
  */
 function SessionMenu({ s, children }: { s: SessionView; children: (props: { onClick: (e: MouseEvent<HTMLElement>) => void }) => ReactNode }) {
+  const t = useT();
   const view = useApp((st) => st.prefs.viewMode);
   const views = VIEW_MODES.filter((m) => m.id !== 'thinking' || hasThinking(s));
   const [open, setOpen] = useState(false);
@@ -72,22 +74,22 @@ function SessionMenu({ s, children }: { s: SessionView; children: (props: { onCl
           <span aria-hidden className="pointer-events-none fixed size-0" style={{ left: at.x, top: at.y }} />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" sideOffset={0} className="w-60" onCloseAutoFocus={(e) => e.preventDefault()}>
-        <DropdownMenuItem onSelect={() => void renameSession(s.meta.id)}>Rename</DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => void copyText(s.meta.cwd)}>Copy {s.meta.worktree ? 'worktree' : 'folder'} path</DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => void exportHtml(s.meta.id)}>Export as HTML</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => void renameSession(s.meta.id)}>{t('main.rename')}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => void copyText(s.meta.cwd)}>{t(s.meta.worktree ? 'main.copyWorktreePath' : 'main.copyFolderPath')}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => void exportHtml(s.meta.id)}>{t('main.exportHtml')}</DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuLabel className="flex justify-between text-xs text-muted-foreground">Transcript view<span>{modKey}O</span></DropdownMenuLabel>
+        <DropdownMenuLabel className="flex justify-between text-xs text-muted-foreground">{t('main.transcriptView')}<span>{modKey}O</span></DropdownMenuLabel>
         <DropdownMenuRadioGroup value={view} onValueChange={(v) => setViewMode(v as ViewMode)}>
           {views.map((m) => <DropdownMenuRadioItem key={m.id} value={m.id} title={m.desc}>{m.name}</DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuLabel className="text-xs text-muted-foreground">Output style</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-xs text-muted-foreground">{t('main.outputStyle')}</DropdownMenuLabel>
         <DropdownMenuRadioGroup value={s.meta.outputStyle} onValueChange={(v) => setOutputStyle(v as OutputStyle)}>
           {OUTPUT_STYLE_INFO.map((o) => <DropdownMenuRadioItem key={o.id} value={o.id} title={o.desc}>{o.name}</DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => void archiveSession(s.meta.id)}>Archive</DropdownMenuItem>
-        <DropdownMenuItem variant="destructive" onSelect={() => void deleteSession(s.meta.id)}>Delete…</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => void archiveSession(s.meta.id)}>{t('main.archive')}</DropdownMenuItem>
+        <DropdownMenuItem variant="destructive" onSelect={() => void deleteSession(s.meta.id)}>{t('main.delete')}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </>
@@ -95,6 +97,7 @@ function SessionMenu({ s, children }: { s: SessionView; children: (props: { onCl
 }
 
 function Header({ s, title }: { s?: SessionView; title?: string }) {
+  const t = useT();
   const collapsed = useApp((st) => st.sidebarCollapsed);
   const work = s?.meta.kind === 'work';
   const p = s?.panels;
@@ -114,24 +117,24 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
             )}
           </SessionMenu>
           <span className="truncate rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-            {work ? (s.meta.scratch ? 'Temporary workspace' : fname(s.meta.projectPath)) : `${fname(s.meta.projectPath)}${s.meta.branch ? ` · ${s.meta.branch}` : ''}`}
+            {work ? (s.meta.scratch ? t('main.tempWorkspace') : fname(s.meta.projectPath)) : `${fname(s.meta.projectPath)}${s.meta.branch ? ` · ${s.meta.branch}` : ''}`}
           </span>
           <span className="flex-1" />
-          {hasTasks && <HeaderButton on={p!.tasks} title="Background tasks" onClick={() => togglePanel(s.meta.id, 'tasks')}><BotIcon className="size-4" /></HeaderButton>}
+          {hasTasks && <HeaderButton on={p!.tasks} title={t('main.backgroundTasks')} onClick={() => togglePanel(s.meta.id, 'tasks')}><BotIcon className="size-4" /></HeaderButton>}
           {work ? (
-            <HeaderButton on={p!.progress} title="Progress" onClick={() => togglePanel(s.meta.id, 'progress')}><PanelRightIcon className="size-4" /></HeaderButton>
+            <HeaderButton on={p!.progress} title={t('main.progress')} onClick={() => togglePanel(s.meta.id, 'progress')}><PanelRightIcon className="size-4" /></HeaderButton>
           ) : (
             <>
-              <HeaderButton on={p!.terminal} title="Terminal" onClick={() => togglePanel(s.meta.id, 'terminal')}><SquareTerminalIcon className="size-4" /></HeaderButton>
-              <HeaderButton on={p!.diff} title={`Diff  ${modKey}D`} onClick={() => togglePanel(s.meta.id, 'diff')}><FileTextIcon className="size-4" /></HeaderButton>
-              <HeaderButton on={p!.preview} title="Preview" onClick={() => togglePanel(s.meta.id, 'preview')}><GlobeIcon className="size-4" /></HeaderButton>
-              <HeaderButton on={p!.files} title="Files" onClick={() => togglePanel(s.meta.id, 'files')}><FolderIcon className="size-4" /></HeaderButton>
+              <HeaderButton on={p!.terminal} title={t('main.terminal')} onClick={() => togglePanel(s.meta.id, 'terminal')}><SquareTerminalIcon className="size-4" /></HeaderButton>
+              <HeaderButton on={p!.diff} title={`${t('main.diff')}  ${modKey}D`} onClick={() => togglePanel(s.meta.id, 'diff')}><FileTextIcon className="size-4" /></HeaderButton>
+              <HeaderButton on={p!.preview} title={t('main.preview')} onClick={() => togglePanel(s.meta.id, 'preview')}><GlobeIcon className="size-4" /></HeaderButton>
+              <HeaderButton on={p!.files} title={t('main.files')} onClick={() => togglePanel(s.meta.id, 'files')}><FolderIcon className="size-4" /></HeaderButton>
             </>
           )}
-          <OpenInMenu id={s.meta.id}><HeaderButton title="Open in…"><ExternalLinkIcon className="size-4" /></HeaderButton></OpenInMenu>
+          <OpenInMenu id={s.meta.id}><HeaderButton title={t('main.openIn')}><ExternalLinkIcon className="size-4" /></HeaderButton></OpenInMenu>
         </>
       ) : (
-        <span className="px-2 text-sm text-muted-foreground">{title ?? (useApp.getState().view === 'work' ? 'New task' : 'New session')}</span>
+        <span className="px-2 text-sm text-muted-foreground">{title ?? (useApp.getState().view === 'work' ? t('main.newTask') : t('main.newSession'))}</span>
       )}
     </header>
   );
@@ -140,12 +143,13 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
 // ------------------------------------------------------------ welcome screens
 
 function CodeWelcome() {
+  const t = useT();
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-1 flex-col items-center justify-center gap-4 overflow-y-auto px-6">
         <h1 className="flex items-center gap-3 font-serif text-3xl font-normal tracking-tight">
           <span className="spark size-6!" aria-hidden />
-          Let’s build
+          {t('main.letsBuild')}
         </h1>
         <Inbox />
       </div>
@@ -156,8 +160,10 @@ function CodeWelcome() {
 
 /** Ideas drawn from the recent Work sessions; the fixed ones show until (or unless) the model has some. */
 function WorkIdeas() {
+  const t = useT();
   const enabled = useApp((st) => st.settings.workIdeas !== false);
-  const [ideas, setIdeas] = useState<readonly WorkIdea[]>(WORK_IDEAS);
+  const [written, setIdeas] = useState<readonly WorkIdea[] | null>(null);
+  const ideas = written ?? workIdeas();
   useEffect(() => {
     if (!enabled) return;
     let live = true;
@@ -167,7 +173,7 @@ function WorkIdeas() {
   if (!enabled) return null;
   return (
     <div className="mt-8">
-      <div className="mb-2 text-sm text-muted-foreground">Ideas for you</div>
+      <div className="mb-2 text-sm text-muted-foreground">{t('main.ideasForYou')}</div>
       <div className="grid gap-2 sm:grid-cols-3">
         {ideas.map((idea) => (
           <button
@@ -184,13 +190,14 @@ function WorkIdeas() {
 }
 
 function WorkWelcome() {
+  const t = useT();
   const h = new Date().getHours();
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-6 pb-16">
       <div className="w-full max-w-2xl">
         <h1 className="mb-8 flex items-center justify-center gap-3 font-serif text-4xl font-normal tracking-tight">
           <span className="spark size-7!" aria-hidden />
-          {h < 5 || h >= 22 ? 'Still up?' : 'You’re here!'}
+          {h < 5 || h >= 22 ? t('main.stillUp') : t('main.youreHere')}
         </h1>
         <WorkComposer />
         <WorkIdeas />
@@ -235,6 +242,7 @@ function Thread({ s }: { s: SessionView }) {
 }
 
 export function Main() {
+  const t = useT();
   const s = useCurrent();
   const view = useApp((st) => st.view);
   const customize = useApp((st) => st.customize);
@@ -245,7 +253,7 @@ export function Main() {
   const projects = useApp((st) => st.workProjects);
   return (
     <main className="flex h-full min-w-0 flex-col bg-background">
-      <Header s={customize || scheduled || archived || activity || artifacts || projects ? undefined : s} title={customize ? 'Customize' : scheduled ? 'Scheduled' : archived ? 'Archived sessions' : activity ? 'Activity' : artifacts ? 'Artifacts' : projects ? 'Projects' : undefined} />
+      <Header s={customize || scheduled || archived || activity || artifacts || projects ? undefined : s} title={customize ? t('page.customize') : scheduled ? t('page.scheduled') : archived ? t('page.archived') : activity ? t('page.activity') : artifacts ? t('page.artifacts') : projects ? t('page.projects') : undefined} />
       <div className="flex min-h-0 flex-1 flex-col">{customize ? <CustomizePage /> : scheduled ? <ScheduledPage /> : archived ? <ArchivedPage /> : activity ? <ActivityPage /> : artifacts ? <ArtifactsPage /> : projects ? <ProjectsPage /> : s ? <Thread key={s.meta.id} s={s} /> : view === 'work' ? <WorkWelcome /> : <CodeWelcome />}</div>
     </main>
   );

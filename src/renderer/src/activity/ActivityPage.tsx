@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Segmented } from '@/components/common/Segmented';
 import { call } from '@/lib/api';
+import { t as tr, useT } from '@/lib/i18n';
 import { fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { openSession } from '@/store/actions';
@@ -11,19 +12,18 @@ import { activityLevels, HOURS_PER_DAY, rangeDays, rangeStats, summarize, TEMPOR
 import { fmtDay, Heatmap, Legend } from './Heatmap';
 
 const RANGES = [
-  { id: '13', label: '3 个月', weeks: 13, previous: '前 3 个月' },
-  { id: '26', label: '半年', weeks: 26, previous: '前半年' },
-  { id: '52', label: '1 年', weeks: 52, previous: '前一年' },
+  { id: '13', weeks: 13 },
+  { id: '26', weeks: 26 },
+  { id: '52', weeks: 52 },
 ] as const;
-const RANGE_OPTIONS = RANGES.map(({ id, label }) => ({ id, label }));
 /** Parts of the day for "when do you work", by local hour [from, to). */
-const DAY_PARTS = [{ label: '凌晨', from: 0, to: 6 }, { label: '上午', from: 6, to: 12 }, { label: '下午', from: 12, to: 18 }, { label: '晚上', from: 18, to: 24 }];
+const DAY_PARTS = [{ label: 'activity.night', from: 0, to: 6 }, { label: 'activity.morning', from: 6, to: 12 }, { label: 'activity.afternoon', from: 12, to: 18 }, { label: 'activity.evening', from: 18, to: 24 }] as const;
 const TOP_PROJECTS = 6;
 /** Hours that get an axis label. */
 const HOUR_TICKS = [0, 6, 12, 18];
 
 const percent = (part: number, whole: number) => (whole ? Math.round((part / whole) * 100) : 0);
-const projectName = (path: string) => (path === TEMPORARY_WORKSPACE ? '临时工作区' : fname(path));
+const projectName = (path: string) => (path === TEMPORARY_WORKSPACE ? tr('activity.tempWorkspace') : fname(path));
 
 function Card({ title, aside, children, className }: { title?: string; aside?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -54,6 +54,7 @@ function Stat({ label, value, unit, note, tone }: { label: string; value: ReactN
 }
 
 export function ActivityPage() {
+  const t = useT();
   const sessions = useApp((s) => s.sessions);
   const [log, setLog] = useState<ActivityLog | null>(null);
   const [range, setRange] = useState<(typeof RANGES)[number]['id']>('26');
@@ -64,7 +65,8 @@ export function ActivityPage() {
 
   const today = useMemo(() => new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()), []);
   const levelOf = useMemo(() => activityLevels(log ?? {}), [log]);
-  const { weeks, previous: previousLabel } = RANGES.find((r) => r.id === range)!;
+  const { weeks } = RANGES.find((r) => r.id === range)!;
+  const rangeOptions = RANGES.map(({ id }) => ({ id, label: t(`activity.range${id}`) }));
   const stats = useMemo(() => {
     const data = log ?? {};
     const days = rangeDays(weeks, today);
@@ -86,38 +88,38 @@ export function ActivityPage() {
       <div className="mx-auto max-w-4xl animate-in space-y-4 px-8 py-8 duration-200 fade-in-0 slide-in-from-bottom-1">
         <div className="flex items-end gap-3">
           <div className="min-w-0 flex-1">
-            <h2 className="text-xl font-semibold">Activity</h2>
-            <p className="mt-1 text-sm text-muted-foreground">你在 Pi Desktop 里的使用节奏，Code 和 Work 合在一起算。只统计你自己发出的消息，定时任务和 agent 自动发起的不计入。</p>
+            <h2 className="text-xl font-semibold">{t('activity.title')}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t('activity.sub')}</p>
           </div>
-          <Segmented value={range} onChange={(id) => { setRange(id); setSelected(null); }} options={RANGE_OPTIONS} />
+          <Segmented value={range} onChange={(id) => { setRange(id); setSelected(null); }} options={rangeOptions} />
         </div>
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Stat
-            label="提问" value={now.prompts} unit="次"
-            note={delta === null ? (now.prompts ? '之前没有记录可比' : '') : `较${previousLabel} ${delta > 0 ? '+' : ''}${delta}%`}
+            label={t('activity.prompts')} value={now.prompts} unit={t('activity.times')}
+            note={delta === null ? (now.prompts ? t('activity.noBaseline') : '') : t('activity.vs', { pct: `${delta > 0 ? '+' : ''}${delta}%`, previous: t(`activity.prev${range}`) })}
             tone={delta !== null && delta > 0 ? 'up' : undefined}
           />
-          <Stat label="活跃天数" value={now.activeDays} unit={`/ ${now.days} 天`} note={now.prompts ? `${percent(now.activeDays, now.days)}% 的日子你都在用` : ''} />
-          <Stat label="连续使用" value={streak.currentStreak} unit="天" note={`最长 ${streak.longestStreak} 天`} />
-          <Stat label="最忙的一天" value={now.busiest?.total ?? 0} unit="次" note={now.busiest ? fmtDay(new Date(`${now.busiest.key}T00:00:00`)) : ''} />
+          <Stat label={t('activity.activeDays')} value={now.activeDays} unit={t('activity.ofDays', { n: now.days })} note={now.prompts ? t('activity.activeShare', { pct: percent(now.activeDays, now.days) }) : ''} />
+          <Stat label={t('activity.streak')} value={streak.currentStreak} unit={t('activity.days')} note={t('activity.longest', { n: streak.longestStreak })} />
+          <Stat label={t('activity.busiest')} value={now.busiest?.total ?? 0} unit={t('activity.times')} note={now.busiest ? fmtDay(new Date(`${now.busiest.key}T00:00:00`)) : ''} />
         </div>
 
-        <Card title="每日提问" aside={<Legend />}>
+        <Card title={t('activity.daily')} aside={<Legend />}>
           <Heatmap log={log} weeks={weeks} today={today} levelOf={levelOf} selected={selected} onSelect={setSelected} />
-          {!now.prompts && <p className="mt-3 text-sm text-muted-foreground">这段时间还没有记录。从现在起，你发出的每条消息都会计入这里。</p>}
+          {!now.prompts && <p className="mt-3 text-sm text-muted-foreground">{t('activity.noRecords')}</p>}
           {selected && (
             <div className="mt-3 border-t pt-3">
               <div className="mb-1.5 text-sm">
                 <span className="font-medium">{fmtDay(new Date(`${selected}T00:00:00`))}</span>
-                <span className="ml-2 text-muted-foreground">{day ? `${day.prompts.code + day.prompts.work} 次提问 · Code ${day.prompts.code} / Work ${day.prompts.work}` : '没有活动'}</span>
+                <span className="ml-2 text-muted-foreground">{day ? t('activity.dayDetail', { n: day.prompts.code + day.prompts.work, code: day.prompts.code, work: day.prompts.work }) : t('activity.noActivity')}</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {day?.sessions.map((id) => {
                   const s = sessions[id];
                   return (
-                    <button key={id} disabled={!s || s.meta.archived} title={s?.meta.archived ? '已归档' : undefined} className="max-w-xs truncate rounded-md border px-2.5 py-1 text-xs enabled:hover:bg-accent disabled:text-muted-foreground" onClick={() => void openSession(id)}>
-                      {s?.meta.title ?? '已删除的会话'}
+                    <button key={id} disabled={!s || s.meta.archived} title={s?.meta.archived ? t('activity.archivedHint') : undefined} className="max-w-xs truncate rounded-md border px-2.5 py-1 text-xs enabled:hover:bg-accent disabled:text-muted-foreground" onClick={() => void openSession(id)}>
+                      {s?.meta.title ?? t('activity.deletedSession')}
                     </button>
                   );
                 })}
@@ -127,10 +129,10 @@ export function ActivityPage() {
         </Card>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <Card className="flex flex-col" title="时段分布" aside={peakHour >= 0 && <span className="text-xs text-muted-foreground">高峰 {peakHour}:00 · {part.label}占 {percent(part.count, now.prompts)}%</span>}>
+          <Card className="flex flex-col" title={t('activity.hours')} aside={peakHour >= 0 && <span className="text-xs text-muted-foreground">{t('activity.peak', { hour: peakHour, part: t(part.label), pct: percent(part.count, now.prompts) })}</span>}>
             <div className="flex min-h-24 flex-1 items-end gap-[3px]">
               {now.hours.map((n, h) => (
-                <div key={h} className="flex h-full flex-1 items-end" title={`${h}:00–${h + 1}:00 · ${n} 次`}>
+                <div key={h} className="flex h-full flex-1 items-end" title={t('activity.hourBar', { from: h, to: h + 1, n })}>
                   <div
                     className="w-full rounded-[3px] bg-foreground/[0.07]"
                     style={{ height: `${Math.max(4, percent(n, peakHourCount))}%`, ...(n ? { backgroundColor: `color-mix(in oklab, var(--primary) ${h === peakHour ? 100 : 50}%, transparent)` } : {}) }}
@@ -144,7 +146,7 @@ export function ActivityPage() {
             </div>
           </Card>
 
-          <Card title="项目" aside={now.prompts > 0 && <span className="text-xs text-muted-foreground">Code {percent(now.code, now.prompts)}% · Work {percent(now.work, now.prompts)}%</span>}>
+          <Card title={t('activity.projects')} aside={now.prompts > 0 && <span className="text-xs text-muted-foreground">Code {percent(now.code, now.prompts)}% · Work {percent(now.work, now.prompts)}%</span>}>
             {now.prompts > 0 && (
               <div className="mb-3 flex h-1.5 overflow-hidden rounded-full bg-foreground/[0.07]">
                 <div className="bg-primary" style={{ width: `${percent(now.code, now.prompts)}%` }} />
@@ -163,7 +165,7 @@ export function ActivityPage() {
                   </div>
                 </div>
               ))}
-              {!now.projects.length && <p className="text-sm text-muted-foreground">还没有项目数据。</p>}
+              {!now.projects.length && <p className="text-sm text-muted-foreground">{t('activity.noProjects')}</p>}
             </div>
           </Card>
         </div>

@@ -1,5 +1,6 @@
 // The day-by-day grid of the Activity page: one column per week (Sunday first), the last one ending today.
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { getLocale, useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { ACTIVITY_LEVELS, dayKey, dayTotal, type ActivityLog } from '@shared/activity';
 
@@ -12,12 +13,13 @@ const LABEL_WIDTH = 32;
 /** A month name needs this many columns before the next one starts, or it is left out. */
 const MIN_LABEL_GAP = 3;
 /** Rows that carry a weekday name (Sunday is 0). */
-const WEEKDAY_LABELS: Record<number, string> = { 1: 'Mon', 3: 'Wed', 5: 'Fri' };
+const WEEKDAY_ROWS = [1, 3, 5];
+const weekdayLabel = (day: number) => new Date(2023, 0, 1 + day).toLocaleDateString(getLocale(), { weekday: 'short' });
 /** Share of the accent colour per level; level 0 is the empty-day background. */
 const LEVEL_MIX = [0, 32, 55, 78, 100];
 
 export const levelColor = (level: number) => (level ? `color-mix(in oklab, var(--primary) ${LEVEL_MIX[Math.min(level, ACTIVITY_LEVELS)]}%, transparent)` : undefined);
-export const fmtDay = (d: Date) => d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+export const fmtDay = (d: Date) => d.toLocaleDateString(getLocale(), { year: 'numeric', month: 'short', day: 'numeric' });
 
 export function Heatmap({ log, weeks: weekCount, today, levelOf, selected, onSelect }: {
   log: ActivityLog;
@@ -27,6 +29,7 @@ export function Heatmap({ log, weeks: weekCount, today, levelOf, selected, onSel
   selected: string | null;
   onSelect: (key: string | null) => void;
 }) {
+  const t = useT();
   const box = useRef<HTMLDivElement>(null);
   const [cell, setCell] = useState(MIN_CELL);
   useLayoutEffect(() => {
@@ -48,14 +51,14 @@ export function Heatmap({ log, weeks: weekCount, today, levelOf, selected, onSel
   const monthLabels = useMemo(() => {
     const starts = weeks.map((_, w) => w).filter((w) => w === 0 || weeks[w][0]!.getMonth() !== weeks[w - 1][0]!.getMonth());
     const shown = starts.filter((w, i) => i === starts.length - 1 || starts[i + 1] - w >= MIN_LABEL_GAP);
-    return new Map(shown.map((w) => [w, weeks[w][0]!.toLocaleDateString(undefined, { month: 'short' })]));
+    return new Map(shown.map((w) => [w, weeks[w][0]!.toLocaleDateString(getLocale(), { month: 'short' })]));
   }, [weeks]);
 
   return (
     <div ref={box} className="overflow-x-auto pb-1">
       <div className="flex w-max" style={{ gap: GAP }}>
         <div className="grid pt-[18px] text-[10px] leading-none text-muted-foreground" style={{ gridTemplateRows: `repeat(7, ${cell}px)`, gap: GAP }}>
-          {Array.from({ length: 7 }, (_, d) => <span key={d} className="flex items-center pr-1.5">{WEEKDAY_LABELS[d]}</span>)}
+          {Array.from({ length: 7 }, (_, d) => <span key={d} className="flex items-center pr-1.5">{WEEKDAY_ROWS.includes(d) ? weekdayLabel(d) : ''}</span>)}
         </div>
         <div>
           <div className="flex pb-1.5 text-[10px] leading-3 text-muted-foreground" style={{ gap: GAP }}>
@@ -75,7 +78,7 @@ export function Heatmap({ log, weeks: weekCount, today, levelOf, selected, onSel
                       aria-label={`${fmtDay(date)}: ${total}`}
                       className={cn('rounded-[3px] bg-foreground/[0.07] outline-offset-2 transition-transform hover:scale-125', selected === key && 'outline outline-2 outline-foreground/70')}
                       style={{ backgroundColor: levelColor(levelOf(total)) }}
-                      title={`${fmtDay(date)} · ${total ? `${total} 次提问（Code ${entry.prompts.code} / Work ${entry.prompts.work}）` : '没有活动'}`}
+                      title={`${fmtDay(date)} · ${total ? t('activity.cellTip', { n: total, code: entry.prompts.code, work: entry.prompts.work }) : t('activity.noActivity')}`}
                       onClick={() => onSelect(selected === key ? null : key)}
                     />
                   );
@@ -90,11 +93,12 @@ export function Heatmap({ log, weeks: weekCount, today, levelOf, selected, onSel
 }
 
 export function Legend() {
+  const t = useT();
   return (
     <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-      少
+      {t('activity.less')}
       {Array.from({ length: ACTIVITY_LEVELS + 1 }, (_, l) => <span key={l} className="size-[11px] rounded-[3px] bg-foreground/[0.07]" style={{ backgroundColor: levelColor(l) }} />)}
-      多
+      {t('activity.more')}
     </div>
   );
 }

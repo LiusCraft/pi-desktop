@@ -8,6 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { call } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import { ago, fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { openDiffPanel, openPrComments, send, sessionDraftKey, setPrAuto } from '@/store/actions';
@@ -39,10 +40,11 @@ const BAR_TONE: Partial<Record<PrTone, string>> = {
   closed: 'border-destructive/30 bg-destructive/5 hover:bg-destructive/10',
 };
 const STATE_COLOR: Record<string, string> = { open: 'text-success', merged: 'text-[#8957e5]', closed: 'text-destructive' };
-const CHECK_LABEL: Record<string, string> = { pass: 'passed', fail: 'failed', pending: 'running' };
+const CHECK_LABEL = { pass: 'prbar.checkPass', fail: 'prbar.checkFail', pending: 'prbar.checkPending' } as const;
 
 /** Branch / PR status above the Code composer: what the branch still owes, and how to send it. */
 export function PrBar({ s }: { s: SessionView }) {
+  const t = useT();
   if (s.meta.kind === 'work' || s.prHidden || !s.meta.branch) return null;
   const id = s.meta.id;
   const st = s.gitState;
@@ -64,20 +66,20 @@ export function PrBar({ s }: { s: SessionView }) {
   const sync = st && (
     <span className="flex shrink-0 items-center gap-2 whitespace-nowrap font-mono text-[11px]">
       {dirty > 0 && (pending.length > 0 && !size ? (
-        <Lines add={add} del={del} title="查看 Diff" onClick={openDiffPanel} />
+        <Lines add={add} del={del} title={t('prbar.viewDiff')} onClick={openDiffPanel} />
       ) : (
-        <span className="text-muted-foreground">{dirty} uncommitted</span>
+        <span className="text-muted-foreground">{t('prbar.uncommitted', { n: dirty })}</span>
       ))}
-      {st.ahead > 0 && <span className="text-warning">{st.ahead} to push</span>}
-      {!st.upstream && <span className="text-muted-foreground">not pushed</span>}
-      {!dirty && !st.ahead && st.upstream && <span className="flex items-center gap-1 text-muted-foreground"><CheckIcon className="size-3" />synced</span>}
+      {st.ahead > 0 && <span className="text-warning">{t('prbar.toPush', { n: st.ahead })}</span>}
+      {!st.upstream && <span className="text-muted-foreground">{t('prbar.notPushed')}</span>}
+      {!dirty && !st.ahead && st.upstream && <span className="flex items-center gap-1 text-muted-foreground"><CheckIcon className="size-3" />{t('prbar.synced')}</span>}
     </span>
   );
   const hide = (
     <button
       className="shrink-0 rounded p-0.5 text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
-      title="Hide"
-      aria-label="Hide the branch bar"
+      title={t('prbar.hide')}
+      aria-label={t('prbar.hideBar')}
       onClick={() => updateSession(s.meta.id, (v) => void (v.prHidden = true))}
     >
       <XIcon className="size-3.5" />
@@ -120,11 +122,11 @@ export function PrBar({ s }: { s: SessionView }) {
       </div>
       <span className="flex-1" />
       {sync}
-      {size && <Lines add={size.add} del={size.del} title={size.files != null ? `${size.files} files · 查看 Diff` : '查看 Diff'} onClick={openDiffPanel} />}
+      {size && <Lines add={size.add} del={size.del} title={size.files != null ? t('prbar.filesDiff', { n: size.files }) : t('prbar.viewDiff')} onClick={openDiffPanel} />}
       {!!pr.comments && (
         <button
           className="flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          title="在 Diff 中查看评审意见"
+          title={t('prbar.viewComments')}
           onClick={() => void openPrComments()}
         >
           <MessageSquareIcon className="size-3.5" />{pr.comments}
@@ -136,10 +138,10 @@ export function PrBar({ s }: { s: SessionView }) {
           variant="outline"
           className="h-6 shrink-0 gap-1 border-warning/50 px-2 text-xs text-warning hover:text-warning"
           disabled={s.running}
-          title="Let Pi merge the base branch in and resolve the conflicts"
-          onClick={() => ask('fix-conflicts', `PR #${pr.num} 与 ${s.meta.baseBranch ?? '目标分支'} 存在合并冲突。把最新的 ${s.meta.baseBranch ?? '目标分支'} 合并进当前分支，逐个解决冲突并确认构建/测试通过，然后提交并推送。`)}
+          title={t('prbar.fixConflictsTip')}
+          onClick={() => ask('fix-conflicts', t('prbar.conflictPrompt', { num: pr.num, base: s.meta.baseBranch ?? t('gitact.targetFallback') }))}
         >
-          <TriangleAlertIcon className="size-3" />Fix conflicts
+          <TriangleAlertIcon className="size-3" />{t('prbar.fixConflicts')}
         </Button>
       )}
       <CiPanel s={s} pr={pr} open={open} ask={ask} />
@@ -151,6 +153,7 @@ export function PrBar({ s }: { s: SessionView }) {
 
 /** The card that answers "what is this PR?" without leaving the composer. */
 function PrCard({ pr, repo, badge }: { pr: PrLike; repo: string; badge: PrBadge }) {
+  const t = useT();
   const size = prSize(pr);
   return (
     <div className="w-80 p-3">
@@ -169,7 +172,7 @@ function PrCard({ pr, repo, badge }: { pr: PrLike; repo: string; badge: PrBadge 
         {pr.author && <span className="truncate">{pr.author}</span>}
         <span className="ml-auto flex shrink-0 items-center gap-1.5">
           {size && <Lines add={size.add} del={size.del} />}
-          {size?.files != null && <span className="tabular-nums">{size.files} files</span>}
+          {size?.files != null && <span className="tabular-nums">{t('prbar.files', { n: size.files })}</span>}
         </span>
       </div>
     </div>
@@ -194,6 +197,7 @@ function Lines({ add, del, title, onClick }: { add: number; del: number; title?:
 
 /** CI status in a chip, and the panel behind it: the checks themselves plus what the bar may do on its own. */
 function CiPanel({ s, pr, open, ask }: { s: SessionView; pr: PrLike; open: () => void; ask: (command: BuiltinCommand, text: string) => void }) {
+  const t = useT();
   const checks = pr.checks ?? [];
   return (
     <Popover>
@@ -208,8 +212,8 @@ function CiPanel({ s, pr, open, ask }: { s: SessionView; pr: PrLike; open: () =>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" sideOffset={8} className="w-72 p-0">
         <div className="flex items-center gap-2 border-b px-3 py-2">
-          <span className="text-[11.5px] font-medium">CI monitoring</span>
-          <button className="ml-auto rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title={`Open checks on ${forgeName(pr.forge)}`} onClick={open}>
+          <span className="text-[11.5px] font-medium">{t('prbar.ciMonitoring')}</span>
+          <button className="ml-auto rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title={t('prbar.openChecks', { forge: forgeName(pr.forge) })} onClick={open}>
             <SquareArrowOutUpRightIcon className="size-3.5" />
           </button>
         </div>
@@ -224,11 +228,11 @@ function CiPanel({ s, pr, open, ask }: { s: SessionView; pr: PrLike; open: () =>
                 <div key={c.n} className="flex items-center gap-2 py-0.5 text-[11.5px]">
                   <span className={cn('size-1.5 shrink-0 rounded-full', DOT[c.st])} />
                   {c.url ? (
-                    <button className="min-w-0 truncate text-left hover:text-foreground hover:underline" title={`在 ${forgeName(pr.forge)} 打开 ${c.n}`} onClick={() => call('app:openExternal', c.url!)}>{c.n}</button>
+                    <button className="min-w-0 truncate text-left hover:text-foreground hover:underline" title={t('prbar.openCheck', { forge: forgeName(pr.forge), name: c.n })} onClick={() => call('app:openExternal', c.url!)}>{c.n}</button>
                   ) : (
                     <span className="min-w-0 truncate" title={c.n}>{c.n}</span>
                   )}
-                  <span className="ml-auto shrink-0 text-[10.5px] text-muted-foreground/70">{CHECK_LABEL[c.st]}</span>
+                  <span className="ml-auto shrink-0 text-[10.5px] text-muted-foreground/70">{t(CHECK_LABEL[c.st])}</span>
                 </div>
               ))}
             </div>
@@ -237,11 +241,11 @@ function CiPanel({ s, pr, open, ask }: { s: SessionView; pr: PrLike; open: () =>
         <div className="space-y-1 border-t px-3 py-2">
           <label className="flex cursor-pointer items-start gap-2 py-0.5 text-[11.5px]">
             <Checkbox className="mt-px size-3.5" checked={!!s.meta.autoFixCi} onCheckedChange={(v) => void setPrAuto(s.meta.id, { fixCi: v === true })} />
-            <span>Auto-fix CI &amp; address comments</span>
+            <span>{t('prbar.autoFix')}</span>
           </label>
           <label className="flex cursor-pointer items-start gap-2 py-0.5 text-[11.5px]">
             <Checkbox className="mt-px size-3.5" checked={!!s.meta.autoMerge} onCheckedChange={(v) => void setPrAuto(s.meta.id, { merge: v === true })} />
-            <span>Auto-merge when ready</span>
+            <span>{t('prbar.autoMerge')}</span>
           </label>
         </div>
         {pr.ci === 'fail' && !s.meta.autoFixCi && (
@@ -249,15 +253,15 @@ function CiPanel({ s, pr, open, ask }: { s: SessionView; pr: PrLike; open: () =>
             <div className="border-t" />
             <button
               className="w-full px-3 py-2 text-left text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              onClick={() => ask('fix-ci', `用 ${forgeWords(pr.forge).checks(pr.num)} 读出 PR #${pr.num} 的失败原因，修好代码后提交并推送；未解决的评审意见一并处理，直到检查不再失败。`)}
+              onClick={() => ask('fix-ci', t('prbar.fixCiPrompt', { checks: forgeWords(pr.forge).checks(pr.num), num: pr.num }))}
             >
-              让 Pi 现在处理这一次
+              {t('prbar.fixOnce')}
             </button>
           </>
         )}
         {(s.meta.autoFixCi || s.meta.autoMerge) && (
           <div className="border-t px-3 py-1.5 text-[10.5px] text-muted-foreground">
-            后台监听中：变化会作为事件发到对话里
+            {t('prbar.watching')}
           </div>
         )}
       </PopoverContent>
@@ -273,6 +277,7 @@ function SplitButton({ s, current, actions, primary, run }: {
   primary: GitAction | null;
   run: (command: BuiltinCommand, text: string) => void;
 }) {
+  const t = useT();
   const { branch, baseBranch } = s.meta;
   return (
     <div className="flex shrink-0">
@@ -281,7 +286,7 @@ function SplitButton({ s, current, actions, primary, run }: {
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="xs" variant="outline" className="h-6 rounded-l-none border-l-0 px-1 text-xs" disabled={s.running} title="Choose what to submit" aria-label="Choose what to submit">
+          <Button size="xs" variant="outline" className="h-6 rounded-l-none border-l-0 px-1 text-xs" disabled={s.running} title={t('prbar.chooseSubmit')} aria-label={t('prbar.chooseSubmit')}>
             <ChevronDownIcon className="size-3.5" />
           </Button>
         </DropdownMenuTrigger>

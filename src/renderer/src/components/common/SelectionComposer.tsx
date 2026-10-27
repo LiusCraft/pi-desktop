@@ -1,5 +1,6 @@
 import { useId, useState } from 'react';
 import { MessageSquarePlusIcon, PaperclipIcon, XIcon } from 'lucide-react';
+import { useT } from '@/lib/i18n';
 import { referenceLocation, type ContextReference } from '@shared/context-reference';
 import { Button } from '@/components/ui/button';
 import { Field, FieldLabel } from '@/components/ui/field';
@@ -19,6 +20,7 @@ export function SelectionComposer({ sid, reference, commenting, onCommenting, on
   onDone: (attached: boolean) => void;
   onMouseUp?: (event: React.MouseEvent) => void;
 }) {
+  const t = useT();
   const commentId = useId();
   const [comment, setComment] = useState('');
   const location = referenceLocation({ ...reference, id: '', kind: 'excerpt' });
@@ -31,17 +33,17 @@ export function SelectionComposer({ sid, reference, commenting, onCommenting, on
     <div className="flex flex-col gap-2 border-y bg-card p-3 font-sans text-sm" onMouseUp={onMouseUp}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={location}>{location}</span>
-        <Button type="button" variant="outline" size="sm" onMouseDown={(event) => event.preventDefault()} onClick={() => attach('excerpt')}><PaperclipIcon data-icon="inline-start" />附加为上下文</Button>
-        {!commenting && <Button type="button" variant="outline" size="sm" onClick={() => onCommenting(true)}><MessageSquarePlusIcon data-icon="inline-start" />添加评论</Button>}
-        <Button type="button" variant="ghost" size="icon" className="size-7" aria-label="取消选区" onClick={() => onDone(false)}><XIcon /></Button>
+        <Button type="button" variant="outline" size="sm" onMouseDown={(event) => event.preventDefault()} onClick={() => attach('excerpt')}><PaperclipIcon data-icon="inline-start" />{t('selcomp.attach')}</Button>
+        {!commenting && <Button type="button" variant="outline" size="sm" onClick={() => onCommenting(true)}><MessageSquarePlusIcon data-icon="inline-start" />{t('selcomp.addComment')}</Button>}
+        <Button type="button" variant="ghost" size="icon" className="size-7" aria-label={t('selcomp.cancel')} onClick={() => onDone(false)}><XIcon /></Button>
       </div>
       {commenting && (
         <form className="flex flex-col gap-2" onSubmit={(event) => { event.preventDefault(); attach('comment'); }}>
           <Field>
-            <FieldLabel className="sr-only" htmlFor={commentId}>选区评论</FieldLabel>
-            <Textarea id={commentId} aria-label="选区评论" autoFocus value={comment} onChange={(event) => setComment(event.target.value)} placeholder="针对这些代码写下评论…" rows={3} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); attach('comment'); } }} />
+            <FieldLabel className="sr-only" htmlFor={commentId}>{t('selcomp.commentLabel')}</FieldLabel>
+            <Textarea id={commentId} aria-label={t('selcomp.commentLabel')} autoFocus value={comment} onChange={(event) => setComment(event.target.value)} placeholder={t('selcomp.commentPh')} rows={3} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); attach('comment'); } }} />
           </Field>
-          <div className="flex justify-end"><Button type="submit" size="sm" disabled={!comment.trim()}>添加到输入框</Button></div>
+          <div className="flex justify-end"><Button type="submit" size="sm" disabled={!comment.trim()}>{t('selcomp.addToInput')}</Button></div>
         </form>
       )}
     </div>

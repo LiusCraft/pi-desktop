@@ -7,6 +7,10 @@ import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { alignModel } from '../src/agent/model-admin';
 import { EndpointStore, LOCAL_KEY, discoveryUrls, isLocalUrl, parseModelList, stripJsonComments, validProviderId } from '../src/agent/endpoints';
+import { setActiveLocale } from '../src/shared/i18n/runtime';
+
+// These assertions read the host's Chinese messages.
+setActiveLocale('zh');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-desktop-endpoints-'));
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));

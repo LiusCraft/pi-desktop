@@ -1,6 +1,7 @@
 // Model management for the desktop: provider accounts (pi's auth.json, OAuth
 // and API keys through ModelRuntime.login), custom endpoints (pi's models.json)
 // and model metadata aligned from models.dev by model id.
+import { tr } from '@shared/i18n/runtime';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent';
@@ -185,14 +186,14 @@ export class ModelAdmin {
     const provider = models.getProvider(providerId);
     if (!provider) throw new Error(`Unknown provider: ${providerId}`);
     const display = name?.trim() || provider.name;
-    if (authType === 'oauth' && !provider.auth.oauth) throw new Error(`${display} 不支持账号登录`);
+    if (authType === 'oauth' && !provider.auth.oauth) throw new Error(tr('ag.noOauth', { name: display }));
     if (authType === 'api_key') {
-      if (!provider.auth.apiKey) throw new Error(`${display} 不支持 API 密钥`);
-      if (!provider.auth.apiKey.login) throw new Error(`${display} 的凭据来自环境变量或云平台，不需要在这里登录`);
+      if (!provider.auth.apiKey) throw new Error(tr('ag.noApiKey', { name: display }));
+      if (!provider.auth.apiKey.login) throw new Error(tr('ag.keyFromEnv', { name: display }));
     }
     const login: PendingLogin = { id: crypto.randomUUID(), provider: providerId, name: display, controller: new AbortController(), prompts: new Map() };
     this.logins.set(login.id, login);
-    this.opts.emit({ type: 'auth_event', loginId: login.id, provider: providerId, event: { type: 'progress', message: `正在登录 ${display}…` } });
+    this.opts.emit({ type: 'auth_event', loginId: login.id, provider: providerId, event: { type: 'progress', message: tr('ag.login', { name: display }) } });
     try {
       await models.login(
         providerId,
@@ -295,11 +296,11 @@ export class ModelAdmin {
     const models = this.opts.models();
     const id = draft.id.trim().toLowerCase();
     const builtinIds = await this.builtins();
-    if (!validProviderId(id)) throw new Error('Provider ID 只能包含小写字母、数字、点、下划线和短横线');
+    if (!validProviderId(id)) throw new Error(tr('ag.providerId'));
     // A built-in override may keep the provider's own API; a new endpoint needs one.
-    if (!draft.api.trim() && !builtinIds.has(id)) throw new Error('请选择 API 类型');
-    if (!builtinIds.has(id) && !draft.models.length && !this.endpoints.ids().has(id)) throw new Error('请至少添加一个模型');
-    if (draft.apiKey?.trim() && builtinIds.has(id)) throw new Error('内置 provider 的密钥请在“账号与密钥”里设置');
+    if (!draft.api.trim() && !builtinIds.has(id)) throw new Error(tr('ag.pickApiType'));
+    if (!builtinIds.has(id) && !draft.models.length && !this.endpoints.ids().has(id)) throw new Error(tr('ag.addModel'));
+    if (draft.apiKey?.trim() && builtinIds.has(id)) throw new Error(tr('ag.builtinKey'));
     // Saving manual values must work immediately even without a public catalog.
     this.dev.ensure();
     const aligned = draft.models.map((model) => alignModel(model, this.dev.lookup(model.id, id)));
@@ -310,7 +311,7 @@ export class ModelAdmin {
       .split('\n\n')
       .filter((message) => /models\.json|Invalid models|Provider "/i.test(message));
     if (!models.getProvider(id) || configErrors.length) {
-      throw new Error(`pi 没有加载这个端点：${configErrors.join('\n') || 'models.json 未被接受'}`);
+      throw new Error(tr('ag.notLoaded', { errors: configErrors.join('\n') || tr('ag.notAccepted') }));
     }
     if (draft.removeKey) await models.logout(id, { signal: AbortSignal.timeout(15_000) }).catch(() => {});
     if (draft.apiKey?.trim()) {

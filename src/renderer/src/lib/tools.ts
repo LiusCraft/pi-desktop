@@ -1,6 +1,7 @@
 import type { SubagentProgress } from '@shared/protocol';
 import type { ToolPreview } from '@shared/tool-previews';
 import { fname } from './format';
+import { t } from './i18n';
 
 export type ToolKind = 'read' | 'edit' | 'write' | 'bash' | 'grep' | 'glob' | 'ls' | 'agent' | 'other';
 export type ToolStatus = 'running' | 'done' | 'err' | 'denied';
@@ -45,38 +46,38 @@ export function toolFromArgs(id: string, toolName: string, args: Record<string, 
   return {
     id, name: toolName, kind: KIND[name] ?? 'other', args: args ?? {}, status: 'running', open: false,
     path: args?.path || args?.file_path, cmd: args?.command || '', q: args?.pattern || args?.path || '',
-    desc: args?.description || (name === 'bg_shell' ? args?.command : '') || 'Subagent', prompt: args?.prompt ?? (name === 'bg_shell' ? args?.command : undefined),
+    desc: args?.description || (name === 'bg_shell' ? args?.command : '') || t('toolLabel.subagent'), prompt: args?.prompt ?? (name === 'bg_shell' ? args?.command : undefined),
     ...(name === 'bg_shell' ? { sh: { command: args?.command ?? '', output: '' } } : {}),
   };
 }
 
 /** Plain-text label, e.g. "Ran npm test" / "Reading date.js". */
-export function toolLabel(t: ToolState) {
-  const run = t.status === 'running';
-  switch (t.kind) {
-    case 'read': return `${run ? 'Reading' : 'Read'} ${fname(t.path ?? '')}`;
-    case 'edit': return `${run ? 'Editing' : 'Edited'} ${fname(t.path ?? '')}`;
-    case 'write': return `${run ? 'Writing' : 'Wrote'} ${fname(t.path ?? '')}`;
-    case 'grep': return `Searched for ${t.q}`;
-    case 'glob': return `Found ${t.q}`;
-    case 'ls': return `Listed ${t.q || '.'}`;
-    case 'bash': return `${run ? 'Running' : 'Ran'} ${t.cmd}`;
-    case 'agent': return `Agent · ${t.desc}`;
-    default: return `${run ? 'Using' : 'Used'} ${t.name}`;
+export function toolLabel(tool: ToolState) {
+  const run = tool.status === 'running';
+  switch (tool.kind) {
+    case 'read': return t(run ? 'toolLabel.reading' : 'toolLabel.read', { name: fname(tool.path ?? '') });
+    case 'edit': return t(run ? 'toolLabel.editing' : 'toolLabel.edited', { name: fname(tool.path ?? '') });
+    case 'write': return t(run ? 'toolLabel.writing' : 'toolLabel.wrote', { name: fname(tool.path ?? '') });
+    case 'grep': return t('toolLabel.searched', { q: tool.q });
+    case 'glob': return t('toolLabel.found', { q: tool.q });
+    case 'ls': return t('toolLabel.listed', { q: tool.q || '.' });
+    case 'bash': return t(run ? 'toolLabel.running' : 'toolLabel.ran', { cmd: tool.cmd });
+    case 'agent': return t('toolLabel.agent', { desc: tool.desc });
+    default: return t(run ? 'toolLabel.using' : 'toolLabel.used', { name: tool.name });
   }
 }
 
 /** Scope of a read / search call shown next to its label, e.g. "L100–220" or "in src/agent · *.ts". */
-export function toolScope(t: ToolState): string {
-  const a = t.args;
-  if (t.kind === 'read') {
+export function toolScope(tool: ToolState): string {
+  const a = tool.args;
+  if (tool.kind === 'read') {
     const start = Number(a.offset) || 1;
     const count = Number(a.limit);
     if (count > 0) return `L${start}–${start + count - 1}`;
     return a.offset ? `L${start}+` : '';
   }
-  if (t.kind === 'grep') return [a.path && `in ${a.path}`, a.glob].filter(Boolean).join(' · ');
-  if (t.kind === 'glob') return a.path ? `in ${a.path}` : '';
+  if (tool.kind === 'grep') return [a.path && t('toolScope.in', { path: a.path }), a.glob].filter(Boolean).join(' · ');
+  if (tool.kind === 'glob') return a.path ? t('toolScope.in', { path: a.path }) : '';
   return '';
 }
 
@@ -92,16 +93,15 @@ export function groupSummary(tools: ToolState[]) {
     else if (t.kind === 'agent') c.agent++;
     else c.other++;
   }
-  const pl = (n: number, one: string, many: string) => (n === 1 ? one : `${n} ${many}`);
   const parts: string[] = [];
-  if (c.cmd) parts.push(`ran ${pl(c.cmd, 'a command', 'commands')}${c.fail ? ` (${c.fail} failed)` : ''}`);
-  if (c.read.size) parts.push(`read ${pl(c.read.size, 'a file', 'files')}`);
-  if (c.write.size) parts.push(`wrote ${pl(c.write.size, 'a file', 'files')}`);
-  if (c.edit.size) parts.push(`edited ${pl(c.edit.size, 'a file', 'files')}`);
-  if (c.search) parts.push(`searched ${pl(c.search, 'once', 'times')}`);
-  if (c.agent) parts.push(`used ${pl(c.agent, 'an agent', 'agents')}`);
-  if (c.other) parts.push(`used ${pl(c.other, 'a tool', 'tools')}`);
-  const s = parts.join(', ') || 'Used tools';
+  if (c.cmd) parts.push((c.cmd === 1 ? t('group.ranCommand') : t('group.ranCommands', { n: c.cmd })) + (c.fail ? t('group.failed', { n: c.fail }) : ''));
+  if (c.read.size) parts.push(c.read.size === 1 ? t('group.readFile') : t('group.readFiles', { n: c.read.size }));
+  if (c.write.size) parts.push(c.write.size === 1 ? t('group.wroteFile') : t('group.wroteFiles', { n: c.write.size }));
+  if (c.edit.size) parts.push(c.edit.size === 1 ? t('group.editedFile') : t('group.editedFiles', { n: c.edit.size }));
+  if (c.search) parts.push(c.search === 1 ? t('group.searchedOnce') : t('group.searchedTimes', { n: c.search }));
+  if (c.agent) parts.push(c.agent === 1 ? t('group.usedAgent') : t('group.usedAgents', { n: c.agent }));
+  if (c.other) parts.push(c.other === 1 ? t('group.usedTool') : t('group.usedTools', { n: c.other }));
+  const s = parts.join(t('group.separator')) || t('group.usedToolsFallback');
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 

@@ -6,6 +6,10 @@ import type { CreateSessionOptions, SessionMeta } from '../src/shared/protocol';
 import { nextRun, validateSchedule } from '../src/shared/schedule';
 import { Scheduler, type SchedulerHub } from '../src/agent/scheduler';
 import { Store } from '../src/agent/store';
+import { setActiveLocale } from '../src/shared/i18n/runtime';
+
+// These assertions read the host's Chinese messages.
+setActiveLocale('zh');
 
 const at = (y: number, mo: number, d: number, h = 0, mi = 0) => new Date(y, mo - 1, d, h, mi).getTime();
 

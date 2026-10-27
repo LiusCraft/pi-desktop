@@ -7,7 +7,8 @@ import { referencePrompt, type ContextReference } from '@shared/context-referenc
 import { revealItem } from '@/lib/quote-links';
 import { positiveLine } from '@shared/tool-previews';
 import { call, errText, modKey } from '@/lib/api';
-import { DESKTOP_COMMANDS, MODES, VIEW_MODES, type ViewMode } from '@/lib/constants';
+import { t } from '@/lib/i18n';
+import { desktopCommands, MODES, VIEW_MODES, type ViewMode } from '@/lib/constants';
 import { fmtTok, fname, relPath } from '@/lib/format';
 import { currentSession, getApp, isWork, read, savePref, setApp, setPref, updateSession, type AppState } from './app';
 import { dialogs } from './dialogs';
@@ -97,7 +98,7 @@ function flushEvents() {
         const cur = st.current && st.sessions[st.current];
         if (cur) {
           const tail = ev.stderr.trim().split('\n').slice(-6).join('\n');
-          push(cur, { kind: 'note', key: newKey(), level: 'error', text: `Agent 进程退出（${ev.code}），下一条消息会自动重启。${tail ? `\n${tail}` : ''}` }, view);
+          push(cur, { kind: 'note', key: newKey(), level: 'error', text: `${t('act.hostExit', { code: String(ev.code) })}${tail ? `\n${tail}` : ''}` }, view);
         }
         continue;
       }
@@ -154,7 +155,7 @@ function flushEvents() {
           effects.push([s.meta.id, { editorText: ev.text }]);
           break;
         case 'extension_error':
-          toast.error(`Extension error: ${ev.error}`);
+          toast.error(t('act.extensionError', { error: ev.error }));
           break;
       }
       s = st.sessions[ev.sessionId];
@@ -182,7 +183,7 @@ function runEffects(id: string, fx: Effects) {
   // run is not: there is no natural follow-up to guess.
   if (fx.settled && !fx.settled.aborted) void primeSuggestion(id);
   if (fx.waiting && away) {
-    if (!isCur || document.hidden) toast.warning(`“${s.meta.title}” 需要你的确认`);
+    if (!isCur || document.hidden) toast.warning(t('act.needsApproval', { title: s.meta.title }));
     call('app:notify', { title: s.meta.title, body: 'Needs your approval', sessionId: id }).catch(() => {});
   }
 }
@@ -391,7 +392,7 @@ export async function openSession(id: string, fresh = false) {
     st.current = id;
     st.view = view;
     // Starting a session is slow (extensions, MCP): show that it is happening instead of an empty page.
-    if (!st.sessions[id].loaded && !st.sessions[id].setup) st.sessions[id].setup = [{ id: 'agent', label: '启动 Agent，加载扩展与工具', state: 'running' }];
+    if (!st.sessions[id].loaded && !st.sessions[id].setup) st.sessions[id].setup = [{ id: 'agent', label: t('act.stepAgent'), state: 'running' }];
     st.lastByView[view] = id;
     st.sessions[id].unread = false;
     if (st.sessions[id].detail?.type === 'file' && (st.sessions[id].detail as any).loading) st.sessions[id].detail = null;
@@ -434,7 +435,7 @@ export async function openSession(id: string, fresh = false) {
       const x = st.sessions[id];
       if (!x) return;
       x.setup = null;
-      push(x, { kind: 'note', key: newKey(), level: 'error', text: `无法打开会话：${errText(err)}` }, st.prefs.viewMode);
+      push(x, { kind: 'note', key: newKey(), level: 'error', text: t('act.openFailed', { error: errText(err) }) }, st.prefs.viewMode);
     });
   }
 }
@@ -445,7 +446,7 @@ export async function openSession(id: string, fresh = false) {
 export function replyWith(sid: string, passage: string, comment = '') {
   const key = sessionDraftKey(sid);
   const added = drafts.addReference(key, { id: crypto.randomUUID(), kind: 'quote', path: '', text: passage.trim(), comment: comment.trim() || undefined });
-  if (!added) throw new Error(getDraft(key).errors.at(-1) ?? '无法添加回复');
+  if (!added) throw new Error(getDraft(key).errors.at(-1) ?? t('act.replyFailed'));
   requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('textarea[data-composer-input]')?.focus());
 }
 
@@ -461,7 +462,7 @@ export function quotePrThread(thread: PrThread, note?: string) {
     ...(thread.line ? { startLine: thread.line, endLine: thread.line } : {}),
     side: thread.side,
   });
-  if (!added) throw new Error(getDraft(key).errors.at(-1) ?? '无法引用评论');
+  if (!added) throw new Error(getDraft(key).errors.at(-1) ?? t('act.quoteFailed'));
   requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('textarea[data-composer-input]')?.focus());
 }
 
@@ -480,12 +481,7 @@ export async function resolvePrThread(threadId: string, resolved: boolean) {
   await loadPrThreads(id);
 }
 
-const HELP = () => `### Shortcuts
-- \`↵\` 发送（运行中会插话）· \`${modKey}↵\` 排队到当前任务之后 · \`⇧↵\` 换行
-- \`⇧Tab\` 切换模式 · \`Esc\` 中断
-- \`${modKey}O\` 切换 transcript 视图（Normal / Thinking / Verbose）
-- \`${modKey}K\` 搜索 · \`${modKey}B\` 侧边栏 · \`${modKey}D\` Diff
-- 输入 \`@\` 引用文件 · \`/btw\` 旁路提问 · 选中回复内容可「Send side chat」或「Reply」`;
+const HELP = () => t('act.help', { mod: modKey });
 
 async function slashCommand(s: SessionView | undefined, head: string, text: string): Promise<boolean> {
   const key = activeDraft()?.key;
@@ -497,7 +493,7 @@ async function slashCommand(s: SessionView | undefined, head: string, text: stri
   }
   if (head === '/btw') {
     if (!s) {
-      toast.warning('先开始一个会话');
+      toast.warning(t('act.startSessionFirst'));
       return true;
     }
     clear();
@@ -510,11 +506,11 @@ async function slashCommand(s: SessionView | undefined, head: string, text: stri
   if (head === '/help') {
     clear();
     if (!s) {
-      toast.warning('先开始一个会话');
+      toast.warning(t('act.startSessionFirst'));
       return true;
     }
-    const lines = [...DESKTOP_COMMANDS, ...s.commands.map((c) => [`/${c.name}`, c.description || c.source] as [string, string])];
-    pushItem(s.meta.id, { kind: 'text', key: newKey(), text: `### Commands\n${lines.map(([k, d]) => `- \`${k}\` ${d}`).join('\n')}\n\n${HELP()}`, live: false });
+    const lines = [...desktopCommands(), ...s.commands.map((c) => [`/${c.name}`, c.description || c.source] as [string, string])];
+    pushItem(s.meta.id, { kind: 'text', key: newKey(), text: `### ${t('act.commands')}\n${lines.map(([k, d]) => `- \`${k}\` ${d}`).join('\n')}\n\n${HELP()}`, live: false });
     return true;
   }
   if (!s || !['/clear', '/compact', '/context', '/export'].includes(head)) return false;
@@ -543,9 +539,9 @@ async function slashCommand(s: SessionView | undefined, head: string, text: stri
 
 /** Summarise older messages to free context (/compact, or the context popover). */
 export async function compactSession(id: string, instructions?: string) {
-  updateSession(id, (x) => void (x.statusText = 'Compacting…'));
+  updateSession(id, (x) => void (x.statusText = t('act.compacting')));
   const r = await call('sessions:compact', id, instructions);
-  pushItem(id, { kind: 'note', key: newKey(), text: `Compacted · ${fmtTok(r.tokensBefore)} → ~${fmtTok(r.estimatedTokensAfter ?? 0)} tokens` });
+  pushItem(id, { kind: 'note', key: newKey(), text: t('act.compacted', { before: fmtTok(r.tokensBefore), after: fmtTok(r.estimatedTokensAfter ?? 0) }) });
   void refreshStats(id);
 }
 
@@ -560,7 +556,7 @@ function pushItem(id: string, item: Item) {
 export async function exportHtml(id: string) {
   try {
     const { path } = await call('sessions:exportHtml', id);
-    pushItem(id, { kind: 'note', key: newKey(), text: `Exported to ${path}` });
+    pushItem(id, { kind: 'note', key: newKey(), text: t('act.exported', { path }) });
   } catch (err) {
     fail(err);
   }
@@ -590,8 +586,8 @@ async function createSession(firstPrompt: string, draftKey: string) {
     x.sessions[meta.id].levels = st.levels;
     // The worktree and the agent come up in the background; the conversation opens straight away.
     x.sessions[meta.id].setup = [
-      ...(meta.worktreeSetup ? [{ id: 'worktree' as const, label: `创建 git worktree（${meta.branch}）`, state: 'running' as const }] : []),
-      { id: 'agent', label: '启动 Agent，加载扩展与工具', state: meta.worktreeSetup ? 'pending' : 'running' },
+      ...(meta.worktreeSetup ? [{ id: 'worktree' as const, label: t('act.stepWorktree', { branch: meta.branch ?? '' }), state: 'running' as const }] : []),
+      { id: 'agent', label: t('act.stepAgent'), state: meta.worktreeSetup ? 'pending' : 'running' },
     ];
     x.adopt = null;
     x.baseRef = null;
@@ -606,7 +602,7 @@ async function createSession(firstPrompt: string, draftKey: string) {
 export async function send(queueOnly = false) {
   const draft = activeDraft();
   if (!draft || draft.sending) return;
-  if (draft.preparing) return void toast.warning('等待附件处理完成后再发送');
+  if (draft.preparing) return void toast.warning(t('act.waitAttachments'));
   const text = draft.text;
   const files = draft.attachments.slice();
   const references = draft.references.slice();
@@ -617,11 +613,11 @@ export async function send(queueOnly = false) {
     return;
   }
   const head = text.trim().split(/\s+/)[0];
-  if ((files.length || references.length) && head.startsWith('/')) return void toast.warning('斜杠命令不能携带附件或上下文；请先移除或使用普通消息');
+  if ((files.length || references.length) && head.startsWith('/')) return void toast.warning(t('act.slashNoAttach'));
   if (await slashCommand(s, head, text)) return;
 
   const st = getApp();
-  if (!s && st.view === 'code' && !st.prefs.project) return void toast.warning('先选择一个项目');
+  if (!s && st.view === 'code' && !st.prefs.project) return void toast.warning(t('act.pickProjectFirst'));
   let key = draft.key;
   drafts.lock(key, true);
   if (!s) {
@@ -659,7 +655,7 @@ export async function send(queueOnly = false) {
       v.t0 = Date.now();
       v.tokens = 0;
       v.todosKey = null;
-      v.statusText = 'Thinking…';
+      v.statusText = t('status.thinking');
     }
   });
   const item = () => findByKey(getApp().sessions[id], itemKey) as (Item & { kind: 'user' }) | undefined;
@@ -670,7 +666,7 @@ export async function send(queueOnly = false) {
   try {
     const r = await call('sessions:prompt', id, payload, queueOnly ? 'followUp' : 'steer');
     if (item()?.exited || getApp().sessions[id]?.hostEpoch !== epoch) {
-      drafts.error(key, '进程已退出，发送状态未确认；草稿已保留，请核对历史后再发送');
+      drafts.error(key, t('act.exitedUnconfirmed'));
       return;
     }
     updateSession(id, (v) => {
@@ -685,13 +681,13 @@ export async function send(queueOnly = false) {
   } catch (err) {
     const u = item();
     if (u?.delivered) drafts.clear(key);
-    else if (u?.exited || getApp().sessions[id]?.hostEpoch !== epoch) drafts.error(key, '进程已退出，发送状态未确认；草稿已保留，请核对历史后再发送');
+    else if (u?.exited || getApp().sessions[id]?.hostEpoch !== epoch) drafts.error(key, t('act.exitedUnconfirmed'));
     else if (/exited|closed|timeout|timed out|terminated/i.test(errText(err))) {
       updateSession(id, (v) => {
         const x = findByKey(v, itemKey);
         if (x?.kind === 'user') Object.assign(x, { failed: true, queued: false });
       });
-      drafts.error(key, '发送状态未确认，请核对会话后再重试，避免重复发送');
+      drafts.error(key, t('act.unconfirmed'));
     } else {
       removeUser();
       drafts.error(key, err);
@@ -709,7 +705,7 @@ export async function stop(id: string) {
   const epoch = s.hostEpoch;
   updateSession(id, (v) => {
     v.stopping = true;
-    v.statusText = 'Stopping…';
+    v.statusText = t('act.stopping');
   });
   try {
     const q = await call('sessions:clearQueue', id);
@@ -820,7 +816,7 @@ export async function chooseEffort(level: ThinkingLevel) {
 export async function renameSession(id: string) {
   const s = getApp().sessions[id];
   if (!s) return;
-  const title = await dialogs.prompt('Rename session', s.meta.title, { action: 'Save' });
+  const title = await dialogs.prompt(t('act.renameTitle'), s.meta.title, { action: t('act.save') });
   if (!title?.trim()) return;
   try {
     const meta = await call('sessions:update', id, { title });
@@ -843,7 +839,7 @@ export async function archiveSession(id: string) {
       v.setup = null;
     });
     if (getApp().current === id) showWelcome();
-    toast(`已归档“${s.meta.title}”`, { action: { label: '撤销', onClick: () => void unarchiveSession(id) } });
+    toast(t('act.archived', { title: s.meta.title }), { action: { label: t('act.undo'), onClick: () => void unarchiveSession(id) } });
   } catch (err) {
     fail(err);
   }
@@ -874,16 +870,16 @@ export async function deleteSession(id: string) {
   if (!s) return;
   try {
     const lost = await call('sessions:inspect', id);
-    const lines = ['对话记录会被删除；项目里的文件不受影响。'];
+    const lines = [t('act.deleteLine')];
     if (lost.worktree) {
-      lines.push(`它的 git worktree 也会被删除：${lost.worktree}`);
-      if (lost.dirty) lines.push(`其中 ${lost.dirty} 个文件有未提交的改动，会一并丢失。`);
-      if (lost.unpushed) lines.push(`分支 ${lost.branch} 上有 ${lost.unpushed} 个未推送的提交；分支会保留，提交不会丢。`);
+      lines.push(t('act.deleteWorktree', { path: lost.worktree }));
+      if (lost.dirty) lines.push(t('act.deleteDirty', { n: lost.dirty }));
+      if (lost.unpushed) lines.push(t('act.deleteUnpushed', { branch: lost.branch ?? '', n: lost.unpushed }));
     }
-    if (!(await dialogs.confirm(`删除“${s.meta.title}”？`, lines.join('\n'), 'Delete', true))) return;
+    if (!(await dialogs.confirm(t('act.deleteTitle', { title: s.meta.title }), lines.join('\n'), t('act.delete'), true))) return;
     const removed = await call('sessions:remove', id);
     dropSession(id);
-    if (removed.branchKept) toast(`分支 ${removed.branchKept} 已保留，里面有只存在于它的提交`);
+    if (removed.branchKept) toast(t('act.branchKept', { branch: removed.branchKept }));
   } catch (err) {
     fail(err);
   }
@@ -908,7 +904,7 @@ export async function userMessageAction(id: string, entryId: string, action: 're
       target.ctxPct = session.stats?.contextUsage?.percent ?? null;
     });
     const attachments = draft.attachments.filter((attachment): attachment is Attachment => attachment.kind === 'file' || typeof attachment.data === 'string');
-    drafts.recover(sessionDraftKey(session.meta.id), { text: draft.text, attachments, label: action === 'rewind' ? '回退的消息' : '分支起点' });
+    drafts.recover(sessionDraftKey(session.meta.id), { text: draft.text, attachments, label: t(action === 'rewind' ? 'act.rewoundMessage' : 'act.branchStart') });
     if (draft.notice) drafts.error(sessionDraftKey(session.meta.id), draft.notice);
     // Navigate only if the user has stayed on the source session during the request.
     if (getApp().current === id) await openSession(session.meta.id);
@@ -980,7 +976,7 @@ export function openAgent(id: string, toolCallId: string) {
 /** Stop one background subagent; the turn goes on without its report. */
 export async function stopTask(id: string, toolCallId: string) {
   try {
-    if (!(await call('sessions:stopTask', id, toolCallId))) toast.warning('This task has already finished');
+    if (!(await call('sessions:stopTask', id, toolCallId))) toast.warning(t('act.taskFinished'));
   } catch (err) {
     fail(err);
   }
@@ -1089,8 +1085,8 @@ export function openDiffRef(path: string) {
 /** A card of a sent message: go to what it refers to. `quoted` is the transcript item a reply points at. */
 export function openContextReference(reference: ContextReference, quoted: string | null) {
   if (reference.kind === 'quote') {
-    if (!quoted || !revealItem(quoted, reference.text)) toast.info('找不到被回复的原文');
-  } else if (reference.directory) toast.info('文件夹无法预览');
+    if (!quoted || !revealItem(quoted, reference.text)) toast.info(t('act.quoteGone'));
+  } else if (reference.directory) toast.info(t('act.folderNoPreview'));
   else if (reference.side) openDiffRef(reference.path);
   else void openFileRef(reference.path, reference.startLine);
 }
@@ -1206,20 +1202,20 @@ export function selectProject(path: string) {
 
 /** Pick a folder on the remote host: there is no native dialog for another machine, so walk its folders. */
 async function pickRemoteFolder(): Promise<string | null> {
-  const host = getApp().remote?.name ?? '远程';
+  const host = getApp().remote?.name ?? t('act.remote');
   let listing = await call('remote:browse');
   for (;;) {
     const options = [
-      { label: '选择此文件夹', hint: listing.path },
-      { label: '输入路径…', hint: '直接键入 ' + host + ' 上的绝对路径' },
-      ...(listing.parent ? [{ label: '↑ 上一级', hint: listing.parent }] : []),
+      { label: t('act.pickThisFolder'), hint: listing.path },
+      { label: t('act.typePath'), hint: t('act.typePathHint', { host }) },
+      ...(listing.parent ? [{ label: t('act.up'), hint: listing.parent }] : []),
       ...listing.dirs.map((d) => ({ label: `${d.name}/` })),
     ];
-    const choice = await dialogs.choose(`${host}：${listing.path}`, options);
+    const choice = await dialogs.choose(`${host}: ${listing.path}`, options);
     if (choice === null) return null;
     if (choice === 0) return listing.path;
     if (choice === 1) {
-      const typed = await dialogs.prompt(`${host} 上的文件夹路径`, listing.path, { action: '选择' });
+      const typed = await dialogs.prompt(t('act.folderPathOn', { host }), listing.path, { action: t('act.choose') });
       if (typed === null) return null;
       if (typed.trim()) return typed.trim();
       continue;
@@ -1250,9 +1246,9 @@ export async function addProject() {
     if (added.kind === 'worktree') {
       const { info } = added;
       const main = fname(info.mainRoot);
-      const choice = await dialogs.choose(`“${fname(info.path)}”是 ${main} 的 worktree`, [
-        { label: `作为 ${main} 项目下的新会话`, hint: `直接在这个 worktree（${info.branch ?? '游离 HEAD'}）里工作，不再另建 worktree${added.known ? '' : `；同时把 ${main} 添加为项目`}` },
-        { label: '作为独立项目添加', hint: '把这个文件夹当成一个单独的项目' },
+      const choice = await dialogs.choose(t('act.isWorktree', { name: fname(info.path), main }), [
+        { label: t('act.asSession', { main }), hint: t('act.asSessionHint', { branch: info.branch ?? t('act.detached') }) + (added.known ? '' : t('act.asSessionAdd', { main })) },
+        { label: t('act.asProject'), hint: t('act.asProjectHint') },
       ]);
       if (choice === null) return;
       const result = await call('projects:adoptWorktree', choice === 0 ? 'session' : 'project');
@@ -1273,8 +1269,8 @@ export async function addProject() {
 /** Take a project out of Pi Desktop's list. The folder stays; its sessions are archived, not deleted. */
 export async function removeProject(path: string) {
   const sessions = Object.values(getApp().sessions).filter((s) => s.meta.kind === 'code' && s.meta.projectPath === path && !s.meta.archived);
-  const note = sessions.length ? `它的 ${sessions.length} 个会话会被归档，之后可以在 Archived sessions 里找回。` : '';
-  if (!(await dialogs.confirm(`从 Pi Desktop 移除“${fname(path)}”？`, `文件夹和里面的文件都不会被删除。${note}`, 'Remove', true))) return;
+  const note = sessions.length ? t('act.removeProjectNote', { n: sessions.length }) : '';
+  if (!(await dialogs.confirm(t('act.removeProjectTitle', { name: fname(path) }), `${t('act.removeProjectBody')}${note}`, t('act.remove'), true))) return;
   try {
     for (const s of sessions) {
       await call('sessions:archive', s.meta.id);
@@ -1308,7 +1304,7 @@ export async function startSuggested(sid: string, item: { toolCallId: string }, 
   try {
     const meta = await call('sessions:spawn', sid, task, keyOf(item, index));
     setApp((st) => void (st.sessions[meta.id] ??= emptySession(meta)));
-    toast.success(`已在新会话中开始：${meta.title}`, { action: { label: '打开', onClick: () => void openSession(meta.id) } });
+    toast.success(t('act.startedIn', { title: meta.title }), { action: { label: t('act.open'), onClick: () => void openSession(meta.id) } });
   } catch (err) {
     fail(err);
   }
@@ -1355,7 +1351,7 @@ export async function refreshImportable() {
 export async function importCliSession() {
   const list = getApp().importable;
   if (!list.length) return;
-  const index = list.length === 1 ? 0 : await dialogs.choose('Import a pi CLI session', list.map((s) => ({ label: s.name || s.firstPrompt?.slice(0, 60) || s.id, hint: new Date(s.mtime).toLocaleString() })));
+  const index = list.length === 1 ? 0 : await dialogs.choose(t('act.importTitle'), list.map((s) => ({ label: s.name || s.firstPrompt?.slice(0, 60) || s.id, hint: new Date(s.mtime).toLocaleString() })));
   if (index == null) return;
   try {
     const meta: SessionMeta = await call('sessions:import', list[index].file);

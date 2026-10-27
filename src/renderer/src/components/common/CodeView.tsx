@@ -6,6 +6,7 @@ import { call } from '@/lib/api';
 import { highlight, langOfPath } from '@/lib/highlight';
 import { placeThreads } from '@/lib/diff';
 import { fname } from '@/lib/format';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PrThread } from '@shared/protocol';
 import { CodeSelection } from './CodeSelection';
@@ -44,7 +45,8 @@ function highlightedNodes(html: string): ReactNode[] {
 
 /** The gutter's plus button selects a line for a comment. */
 function LineNumber({ number, selectable }: { number?: number; selectable?: boolean }) {
-  return selectable ? <button type="button" data-select-line title="点击添加行评论，Shift 点击选择多行" aria-label={`评论第 ${number} 行`} className="group/line relative w-full cursor-pointer hover:text-info">
+  const t = useT();
+  return selectable ? <button type="button" data-select-line title={t('code.lineTip')} aria-label={t('code.lineLabel', { n: number ?? 0 })} className="group/line relative w-full cursor-pointer hover:text-info">
     <span className="group-hover/line:opacity-0">{number}</span>
     <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/line:opacity-100">+</span>
   </button> : <>{number}</>;
@@ -62,10 +64,11 @@ export const DiffLine = memo(function DiffLine({ row, lang, selectable }: { row:
 
 /** A folded stretch of unchanged lines between hunks. */
 export function HunkGap({ count, edge, onClick }: { count?: number; edge?: 'top' | 'bottom'; onClick?: () => void }) {
+  const t = useT();
   const Icon = edge === 'top' ? ChevronUpIcon : edge === 'bottom' ? ChevronDownIcon : ChevronsUpDownIcon;
-  const label = count ? `${count} unmodified line${count > 1 ? 's' : ''}` : 'Unchanged lines';
+  const label = count ? (count > 1 ? t('code.unmodified', { n: count }) : t('code.unmodifiedOne')) : t('code.unchanged');
   return onClick ? (
-    <button onClick={onClick} className="hunk-gap w-full hover:text-foreground" title="Show unmodified lines">
+    <button onClick={onClick} className="hunk-gap w-full hover:text-foreground" title={t('code.showUnmodified')}>
       <span className="flex justify-center"><Icon className="size-3.5" /></span>
       <span>{label}</span>
     </button>
@@ -152,8 +155,9 @@ const Note = ({ children, className }: { children: React.ReactNode; className?: 
 
 /** A read / edit / write result as recorded at the time (never the file's current contents). */
 export function ToolPreviewView({ preview, path, sid, onOpenImage }: { preview: ToolPreview; path: string; sid?: string; onOpenImage?: (src: string) => void }) {
+  const t = useT();
   if (preview.type === 'error' || preview.type === 'notice') {
-    return <pre className={cn('max-h-80 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-xs', preview.type === 'error' && 'text-destructive')}>{preview.text || 'No preview available'}</pre>;
+    return <pre className={cn('max-h-80 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-xs', preview.type === 'error' && 'text-destructive')}>{preview.text || t('code.noPreview')}</pre>;
   }
   if (preview.type === 'image') {
     return (
@@ -161,7 +165,7 @@ export function ToolPreviewView({ preview, path, sid, onOpenImage }: { preview: 
         {preview.images.length ? preview.images.map((image, i) => (
           <ImageThumb key={i} src={image.src} path={path} onOpen={onOpenImage} />
         )) : <DiskImage sid={sid} path={path} onOpen={onOpenImage} />}
-        <Note className="px-0">{preview.text.split('\n')[0] || 'Image'}</Note>
+        <Note className="px-0">{preview.text.split('\n')[0] || t('code.image')}</Note>
       </div>
     );
   }
@@ -173,27 +177,28 @@ export function ToolPreviewView({ preview, path, sid, onOpenImage }: { preview: 
         <div className="code-lines overflow-x-auto">
           {rows.map((r: PreviewRow, i) => ('gap' in r ? <HunkGap key={i} /> : <DiffLine key={i} row={r} lang={lang} />))}
         </div>
-        {preview.rows.length > rows.length && <Note>Preview limited to {PREVIEW_LINES} rows. Open the file to see current content.</Note>}
+        {preview.rows.length > rows.length && <Note>{t('code.limited', { n: PREVIEW_LINES })}</Note>}
       </>
     );
   }
   const p = preview as Extract<ToolPreview, { type: 'code' | 'snapshot' }>;
   const count = p.type === 'snapshot' && p.empty ? 0 : p.lines.length;
   const shown = Math.min(count, PREVIEW_LINES);
-  const range = count ? `Lines ${p.startLine}–${p.startLine + shown - 1}${p.type === 'code' && p.totalLines ? ` of ${p.totalLines}` : ''}` : 'Empty file';
+  const range = count ? (p.type === 'code' && p.totalLines ? t('code.rangeOf', { from: p.startLine, to: p.startLine + shown - 1, total: p.totalLines }) : t('code.range', { from: p.startLine, to: p.startLine + shown - 1 })) : t('code.empty');
   return (
     <>
       <Note>{p.type === 'snapshot' ? `${p.note} · ${range}` : range}</Note>
       {count > 0 && <CodeLines lines={p.lines} path={path} startLine={p.startLine} />}
-      {count > shown && <Note>{count - shown} more lines in this result. Open the file to see current content.</Note>}
+      {count > shown && <Note>{t('code.more', { n: count - shown })}</Note>}
       {p.type === 'code' && p.footer && <Note className="italic">{p.footer}</Note>}
     </>
   );
 }
 
 function ImageThumb({ src, path, onOpen }: { src: string; path: string; onOpen?: (src: string) => void }) {
+  const t = useT();
   const img = <img src={src} alt={fname(path)} title={path} className="max-h-72 max-w-full rounded-md border bg-[repeating-conic-gradient(var(--muted)_0_25%,transparent_0_50%)] bg-[length:16px_16px]" loading="lazy" />;
-  return onOpen ? <button className="block cursor-zoom-in" title={`Open ${fname(path)}`} onClick={() => onOpen(src)}>{img}</button> : img;
+  return onOpen ? <button className="block cursor-zoom-in" title={t('code.open', { name: fname(path) })} onClick={() => onOpen(src)}>{img}</button> : img;
 }
 
 /** The tool result had no image data (e.g. the model can't take images): show the file from disk instead. */

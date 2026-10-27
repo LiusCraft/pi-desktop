@@ -15,6 +15,7 @@
  * You are a meticulous code reviewer…
  * ```
  */
+import { tr } from '@shared/i18n/runtime';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseFrontmatter } from '@earendil-works/pi-coding-agent';
@@ -108,12 +109,12 @@ export function saveAgent(dir: string, draft: AgentDraft): AgentCatalog {
   const name = draft.name.trim();
   const description = draft.description.trim().replace(/\s+/g, ' ');
   const body = draft.body.trim();
-  if (!NAME.test(name)) throw new Error('名称只能包含字母、数字、- 和 _，且以字母或数字开头');
-  if (!description) throw new Error('请填写描述：模型靠它判断什么时候用这个子代理');
-  if (!body) throw new Error('请填写系统提示');
+  if (!NAME.test(name)) throw new Error(tr('ag.nameRule'));
+  if (!description) throw new Error(tr('ag.agentNeedDescription'));
+  if (!body) throw new Error(tr('ag.agentNeedPrompt'));
   const existing = loadAgents(dir);
   const original = draft.originalName && draft.originalName !== name ? existing.find((a) => a.name === draft.originalName) : undefined;
-  if (existing.some((a) => a.name === name && a.source === 'user' && name !== draft.originalName)) throw new Error(`已经有名为 ${name} 的子代理`);
+  if (existing.some((a) => a.name === name && a.source === 'user' && name !== draft.originalName)) throw new Error(tr('ag.agentExists', { name }));
   fs.mkdirSync(dir, { recursive: true });
   const same = existing.find((a) => a.name === name && a.file);
   const file = same?.file ?? path.join(dir, `${name}.md`);
@@ -134,7 +135,7 @@ export function saveAgent(dir: string, draft: AgentDraft): AgentCatalog {
 /** Delete a user agent's file; a built-in of that name comes back. */
 export function removeAgent(dir: string, name: string): AgentCatalog {
   const agent = loadAgents(dir).find((a) => a.name === name);
-  if (!agent?.file) throw new Error(`${name} 是内置子代理，没有可删除的自定义文件`);
+  if (!agent?.file) throw new Error(tr('ag.agentBuiltin', { name }));
   fs.rmSync(agent.file, { force: true });
   return agentCatalog(dir);
 }

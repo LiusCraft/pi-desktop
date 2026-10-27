@@ -1,6 +1,7 @@
 // What changed on a session's pull request, and what the session's switches say to do about it.
 // The hub owns the timer and the `gh` / `glab` call; this class only diffs, so the rules can be
 // tested without a repository, a network or a clock.
+import { tr } from '@shared/i18n/runtime';
 import type { PrNote } from '@shared/pr-event';
 import type { PrEvent } from '@shared/pr-event';
 import { forgeWords } from '@shared/forge';
@@ -90,7 +91,7 @@ export class PrWatcher {
     if (fix && cfg.done?.fix !== fix) {
       const failed = (pr.checks ?? []).filter((c) => c.st === 'fail').map((c) => ({ name: c.n, url: c.url }));
       // The fix turn handles open comments too, so carry them along instead of raising a second turn.
-      const withNotes = fresh.length ? ` · ${fresh.length} 条新评论` : '';
+      const withNotes = fresh.length ? ` · ${tr('ag.prNewComments', { n: fresh.length })}` : '';
       return {
         mark: { fix },
         event: {
@@ -98,24 +99,24 @@ export class PrWatcher {
           num: pr.num,
           url: pr.url,
           head: pr.head,
-          summary: `${failed.length ? `${failed.map((f) => f.name).join('、')} 失败` : 'CI 失败'}${withNotes}`,
+          summary: `${failed.length ? tr('ag.prFailedNamed', { names: failed.map((f) => f.name).join(tr('ag.prNamesSep')) }) : tr('ag.prCiFailed')}${withNotes}`,
           failed,
           ...(fresh.length ? { notes: fresh } : {}),
-          instruction: `用 ${w.checks(pr.num)} 读出失败原因，修好代码后提交并推送到当前分支；${w.noun} #${pr.num} 上未解决的评审意见也一并处理，直到检查不再失败。`,
+          instruction: tr('ag.prFixCi', { checks: w.checks(pr.num), noun: w.noun, num: pr.num }),
         },
       };
     }
     if (cfg.autoFixCi && fresh.length) {
-      const who = [...new Set(fresh.map((n) => `@${n.author}`))].join('、');
+      const who = [...new Set(fresh.map((n) => `@${n.author}`))].join(tr('ag.prNamesSep'));
       return {
         event: {
           kind: 'notes',
           num: pr.num,
           url: pr.url,
           head: pr.head,
-          summary: `${fresh.length} 条新评论 · ${who}`,
+          summary: `${tr('ag.prNewComments', { n: fresh.length })} · ${who}`,
           notes: fresh,
-          instruction: `用 ${w.comments(pr.num)} 读清每条意见（行内评论用 ${w.inlineComments(pr.num)}），改完提交并推送到当前分支，把已解决的评论逐条回复，再告诉我还剩哪些需要人来确认。`,
+          instruction: tr('ag.prNotes', { comments: w.comments(pr.num), inline: w.inlineComments(pr.num) }),
         },
       };
     }
@@ -127,8 +128,8 @@ export class PrWatcher {
           num: pr.num,
           url: pr.url,
           head: pr.head,
-          summary: '检查全绿、没有冲突，可以合并了',
-          instruction: `用 ${w.merge(pr.num)} 开启自动合并（仓库不允许自动合并就直接合并），不要删除分支，合并后把结果告诉我。`,
+          summary: tr('ag.prReady'),
+          instruction: tr('ag.prMerge', { merge: w.merge(pr.num) }),
         },
       };
     }

@@ -3,6 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { catalog, createSkill, importClaudeSkills, removeConnector, saveConnector, setConnectorEnabled, setSkillDisabled, type CustomizeEnv } from '../src/agent/customize';
+import { setActiveLocale } from '../src/shared/i18n/runtime';
+
+// These assertions read the host's Chinese messages.
+setActiveLocale('zh');
 
 /** pi also loads ~/.agents/skills, so only look at the skills this test made. */
 const mine = (c: { skills: { name: string; disabled: boolean }[] }) => c.skills.filter((s) => ['alpha', 'beta'].includes(s.name)).map((s) => [s.name, s.disabled]);

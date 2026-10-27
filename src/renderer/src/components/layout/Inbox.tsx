@@ -1,6 +1,7 @@
 import { GitPullRequestDraftIcon, GitPullRequestIcon, MessageCircleIcon, TriangleAlertIcon } from 'lucide-react';
 import { TONE } from '@/components/composer/PrBar';
 import { ago, fname } from '@/lib/format';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { openSession } from '@/store/actions';
 import { useApp } from '@/store/app';
@@ -37,6 +38,7 @@ function Section({ title, count, children }: { title: string; count: number; chi
 
 /** Code mode's new-session page: code sessions to answer and PRs not yet merged. */
 export function Inbox() {
+  const t = useT();
   const sessions = useApp((st) => st.sessions);
   const mine = Object.values(sessions).filter((s) => !s.meta.archived && s.meta.kind === 'code');
   const replies = mine.filter(needsReply).sort((a, b) => Number(!!b.waiting) - Number(!!a.waiting) || byRecent(a, b));
@@ -45,19 +47,19 @@ export function Inbox() {
   return (
     <div className="mt-6 w-full max-w-2xl space-y-4 text-left">
       {replies.length > 0 && (
-        <Section title="Needs your reply" count={replies.length}>
+        <Section title={t('inbox.needsReply')} count={replies.length}>
           {replies.map((s) => (
             <Row
               key={s.meta.id}
               s={s}
               icon={s.waiting ? <TriangleAlertIcon className="size-3.5 text-warning" /> : <MessageCircleIcon className="size-3.5 text-primary" />}
-              note={s.waiting ? 'Waiting for approval' : ago(s.meta.updatedAt || Date.now())}
+              note={s.waiting ? t('inbox.waitingApproval') : ago(s.meta.updatedAt || Date.now())}
             />
           ))}
         </Section>
       )}
       {prs.length > 0 && (
-        <Section title="Open pull requests" count={prs.length}>
+        <Section title={t('inbox.openPrs')} count={prs.length}>
           {prs.map((s) => {
             const pr = s.pr!;
             const badge = prBadge(pr);

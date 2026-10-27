@@ -1,0 +1,37 @@
+import { defineMessages } from '../define';
+
+export const tools = defineMessages({
+  'find.scope.file': { en: 'This file', zh: '当前文件' },
+  'find.scope.all': { en: 'All files', zh: '全部文件' },
+  'find.caseSensitive': { en: 'Match case', zh: '区分大小写' },
+  'find.prev': { en: 'Previous (Shift+Enter)', zh: '上一个 (Shift+Enter)' },
+  'find.prevLabel': { en: 'Previous', zh: '上一个' },
+  'find.next': { en: 'Next (Enter)', zh: '下一个 (Enter)' },
+  'find.nextLabel': { en: 'Next', zh: '下一个' },
+  'find.close': { en: 'Close (Esc)', zh: '关闭 (Esc)' },
+  'find.closeLabel': { en: 'Close search', zh: '关闭搜索' },
+  'find.searching': { en: 'Searching…', zh: '搜索中…' },
+  'find.typeToSearch': { en: 'Type to search in all files', zh: '输入内容，在所有文件中搜索' },
+  'find.noMatches': { en: 'No matches found', zh: '没有找到匹配的内容' },
+  'find.results': { en: 'Search results', zh: '搜索结果' },
+  'find.truncated': { en: 'Showing only the first {n}; narrow the search.', zh: '只显示前 {n} 条，请缩小搜索范围。' },
+
+  'fileMenu.attach': { en: 'Attach as context', zh: '作为上下文附加' },
+  'fileMenu.copy': { en: 'Copy', zh: '复制' },
+  'fileMenu.absolute': { en: 'Absolute path', zh: '绝对路径' },
+  'fileMenu.relative': { en: 'Relative path', zh: '相对路径' },
+  'fileMenu.folderName': { en: 'Folder name', zh: '文件夹名' },
+  'fileMenu.fileName': { en: 'Filename', zh: '文件名' },
+  'fileMenu.openIn': { en: 'Open in', zh: '打开方式' },
+  'fileMenu.defaultApp': { en: 'Default app', zh: '默认应用' },
+  'fileMenu.revealMac': { en: 'Show in Finder', zh: '在 Finder 中显示' },
+  'fileMenu.revealOther': { en: 'Show in folder', zh: '在文件夹中显示' },
+
+  'terminal.exited': { en: '[Process exited; close this tab]', zh: '[进程已退出，关闭此标签页即可]' },
+  'terminal.close': { en: 'Close terminal', zh: '关闭终端' },
+  'terminal.new': { en: 'New terminal', zh: '新建终端' },
+  'terminal.cmd': { en: 'Command Prompt', zh: '命令提示符' },
+  'terminal.closed': { en: 'The terminal was closed', zh: '终端已关闭' },
+  'app.artifact': { en: 'Artifact', zh: '制品' },
+  'app.diagram': { en: 'Diagram', zh: '图表' },
+});

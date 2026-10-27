@@ -6,6 +6,7 @@ import { CheckIcon, XIcon } from 'lucide-react';
 import type { ToolOption } from '@shared/protocol';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { call } from '@/lib/api';
+import { t as tr, useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 const globToRegex = (glob: string) => new RegExp(`^${glob.split('*').map((p) => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`, 'i');
@@ -18,6 +19,7 @@ interface Row {
 }
 
 export function ToolsInput({ value, onChange, placeholder }: { value: string[]; onChange: (tools: string[]) => void; placeholder?: string }) {
+  const t = useT();
   const [options, setOptions] = useState<ToolOption[]>([]);
   const [text, setText] = useState('');
   const [open, setOpen] = useState(false);
@@ -36,7 +38,7 @@ export function ToolsInput({ value, onChange, placeholder }: { value: string[]; 
       ? (o: ToolOption) => globToRegex(q).test(o.name)
       : (o: ToolOption) => !q || o.name.toLowerCase().includes(q.toLowerCase()) || o.description.toLowerCase().includes(q.toLowerCase());
     const list: Row[] = options.filter((o) => !value.includes(o.name) && match(o));
-    if (q && !value.includes(q) && !options.some((o) => o.name === q)) list.push({ name: q, description: q.includes('*') ? '按模式匹配' : '手动添加', custom: true });
+    if (q && !value.includes(q) && !options.some((o) => o.name === q)) list.push({ name: q, description: tr(q.includes('*') ? 'tools.byPattern' : 'tools.manual'), custom: true });
     return list;
   }, [options, text, value]);
 
@@ -75,7 +77,7 @@ export function ToolsInput({ value, onChange, placeholder }: { value: string[]; 
           {value.map((name) => (
             <span key={name} className="flex h-6 items-center gap-1 rounded-md border border-foreground/15 bg-secondary pr-1 pl-2 font-mono text-xs text-secondary-foreground shadow-xs">
               {name}
-              <button type="button" aria-label={`移除 ${name}`} onClick={(e) => { e.stopPropagation(); onChange(value.filter((v) => v !== name)); }} onMouseEnter={() => setHot(name)}
+              <button type="button" aria-label={t('tools.remove', { name })} onClick={(e) => { e.stopPropagation(); onChange(value.filter((v) => v !== name)); }} onMouseEnter={() => setHot(name)}
                 onMouseLeave={() => setHot(null)}
                 onBlur={() => setHot(null)}
                 className={cn('rounded-sm p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring/60', hot === name ? 'bg-destructive/15 text-destructive' : 'text-muted-foreground')}>
@@ -90,7 +92,7 @@ export function ToolsInput({ value, onChange, placeholder }: { value: string[]; 
             onFocus={() => setOpen(true)}
             onKeyDown={onKeyDown}
             placeholder={value.length ? '' : placeholder}
-            aria-label="工具白名单"
+            aria-label={t('tools.allowlist')}
             spellCheck={false}
             className="min-w-24 flex-1 bg-transparent font-mono text-sm outline-none placeholder:font-sans placeholder:text-muted-foreground"
           />
@@ -116,7 +118,7 @@ export function ToolsInput({ value, onChange, placeholder }: { value: string[]; 
             className={cn('flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm', i === active && 'bg-accent text-accent-foreground')}
           >
             <span className="min-w-0 flex-1">
-              <span className="font-mono">{row.custom ? `添加 “${row.name}”` : row.name}</span>
+              <span className="font-mono">{row.custom ? t('tools.add', { name: row.name }) : row.name}</span>
               {row.description && <span className="ml-2 text-xs text-muted-foreground">{row.description}</span>}
             </span>
             {value.includes(row.name) && <CheckIcon className="size-4" />}

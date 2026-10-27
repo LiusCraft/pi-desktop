@@ -14,20 +14,23 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { call, isMac, modKey } from '@/lib/api';
 import { ago, fname } from '@/lib/format';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import {
   archiveSession, deleteSession, openSession, removeProject, renameSession, selectProject, setView, showActivity, showArchived, showArtifacts, showCustomize, showProjects, showScheduled, showWelcome, toggleSidebar,
 } from '@/store/actions';
 import { setApp, useApp } from '@/store/app';
+import type { MessageKey } from '@shared/i18n';
 import type { SessionKind } from '@shared/protocol';
 import type { SessionView } from '@/store/types';
 
 export function SidebarToggle({ className }: { className?: string }) {
+  const t = useT();
   const collapsed = useApp((s) => s.sidebarCollapsed);
   return (
     <button
       onClick={() => toggleSidebar()}
-      title={`${collapsed ? 'Show' : 'Hide'} sidebar  ${modKey}B`}
+      title={`${t(collapsed ? 'sidebar.show' : 'sidebar.hide')}  ${modKey}B`}
       aria-expanded={!collapsed}
       className={cn('flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground', className)}
     >
@@ -71,30 +74,35 @@ const DROPDOWN_PARTS: MenuParts = { Item: DropdownMenuItem, Separator: DropdownM
 const CONTEXT_PARTS: MenuParts = { Item: ContextMenuItem, Separator: ContextMenuSeparator };
 
 function SessionActions({ id, parts: { Item, Separator } }: { id: string; parts: MenuParts }) {
+  const t = useT();
   return (
     <>
-      <Item onSelect={() => void renameSession(id)}><PencilIcon />Rename</Item>
-      <Item onSelect={() => void archiveSession(id)}><ArchiveIcon />Archive</Item>
+      <Item onSelect={() => void renameSession(id)}><PencilIcon />{t('sidebar.rename')}</Item>
+      <Item onSelect={() => void archiveSession(id)}><ArchiveIcon />{t('sidebar.archive')}</Item>
       <Separator />
-      <Item variant="destructive" onSelect={() => void deleteSession(id)}><Trash2Icon />Delete</Item>
+      <Item variant="destructive" onSelect={() => void deleteSession(id)}><Trash2Icon />{t('sidebar.delete')}</Item>
     </>
   );
 }
 
 function ProjectActions({ path, parts: { Item, Separator } }: { path: string; parts: MenuParts }) {
+  const t = useT();
   return (
     <>
-      <Item onSelect={() => { selectProject(path); showWelcome(); }}><PlusIcon />New session</Item>
-      <Item onSelect={() => void call('app:revealPath', path).catch(() => {})}>{isMac ? 'Reveal in Finder' : 'Show in File Explorer'}</Item>
+      <Item onSelect={() => { selectProject(path); showWelcome(); }}><PlusIcon />{t('sidebar.newSession')}</Item>
+      <Item onSelect={() => void call('app:revealPath', path).catch(() => {})}>{t(isMac ? 'sidebar.revealMac' : 'sidebar.revealOther')}</Item>
       <Separator />
-      <Item variant="destructive" onSelect={() => void removeProject(path)}>Remove from Pi Desktop</Item>
+      <Item variant="destructive" onSelect={() => void removeProject(path)}>{t('sidebar.removeProject')}</Item>
     </>
   );
 }
 
+const PR_STATE_KEY = { open: 'sidebar.prOpen', merged: 'sidebar.prMerged', closed: 'sidebar.prClosed' } as const;
+
 function SessionRow({ s, active, child }: { s: SessionView; active: boolean; child?: boolean }) {
-  const prNote = s.pr ? ` · PR #${s.pr.num} ${s.pr.state === 'open' && s.pr.draft ? 'draft' : s.pr.state}` : '';
-  const title = s.waiting ? 'Waiting for your approval' : s.running ? 'Working…' : `${s.meta.title} · ${ago(s.meta.updatedAt || Date.now(), true)}${prNote}`;
+  const t = useT();
+  const prNote = s.pr ? ` · PR #${s.pr.num} ${s.pr.state === 'open' && s.pr.draft ? t('sidebar.prDraft') : PR_STATE_KEY[s.pr.state as keyof typeof PR_STATE_KEY] ? t(PR_STATE_KEY[s.pr.state as keyof typeof PR_STATE_KEY]) : s.pr.state}` : '';
+  const title = s.waiting ? t('sidebar.waiting') : s.running ? t('sidebar.working') : `${s.meta.title} · ${ago(s.meta.updatedAt || Date.now(), true)}${prNote}`;
   return (
     <ContextMenu>
     <ContextMenuTrigger asChild>
@@ -105,7 +113,7 @@ function SessionRow({ s, active, child }: { s: SessionView; active: boolean; chi
       </button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="hidden shrink-0 text-muted-foreground group-hover:block hover:text-foreground data-[state=open]:block" title="More" aria-label="Session actions">
+          <button className="hidden shrink-0 text-muted-foreground group-hover:block hover:text-foreground data-[state=open]:block" title={t('sidebar.more')} aria-label={t('sidebar.sessionActions')}>
             <MoreHorizontalIcon className="size-4" />
           </button>
         </DropdownMenuTrigger>
@@ -137,12 +145,12 @@ function NavItem({ icon, children, onClick, hint, active }: { icon: React.ReactN
 type NavId = 'projects' | 'artifacts' | 'scheduled' | 'customize' | 'archived';
 
 /** The configurable nav entries, in display order. "New" is not one of them: it is always on top. */
-const NAV_ITEMS: { id: NavId; label: string; hint: string; icon: React.ReactNode; views: SessionKind[]; open: () => void }[] = [
-  { id: 'projects', label: 'Projects', hint: 'Projects：带着指令、链接和记忆的长期主题', icon: <BoxIcon className="size-4" />, views: ['work'], open: () => showProjects() },
-  { id: 'artifacts', label: 'Artifacts', hint: 'Artifacts：模型做的页面，预览与发布', icon: <ShapesIcon className="size-4" />, views: ['work'], open: showArtifacts },
-  { id: 'scheduled', label: 'Scheduled', hint: 'Scheduled：按计划自动运行的任务', icon: <ClockIcon className="size-4" />, views: ['work', 'code'], open: showScheduled },
-  { id: 'customize', label: 'Customize', hint: 'Customize：技能、连接器与插件', icon: <ShapesIcon className="size-4" />, views: ['work', 'code'], open: showCustomize },
-  { id: 'archived', label: 'Archived', hint: '已归档的会话', icon: <ArchiveIcon className="size-4" />, views: ['work', 'code'], open: showArchived },
+const NAV_ITEMS: { id: NavId; label: MessageKey; hint: MessageKey; icon: React.ReactNode; views: SessionKind[]; open: () => void }[] = [
+  { id: 'projects', label: 'sidebar.projects', hint: 'sidebar.projectsHint', icon: <BoxIcon className="size-4" />, views: ['work'], open: () => showProjects() },
+  { id: 'artifacts', label: 'sidebar.artifacts', hint: 'sidebar.artifactsHint', icon: <ShapesIcon className="size-4" />, views: ['work'], open: showArtifacts },
+  { id: 'scheduled', label: 'sidebar.scheduled', hint: 'sidebar.scheduledHint', icon: <ClockIcon className="size-4" />, views: ['work', 'code'], open: showScheduled },
+  { id: 'customize', label: 'sidebar.customize', hint: 'sidebar.customizeHint', icon: <ShapesIcon className="size-4" />, views: ['work', 'code'], open: showCustomize },
+  { id: 'archived', label: 'sidebar.archived', hint: 'sidebar.archivedHint', icon: <ArchiveIcon className="size-4" />, views: ['work', 'code'], open: showArchived },
 ];
 
 const NAV_PINNED_KEY = 'pi.sidebar.pinned';
@@ -161,6 +169,7 @@ function writeStored(key: string, value: unknown) {
 
 /** Top nav: "New" plus the entries the user pinned; the rest sit behind "More" (which opens by itself when the current page is in it). */
 function TopNav({ view }: { view: SessionKind }) {
+  const t = useT();
   const page = usePage();
   const [pinned, setPinned] = useState<Record<SessionKind, NavId[]>>(() => ({ ...DEFAULT_PINNED, ...readStored<Partial<Record<SessionKind, NavId[]>>>(NAV_PINNED_KEY, {}) }));
   const [open, setOpen] = useState(() => readStored(NAV_MORE_KEY, false));
@@ -178,26 +187,26 @@ function TopNav({ view }: { view: SessionKind }) {
     <ContextMenu key={i.id}>
       <ContextMenuTrigger asChild>
         <div>
-          <NavItem icon={i.icon} active={page === i.id} onClick={i.open} hint={i.hint}>{i.label}</NavItem>
+          <NavItem icon={i.icon} active={page === i.id} onClick={i.open} hint={t(i.hint)}>{t(i.label)}</NavItem>
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-48">
-        <ContextMenuItem onSelect={() => togglePin(i.id)}>{isPinned(i.id) ? <><PinOffIcon />Move to More</> : <><PinIcon />Pin to sidebar</>}</ContextMenuItem>
+        <ContextMenuItem onSelect={() => togglePin(i.id)}>{isPinned(i.id) ? <><PinOffIcon />{t('sidebar.moveToMore')}</> : <><PinIcon />{t('sidebar.pin')}</>}</ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   );
   return (
     <nav className="space-y-0.5 px-2">
-      <NavItem icon={<PlusIcon className="size-4" />} onClick={showWelcome}>New</NavItem>
+      <NavItem icon={<PlusIcon className="size-4" />} onClick={showWelcome}>{t('sidebar.new')}</NavItem>
       {items.filter((i) => isPinned(i.id)).map(row)}
       {held.length > 0 && (
         <Collapsible open={shown} onOpenChange={(v) => { setOpen(v); writeStored(NAV_MORE_KEY, v); }}>
           <CollapsibleTrigger
-            title="右键任意导航项可固定到侧边栏或收进 More"
+            title={t('sidebar.moreHint')}
             className="group/more flex h-7 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent"
           >
             <span className="flex size-4 items-center justify-center text-muted-foreground"><EllipsisIcon className="size-4" /></span>
-            More
+            {t('sidebar.more')}
             <ChevronRightIcon className="ml-auto size-3.5 text-muted-foreground transition-transform group-data-[state=open]/more:rotate-90" />
           </CollapsibleTrigger>
           <CollapsibleContent className="mx-3.5 mt-0.5 space-y-0.5 border-l border-sidebar-border pl-2 overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
@@ -213,6 +222,7 @@ function TopNav({ view }: { view: SessionKind }) {
 const usePage = () => useApp((s) => (s.scheduled ? 'scheduled' : s.customize ? 'customize' : s.archived ? 'archived' : s.activity ? 'activity' : s.artifacts ? 'artifacts' : s.workProjects ? 'projects' : null));
 
 function CodeNav() {
+  const t = useT();
   const page = usePage();
   const projects = useApp((s) => s.projects);
   const sessions = useApp((s) => s.sessions);
@@ -246,13 +256,13 @@ function CodeNav() {
                     </button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <button className="hidden rounded p-0.5 group-hover:block hover:bg-sidebar-accent hover:text-foreground data-[state=open]:block" title="Project actions" aria-label="Project actions">
+                        <button className="hidden rounded p-0.5 group-hover:block hover:bg-sidebar-accent hover:text-foreground data-[state=open]:block" title={t('sidebar.projectActions')} aria-label={t('sidebar.projectActions')}>
                           <MoreHorizontalIcon className="size-3.5" />
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start" className="w-56"><ProjectActions path={path} parts={DROPDOWN_PARTS} /></DropdownMenuContent>
                     </DropdownMenu>
-                    <button className="hidden rounded p-0.5 group-hover:block hover:bg-sidebar-accent hover:text-foreground" title={`New session in ${fname(path)}`} onClick={() => { selectProject(path); showWelcome(); }}>
+                    <button className="hidden rounded p-0.5 group-hover:block hover:bg-sidebar-accent hover:text-foreground" title={t('sidebar.newSessionIn', { name: fname(path) })} onClick={() => { selectProject(path); showWelcome(); }}>
                       <PlusIcon className="size-3.5" />
                     </button>
                   </div>
@@ -262,7 +272,7 @@ function CodeNav() {
               <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
                 {(collapsed ? rows.slice(0, LIMIT) : rows).map(({ s, child }) => <SessionRow key={s.meta.id} s={s} child={child} active={!page && s.meta.id === current} />)}
                 {collapsed && (
-                  <button className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground" onClick={() => setExpanded((e) => new Set(e).add(path))}>Show more</button>
+                  <button className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground" onClick={() => setExpanded((e) => new Set(e).add(path))}>{t('sidebar.showMore')}</button>
                 )}
               </CollapsibleContent>
             </Collapsible>
@@ -274,6 +284,7 @@ function CodeNav() {
 }
 
 function WorkNav() {
+  const t = useT();
   const page = usePage();
   const sessions = useApp((s) => s.sessions);
   const current = useApp((s) => s.current);
@@ -282,14 +293,14 @@ function WorkNav() {
     <>
       <TopNav view="work" />
       <div className="mt-4 flex h-7 items-center px-4 text-xs font-medium text-muted-foreground">
-        <span className="flex-1">Tasks</span>
-        <button className="rounded p-0.5 hover:bg-sidebar-accent hover:text-foreground" title="Search" onClick={() => setApp((s) => void (s.paletteOpen = true))}>
+        <span className="flex-1">{t('sidebar.tasks')}</span>
+        <button className="rounded p-0.5 hover:bg-sidebar-accent hover:text-foreground" title={t('sidebar.search')} onClick={() => setApp((s) => void (s.paletteOpen = true))}>
           <SearchIcon className="size-3.5" />
         </button>
       </div>
       <div className="px-2">
         {tasks.length ? nest(tasks).map(({ s, child }) => <SessionRow key={s.meta.id} s={s} child={child} active={!page && s.meta.id === current} />) : (
-          <div className="px-2.5 py-2 text-sm text-muted-foreground">No tasks yet</div>
+          <div className="px-2.5 py-2 text-sm text-muted-foreground">{t('sidebar.noTasks')}</div>
         )}
       </div>
     </>
@@ -297,6 +308,7 @@ function WorkNav() {
 }
 
 function UserMenu() {
+  const t = useT();
   const info = useApp((s) => s.info);
   const theme = useApp((s) => s.settings.resolvedTheme);
   return (
@@ -310,21 +322,22 @@ function UserMenu() {
       <DropdownMenuContent side="top" align="start" className="w-60">
         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">pi coding agent{info ? ` · v${info.version}` : ''}</DropdownMenuLabel>
         <DropdownMenuItem onSelect={() => call('settings:set', { theme: theme === 'dark' ? 'light' : 'dark' })}>
-          {theme === 'dark' ? <SunIcon /> : <MoonIcon />}切换深色 / 浅色
+          {theme === 'dark' ? <SunIcon /> : <MoonIcon />}{t('sidebar.toggleTheme')}
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={showActivity}><FlameIcon />活动</DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => call('settings:open', 'models')}><BrainIcon />模型管理…</DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => call('settings:open', 'remote')}><MonitorSmartphoneIcon />远程…</DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => call('settings:open')}><SettingsIcon />设置<span className="ml-auto text-xs text-muted-foreground">{modKey},</span></DropdownMenuItem>
+        <DropdownMenuItem onSelect={showActivity}><FlameIcon />{t('sidebar.activity')}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => call('settings:open', 'models')}><BrainIcon />{t('sidebar.models')}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => call('settings:open', 'remote')}><MonitorSmartphoneIcon />{t('sidebar.remote')}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => call('settings:open')}><SettingsIcon />{t('sidebar.settings')}<span className="ml-auto text-xs text-muted-foreground">{modKey},</span></DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-const LINK_LABEL = { connecting: '连接中…', connected: '已连接', reconnecting: '连接断开，正在重连…' } as const;
+const LINK_LABEL = { connecting: 'sidebar.linkConnecting', connected: 'sidebar.linkConnected', reconnecting: 'sidebar.linkReconnecting' } as const;
 
 /** Shown while the app drives another machine's sessions: whose they are, whether the link is up, and the way back. */
 function RemoteBar() {
+  const t = useT();
   const remote = useApp((s) => s.remote);
   if (!remote) return null;
   const up = remote.state === 'connected';
@@ -335,21 +348,22 @@ function RemoteBar() {
         <div className="truncate font-medium" title={remote.host}>{remote.name}</div>
         <div className="flex items-center gap-1.5 text-muted-foreground">
           <span className={cn('size-1.5 rounded-full', up ? 'bg-success' : 'animate-pulse bg-warning')} />
-          {LINK_LABEL[remote.state]}
+          {t(LINK_LABEL[remote.state])}
         </div>
       </div>
-      <button className="shrink-0 rounded-md px-2 py-1 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground" onClick={() => void call('remote:disconnect')}>断开</button>
+      <button className="shrink-0 rounded-md px-2 py-1 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground" onClick={() => void call('remote:disconnect')}>{t('sidebar.disconnect')}</button>
     </div>
   );
 }
 
 export function Sidebar() {
+  const t = useT();
   const view = useApp((s) => s.view);
   return (
     <aside className="flex h-full flex-col bg-sidebar">
       <div className={cn('app-drag flex h-11 shrink-0 items-center gap-1 px-2', isMac && 'pl-[84px]')}>
         <SidebarToggle />
-        <button className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground" title={`Search  ${modKey}K`} onClick={() => setApp((s) => void (s.paletteOpen = true))}>
+        <button className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground" title={`${t('sidebar.search')}  ${modKey}K`} onClick={() => setApp((s) => void (s.paletteOpen = true))}>
           <SearchIcon className="size-4" />
         </button>
       </div>
@@ -374,7 +388,7 @@ export function Sidebar() {
       <div className="flex items-center gap-1 border-t border-sidebar-border p-2">
         <UserMenu />
         {view === 'code' && (
-          <button className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent" title={`Search  ${modKey}K`} onClick={() => setApp((s) => void (s.paletteOpen = true))}>
+          <button className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent" title={`${t('sidebar.search')}  ${modKey}K`} onClick={() => setApp((s) => void (s.paletteOpen = true))}>
             <SearchIcon className="size-4" />
           </button>
         )}

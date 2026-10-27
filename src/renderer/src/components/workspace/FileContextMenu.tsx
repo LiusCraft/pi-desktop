@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/context-menu';
 import { call, isMac } from '@/lib/api';
 import { fname } from '@/lib/format';
+import { useT } from '@/lib/i18n';
 import { OpenTargetIcon } from '@/components/common/OpenTargetIcon';
 import { OPEN_TARGET_INFO, useOpenTargets } from '@/lib/open-targets';
 import { fail, sessionDraftKey } from '@/store/actions';
@@ -32,6 +33,7 @@ export function FileContextMenu({ children, ...target }: MenuTarget & { children
 
 /** The menu itself, for a trigger that decides which path it is about (a tree with many rows). */
 export function FileMenuContent({ meta, path, directory = false, snapshot }: MenuTarget) {
+  const t = useT();
   const targets = useOpenTargets();
   const key = sessionDraftKey(meta.id);
   const sending = useDrafts((state) => state.drafts[key]?.sending ?? false);
@@ -48,26 +50,26 @@ export function FileMenuContent({ meta, path, directory = false, snapshot }: Men
   return (
       <ContextMenuContent className="min-w-52">
         <ContextMenuGroup>
-          <ContextMenuItem disabled={sending} onSelect={attach}><PaperclipIcon />Attach as context</ContextMenuItem>
+          <ContextMenuItem disabled={sending} onSelect={attach}><PaperclipIcon />{t('fileMenu.attach')}</ContextMenuItem>
           <ContextMenuSub>
-            <ContextMenuSubTrigger><CopyIcon className="mr-2" />Copy</ContextMenuSubTrigger>
+            <ContextMenuSubTrigger><CopyIcon className="mr-2" />{t('fileMenu.copy')}</ContextMenuSubTrigger>
             <ContextMenuSubContent><ContextMenuGroup>
-              <ContextMenuItem onSelect={() => void copyText(absolute)}>Absolute path</ContextMenuItem>
-              <ContextMenuItem onSelect={() => void copyText(path)}>Relative path</ContextMenuItem>
-              <ContextMenuItem onSelect={() => void copyText(fname(path))}>{directory ? 'Folder name' : 'Filename'}</ContextMenuItem>
+              <ContextMenuItem onSelect={() => void copyText(absolute)}>{t('fileMenu.absolute')}</ContextMenuItem>
+              <ContextMenuItem onSelect={() => void copyText(path)}>{t('fileMenu.relative')}</ContextMenuItem>
+              <ContextMenuItem onSelect={() => void copyText(fname(path))}>{t(directory ? 'fileMenu.folderName' : 'fileMenu.fileName')}</ContextMenuItem>
             </ContextMenuGroup></ContextMenuSubContent>
           </ContextMenuSub>
         </ContextMenuGroup>
         <ContextMenuSeparator />
         <ContextMenuGroup>
           <ContextMenuSub>
-            <ContextMenuSubTrigger><ExternalLinkIcon className="mr-2" />Open in</ContextMenuSubTrigger>
+            <ContextMenuSubTrigger><ExternalLinkIcon className="mr-2" />{t('fileMenu.openIn')}</ContextMenuSubTrigger>
             <ContextMenuSubContent><ContextMenuGroup>
-              {targets.filter((t) => t.id !== 'folder').map((t) => <ContextMenuItem key={t.id} disabled={snapshot !== undefined} onSelect={() => openIn(t.id)}><OpenTargetIcon target={t} />{OPEN_TARGET_INFO[t.id].label}</ContextMenuItem>)}
-              <ContextMenuItem disabled={snapshot !== undefined} onSelect={() => void call('sessions:openPath', meta.id, path, false).catch(fail)}>Default app</ContextMenuItem>
+              {targets.filter((o) => o.id !== 'folder').map((o) => <ContextMenuItem key={o.id} disabled={snapshot !== undefined} onSelect={() => openIn(o.id)}><OpenTargetIcon target={o} />{OPEN_TARGET_INFO[o.id].label}</ContextMenuItem>)}
+              <ContextMenuItem disabled={snapshot !== undefined} onSelect={() => void call('sessions:openPath', meta.id, path, false).catch(fail)}>{t('fileMenu.defaultApp')}</ContextMenuItem>
             </ContextMenuGroup></ContextMenuSubContent>
           </ContextMenuSub>
-          <ContextMenuItem disabled={snapshot !== undefined} onSelect={() => void call('sessions:openPath', meta.id, path, true).catch(fail)}><FolderOpenIcon />{isMac ? 'Show in Finder' : 'Show in folder'}</ContextMenuItem>
+          <ContextMenuItem disabled={snapshot !== undefined} onSelect={() => void call('sessions:openPath', meta.id, path, true).catch(fail)}><FolderOpenIcon />{t(isMac ? 'fileMenu.revealMac' : 'fileMenu.revealOther')}</ContextMenuItem>
         </ContextMenuGroup>
       </ContextMenuContent>
   );

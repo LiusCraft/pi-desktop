@@ -1,5 +1,6 @@
 // Formatting shared by the model management item lists and dialogs.
 import type { EndpointModel, ModelCost } from '@shared/protocol';
+import { t } from '@/lib/i18n';
 
 /** 400000 → "400K", 1000000 → "1M". */
 export function tokensLabel(n?: number): string {
@@ -21,31 +22,31 @@ export function costLabel(cost?: ModelCost): string | undefined {
   if (!cost || (cost.input === undefined && cost.output === undefined)) return undefined;
   const input = cost.input === undefined ? '—' : `$${moneyLabel(cost.input)}`;
   const output = cost.output === undefined ? '—' : `$${moneyLabel(cost.output)}`;
-  return `${input} / ${output} 每 Mtok`;
+  return t('fmt.perMtok', { input, output });
 }
 
 /** The capability/pricing summary under a model id. */
 export function modelMetaLine(model: EndpointModel): string {
   const hasMeta = Boolean(model.contextWindow || model.maxTokens || costLabel(model.cost) || model.reasoning || model.input?.includes('image'));
-  if (!hasMeta) return '未对齐元数据 · pi 默认 128K 上下文 / 16K 输出';
-  const parts = [model.contextWindow ? `${tokensLabel(model.contextWindow)} 上下文` : '默认 128K 上下文'];
-  if (model.maxTokens) parts.push(`${tokensLabel(model.maxTokens)} 输出`);
+  if (!hasMeta) return t('fmt.noMeta');
+  const parts = [model.contextWindow ? t('fmt.context', { size: tokensLabel(model.contextWindow) }) : t('fmt.defaultContext')];
+  if (model.maxTokens) parts.push(t('fmt.output', { size: tokensLabel(model.maxTokens) }));
   const cost = costLabel(model.cost);
   if (cost) parts.push(cost);
-  if (model.reasoning) parts.push('推理');
-  if (model.input?.includes('image')) parts.push('图像输入');
+  if (model.reasoning) parts.push(t('fmt.reasoning'));
+  if (model.input?.includes('image')) parts.push(t('fmt.imageInput'));
   return parts.join(' · ');
 }
 
-/** Relative time for metadata freshness; the settings window is Chinese. */
-export function agoZh(timestamp: number): string {
+/** Relative time for metadata freshness. */
+export function agoLabel(timestamp: number): string {
   const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
-  if (seconds < 60) return '刚刚';
+  if (seconds < 60) return t('fmt.justNow');
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} 分钟前`;
+  if (minutes < 60) return t('fmt.minutesAgo', { n: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} 小时前`;
-  return `${Math.round(hours / 24)} 天前`;
+  if (hours < 24) return t('fmt.hoursAgo', { n: hours });
+  return t('fmt.daysAgo', { n: Math.round(hours / 24) });
 }
 
 export const API_LABELS: Record<string, string> = {

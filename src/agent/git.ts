@@ -1,4 +1,5 @@
 // Git / GitHub / GitLab helpers for sessions: worktrees, working-tree diffs, PR status.
+import { tr } from '@shared/i18n/runtime';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -366,7 +367,7 @@ async function gitlabThreads(cwd: string): Promise<PrThread[]> {
 export async function replyToThread(cwd: string, threadId: string, body: string): Promise<void> {
   if ((await prForge(cwd)) === 'gitlab') {
     const mr = await gitlabMr(cwd);
-    if (!mr) throw new Error('找不到当前分支的 Merge Request');
+    if (!mr) throw new Error(tr('ag.gitNoMr'));
     await run('glab', ['api', '-X', 'POST', `${mr.base}/discussions/${threadId}/notes`, '-f', `body=${body}`], cwd);
     return;
   }
@@ -378,13 +379,13 @@ export async function replyToThread(cwd: string, threadId: string, body: string)
 export async function setThreadResolved(cwd: string, threadId: string, resolved: boolean): Promise<void> {
   if ((await prForge(cwd)) === 'gitlab') {
     const mr = await gitlabMr(cwd);
-    if (!mr) throw new Error('找不到当前分支的 Merge Request');
+    if (!mr) throw new Error(tr('ag.gitNoMr'));
     await run('glab', ['api', '-X', 'PUT', `${mr.base}/discussions/${threadId}?resolved=${resolved}`], cwd);
     return;
   }
   const num = (await run('gh', ['pr', 'view', '--json', 'number', '-q', '.number'], cwd))?.trim() ?? '';
   const node = (await githubThreadStates(cwd, num)).get(threadId)?.node;
-  if (!node) throw new Error('找不到这条评论所在的 review thread');
+  if (!node) throw new Error(tr('ag.gitNoThread'));
   const mutation = resolved
     ? 'mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{id}}}'
     : 'mutation($id:ID!){unresolveReviewThread(input:{threadId:$id}){thread{id}}}';
@@ -472,7 +473,7 @@ async function readGithubPr(cwd: string): Promise<PrSnapshot | null> {
       notes.push({
         id: `r${r.id}`,
         author: r.author?.login ?? 'someone',
-        body: r.body || `（只有行内评论，状态 ${r.state}：用 gh pr view ${pr.number} --comments 查看）`,
+        body: r.body || tr('ag.inlineOnly', { state: r.state, num: pr.number }),
         url: `${pr.url}#pullrequestreview-${r.id}`,
         self: mine(r.author?.login),
       });

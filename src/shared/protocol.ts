@@ -11,6 +11,7 @@ import type { Forge } from './forge';
 import type { PetDef } from './pets';
 import type { ArtifactMeta } from './artifacts';
 import type { ObjectStorageDraft, ObjectStorageInfo } from './storage';
+import type { LanguageSetting, Locale } from './i18n';
 import type { RemoteActive, RemoteConnectionDraft, RemoteConnectionInfo, RemoteLinkState, RemoteListing, RemoteServeSettings, RemoteServeState } from './remote';
 import type { ScheduledTask, TaskDraft } from './schedule';
 import type { SearchResult } from './text-search';
@@ -730,6 +731,8 @@ export const SUGGESTION_DEFAULT_CONTEXT = 6;
 export const SUGGESTION_MAX_CONTEXT = 50;
 export interface Settings {
   theme: ThemeSetting | null;
+  /** UI language; "system" follows the OS and falls back to English. */
+  language: LanguageSetting;
   notify: boolean;
   /** Draw ```mermaid blocks in replies as diagrams; off shows them as plain code. */
   renderMermaid: boolean;
@@ -765,6 +768,8 @@ export interface Settings {
 }
 export interface SettingsPayload extends Settings {
   resolvedTheme: 'light' | 'dark';
+  /** `language` with "system" resolved against the OS. */
+  locale: Locale;
   /** The user's own pet skins (the built-in ones live in `@shared/pets`). */
   pets: PetDef[];
 }
@@ -1060,6 +1065,8 @@ export const PUSH_CHANNELS: readonly PushChannel[] = ['host:event', 'settings:ch
 /** Calls only main makes (configuration and internal lookups). */
 export interface HostInternal {
   'host:init'(opts: HostInitOptions): void;
+  /** The UI language changed: texts the host writes (errors, prompts) follow it. */
+  'host:locale'(locale: Locale): void;
   'host:cancelLogins'(): void;
   'host:meta'(id: string): SessionMeta;
   'host:importAttachments'(sources: AttachmentSource[]): AttachmentImportResult;
@@ -1073,6 +1080,8 @@ export interface HostInitOptions {
   agentDir: string;
   /** Register the offline demo model; only unpackaged (dev / test) runs set it. */
   demo: boolean;
+  /** The language the UI runs in. */
+  locale: Locale;
 }
 export type HostMethod = (typeof HOST_CHANNELS)[number] | keyof HostInternal;
 

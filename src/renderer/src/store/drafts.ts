@@ -1,6 +1,7 @@
 // Composer drafts, one per welcome screen and per session. Drafts survive switching
 // sessions (for this app run), and a message that could not be delivered comes back
 // here as a recovery instead of being lost.
+import { t } from '@/lib/i18n';
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { validateAttachments, type Attachment, type PromptSubmission } from '@shared/attachments';
@@ -101,7 +102,7 @@ export const drafts = {
       if (d.sending) return;
       const size = [...d.references, reference].reduce((total, item) => total + (item.text?.length ?? 0) + (item.comment?.length ?? 0) + item.path.length, 0);
       if (d.references.length >= MAX_CONTEXT_ITEMS || size > MAX_CONTEXT_CHARS) {
-        d.errors.push(`最多附加 ${MAX_CONTEXT_ITEMS} 项上下文，总内容不能超过 ${MAX_CONTEXT_CHARS.toLocaleString()} 个字符`);
+        d.errors.push(t('draft.contextLimit', { n: MAX_CONTEXT_ITEMS, chars: MAX_CONTEXT_CHARS.toLocaleString() }));
         return;
       }
       d.references.push(reference);

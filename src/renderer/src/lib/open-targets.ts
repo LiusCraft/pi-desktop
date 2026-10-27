@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import type { OpenTarget, OpenTargetEntry } from '@shared/protocol';
 import { call, isMac } from '@/lib/api';
+import { t } from '@/lib/i18n';
 
 export interface OpenTargetInfo { label: string; badge: string; color: string }
 
@@ -21,8 +22,8 @@ export const OPEN_TARGET_INFO: Record<OpenTarget, OpenTargetInfo> = {
   rustrover: { label: 'RustRover', badge: 'RR', color: '#ff7a00' },
   clion: { label: 'CLion', badge: 'CL', color: '#1fa37a' },
   phpstorm: { label: 'PhpStorm', badge: 'PS', color: '#b345f1' },
-  terminal: { label: 'Terminal', badge: '>_', color: '#444' },
-  folder: { label: isMac ? 'Finder' : 'File Explorer', badge: 'F', color: '#e3a21a' },
+  terminal: { get label() { return t('open.terminal'); }, badge: '>_', color: '#444' },
+  folder: { get label() { return t(isMac ? 'open.finder' : 'open.explorer'); }, badge: 'F', color: '#e3a21a' },
 };
 
 const REFRESH_AFTER = 30_000;

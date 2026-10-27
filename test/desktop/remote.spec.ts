@@ -21,7 +21,7 @@ async function launch(root: string, name: string): Promise<Instance> {
   fs.mkdirSync(profile, { recursive: true });
   const app = await electron.launch({
     executablePath: createRequire(path.resolve('package.json'))('electron') as string,
-    args: [path.resolve('.'), '--demo', `--user-data-dir=${profile}`],
+    args: [path.resolve('.'), '--demo', '--lang=en-US', `--user-data-dir=${profile}`],
     env: { ...process.env, PI_DESKTOP_HOME: dataDir, PI_CODING_AGENT_DIR: path.join(dir, 'agent'), PI_OFFLINE: '1' },
   });
   const page = await app.firstWindow();

@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { useCopy } from '@/components/common/Copy';
 import { call } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 
 export interface AuthUiState {
   loginId?: string;
@@ -21,6 +22,7 @@ export interface AuthUiState {
 }
 
 function PromptForm({ prompt, onSubmit }: { prompt: AuthPrompt; onSubmit: (value: string) => void }) {
+  const t = useT();
   const [value, setValue] = useState('');
   if (prompt.type === 'select') {
     return (
@@ -58,7 +60,7 @@ function PromptForm({ prompt, onSubmit }: { prompt: AuthPrompt; onSubmit: (value
           value={value}
           onChange={(e) => setValue(e.target.value)}
         />
-        <Button type="submit" disabled={!value.trim()}>继续</Button>
+        <Button type="submit" disabled={!value.trim()}>{t('login.continue')}</Button>
       </div>
     </form>
   );
@@ -66,11 +68,12 @@ function PromptForm({ prompt, onSubmit }: { prompt: AuthPrompt; onSubmit: (value
 
 /** Copy control that confirms on itself; used for URLs and device codes. */
 function CopyButton({ text, label }: { text: string; label: string }) {
+  const t = useT();
   const { copied, copy } = useCopy();
   return (
     <Button type="button" size="sm" variant="ghost" onClick={() => copy(text)} title={label}>
       {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
-      {copied ? '已复制' : label}
+      {copied ? t('login.copied') : label}
     </Button>
   );
 }
@@ -88,6 +91,7 @@ export function LoginDialog({
   onRespond: (requestId: string, value: string) => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   // Keep the latest progress line visible long enough to read on very fast flows.
   const [progress, setProgress] = useState<string | undefined>(state.progress);
   useEffect(() => {
@@ -100,20 +104,20 @@ export function LoginDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
-            登录 {providerName}
+            {t('login.title', { name: providerName })}
           </DialogTitle>
           <DialogDescription>
-            {authType === 'oauth' ? '在浏览器完成授权后回到这里，流程会自动继续。' : '凭证会保存到 pi 的 auth.json，和 pi CLI 共用。'}
+            {t(authType === 'oauth' ? 'login.oauth' : 'login.apiKey')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
           {state.device && (
             <div className="space-y-2 rounded-lg border bg-muted/40 p-3">
-              <p className="text-xs text-muted-foreground">在浏览器中输入这个代码：</p>
+              <p className="text-xs text-muted-foreground">{t('login.enterCode')}</p>
               <div className="flex items-center justify-between gap-2">
                 <span className="font-mono text-lg font-semibold tracking-widest">{state.device.userCode}</span>
-                <CopyButton text={state.device.userCode} label="复制代码" />
+                <CopyButton text={state.device.userCode} label={t('login.copyCode')} />
               </div>
               <button
                 onClick={() => void call('app:openExternal', state.device!.verificationUri)}
@@ -127,16 +131,16 @@ export function LoginDialog({
 
           {state.url && (
             <div className="space-y-1.5 rounded-lg border p-3">
-              <p className="text-xs text-muted-foreground">如果浏览器没有自动打开，请访问：</p>
+              <p className="text-xs text-muted-foreground">{t('login.visit')}</p>
               <div className="flex items-start gap-1">
                 <span className="min-w-0 flex-1 break-all font-mono text-xs">{state.url}</span>
               </div>
               <div className="flex items-center gap-1">
                 <Button type="button" size="sm" variant="outline" onClick={() => void call('app:openExternal', state.url!)}>
                   <ExternalLinkIcon className="size-3.5" />
-                  打开浏览器
+                  {t('login.openBrowser')}
                 </Button>
-                <CopyButton text={state.url} label="复制链接" />
+                <CopyButton text={state.url} label={t('login.copyLink')} />
               </div>
               {state.instructions && <p className="text-xs text-amber-600">{state.instructions}</p>}
             </div>
@@ -164,7 +168,7 @@ export function LoginDialog({
             !state.device && !state.url && !state.info && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2Icon className="size-3.5 animate-spin" />
-                {progress ?? '正在准备登录…'}
+                {progress ?? t('models.preparingLogin')}
               </div>
             )
           )}
@@ -173,7 +177,7 @@ export function LoginDialog({
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onCancel}>
-            取消
+            {t('login.cancel')}
           </Button>
         </DialogFooter>
       </DialogContent>

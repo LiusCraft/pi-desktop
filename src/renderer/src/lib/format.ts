@@ -1,16 +1,19 @@
+import { t } from './i18n';
+
 export const fname = (p: string) => String(p).split(/[\\/]/).pop() || '';
 export const fdir = (p: string) => String(p).split(/[\\/]/).slice(0, -1).join('/');
 
-export function ago(t: number, long = false) {
-  const m = Math.round((Date.now() - t) / 60000);
-  if (m < 1) return 'just now';
-  if (m < 60) return long ? `${m} minute${m > 1 ? 's' : ''} ago` : `${m}m`;
+/** "5m" / "5 minutes ago" in the app's language. */
+export function ago(at: number, long = false) {
+  const m = Math.round((Date.now() - at) / 60000);
+  if (m < 1) return t('ago.justNow');
+  if (m < 60) return long ? t(m === 1 ? 'ago.minOne' : 'ago.minOther', { n: m }) : t('ago.minShort', { n: m });
   if (m < 1440) {
     const h = Math.round(m / 60);
-    return long ? `${h} hour${h > 1 ? 's' : ''} ago` : `${h}h`;
+    return long ? t(h === 1 ? 'ago.hourOne' : 'ago.hourOther', { n: h }) : t('ago.hourShort', { n: h });
   }
   const d = Math.round(m / 1440);
-  return long ? `${d} day${d > 1 ? 's' : ''} ago` : `${d}d`;
+  return long ? t(d === 1 ? 'ago.dayOne' : 'ago.dayOther', { n: d }) : t('ago.dayShort', { n: d });
 }
 
 export function fmtDur(ms: number) {

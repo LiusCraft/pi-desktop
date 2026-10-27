@@ -9,6 +9,10 @@ import { decodeUserContent } from '@shared/attachments';
 import type { HostEvent, PermissionMode, PiEvent, UiRequest, UiResponse } from '@shared/protocol';
 import { importAttachments } from '../src/agent/attachments';
 import { SessionHub } from '../src/agent/hub';
+import { setActiveLocale } from '../src/shared/i18n/runtime';
+
+// These assertions read the host's Chinese messages.
+setActiveLocale('zh');
 
 const ROOT = path.join(__dirname, '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-desktop-hub-'));

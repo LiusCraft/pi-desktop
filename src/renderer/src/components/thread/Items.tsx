@@ -1,6 +1,7 @@
 import { memo, useState } from 'react';
 import { ArrowUpRightIcon, BookmarkIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CircleAlertIcon, GitForkIcon, GitMergeIcon, LightbulbIcon, LoaderCircleIcon, MessageCircleQuestionIcon, MessagesSquareIcon, RotateCcwIcon, TerminalIcon, XIcon } from 'lucide-react';
 import { PLAN_CHOICES } from '@shared/protocol';
+import type { MessageKey } from '@shared/i18n';
 import { BUILTIN_COMMAND_INFO, commandLabel, decodeCommandMessage, type CommandMessage } from '@shared/command-message';
 import { decodePeerMessage, type PeerMessage } from '@shared/peer-message';
 import * as previews from '@shared/tool-previews';
@@ -18,6 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { QuestionsItem } from './Questions';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { call } from '@/lib/api';
+import { t as tr, useT } from '@/lib/i18n';
 import { ago, fmtTok } from '@/lib/format';
 import { bareName, groupStats, groupSummary, isFileTool, toolLabel, toolScope, type ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
@@ -34,6 +36,7 @@ import type { Item, ItemOf } from '@/store/types';
 
 /** `quoted`: for each reference of the message, the transcript item it replies to (see lib/quote-links). */
 export const UserItem = memo(function UserItem({ sid, item, quoted }: { sid: string; item: ItemOf<'user'>; quoted?: (string | null)[] }) {
+  const t = useT();
   const { copied, copy } = useCopy();
   const busy = useApp((state) => !!(state.sessions[sid]?.running || state.sessions[sid]?.historyBusy || state.sessions[sid]?.pendingUser.length));
   const peer = decodePeerMessage(item.text);
@@ -44,7 +47,7 @@ export const UserItem = memo(function UserItem({ sid, item, quoted }: { sid: str
   const attached = decodeReferencePrompt(item.text);
   const typed = attached ? attached.text : item.text;
   return (
-    <div className={cn('flex flex-col items-end gap-1.5', item.queued && 'opacity-60')} title={item.queued ? '排队中：Pi Desktop 完成当前步骤后处理' : undefined}>
+    <div className={cn('flex flex-col items-end gap-1.5', item.queued && 'opacity-60')} title={item.queued ? t('thread.queued') : undefined}>
       <AttachmentTiles attachments={item.attachments} />
       {attached && <div className="flex max-w-[85%] justify-end"><ContextCards references={attached.references} onOpen={(reference) => openContextReference(reference, quoted?.[attached.references.indexOf(reference)] ?? null)} /></div>}
       {typed && (
@@ -55,29 +58,29 @@ export const UserItem = memo(function UserItem({ sid, item, quoted }: { sid: str
       {item.delivered && !item.queued && (
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           {item.timestamp && <span className="mr-1" title={new Date(item.timestamp).toLocaleString()}>{ago(item.timestamp, true)}</span>}
-          <Button type="button" variant="ghost" size="icon" className="size-7" aria-label={copied ? '已复制消息' : '复制消息'} title={copied ? '已复制' : '复制消息'} onClick={() => copy(item.text)}>
+          <Button type="button" variant="ghost" size="icon" className="size-7" aria-label={t(copied ? 'thread.copiedMessage' : 'thread.copyMessage')} title={t(copied ? 'thread.copied' : 'thread.copyMessage')} onClick={() => copy(item.text)}>
             <CopyGlyph copied={copied} />
           </Button>
           {item.entryId && <>
             <Tooltip><TooltipTrigger asChild>
-              <Button type="button" variant="ghost" size="icon" className="size-7" disabled={busy} aria-label="回退到这里" onClick={() => void userMessageAction(sid, item.entryId!, 'rewind')}>
+              <Button type="button" variant="ghost" size="icon" className="size-7" disabled={busy} aria-label={t('thread.rewind')} onClick={() => void userMessageAction(sid, item.entryId!, 'rewind')}>
                 <RotateCcwIcon data-icon="inline-start" />
               </Button>
-            </TooltipTrigger><TooltipContent>回退到这里：移除此消息及后续对话，原文放回输入框。文件改动会保留。</TooltipContent></Tooltip>
+            </TooltipTrigger><TooltipContent>{t('thread.rewind.tip')}</TooltipContent></Tooltip>
             <Tooltip><TooltipTrigger asChild>
-              <Button type="button" variant="ghost" size="icon" className="size-7" disabled={busy} aria-label="从这里创建分支" onClick={() => void userMessageAction(sid, item.entryId!, 'fork')}>
+              <Button type="button" variant="ghost" size="icon" className="size-7" disabled={busy} aria-label={t('thread.fork')} onClick={() => void userMessageAction(sid, item.entryId!, 'fork')}>
                 <GitForkIcon data-icon="inline-start" />
               </Button>
-            </TooltipTrigger><TooltipContent>从此消息之前创建新会话，原文放入新会话输入框，保留当前对话。</TooltipContent></Tooltip>
+            </TooltipTrigger><TooltipContent>{t('thread.fork.tip')}</TooltipContent></Tooltip>
           </>}
         </div>
       )}
       {item.notice && <div className="text-xs text-muted-foreground">{item.notice}</div>}
       {item.failed && (
         <div className="flex items-center gap-2 text-xs text-destructive">
-          Delivery not confirmed. Check the conversation before retrying.
+          {t('thread.deliveryFailed')}
           <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => item.submission && drafts.recover(sessionDraftKey(sid), item.submission)}>
-            Restore draft
+            {t('thread.restoreDraft')}
           </Button>
         </div>
       )}
@@ -87,20 +90,21 @@ export const UserItem = memo(function UserItem({ sid, item, quoted }: { sid: str
 
 /** A button of Pi Desktop's own (Commit, Create PR, ...) shown as the command it ran; click to read the instruction it expanded to. */
 function CommandMessageChip({ sid, command, queued }: { sid: string; command: CommandMessage; queued?: boolean }) {
+  const t = useT();
   const userCommands = useApp((st) => st.sessions[sid]?.commands);
   const label = commandLabel(command.name, (userCommands ?? []).map((c) => c.name));
   return (
     <div className={cn('flex justify-end', queued && 'opacity-60')}>
       <Popover>
         <PopoverTrigger asChild>
-          <button className="flex items-center gap-1.5 rounded-2xl bg-user-bubble px-3.5 py-2 font-mono text-sm transition-colors hover:bg-accent data-[state=open]:bg-accent" title="查看这条命令展开后的内容">
+          <button className="flex items-center gap-1.5 rounded-2xl bg-user-bubble px-3.5 py-2 font-mono text-sm transition-colors hover:bg-accent data-[state=open]:bg-accent" title={t('thread.commandTip')}>
             <TerminalIcon className="size-3.5 text-muted-foreground" />/{label}
           </button>
         </PopoverTrigger>
         <PopoverContent align="end" className="w-96 p-0">
           <div className="border-b px-3 py-2">
             <div className="font-mono text-xs font-medium">/{label}</div>
-            <div className="text-xs text-muted-foreground">{BUILTIN_COMMAND_INFO[command.name]}</div>
+            <div className="text-xs text-muted-foreground">{t(BUILTIN_COMMAND_INFO[command.name])}</div>
           </div>
           <div data-selectable className="max-h-72 overflow-y-auto px-3 py-2 text-xs whitespace-pre-wrap break-words">{command.prompt}</div>
         </PopoverContent>
@@ -111,6 +115,7 @@ function CommandMessageChip({ sid, command, queued }: { sid: string; command: Co
 
 /** A message another session of the project sent: shown as theirs, with a way back to them. */
 function PeerMessageCard({ peer }: { peer: PeerMessage }) {
+  const t = useT();
   const known = useApp((st) => !!st.sessions[peer.fromId]);
   return (
     <div className="flex justify-start">
@@ -118,10 +123,10 @@ function PeerMessageCard({ peer }: { peer: PeerMessage }) {
         <button
           disabled={!known}
           className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground enabled:hover:text-foreground"
-          title={known ? '打开发来消息的会话' : '那个会话已不存在'}
+          title={t(known ? 'thread.peerOpen' : 'thread.peerGone')}
           onClick={() => void openSession(peer.fromId)}
         >
-          <MessagesSquareIcon className="size-3.5" />来自会话“{peer.fromTitle}”{known && <ArrowUpRightIcon className="size-3" />}
+          <MessagesSquareIcon className="size-3.5" />{t('thread.fromSession', { title: peer.fromTitle })}{known && <ArrowUpRightIcon className="size-3" />}
         </button>
         <div data-selectable className="break-words whitespace-pre-wrap">{peer.text}</div>
       </div>
@@ -136,14 +141,15 @@ function PeerMessageCard({ peer }: { peer: PeerMessage }) {
  * the agent side of the conversation: no user bubble, and it says what it is doing now.
  */
 export const PrEventItem = memo(function PrEventItem({ sid, item }: { sid: string; item: ItemOf<'prEvent'> }) {
+  const t = useT();
   const running = useApp((st) => !!st.sessions[sid]?.running);
   const waiting = useApp((st) => !!st.sessions[sid]?.waiting);
   const [open, setOpen] = useState(false);
   const { event } = item;
   const look = {
-    'ci-fail': { Icon: CircleAlertIcon, tone: 'text-destructive', label: 'CI 失败' },
-    notes: { Icon: MessagesSquareIcon, tone: 'text-info', label: '新的评审意见' },
-    merge: { Icon: GitMergeIcon, tone: 'text-success', label: '可以合并' },
+    'ci-fail': { Icon: CircleAlertIcon, tone: 'text-destructive', label: t('prevent.ciFail') },
+    notes: { Icon: MessagesSquareIcon, tone: 'text-info', label: t('prevent.notes') },
+    merge: { Icon: GitMergeIcon, tone: 'text-success', label: t('prevent.merge') },
   }[event.kind];
   return (
     <div className="flex justify-start">
@@ -152,7 +158,7 @@ export const PrEventItem = memo(function PrEventItem({ sid, item }: { sid: strin
           <look.Icon className={cn('size-3.5 shrink-0', look.tone)} />
           <span className={cn('font-medium', look.tone)}>{look.label}</span>
           <span className="opacity-50">·</span>
-          <button className="truncate hover:text-foreground" title={`在 ${forgeName(forgeOfUrl(event.url))} 打开`} onClick={() => void call('app:openExternal', event.url)}>PR #{event.num}</button>
+          <button className="truncate hover:text-foreground" title={t('prevent.openOn', { forge: forgeName(forgeOfUrl(event.url)) })} onClick={() => void call('app:openExternal', event.url)}>PR #{event.num}</button>
           <span className="ml-auto shrink-0 tabular-nums">{ago(item.at)}</span>
         </div>
         <div className="mt-1.5 text-foreground">{event.summary}</div>
@@ -162,7 +168,7 @@ export const PrEventItem = memo(function PrEventItem({ sid, item }: { sid: strin
               <li key={f.name} className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
                 <span className="size-1.5 shrink-0 rounded-full bg-destructive" />
                 {f.url ? (
-                  <button className="truncate hover:text-foreground hover:underline" title="打开失败日志" onClick={() => void call('app:openExternal', f.url!)}>{f.name}</button>
+                  <button className="truncate hover:text-foreground hover:underline" title={t('prevent.openLog')} onClick={() => void call('app:openExternal', f.url!)}>{f.name}</button>
                 ) : (
                   <span className="truncate">{f.name}</span>
                 )}
@@ -182,14 +188,14 @@ export const PrEventItem = memo(function PrEventItem({ sid, item }: { sid: strin
         )}
         <div className="mt-2 flex items-center gap-2 text-xs">
           {waiting ? (
-            <span className="flex items-center gap-1.5 text-warning"><CircleAlertIcon className="size-3.5" />等待你的确认</span>
+            <span className="flex items-center gap-1.5 text-warning"><CircleAlertIcon className="size-3.5" />{t('prevent.waiting')}</span>
           ) : running ? (
-            <span className="flex items-center gap-1.5 text-muted-foreground"><LoaderCircleIcon className="size-3.5 animate-spin" />Pi 正在处理…</span>
+            <span className="flex items-center gap-1.5 text-muted-foreground"><LoaderCircleIcon className="size-3.5 animate-spin" />{t('prevent.working')}</span>
           ) : (
-            <span className="text-muted-foreground">由 Pi Desktop 的 PR 监听触发</span>
+            <span className="text-muted-foreground">{t('prevent.trigger')}</span>
           )}
           <button className="ml-auto flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground" onClick={() => setOpen(!open)}>
-            {open ? '收起' : '查看交给 Pi 的说明'}
+            {t(open ? 'prevent.collapse' : 'prevent.showInstruction')}
             <ChevronDownIcon className={cn('size-3 transition-transform', open && 'rotate-180')} />
           </button>
         </div>
@@ -205,6 +211,7 @@ export const PrEventItem = memo(function PrEventItem({ sid, item }: { sid: strin
 
 /** Work the agent noticed outside the current task: the user decides where (or whether) it runs. */
 export const SuggestItem = memo(function SuggestItem({ sid, item }: { sid: string; item: ItemOf<'suggest'> }) {
+  const t = useT();
   const decided = useApp((st) => st.sessions[sid]?.meta.suggestions);
   const [open, setOpen] = useState<number | null>(null);
   const open_ = (id: string) => void openSession(id);
@@ -212,7 +219,7 @@ export const SuggestItem = memo(function SuggestItem({ sid, item }: { sid: strin
   return (
     <div className="rounded-xl border bg-card px-4 py-3 text-sm shadow-sm">
       <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-        <LightbulbIcon className="size-3.5" />建议的任务<span className="font-normal">· Pi Desktop 发现了当前任务之外的事</span>
+        <LightbulbIcon className="size-3.5" />{t('suggest.title')}<span className="font-normal">{t('suggest.sub')}</span>
       </div>
       <div className="divide-y">
         {item.tasks.map((task, index) => {
@@ -222,23 +229,23 @@ export const SuggestItem = memo(function SuggestItem({ sid, item }: { sid: strin
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="font-medium">{task.title}</div>
-                  <button className={cn('mt-0.5 text-left text-xs text-muted-foreground hover:text-foreground', open !== index && 'line-clamp-2')} onClick={() => setOpen(open === index ? null : index)} title="展开 / 收起">
+                  <button className={cn('mt-0.5 text-left text-xs text-muted-foreground hover:text-foreground', open !== index && 'line-clamp-2')} onClick={() => setOpen(open === index ? null : index)} title={t('suggest.toggle')}>
                     {task.prompt}
                   </button>
                 </div>
                 {!state && (
                   <div className="flex shrink-0 items-center gap-1.5">
-                    <Button size="sm" className="h-7" onClick={() => void startSuggested(sid, item, index, task)} title="在同一项目里新开一个会话来做，你留在当前会话">Start</Button>
-                    <Button size="sm" variant="outline" className="h-7" onClick={() => void doSuggestedHere(sid, item, index, task)} title="把它作为一条消息发给当前会话">Do it here</Button>
-                    <Button size="icon" variant="ghost" className="size-7" aria-label="忽略" title="忽略" onClick={() => void dismissSuggested(sid, item, index)}><XIcon className="size-3.5" /></Button>
+                    <Button size="sm" className="h-7" onClick={() => void startSuggested(sid, item, index, task)} title={t('suggest.startTip')}>{t('suggest.start')}</Button>
+                    <Button size="sm" variant="outline" className="h-7" onClick={() => void doSuggestedHere(sid, item, index, task)} title={t('suggest.doHereTip')}>{t('suggest.doHere')}</Button>
+                    <Button size="icon" variant="ghost" className="size-7" aria-label={t('suggest.dismiss')} title={t('suggest.dismiss')} onClick={() => void dismissSuggested(sid, item, index)}><XIcon className="size-3.5" /></Button>
                   </div>
                 )}
               </div>
               {state && (
                 <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                  {state.state === 'started' && <><CheckIcon className="size-3.5 text-success" />已在新会话中开始{state.sessionId && <button className="text-primary hover:underline" onClick={() => open_(state.sessionId!)}>打开</button>}</>}
-                  {state.state === 'here' && <><CheckIcon className="size-3.5 text-success" />已发送给当前会话</>}
-                  {state.state === 'dismissed' && <>已忽略</>}
+                  {state.state === 'started' && <><CheckIcon className="size-3.5 text-success" />{t('suggest.started')}{state.sessionId && <button className="text-primary hover:underline" onClick={() => open_(state.sessionId!)}>{t('suggest.open')}</button>}</>}
+                  {state.state === 'here' && <><CheckIcon className="size-3.5 text-success" />{t('suggest.sentHere')}</>}
+                  {state.state === 'dismissed' && <>{t('suggest.dismissed')}</>}
                 </div>
               )}
             </div>
@@ -247,7 +254,7 @@ export const SuggestItem = memo(function SuggestItem({ sid, item }: { sid: strin
       </div>
       {waiting.length > 1 && (
         <div className="mt-2.5 flex justify-end border-t pt-2.5">
-          <Button size="sm" variant="outline" className="h-7" onClick={() => waiting.forEach(({ task, index }) => void startSuggested(sid, item, index, task))}>Start all</Button>
+          <Button size="sm" variant="outline" className="h-7" onClick={() => waiting.forEach(({ task, index }) => void startSuggested(sid, item, index, task))}>{t('suggest.startAll')}</Button>
         </div>
       )}
     </div>
@@ -269,13 +276,14 @@ export const NoteItem = memo(function NoteItem({ item }: { item: ItemOf<'note'> 
 });
 
 export const FootItem = memo(function FootItem({ sid, item, prevText }: { sid: string; item: ItemOf<'foot'>; prevText?: string }) {
+  const t = useT();
   const { copied, copy } = useCopy();
   return (
     <div className="flex items-center gap-1 text-xs text-muted-foreground">
-      <Button variant="ghost" size="icon" className="size-7" title={copied ? 'Copied' : 'Copy'} onClick={() => copy(prevText ?? '')}>
+      <Button variant="ghost" size="icon" className="size-7" title={t(copied ? 'foot.copied' : 'foot.copy')} onClick={() => copy(prevText ?? '')}>
         <CopyGlyph copied={copied} />
       </Button>
-      <Button variant="ghost" size="icon" className="size-7" title="Fork session" onClick={() => void forkSession(sid)}>
+      <Button variant="ghost" size="icon" className="size-7" title={t('foot.fork')} onClick={() => void forkSession(sid)}>
         <GitForkIcon className="size-3.5" />
       </Button>
       <span>{ago(item.t, true)}</span>
@@ -351,11 +359,12 @@ const ARTIFACT_SAVE = 'save';
 const ARTIFACT_RESULT_ID = /\(([a-z0-9][a-z0-9-]*)\)/;
 
 function ArtifactPreviewButton({ tool }: { tool: ToolState }) {
+  const t = useT();
   const id = ARTIFACT_RESULT_ID.exec(tool.output ?? '')?.[1];
   if (!id) return null;
   return (
     <button className="w-full border-t px-3 py-1 text-left text-xs text-primary hover:bg-accent" onClick={() => void call('artifacts:preview', id).catch(() => {})}>
-      预览
+      {t('tool.preview')}
     </button>
   );
 }
@@ -364,12 +373,12 @@ function ToolDetail({ sid, tool }: { sid: string; tool: ToolState }) {
   if (tool.preview) return <ToolPreviewView preview={tool.preview} path={tool.path ?? ''} sid={sid} onOpenImage={(src) => void openFileRef(tool.path!, undefined, src)} />;
   if (tool.kind === 'bash') return <TermOutput cmd={tool.cmd} out={tool.output ?? ''} />;
   if (tool.output) return <pre className="max-h-80 overflow-auto px-3 py-2 font-mono text-xs whitespace-pre-wrap">{tool.output}</pre>;
-  return <div className="px-3 py-2 text-xs text-muted-foreground">{tool.status === 'running' ? 'Running…' : 'No output'}</div>;
+  return <div className="px-3 py-2 text-xs text-muted-foreground">{tr(tool.status === 'running' ? 'tool.running' : 'tool.noOutput')}</div>;
 }
 
 /** "Ran" + "npm test": the verb stays muted, the subject is brighter (like Pi Desktop Code's tool list). */
 function splitLabel(tool: ToolState): [string, string] {
-  if (tool.kind === 'agent') return [tool.status === 'running' ? 'Running agent' : 'Ran agent', tool.desc];
+  if (tool.kind === 'agent') return [tr(tool.status === 'running' ? 'tool.runningAgent' : 'tool.ranAgent'), tool.desc];
   if (tool.kind === 'other') return [toolLabel(tool), ''];
   const label = toolLabel(tool);
   const cut = label.indexOf(' ');
@@ -381,6 +390,7 @@ const Chevron = ({ open }: { open: boolean }) => (
 );
 
 const ToolRow = memo(function ToolRow({ sid, tool }: { sid: string; tool: ToolState }) {
+  const t = useT();
   const running = tool.status === 'running';
   const err = tool.status === 'err', denied = tool.status === 'denied';
   const [verb, subject] = splitLabel(tool);
@@ -390,11 +400,11 @@ const ToolRow = memo(function ToolRow({ sid, tool }: { sid: string; tool: ToolSt
     <>
       {tool.sub ? (
         <span className="shrink-0">
-          {tool.sub.toolUses} tool use{tool.sub.toolUses === 1 ? '' : 's'} · {fmtTok(tool.sub.tokens)} tokens{running && tool.sub.activity ? ` · ${tool.sub.activity}` : ''}
+          {t(tool.sub.toolUses === 1 ? 'tool.use' : 'tool.uses', { n: tool.sub.toolUses, tokens: fmtTok(tool.sub.tokens) })}{running && tool.sub.activity ? ` · ${tool.sub.activity}` : ''}
         </span>
       ) : tool.summary && <span className="truncate">{tool.summary}</span>}
-      {err && <span className="shrink-0 text-destructive">Failed</span>}
-      {denied && <span className="shrink-0 text-foreground/80">Blocked</span>}
+      {err && <span className="shrink-0 text-destructive">{t('tool.failed')}</span>}
+      {denied && <span className="shrink-0 text-foreground/80">{t('tool.blocked')}</span>}
     </>
   );
   return (
@@ -412,7 +422,7 @@ const ToolRow = memo(function ToolRow({ sid, tool }: { sid: string; tool: ToolSt
         {subject && (isFileTool(tool) ? (
           <button
             className={cn('min-w-0 truncate text-foreground/90 hover:underline', err && 'text-destructive', denied && 'line-through')}
-            title={`Open current file: ${tool.path}`}
+            title={t('tool.openFile', { path: tool.path ?? '' })}
             onClick={(e) => { e.stopPropagation(); void openFileRef(tool.path!, tool.kind === 'read' ? tool.args?.offset : tool.firstChangedLine, readImageSrc(tool)); }}
           >
             {subject}
@@ -430,7 +440,7 @@ const ToolRow = memo(function ToolRow({ sid, tool }: { sid: string; tool: ToolSt
             {bareName(tool.name) === ARTIFACT_TOOL && tool.args?.action === ARTIFACT_SAVE && tool.status === 'done' && <ArtifactPreviewButton tool={tool} />}
             {isFileTool(tool) && tool.status === 'done' && tool.kind !== 'read' && (
               <button className="w-full border-t px-3 py-1 text-left text-xs text-primary hover:bg-accent" onClick={() => openDiffRef(tool.path!)}>
-                View diff
+                {t('tool.viewDiff')}
               </button>
             )}
           </div>
@@ -441,9 +451,10 @@ const ToolRow = memo(function ToolRow({ sid, tool }: { sid: string; tool: ToolSt
 });
 
 export const GroupItem = memo(function GroupItem({ sid, item, view }: { sid: string; item: ItemOf<'group'>; view: string }) {
+  const t = useT();
   const thoughts = view === 'normal' ? [] : item.thoughts;
   if (!item.tools.length && !thoughts.length) return null;
-  const running = item.tools.find((t) => t.status === 'running');
+  const running = item.tools.find((tool) => tool.status === 'running');
   const { add, del } = groupStats(item.tools);
   const label = running ? `${toolLabel(running)}…` : groupSummary(item.tools);
   return (
@@ -451,7 +462,7 @@ export const GroupItem = memo(function GroupItem({ sid, item, view }: { sid: str
       {thoughts.map((step, i) => (
         <Collapsible key={i} open={!!step.open} onOpenChange={(open) => (open !== !!step.open ? toggleThought(sid, item.key, i, open) : undefined)} className="group/think">
           <CollapsibleTrigger className="flex cursor-pointer items-center gap-1 text-sm text-muted-foreground select-none hover:text-foreground">
-            {step.done ? <span>{step.secs ? `Thought for ${step.secs}s` : 'Thought'}</span> : <span className="shimmer">Thinking…</span>}
+            {step.done ? <span>{step.secs ? t('tool.thoughtFor', { secs: step.secs }) : t('tool.thought')}</span> : <span className="shimmer">{t('tool.thinking')}</span>}
             <ChevronRightIcon className="size-3.5 transition-transform group-data-[state=open]/think:rotate-90" />
           </CollapsibleTrigger>
           <CollapsibleContent>
@@ -468,7 +479,7 @@ export const GroupItem = memo(function GroupItem({ sid, item, view }: { sid: str
           </button>
           {item.open && (
             <div className="mt-2 divide-y overflow-hidden rounded-[10px] border">
-              {item.tools.map((t) => <ToolRow key={t.id} sid={sid} tool={t} />)}
+              {item.tools.map((tool) => <ToolRow key={tool.id} sid={sid} tool={tool} />)}
             </div>
           )}
         </>
@@ -490,18 +501,19 @@ function Resolved({ label, subject, denied }: { label: string; subject?: string;
   );
 }
 
-const RESOLVED_LABEL: Record<string, string> = { Allow: 'Allowed', 'Always allow': 'Always allowed', Deny: 'Denied', cancelled: 'Cancelled' };
+const RESOLVED_LABEL: Record<string, MessageKey> = { Allow: 'perm.allowed', 'Always allow': 'perm.alwaysAllowed', Deny: 'perm.denied', cancelled: 'perm.cancelled' };
 
 export const PermItem = memo(function PermItem({ sid, item }: { sid: string; item: ItemOf<'perm'> }) {
+  const t = useT();
   const tool = useApp((s) => findTool(s.sessions[sid], item.toolCallId)?.tool);
   const subject = tool?.kind === 'bash' ? tool.cmd : tool?.path || item.title;
-  if (item.resolved) return <Resolved label={RESOLVED_LABEL[item.resolved] ?? item.resolved} subject={subject} denied={item.resolved === 'Deny' || item.resolved === 'cancelled'} />;
+  if (item.resolved) return <Resolved label={RESOLVED_LABEL[item.resolved] ? t(RESOLVED_LABEL[item.resolved]) : item.resolved} subject={subject} denied={item.resolved === 'Deny' || item.resolved === 'cancelled'} />;
   const prefix = tool?.kind === 'bash' ? tool.cmd.split(/\s+/).slice(0, 2).join(' ') : '';
-  const always = tool?.kind === 'bash' ? <>Always allow <span className="font-mono">{prefix}</span></> : tool?.kind === 'edit' || tool?.kind === 'write' ? 'Allow all edits this session' : 'Always allow';
+  const always = tool?.kind === 'bash' ? <>{t('perm.alwaysAllow')} <span className="font-mono">{prefix}</span></> : tool?.kind === 'edit' || tool?.kind === 'write' ? t('perm.allowAllEdits') : t('perm.alwaysAllow');
   let preview: React.ReactNode = null;
   if (tool?.kind === 'bash') preview = <TermOutput cmd={tool.cmd} out="" />;
   else if (tool?.kind === 'edit') preview = (tool.args?.edits ?? []).slice(0, 6).map((e: any, i: number) => <DiffRows key={i} before={e.oldText} after={e.newText} path={tool.path ?? ''} context={2} />);
-  else if (tool?.kind === 'write') preview = <ToolPreviewView preview={{ ...(previews.write(tool.args) as any), note: 'Content to write · previous version unavailable' }} path={tool.path ?? ''} />;
+  else if (tool?.kind === 'write') preview = <ToolPreviewView preview={{ ...(previews.write(tool.args) as any), note: t('perm.writeNote') }} path={tool.path ?? ''} />;
   else if (tool?.args) preview = <pre className="max-h-60 overflow-auto px-3 py-2 font-mono text-xs">{JSON.stringify(tool.args, null, 2).slice(0, 2000)}</pre>;
   const answer = (v: string) => answerUi(sid, item.key, { value: v }, v);
   return (
@@ -509,9 +521,9 @@ export const PermItem = memo(function PermItem({ sid, item }: { sid: string; ite
       <div className="mb-2 text-sm font-medium">{permissionTitle(tool, item.title)}</div>
       {preview && <div className="mb-3 max-h-72 overflow-auto rounded-lg border bg-code">{preview}</div>}
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" onClick={() => answer('Allow')}>Allow <Kbd className="ml-1">1</Kbd></Button>
+        <Button size="sm" onClick={() => answer('Allow')}>{t('perm.allow')} <Kbd className="ml-1">1</Kbd></Button>
         <Button size="sm" variant="outline" onClick={() => answer('Always allow')}>{always} <Kbd className="ml-1">2</Kbd></Button>
-        <Button size="sm" variant="outline" onClick={() => answer('Deny')}>Deny <Kbd className="ml-1">3</Kbd></Button>
+        <Button size="sm" variant="outline" onClick={() => answer('Deny')}>{t('perm.deny')} <Kbd className="ml-1">3</Kbd></Button>
       </div>
     </div>
   );
@@ -526,6 +538,7 @@ export const AskCard = memo(function AskCard({ sid, item }: { sid: string; item:
 
 /** Dialogs from pi extensions (ctx.ui.select / confirm / input / editor). */
 function DialogItem({ sid, item }: { sid: string; item: ItemOf<'ask'> }) {
+  const t = useT();
   const r = item.request;
   const [value, setValue] = useState(r.kind === 'input' || r.kind === 'editor' ? (r.prefill ?? '') : '');
   if (item.resolved) return <Resolved label={r.title.split('\n')[0]} subject={item.resolved} denied={item.resolved === 'cancelled'} />;
@@ -566,15 +579,15 @@ function DialogItem({ sid, item }: { sid: string; item: ItemOf<'ask'> }) {
                 </button>
               );
             })}
-            <Button variant="ghost" size="sm" className="self-start" onClick={() => answer({ cancelled: true }, 'cancelled')}>Dismiss</Button>
+            <Button variant="ghost" size="sm" className="self-start" onClick={() => answer({ cancelled: true }, 'cancelled')}>{t('dialog.dismiss')}</Button>
           </div>
         )}
         {r.kind === 'confirm' && (
           <>
             <div className="text-sm text-muted-foreground">{r.message}</div>
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => answer({ confirmed: true }, 'Yes')}>Yes</Button>
-              <Button size="sm" variant="outline" onClick={() => answer({ confirmed: false }, 'No')}>No</Button>
+              <Button size="sm" onClick={() => answer({ confirmed: true }, 'Yes')}>{t('dialog.yes')}</Button>
+              <Button size="sm" variant="outline" onClick={() => answer({ confirmed: false }, 'No')}>{t('dialog.no')}</Button>
             </div>
           </>
         )}
@@ -582,8 +595,8 @@ function DialogItem({ sid, item }: { sid: string; item: ItemOf<'ask'> }) {
           <>
             <Textarea rows={r.kind === 'editor' ? 6 : 1} placeholder={r.placeholder} value={value} onChange={(e) => setValue(e.target.value)} />
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => answer({ value }, 'OK')}>OK</Button>
-              <Button size="sm" variant="outline" onClick={() => answer({ cancelled: true }, 'cancelled')}>Cancel</Button>
+              <Button size="sm" onClick={() => answer({ value }, 'OK')}>{t('dialog.ok')}</Button>
+              <Button size="sm" variant="outline" onClick={() => answer({ cancelled: true }, 'cancelled')}>{t('dialog.cancel')}</Button>
             </div>
           </>
         )}
@@ -592,12 +605,17 @@ function DialogItem({ sid, item }: { sid: string; item: ItemOf<'ask'> }) {
   );
 }
 
+const PLAN_LABEL: Record<(typeof PLAN_CHOICES)[number], MessageKey> = {
+  'Approve & auto-accept edits': 'plan.approveAuto', 'Approve, ask for edits': 'plan.approveAsk', 'Keep planning': 'plan.keep',
+};
+
 export function PlanActions({ sid, itemKey }: { sid: string; itemKey: string }) {
+  const t = useT();
   return (
     <div className="flex flex-wrap gap-2">
       {PLAN_CHOICES.map((o, i) => (
         <Button key={o} size="sm" variant={i === 0 ? 'default' : 'outline'} onClick={() => answerUi(sid, itemKey, { value: o }, o)}>
-          {o}
+          {t(PLAN_LABEL[o])}
         </Button>
       ))}
     </div>
@@ -605,13 +623,14 @@ export function PlanActions({ sid, itemKey }: { sid: string; itemKey: string }) 
 }
 
 export const PlanItem = memo(function PlanItem({ sid, item }: { sid: string; item: ItemOf<'plan'> }) {
-  const status = item.resolved === 'Keep planning' ? 'Revising plan' : item.resolved === 'cancelled' ? 'Cancelled' : item.resolved ? '✓ Plan approved' : null;
+  const t = useT();
+  const status = item.resolved === 'Keep planning' ? t('plan.revising') : item.resolved === 'cancelled' ? t('plan.cancelled') : item.resolved ? t('plan.approved') : null;
   return (
     <div className="rounded-xl border bg-card">
       <button className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-sm" onClick={() => openPlan(sid, item.key)}>
         <BookmarkIcon className="size-4 text-primary" />
         <span className="flex-1 truncate font-medium">{item.title}</span>
-        <span className="text-xs text-muted-foreground">Open plan</span>
+        <span className="text-xs text-muted-foreground">{t('plan.open')}</span>
         <ChevronRightIcon className="size-3.5 text-muted-foreground" />
       </button>
       {status && <div className="border-t px-3.5 py-2 text-xs text-muted-foreground">{status}</div>}

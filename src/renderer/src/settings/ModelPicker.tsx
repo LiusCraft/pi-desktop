@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { ModelInfo } from '@shared/protocol';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { bridge, call } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 // Radix items cannot have an empty value.
@@ -17,6 +18,7 @@ export function ModelPicker({ value, onChange, emptyLabel, label, className }: {
   label: string;
   className?: string;
 }) {
+  const t = useT();
   const [models, setModels] = useState<ModelInfo[]>([]);
   useEffect(() => {
     const load = () => {
@@ -33,7 +35,7 @@ export function ModelPicker({ value, onChange, emptyLabel, label, className }: {
       <SelectContent position="popper" side="bottom" align="start" sideOffset={4} avoidCollisions={false}>
         <SelectGroup>
           <SelectItem value={NONE}>{emptyLabel}</SelectItem>
-          {!known && <SelectItem value={value!}>{value}（不可用）</SelectItem>}
+          {!known && <SelectItem value={value!}>{t('picker.unavailable', { id: value })}</SelectItem>}
         </SelectGroup>
         {[...new Set(models.map((m) => m.provider))].map((provider) => (
           <SelectGroup key={provider}>

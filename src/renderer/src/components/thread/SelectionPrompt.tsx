@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowUpIcon, MessageCircleQuestionIcon, QuoteIcon, ReplyIcon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDrag } from '@/lib/drag';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 export type PromptMode = 'side' | 'reply';
@@ -21,6 +22,7 @@ export function SelectionPrompt({ mode, quote, x, y, onSubmit, onClose }: {
   onSubmit: (text: string) => void | Promise<void>;
   onClose: () => void;
 }) {
+  const t = useT();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const drag = useDrag();
@@ -52,7 +54,7 @@ export function SelectionPrompt({ mode, quote, x, y, onSubmit, onClose }: {
   return (
     <div
       role="dialog"
-      aria-label={side ? 'Side chat question' : 'Reply to selection'}
+      aria-label={t(side ? 'selection.sidePrompt' : 'selection.replyPrompt')}
       data-testid="selection-prompt"
       data-mode={mode}
       style={{ ...drag.style, left, top, width: WIDTH }}
@@ -60,8 +62,8 @@ export function SelectionPrompt({ mode, quote, x, y, onSubmit, onClose }: {
     >
       <header {...drag.handle} className={cn(drag.handle.className, 'flex items-center gap-1.5 border-b py-1.5 pr-1.5 pl-3 text-sm font-medium')}>
         <Icon className="size-3.5 text-muted-foreground" />
-        <span className="flex-1">{side ? 'Side chat' : 'Reply'}</span>
-        <Button variant="ghost" size="icon" className="size-6 text-muted-foreground" aria-label="关闭" onClick={onClose}>
+        <span className="flex-1">{t(side ? 'selection.sideTitle' : 'selection.replyTitle')}</span>
+        <Button variant="ghost" size="icon" className="size-6 text-muted-foreground" aria-label={t('selection.close')} onClick={onClose}>
           <XIcon className="size-3.5" />
         </Button>
       </header>
@@ -75,8 +77,8 @@ export function SelectionPrompt({ mode, quote, x, y, onSubmit, onClose }: {
             ref={input}
             rows={2}
             value={text}
-            aria-label={side ? 'Side chat message' : 'Reply message'}
-            placeholder={side ? '问问这段内容…（不会写入会话）' : '写下你的回复…（添加到输入框）'}
+            aria-label={t(side ? 'selection.sideMessage' : 'selection.replyMessage')}
+            placeholder={t(side ? 'selection.sidePh' : 'selection.replyPh')}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -86,7 +88,7 @@ export function SelectionPrompt({ mode, quote, x, y, onSubmit, onClose }: {
             }}
             className="max-h-32 min-h-12 flex-1 resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground [field-sizing:content]"
           />
-          <Button size="icon" className="size-7 shrink-0 rounded-full" disabled={!ready || busy} aria-label={side ? 'Ask' : 'Add reply'} onClick={() => void submit()}>
+          <Button size="icon" className="size-7 shrink-0 rounded-full" disabled={!ready || busy} aria-label={t(side ? 'selection.ask' : 'selection.addReply')} onClick={() => void submit()}>
             <ArrowUpIcon className="size-4" />
           </Button>
         </div>

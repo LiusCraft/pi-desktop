@@ -17,7 +17,7 @@ test.beforeEach(async () => {
   fs.mkdirSync(electronProfile, { recursive: true });
   app = await electron.launch({
     executablePath: createRequire(path.resolve('package.json'))('electron') as string,
-    args: [path.resolve('.'), '--demo', `--user-data-dir=${electronProfile}`],
+    args: [path.resolve('.'), '--demo', '--lang=en-US', `--user-data-dir=${electronProfile}`],
     env: { ...process.env, PI_DESKTOP_HOME: dataDir, PI_CODING_AGENT_DIR: path.join(temporary, 'agent'), PI_OFFLINE: '1' },
   });
   await expect.poll(() => fs.existsSync(path.join(dataDir, 'demo', 'todo-app'))).toBe(true);
@@ -51,7 +51,7 @@ test('a new session opens straight away, before its agent and worktree are ready
   await input.press('Enter');
   await expect(page.getByText('日期显示少了一个月，帮我修一下').first()).toBeVisible({ timeout: 3_000 });
   await expect(page.getByText('测试全部通过').first()).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText('正在启动会话…')).toHaveCount(0);
+  await expect(page.getByText('Starting the session…')).toHaveCount(0);
 });
 
 test('archive hides a session, the Archived page restores or deletes it', async () => {
@@ -70,7 +70,7 @@ test('archive hides a session, the Archived page restores or deletes it', async 
   await expect(archived.first()).toBeVisible();
 
   await page.getByRole('button', { name: 'Unarchive' }).click();
-  await expect(page.getByText('没有归档的会话')).toBeVisible();
+  await expect(page.getByText('No archived sessions')).toBeVisible();
   await expect(row(title)).toBeVisible();
 
   // Delete from the sidebar: asks first, then the session and its worktree are gone.
@@ -91,7 +91,7 @@ test('removing a project archives its sessions and leaves the folder alone', asy
   await header.hover();
   await header.getByRole('button', { name: 'Project actions' }).click();
   await page.getByRole('menuitem', { name: 'Remove from Pi Desktop' }).click();
-  await expect(page.getByRole('alertdialog')).toContainText('归档');
+  await expect(page.getByRole('alertdialog')).toContainText('Archive');
   await page.getByRole('alertdialog').getByRole('button', { name: 'Remove' }).click();
   await expect(sidebar().getByTitle(project)).toHaveCount(0);
   expect(fs.existsSync(path.join(project, 'package.json'))).toBe(true);
@@ -108,7 +108,7 @@ test('each session keeps its own workspace: no surprise Diff, layout restored on
 
   await startSession('日期显示少了一个月，帮我修一下');
   // A change arriving must not open the Diff panel by itself.
-  await expect(page.getByRole('button', { name: '回退到这里' }).first()).toBeEnabled({ timeout: 60_000 });
+  await expect(page.getByRole('button', { name: 'Rewind to here' }).first()).toBeEnabled({ timeout: 60_000 });
   await expect(diff).toHaveCount(0);
 
   await mod('d');

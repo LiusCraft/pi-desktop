@@ -2,6 +2,8 @@
 // happening and acts out what the agent is doing (thinking, editing, running a command…).
 import { useEffect, useRef, useState } from 'react';
 import { BUILTIN_PETS, DEFAULT_PET_ID, type PetDef } from '@shared/pets';
+import type { MessageKey } from '@shared/i18n';
+import { t as tr } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/store/app';
 import type { SessionView } from '@/store/types';
@@ -359,18 +361,12 @@ export function PetSprite({ pet, mood = 'idle', walking = false, held = false, j
 
 const GREETED_KEY = 'pet-greeted-on';
 const GREETING_MS = 7000;
-const GREETINGS: Record<'morning' | 'afternoon' | 'evening' | 'night', string[]> = {
-  morning: ['Good morning! Ready when you are.', 'Morning! What are we building today?', 'Rise and shine — coffee first?'],
-  afternoon: ['Good afternoon! What\'s next?', 'Back at it? I\'m here.', 'Afternoon! Got something for me?'],
-  evening: ['Good evening! Wrapping something up?', 'Evening! One more thing before you rest?', 'Hey, nice to see you tonight.'],
-  night: ['Burning the midnight oil? I\'m with you.', 'Still up? Let\'s make it quick.', 'Late night session — I\'ll keep you company.'],
-};
-
-const pick = <T,>(list: readonly T[]) => list[Math.floor(Math.random() * list.length)];
+const GREETING_COUNT = 3;
 
 function greetingFor(date: Date) {
   const h = date.getHours();
-  return pick(GREETINGS[h >= 5 && h < 12 ? 'morning' : h >= 12 && h < 18 ? 'afternoon' : h >= 18 && h < 23 ? 'evening' : 'night']);
+  const period = h >= 5 && h < 12 ? 'morning' : h >= 12 && h < 18 ? 'afternoon' : h >= 18 && h < 23 ? 'evening' : 'night';
+  return tr(`greet.${period}.${1 + Math.floor(Math.random() * GREETING_COUNT)}` as MessageKey);
 }
 
 /** The pet's first words of the day: returns a greeting once per calendar day, then null until tomorrow. */

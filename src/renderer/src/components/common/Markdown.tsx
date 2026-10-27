@@ -1,3 +1,4 @@
+import { t as tr, useT } from '@/lib/i18n';
 import { memo, useState, type ReactNode } from 'react';
 import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -47,6 +48,7 @@ function remarkFileRefs() {
 }
 
 function CodeBlock({ lang, code, extra }: { lang: string; code: string; extra?: ReactNode }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const copy = () => {
     void navigator.clipboard?.writeText(code).then(() => {
@@ -62,7 +64,7 @@ function CodeBlock({ lang, code, extra }: { lang: string; code: string; extra?: 
           {extra}
           <button onClick={copy} className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent hover:text-foreground">
             {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
-            {copied ? '已复制' : '复制'}
+            {t(copied ? 'md.copied' : 'md.copy')}
           </button>
         </div>
       </div>
@@ -89,7 +91,7 @@ const components: Components = {
         href={href}
         onClick={(e) => {
           e.preventDefault();
-          if (href && /^https?:\/\//i.test(href)) call('app:openExternal', href).catch(() => toast.error('无法打开链接'));
+          if (href && /^https?:\/\//i.test(href)) call('app:openExternal', href).catch(() => toast.error(tr('md.openLinkFailed')));
         }}
       >
         {children}

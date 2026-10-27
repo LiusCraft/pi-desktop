@@ -2,17 +2,19 @@
 // gets the full instruction as an ordinary user message in this wrapper; the transcript shows
 // it as a command chip (`/commit`) and keeps the instruction behind a click, like a skill.
 
+import type { MessageKey } from './i18n';
+
 export type BuiltinCommand = 'commit' | 'push' | 'create-pr' | 'update-pr' | 'new-pr' | 'fix-conflicts' | 'fix-ci';
 
 /** What each command is for, shown beside the instruction it expands to. */
-export const BUILTIN_COMMAND_INFO: Record<BuiltinCommand, string> = {
-  commit: '提交当前所有改动',
-  push: '推送当前分支',
-  'create-pr': '提交、推送并创建 PR',
-  'update-pr': '推送并更新已有的 PR',
-  'new-pr': '为已结束的 PR 重新提一个',
-  'fix-conflicts': '合并目标分支并解决冲突',
-  'fix-ci': '修复失败的检查与评审意见',
+export const BUILTIN_COMMAND_INFO: Record<BuiltinCommand, MessageKey> = {
+  commit: 'cmdinfo.commit',
+  push: 'cmdinfo.push',
+  'create-pr': 'cmdinfo.create-pr',
+  'update-pr': 'cmdinfo.update-pr',
+  'new-pr': 'cmdinfo.new-pr',
+  'fix-conflicts': 'cmdinfo.fix-conflicts',
+  'fix-ci': 'cmdinfo.fix-ci',
 };
 
 export interface CommandMessage {

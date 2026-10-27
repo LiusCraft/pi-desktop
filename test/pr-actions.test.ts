@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import { gitActions, type BranchWork } from '../src/renderer/src/components/composer/pr-actions';
+import { setActiveLocale } from '../src/shared/i18n/runtime';
 
 const state = (p: Partial<{ dirty: string[]; ahead: number; upstream: string | null }> = {}) =>
   ({ dirty: [], ahead: 0, upstream: 'origin/feature', ...p });
@@ -71,14 +72,27 @@ describe('branch bar actions', () => {
 
   it('does not ask for a commit when only committed work is waiting', () => {
     const clean = work({ st: state({ ahead: 1 }), pr: { num: 3, state: 'open' } });
-    assert.doesNotMatch(action(clean, 'pr').prompt, /提交当前所有改动/);
+    assert.doesNotMatch(action(clean, 'pr').prompt, /Commit all current changes/);
     const bumped = work({ st: state({ ahead: 1, dirty: ['a.ts'] }), pr: { num: 3, state: 'open' } });
-    assert.match(action(bumped, 'pr').prompt, /提交当前所有改动/);
+    assert.match(action(bumped, 'pr').prompt, /Commit all current changes/);
   });
 
   it('moves the base branch’s commits onto a new branch instead of committing to it', () => {
     const w = work({ branch: 'main', st: state({ ahead: 2, upstream: 'origin/main' }) });
-    assert.match(action(w, 'pr').prompt, /新建|创建/);
-    assert.doesNotMatch(action(w, 'pr').prompt, /不要直接往它提交/); // no local edits to carry over
+    assert.match(action(w, 'pr').prompt, /create a feature branch/);
+    assert.doesNotMatch(action(w, 'pr').prompt, /do not commit to it directly/); // no local edits to carry over
+  });
+});
+
+describe('branch bar prompts follow the UI language', () => {
+  it('asks in Chinese when the app runs in Chinese', () => {
+    setActiveLocale('zh');
+    try {
+      const w = work({ branch: 'main', st: state({ dirty: ['a.ts'] }) });
+      assert.match(action(w, 'pr').prompt, /不要直接往它提交/);
+      assert.equal(action(work(), 'pr').label, '创建 PR');
+    } finally {
+      setActiveLocale('en');
+    }
   });
 });

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CheckIcon, CircleDotIcon, Loader2Icon, MessageSquareIcon, QuoteIcon, SquareArrowOutUpRightIcon } from 'lucide-react';
 import type { PrThread } from '@shared/protocol';
 import { call } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import { ago } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { quotePrThread, replyPrThread, resolvePrThread } from '@/store/actions';
@@ -10,6 +11,7 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** A PR review thread under the diff line it was written on; the jump from the PR bar focuses and flashes it. */
 export function PrThreadCard({ thread, className }: { thread: PrThread; className?: string }) {
+  const t = useT();
   const first = thread.comments[0];
   const [replying, setReplying] = useState(false);
   const [draft, setDraft] = useState('');
@@ -60,18 +62,18 @@ export function PrThreadCard({ thread, className }: { thread: PrThread; classNam
       <div className="flex items-center gap-1.5 border-b bg-muted/40 px-2.5 py-1 text-muted-foreground">
         <MessageSquareIcon className="size-3 shrink-0" />
         <span className="truncate">{first.author}</span>
-        {thread.outdated && <span className="shrink-0 rounded bg-warning/15 px-1 text-[10px] text-warning">outdated</span>}
-        {thread.resolved && <span className="shrink-0 rounded bg-success/15 px-1 text-[10px] text-success">已解决</span>}
-        {thread.comments.length > 1 && <span className="shrink-0 tabular-nums">· {thread.comments.length} 条</span>}
+        {thread.outdated && <span className="shrink-0 rounded bg-warning/15 px-1 text-[10px] text-warning">{t('thread.outdated')}</span>}
+        {thread.resolved && <span className="shrink-0 rounded bg-success/15 px-1 text-[10px] text-success">{t('thread.resolved')}</span>}
+        {thread.comments.length > 1 && <span className="shrink-0 tabular-nums">· {t('thread.nComments', { n: thread.comments.length })}</span>}
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
-          <button className={iconBtn} title="引用到对话" onClick={() => { try { quotePrThread(thread); } catch (e) { setError(errText(e)); } }}>
+          <button className={iconBtn} title={t('thread.quote')} onClick={() => { try { quotePrThread(thread); } catch (e) { setError(errText(e)); } }}>
             <QuoteIcon className="size-3" />
           </button>
-          <button className={iconBtn} disabled={busy} title={thread.resolved ? '重新打开' : '标记为已解决'} onClick={() => void act(() => resolvePrThread(thread.id, !thread.resolved))}>
+          <button className={iconBtn} disabled={busy} title={t(thread.resolved ? 'thread.reopen' : 'thread.markResolved')} onClick={() => void act(() => resolvePrThread(thread.id, !thread.resolved))}>
             {busy ? <Loader2Icon className="size-3 animate-spin" /> : thread.resolved ? <CircleDotIcon className="size-3" /> : <CheckIcon className="size-3" />}
           </button>
           {first.url && (
-            <button className={iconBtn} title="在浏览器打开" onClick={() => call('app:openExternal', first.url)}>
+            <button className={iconBtn} title={t('thread.openBrowser')} onClick={() => call('app:openExternal', first.url)}>
               <SquareArrowOutUpRightIcon className="size-3" />
             </button>
           )}
@@ -94,7 +96,7 @@ export function PrThreadCard({ thread, className }: { thread: PrThread; classNam
               value={draft}
               disabled={busy}
               rows={3}
-              placeholder="写下回复…（⌘/Ctrl+↵ 回复到 PR）"
+              placeholder={t('thread.replyPh')}
               className="w-full resize-y rounded border bg-background px-2 py-1 text-[12.5px] outline-none focus-visible:border-info"
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
@@ -103,13 +105,13 @@ export function PrThreadCard({ thread, className }: { thread: PrThread; classNam
               }}
             />
             <div className="flex justify-end gap-1.5">
-              <button className="rounded px-2 py-0.5 text-muted-foreground hover:bg-accent" disabled={busy} onClick={() => setReplying(false)}>取消</button>
-              <button className="rounded border px-2 py-0.5 hover:bg-accent disabled:opacity-50" disabled={busy || !draft.trim()} onClick={toComposer}>添加到输入框</button>
-              <button className="rounded bg-primary px-2 py-0.5 text-primary-foreground disabled:opacity-50" disabled={busy || !draft.trim()} onClick={submit}>{busy ? '发送中…' : '回复到 PR'}</button>
+              <button className="rounded px-2 py-0.5 text-muted-foreground hover:bg-accent" disabled={busy} onClick={() => setReplying(false)}>{t('thread.cancel')}</button>
+              <button className="rounded border px-2 py-0.5 hover:bg-accent disabled:opacity-50" disabled={busy || !draft.trim()} onClick={toComposer}>{t('thread.addToInput')}</button>
+              <button className="rounded bg-primary px-2 py-0.5 text-primary-foreground disabled:opacity-50" disabled={busy || !draft.trim()} onClick={submit}>{t(busy ? 'thread.sending' : 'thread.replyOnPr')}</button>
             </div>
           </div>
         ) : (
-          <button className="text-muted-foreground hover:text-foreground" onClick={() => setReplying(true)}>回复…</button>
+          <button className="text-muted-foreground hover:text-foreground" onClick={() => setReplying(true)}>{t('thread.reply')}</button>
         )}
         {error && <p className="mt-1 break-words text-[11px] text-destructive">{error}</p>}
       </div>

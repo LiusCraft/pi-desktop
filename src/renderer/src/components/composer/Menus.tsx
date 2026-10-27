@@ -7,7 +7,8 @@ import { call } from '@/lib/api';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { LEVEL_LABEL, MODES } from '@/lib/constants';
+import { levelLabel, MODES } from '@/lib/constants';
+import { useT } from '@/lib/i18n';
 import { fmtTok, fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { chooseEffort, chooseModel, compactSession, fail, setPermMode } from '@/store/actions';
@@ -40,6 +41,7 @@ function Option({ active, title, hint, onSelect }: { active: boolean; title: Rea
 }
 
 export function ModelMenu({ model, trigger, align = 'end' }: { model: string | null; trigger: ReactNode; align?: 'start' | 'end' }) {
+  const t = useT();
   const models = useApp((s) => s.models);
   const menu = useMenu('model');
   const byProvider = new Map<string, ModelInfo[]>();
@@ -59,7 +61,7 @@ export function ModelMenu({ model, trigger, align = 'end' }: { model: string | n
                   key={id}
                   active={id === model}
                   title={m.name || m.id}
-                  hint={[m.contextWindow ? `${fmtTok(m.contextWindow)} context` : '', m.reasoning ? 'reasoning' : ''].filter(Boolean).join(' · ')}
+                  hint={[m.contextWindow ? t('menu.contextWindowUsed', { size: fmtTok(m.contextWindow) }) : '', m.reasoning ? t('menu.reasoning') : ''].filter(Boolean).join(' · ')}
                   onSelect={() => void chooseModel(id)}
                 />
               );
@@ -67,22 +69,23 @@ export function ModelMenu({ model, trigger, align = 'end' }: { model: string | n
           </div>
         ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => call('settings:open', 'models')}>管理模型…</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => call('settings:open', 'models')}>{t('menu.manageModels')}</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
 export function EffortMenu({ levels, effort }: { levels: ThinkingLevel[]; effort: ThinkingLevel | null }) {
+  const t = useT();
   if (!levels.length || (levels.length === 1 && levels[0] === 'off')) return null;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <FootButton title="Thinking effort">{effort ? LEVEL_LABEL[effort] ?? effort : 'Effort'}</FootButton>
+        <FootButton title={t('menu.thinkingEffort')}>{effort ? levelLabel(effort) : t('menu.effort')}</FootButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" side="top" className="w-44">
-        <DropdownMenuLabel className="text-xs text-muted-foreground">Thinking effort</DropdownMenuLabel>
-        {levels.map((l) => <Option key={l} active={l === effort} title={LEVEL_LABEL[l] ?? l} onSelect={() => void chooseEffort(l)} />)}
+        <DropdownMenuLabel className="text-xs text-muted-foreground">{t('menu.thinkingEffort')}</DropdownMenuLabel>
+        {levels.map((l) => <Option key={l} active={l === effort} title={levelLabel(l)} onSelect={() => void chooseEffort(l)} />)}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -95,15 +98,16 @@ const MODE_TONE: Partial<Record<PermissionMode, string>> = {
 };
 
 export function ModeMenu({ mode }: { mode: PermissionMode }) {
+  const t = useT();
   const menu = useMenu('mode');
   const current = MODES.find((m) => m.id === mode) ?? MODES[0];
   return (
     <DropdownMenu {...menu}>
       <DropdownMenuTrigger asChild>
-        <FootButton title="Mode  Shift+Tab" className={MODE_TONE[mode]}>{current.name}</FootButton>
+        <FootButton title={`${t('menu.mode')}  Shift+Tab`} className={MODE_TONE[mode]}>{current.name}</FootButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="top" className="w-80">
-        <DropdownMenuLabel className="text-xs text-muted-foreground">Mode · ⇧Tab to cycle</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-xs text-muted-foreground">{t('menu.modeLabel')}</DropdownMenuLabel>
         {MODES.map((m) => <Option key={m.id} active={m.id === mode} title={m.name} hint={m.desc} onSelect={() => setPermMode(m.id)} />)}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -130,6 +134,7 @@ const pctOf = (n: number, of: number) => `${of ? ((n / of) * 100).toFixed(1) : '
 
 /** The context ring; click it for where the window goes (messages, tools, skills, system prompt, buffer). */
 export function ContextRing({ pct, busy, sid }: { pct: number | null; busy?: boolean; sid?: string }) {
+  const t = useT();
   const p = Math.max(0, Math.min(100, pct ?? 0));
   const menu = useMenu('context');
   const open = !!sid && menu.open;
@@ -142,7 +147,7 @@ export function ContextRing({ pct, busy, sid }: { pct: number | null; busy?: boo
     return () => void (live = false);
   }, [open, sid, pct]);
   const ring = (
-    <span className={cn('flex size-7 items-center justify-center rounded-md text-muted-foreground', sid && 'hover:bg-accent', busy && 'animate-pulse')} title={pct == null ? 'Context' : `Context: ${Math.round(p)}% used`}>
+    <span className={cn('flex size-7 items-center justify-center rounded-md text-muted-foreground', sid && 'hover:bg-accent', busy && 'animate-pulse')} title={pct == null ? t('menu.context') : t('menu.contextUsed', { pct: Math.round(p) })}>
       <svg viewBox="0 0 20 20" className="size-[17px]">
         <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeOpacity=".35" strokeWidth="1.6" />
         <circle cx="10" cy="10" r="7" fill="none" stroke="var(--info)" strokeWidth="2" strokeDasharray={`${((p / 100) * 44).toFixed(1)} 44`} strokeLinecap="round" transform="rotate(-90 10 10)" />
@@ -153,14 +158,14 @@ export function ContextRing({ pct, busy, sid }: { pct: number | null; busy?: boo
   const shown = data?.categories.filter((c) => c.tokens > 0 || c.key === 'messages' || c.key === 'free') ?? [];
   return (
     <Popover open={open} onOpenChange={menu.onOpenChange}>
-      <PopoverTrigger asChild><button aria-label="Context window usage">{ring}</button></PopoverTrigger>
+      <PopoverTrigger asChild><button aria-label={t('menu.contextUsage')}>{ring}</button></PopoverTrigger>
       <PopoverContent side="top" align="end" className="w-[23rem] p-0">
-        {data === undefined ? <div className="p-4 text-sm text-muted-foreground">Measuring context…</div> : !data ? (
-          <div className="p-4 text-sm text-muted-foreground">Context usage is available once the session has a model.</div>
+        {data === undefined ? <div className="p-4 text-sm text-muted-foreground">{t('menu.measuring')}</div> : !data ? (
+          <div className="p-4 text-sm text-muted-foreground">{t('menu.contextNeedsModel')}</div>
         ) : (
           <div className="text-sm">
             <div className="flex items-baseline justify-between px-4 pt-3.5 pb-2">
-              <span className="text-muted-foreground">Context window</span>
+              <span className="text-muted-foreground">{t('menu.contextWindow')}</span>
               <span className="font-mono text-xs text-muted-foreground tabular-nums">
                 {fmtTok(data.used)} / {fmtTok(data.contextWindow)} ({Math.round((data.used / data.contextWindow) * 100)}%)
               </span>
@@ -211,9 +216,9 @@ export function ContextRing({ pct, busy, sid }: { pct: number | null; busy?: boo
             </div>
             <div className="flex items-center gap-2 border-t px-4 py-2.5">
               <Button size="sm" variant="secondary" className="h-7 text-xs" disabled={busy} onClick={() => { menu.onOpenChange(false); void compactSession(sid).catch(fail); }}>
-                Compact now
+                {t('menu.compactNow')}
               </Button>
-              <span className="text-xs text-muted-foreground">{data.estimated ? 'All figures are estimated' : 'Tools, skills and prompt are estimated'}</span>
+              <span className="text-xs text-muted-foreground">{t(data.estimated ? 'menu.allEstimated' : 'menu.partlyEstimated')}</span>
             </div>
           </div>
         )}

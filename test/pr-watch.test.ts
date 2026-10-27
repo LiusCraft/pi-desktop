@@ -5,6 +5,10 @@ import { BACKOFF_MS, FAST_MS, PrWatcher, SLOW_MS } from '../src/agent/pr-watch';
 import type { PrNote } from '../src/shared/pr-event';
 import type { PrStatus } from '../src/shared/protocol';
 import type { PrSnapshot } from '../src/agent/git';
+import { setActiveLocale } from '../src/shared/i18n/runtime';
+
+// These assertions read the host's Chinese messages.
+setActiveLocale('zh');
 
 const status = (p: Partial<PrStatus> = {}): PrStatus => ({
   num: 4, url: 'https://github.com/owner/repo/pull/4', state: 'open', draft: false,

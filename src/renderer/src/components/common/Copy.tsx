@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckIcon, CopyIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 /**
@@ -12,7 +13,7 @@ export async function copyText(text: string) {
     await navigator.clipboard.writeText(text);
     return true;
   } catch {
-    toast.error('Could not write to the clipboard');
+    toast.error(t('copy.failed'));
     return false;
   }
 }

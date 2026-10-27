@@ -2,6 +2,7 @@
 // provider added here works in both. Keys are not written here: the desktop
 // stores them in auth.json through ModelRuntime.login. A keyless local server
 // gets the documented `apiKey: "local"` placeholder so pi considers it usable.
+import { tr } from '@shared/i18n/runtime';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { EndpointDiscovery, EndpointDraft, EndpointInfo, EndpointModel, ModelMeta } from '@shared/protocol';
@@ -164,17 +165,17 @@ export class EndpointStore {
       text = fs.readFileSync(this.file, 'utf8');
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { data: { providers: {} } };
-      return { data: { providers: {} }, error: `无法读取 models.json：${(error as Error).message}` };
+      return { data: { providers: {} }, error: tr('ag.modelsReadFail', { error: (error as Error).message }) };
     }
     try {
       const data = JSON.parse(stripJsonComments(text.replace(/^\uFEFF/, ''))) as ModelsFile;
-      if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('顶层必须是对象');
+      if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error(tr('ag.modelsTopLevel'));
       if (data.providers !== undefined && (typeof data.providers !== 'object' || data.providers === null || Array.isArray(data.providers))) {
-        throw new Error('"providers" 必须是对象');
+        throw new Error(tr('ag.modelsProviders'));
       }
       return { data };
     } catch (error) {
-      return { data: { providers: {} }, error: `models.json 格式错误：${(error as Error).message}` };
+      return { data: { providers: {} }, error: tr('ag.modelsFormat', { error: (error as Error).message }) };
     }
   }
 
@@ -209,13 +210,13 @@ export class EndpointStore {
   /** Write one provider entry, preserving everything else in the file. Throws before writing when invalid or unreadable. */
   save(draft: EndpointDraft) {
     const id = draft.id.trim().toLowerCase();
-    if (!validProviderId(id)) throw new Error('Provider ID 只能包含小写字母、数字、点、下划线和短横线');
+    if (!validProviderId(id)) throw new Error(tr('ag.providerId'));
     const baseUrl = draft.baseUrl.trim().replace(/\/+$/, '');
-    if (!/^https?:\/\//i.test(baseUrl)) throw new Error('API 地址需要以 http:// 或 https:// 开头');
+    if (!/^https?:\/\//i.test(baseUrl)) throw new Error(tr('ag.apiUrl'));
     const api = draft.api.trim();
 
     const { data, error } = this.read();
-    if (error) throw new Error(`${error}。请先手动修复该文件，这里不会覆盖它。`);
+    if (error) throw new Error(tr('ag.fixFirst', { error }));
     const providers = { ...(data.providers ?? {}) };
     const previous = (providers[id] && typeof providers[id] === 'object' ? providers[id] : {}) as ModelsJsonProvider;
 
@@ -232,12 +233,12 @@ export class EndpointStore {
       if (!modelId || seen.has(modelId)) continue;
       for (const key of ['contextWindow', 'maxTokens'] as const) {
         if (model[key] !== undefined && positiveLimit(model[key]) === undefined) {
-          throw new Error(`模型 ${modelId} 的 ${key} 必须大于 0，或留空使用默认值`);
+          throw new Error(tr('ag.modelPositive', { id: modelId, key }));
         }
       }
       for (const key of COST_FIELDS) {
         if (model.cost?.[key] !== undefined && nonNegativePrice(model.cost[key]) === undefined) {
-          throw new Error(`模型 ${modelId} 的价格 ${key} 必须是大于或等于 0 的数字`);
+          throw new Error(tr('ag.modelPrice', { id: modelId, key }));
         }
       }
       seen.add(modelId);
@@ -268,7 +269,7 @@ export class EndpointStore {
 
   remove(id: string) {
     const { data, error } = this.read();
-    if (error) throw new Error(`${error}。请先手动修复该文件，这里不会覆盖它。`);
+    if (error) throw new Error(tr('ag.fixFirst', { error }));
     const providers = { ...(data.providers ?? {}) };
     if (!(id in providers)) return;
     delete providers[id];
@@ -366,7 +367,7 @@ function authHeaders(api: string, apiKey: string | undefined, extra: Record<stri
 
 export async function discoverModels(options: DiscoverOptions): Promise<EndpointDiscovery> {
   const urls = discoveryUrls(options.baseUrl, options.api);
-  if (!urls.length) return { models: [], error: '请先填写 API 地址' };
+  if (!urls.length) return { models: [], error: tr('ag.needApiUrl') };
   const failures: string[] = [];
   for (const url of urls) {
     try {
@@ -380,7 +381,7 @@ export async function discoverModels(options: DiscoverOptions): Promise<Endpoint
       }
       const models = parseModelList(await res.json());
       if (!models.length) {
-        failures.push(`GET ${url} → 没有模型`);
+        failures.push(`GET ${url} → ${tr('ag.noModels')}`);
         continue;
       }
       return { models };
@@ -388,5 +389,5 @@ export async function discoverModels(options: DiscoverOptions): Promise<Endpoint
       failures.push(`GET ${url} → ${(error as Error).message}`);
     }
   }
-  return { models: [], error: `无法获取模型列表：${failures.join('；')}` };
+  return { models: [], error: tr('ag.discoverFail', { failures: failures.join(tr('ag.discoverSep')) }) };
 }

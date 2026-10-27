@@ -1,6 +1,7 @@
 // Scheduled tasks run on this machine, inside the agent host: a timer checks the saved tasks once
 // a minute and starts a fresh session for each one that is due. Like Claude Desktop's local tasks
 // they only fire while the app is running; a miss while it was closed is made up with one catch-up run.
+import { tr } from '@shared/i18n/runtime';
 import crypto from 'node:crypto';
 import type { PromptSubmission } from '@shared/attachments';
 import type { CreateSessionOptions, SessionMeta } from '@shared/protocol';
@@ -56,20 +57,20 @@ export class Scheduler {
   }
   private find(id: string) {
     const t = this.tasks.find((x) => x.id === id);
-    if (!t) throw new Error('找不到这个定时任务');
+    if (!t) throw new Error(tr('ag.taskMissing'));
     return t;
   }
 
   save(draft: TaskDraft): ScheduledTask[] {
     const name = draft.name.trim();
     const prompt = draft.prompt.trim();
-    if (!name) throw new Error('请给任务起个名字');
-    if (!prompt) throw new Error('请写下每次运行要做什么');
-    if (draft.kind === 'code' && !draft.projectPath) throw new Error('请选择一个项目');
+    if (!name) throw new Error(tr('ag.taskNeedName'));
+    if (!prompt) throw new Error(tr('ag.taskNeedPrompt'));
+    if (draft.kind === 'code' && !draft.projectPath) throw new Error(tr('ag.taskNeedProject'));
     const bad = validateSchedule(draft.schedule, this.now());
     if (bad) throw new Error(bad);
     const existing = draft.id ? this.find(draft.id) : null;
-    if (this.tasks.some((t) => t.id !== existing?.id && t.kind === draft.kind && t.name === name)) throw new Error(`已经有一个叫“${name}”的任务`);
+    if (this.tasks.some((t) => t.id !== existing?.id && t.kind === draft.kind && t.name === name)) throw new Error(tr('ag.taskExists', { name }));
     const fields = {
       name, prompt, kind: draft.kind, projectPath: draft.projectPath, worktree: draft.kind === 'code' && draft.worktree,
       mode: draft.mode, model: draft.model, schedule: draft.schedule,
@@ -104,7 +105,7 @@ export class Scheduler {
   /** Run now: starts a session immediately and leaves the schedule alone. */
   async runNow(id: string): Promise<SessionMeta> {
     const t = this.find(id);
-    if (this.firing.has(id)) throw new Error('这个任务正在启动');
+    if (this.firing.has(id)) throw new Error(tr('ag.taskStarting'));
     return this.fire(t, false);
   }
 
@@ -123,7 +124,7 @@ export class Scheduler {
       if (this.firing.has(t.id)) continue;
       const running = t.runs.find((r) => r.sessionId)?.sessionId;
       if (running && this.hub.isRunning(running)) {
-        this.record(t, { at: now, status: 'skipped', note: '上一次运行还没结束' });
+        this.record(t, { at: now, status: 'skipped', note: tr('ag.taskStillRunning') });
         this.advance(t, now);
         continue;
       }
@@ -155,7 +156,7 @@ export class Scheduler {
         kind: t.kind, projectPath: t.projectPath, worktree: t.worktree, title: t.name, model: t.model, mode: t.mode,
       });
       this.hub.announce(meta);
-      this.record(t, { at, sessionId: meta.id, status: 'started', note: catchUp ? '补跑：电脑休眠或应用没开时错过了' : undefined });
+      this.record(t, { at, sessionId: meta.id, status: 'started', note: catchUp ? tr('ag.taskCatchUp') : undefined });
       t.lastRunAt = at;
       if (scheduled) this.advance(t, at);
       this.commit();

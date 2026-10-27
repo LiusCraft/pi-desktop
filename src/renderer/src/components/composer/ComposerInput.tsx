@@ -6,7 +6,8 @@ import { LIMITS } from '@shared/attachments';
 import type { AttachmentSource } from '@shared/protocol';
 import { AttachmentTiles } from '@/components/common/Attachments';
 import { bridge, call } from '@/lib/api';
-import { DESKTOP_COMMANDS } from '@/lib/constants';
+import { desktopCommands } from '@/lib/constants';
+import { useT } from '@/lib/i18n';
 import { fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { cycleMode, loadFiles, send } from '@/store/actions';
@@ -108,6 +109,7 @@ const acceptsGhost = (e: KeyboardEvent<HTMLTextAreaElement>) =>
 
 export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; className?: string; minRows?: number; maxHeight?: number; onDragState?: (over: boolean) => void }>(
   function ComposerInput({ placeholder, className, minRows = 1, maxHeight = 260, onDragState }, ref) {
+    const t = useT();
     const key = useDrafts((s) => s.active);
     const draft = useDrafts((s) => (s.active ? s.drafts[s.active] : undefined));
     const running = useApp((s) => (s.current ? s.sessions[s.current]?.running : false));
@@ -150,7 +152,7 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
       let m: RegExpMatchArray | null;
       let next: Suggestion[] = [];
       if ((m = before.match(/^\/(\S*)$/))) {
-        const all = [...DESKTOP_COMMANDS, ...(s?.commands ?? []).map((c) => [`/${c.name}`, c.description || c.source] as [string, string])];
+        const all = [...desktopCommands(), ...(s?.commands ?? []).map((c) => [`/${c.name}`, c.description || c.source] as [string, string])];
         next = all.filter(([k]) => k.slice(1).startsWith(m![1])).slice(0, 12).map(([k, d]) => ({ label: k, hint: d, insert: `${k} `, from: 0 }));
       } else if ((m = before.match(/(?:^|\s)@([^\s@]*)$/)) && s) {
         if (!s.files) await loadFiles(s.meta.id);
@@ -268,7 +270,7 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
           <div
             ref={menu}
             role="listbox"
-            aria-label="Suggestions"
+            aria-label={t('composer.suggestions')}
             // Clicking the list must not take focus from the textarea (that would close it).
             onMouseDown={(e) => e.preventDefault()}
             className="absolute bottom-full left-0 z-50 mb-2 max-h-72 w-full max-w-md overflow-y-auto overscroll-contain rounded-lg border bg-popover p-1 shadow-lg"
@@ -295,18 +297,18 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
           <div className="mb-2 space-y-2">
             <ContextCards references={draft.references} disabled={draft.sending} onRemove={(id) => drafts.removeReference(key, id)} />
             <AttachmentTiles attachments={draft.attachments} disabled={draft.sending} onRemove={(i) => drafts.removeAttachment(key, i)} />
-            {draft.preparing > 0 && <div className="text-xs text-muted-foreground" role="status">Preparing attachments…</div>}
+            {draft.preparing > 0 && <div className="text-xs text-muted-foreground" role="status">{t('composer.preparing')}</div>}
             {draft.errors.length > 0 && (
               <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive" role="alert">
                 <div className="flex-1 whitespace-pre-wrap">{draft.errors.join('\n')}</div>
-                <button onClick={() => drafts.dismissErrors(key)} aria-label="Dismiss attachment errors"><XIcon className="size-3.5" /></button>
+                <button onClick={() => drafts.dismissErrors(key)} aria-label={t('composer.dismissErrors')}><XIcon className="size-3.5" /></button>
               </div>
             )}
             {draft.recoveries.map((r, i) => (
               <div key={i} className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs">
-                <span className="flex-1 truncate">{r.label || r.text.trim().slice(0, 65) || r.attachments[0]?.name || r.references?.[0]?.path || 'Unsent message'}</span>
-                <button className="text-primary hover:underline" disabled={draft.sending} onClick={() => drafts.restore(key, i)}>Restore</button>
-                <button className="text-muted-foreground hover:underline" onClick={() => drafts.discard(key, i)}>Discard</button>
+                <span className="flex-1 truncate">{r.label || r.text.trim().slice(0, 65) || r.attachments[0]?.name || r.references?.[0]?.path || t('composer.unsent')}</span>
+                <button className="text-primary hover:underline" disabled={draft.sending} onClick={() => drafts.restore(key, i)}>{t('composer.restore')}</button>
+                <button className="text-muted-foreground hover:underline" onClick={() => drafts.discard(key, i)}>{t('composer.discard')}</button>
               </div>
             ))}
           </div>

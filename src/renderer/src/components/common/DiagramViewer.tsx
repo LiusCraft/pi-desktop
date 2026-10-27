@@ -1,3 +1,4 @@
+import { useLocale, useT } from '@/lib/i18n';
 import { useEffect, useRef, useState } from 'react';
 import { MinusIcon, PlusIcon, ScanIcon } from 'lucide-react';
 
@@ -6,6 +7,9 @@ const MAX_SCALE = 8;
 
 /** Pan and zoom around one rendered diagram: wheel zooms at the cursor, dragging pans. */
 export function DiagramViewer({ svg }: { svg: string }) {
+  const t = useT();
+  const locale = useLocale();
+  useEffect(() => { document.title = t('app.diagram'); }, [locale]); // eslint-disable-line react-hooks/exhaustive-deps
   const stage = useRef<HTMLDivElement>(null);
   const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
   const drag = useRef<{ x: number; y: number } | null>(null);
@@ -46,16 +50,16 @@ export function DiagramViewer({ svg }: { svg: string }) {
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
       <div className="flex items-center justify-between border-b px-4 py-2 text-sm">
-        <span className="text-muted-foreground">滚轮缩放 · 拖动平移 · 双击复位</span>
+        <span className="text-muted-foreground">{t('diagram.hint')}</span>
         <div className="flex items-center gap-1">
-          <button className={tool} title="缩小" onClick={() => zoomCenter(1 / 1.25)}>
+          <button className={tool} title={t('diagram.zoomOut')} onClick={() => zoomCenter(1 / 1.25)}>
             <MinusIcon className="size-4" />
           </button>
           <span className="w-12 text-center tabular-nums text-muted-foreground">{Math.round(view.scale * 100)}%</span>
-          <button className={tool} title="放大" onClick={() => zoomCenter(1.25)}>
+          <button className={tool} title={t('diagram.zoomIn')} onClick={() => zoomCenter(1.25)}>
             <PlusIcon className="size-4" />
           </button>
-          <button className={tool} title="适应窗口" onClick={reset}>
+          <button className={tool} title={t('diagram.fit')} onClick={reset}>
             <ScanIcon className="size-4" />
           </button>
         </div>

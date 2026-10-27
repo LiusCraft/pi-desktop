@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { answerUi } from '@/store/actions';
+import { useT } from '@/lib/i18n';
 import type { ItemOf } from '@/store/types';
 
 const EMPTY: QuestionAnswer = { selected: [] };
@@ -56,6 +57,7 @@ function OptionRow({ multi, on, label, description, onClick, onPeek, children }:
 }
 
 function QuestionPane({ q, answer, onChange }: { q: Question; answer: QuestionAnswer; onChange: (a: QuestionAnswer) => void }) {
+  const t = useT();
   const [peek, setPeek] = useState<number | null>(null);
   const [otherOn, setOtherOn] = useState(!!answer.other);
   const multi = q.multiSelect;
@@ -87,7 +89,7 @@ function QuestionPane({ q, answer, onChange }: { q: Question; answer: QuestionAn
         <OptionRow
           multi={multi}
           on={otherOn}
-          label={<span className="flex items-center gap-1.5 text-muted-foreground"><PencilLineIcon className="size-3.5" />Other</span>}
+          label={<span className="flex items-center gap-1.5 text-muted-foreground"><PencilLineIcon className="size-3.5" />{t('q.other')}</span>}
           onClick={toggleOther}
           onPeek={() => setPeek(null)}
         >
@@ -96,7 +98,7 @@ function QuestionPane({ q, answer, onChange }: { q: Question; answer: QuestionAn
               <Input
                 autoFocus
                 className="h-8"
-                placeholder="Type your own answer"
+                placeholder={t('q.otherPh')}
                 value={answer.other ?? ''}
                 onChange={(e) => onChange({ ...answer, other: e.target.value })}
               />
@@ -106,9 +108,9 @@ function QuestionPane({ q, answer, onChange }: { q: Question; answer: QuestionAn
       </div>
       {hasPreview && (
         <div className="min-w-0 rounded-lg border bg-muted/30" data-selectable>
-          <div className="border-b px-3 py-1.5 text-xs font-medium text-muted-foreground">Preview</div>
+          <div className="border-b px-3 py-1.5 text-xs font-medium text-muted-foreground">{t('q.preview')}</div>
           <div className="max-h-60 overflow-auto p-3 text-sm">
-            {preview ? <Markdown text={preview} /> : <span className="text-muted-foreground">No preview for this option.</span>}
+            {preview ? <Markdown text={preview} /> : <span className="text-muted-foreground">{t('q.noPreview')}</span>}
           </div>
         </div>
       )}
@@ -117,6 +119,7 @@ function QuestionPane({ q, answer, onChange }: { q: Question; answer: QuestionAn
 }
 
 export const QuestionsItem = memo(function QuestionsItem({ sid, item }: { sid: string; item: ItemOf<'ask'> }) {
+  const t = useT();
   const r = item.request;
   const questions = r.kind === 'questions' ? r.questions : [];
   const [answers, setAnswers] = useState<QuestionAnswer[]>(() => questions.map(() => EMPTY));
@@ -130,7 +133,7 @@ export const QuestionsItem = memo(function QuestionsItem({ sid, item }: { sid: s
       <div className="rounded-xl border bg-card/60 px-3.5 py-2.5">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           {done ? <CheckIcon className="size-3.5 text-success" /> : <XIcon className="size-3.5 text-destructive" />}
-          <span>{done ? 'Answered' : 'Dismissed'}</span>
+          <span>{t(done ? 'q.answered' : 'q.dismissed')}</span>
         </div>
         {done && (
           <dl className="mt-1.5 space-y-1 text-sm">
@@ -160,8 +163,8 @@ export const QuestionsItem = memo(function QuestionsItem({ sid, item }: { sid: s
       size="icon"
       className="size-7 shrink-0"
       aria-expanded={!collapsed}
-      aria-label={collapsed ? 'Expand questions' : 'Collapse questions'}
-      title={collapsed ? 'Expand' : 'Collapse to review the conversation'}
+      aria-label={t(collapsed ? 'q.expandQuestions' : 'q.collapseQuestions')}
+      title={t(collapsed ? 'q.expand' : 'q.collapse')}
       onClick={() => setCollapsed((c) => !c)}
     >
       {collapsed ? <ChevronUpIcon /> : <ChevronDownIcon />}
@@ -211,25 +214,25 @@ export const QuestionsItem = memo(function QuestionsItem({ sid, item }: { sid: s
                 <TabsContent key={i} value={String(i)} className="space-y-3 p-3.5">
                   <div>
                     <div data-selectable className="text-sm font-medium whitespace-pre-wrap">{q.question}</div>
-                    <div className="mt-0.5 text-xs text-muted-foreground">{q.multiSelect ? 'Select all that apply' : 'Select one'}</div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">{t(q.multiSelect ? 'q.selectAll' : 'q.selectOne')}</div>
                   </div>
                   <QuestionPane q={q} answer={answers[i]} onChange={(a) => set(i, a)} />
                 </TabsContent>
               ))}
             </div>
             <div className="flex items-center gap-2 border-t px-3.5 py-2.5">
-              <Button variant="ghost" size="sm" onClick={() => answerUi(sid, item.key, { cancelled: true }, 'cancelled')}>Dismiss</Button>
+              <Button variant="ghost" size="sm" onClick={() => answerUi(sid, item.key, { cancelled: true }, 'cancelled')}>{t('q.dismiss')}</Button>
               <div className="flex-1" />
               {idx > 0 && (
                 <Button variant="outline" size="sm" onClick={() => setTab(String(idx - 1))}>
-                  <ArrowLeftIcon /> Back
+                  <ArrowLeftIcon /> {t('q.back')}
                 </Button>
               )}
               {last ? (
-                <Button size="sm" disabled={!allDone} onClick={submit}>Submit</Button>
+                <Button size="sm" disabled={!allDone} onClick={submit}>{t('q.submit')}</Button>
               ) : (
                 <Button size="sm" disabled={!isAnswered(answers[idx])} onClick={() => setTab(String(idx + 1))}>
-                  Next <ArrowRightIcon />
+                  {t('q.next')} <ArrowRightIcon />
                 </Button>
               )}
             </div>

@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import type { ArtifactMeta } from '@shared/artifacts';
 import { call } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import { ago } from '@/lib/format';
 import { showArtifacts } from '@/store/actions';
 import { Thumbnail } from './ArtifactsPage';
@@ -9,6 +10,7 @@ import { Thumbnail } from './ArtifactsPage';
 const RECENT_COUNT = 3;
 
 export function RecentArtifacts() {
+  const t = useT();
   const [list, setList] = useState<ArtifactMeta[]>([]);
   useEffect(() => {
     const load = () => void call('artifacts:list').then(setList).catch(() => setList([]));
@@ -21,8 +23,8 @@ export function RecentArtifacts() {
   return (
     <div className="mt-8">
       <div className="mb-2 flex items-center justify-between text-sm text-muted-foreground">
-        <span>Recent artifacts</span>
-        <button className="text-xs hover:text-foreground" onClick={showArtifacts}>View all</button>
+        <span>{t('artifacts.recent')}</span>
+        <button className="text-xs hover:text-foreground" onClick={showArtifacts}>{t('artifacts.viewAll')}</button>
       </div>
       <div className="grid gap-2 sm:grid-cols-3">
         {recent.map((a) => (

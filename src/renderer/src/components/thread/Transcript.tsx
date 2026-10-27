@@ -3,6 +3,7 @@ import { CheckIcon, ChevronDownIcon, CircleAlertIcon, PinIcon } from 'lucide-rea
 import { findRange, markQuoted, quoteLinks, revealItem, type QuotePin } from '@/lib/quote-links';
 import type { SetupStep } from '@shared/protocol';
 import { fmtDur, fmtTok } from '@/lib/format';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { PET_PERCH } from '@/components/composer/Clawd';
 import { runningTasks } from '@/components/workspace/Panels';
@@ -15,6 +16,7 @@ import { AskCard, FootItem, GroupItem, isPendingAsk, NoteItem, PermItem, PlanIte
 
 /** Under a passage that was replied to: a pin per reply, which jumps to the message that quoted it. */
 function QuotePins({ pins }: { pins?: QuotePin[] }) {
+  const t = useT();
   if (!pins?.length) return null;
   return (
     <div data-quote-pins className="mt-1 flex flex-wrap gap-1.5">
@@ -23,11 +25,11 @@ function QuotePins({ pins }: { pins?: QuotePin[] }) {
           key={pin.userKey}
           type="button"
           onClick={() => revealItem(pin.userKey)}
-          title={pin.comment ? `被回复：${pin.comment}` : '被回复，点击查看'}
+          title={pin.comment ? t('transcript.pinTip', { comment: pin.comment }) : t('transcript.pinTipClick')}
           className="flex max-w-64 items-center gap-1 rounded-full border bg-muted/30 px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <PinIcon className="size-3 shrink-0" />
-          <span className="truncate">{pin.comment || '被回复'}</span>
+          <span className="truncate">{pin.comment || t('transcript.pinLabel')}</span>
         </button>
       ))}
     </div>
@@ -56,12 +58,13 @@ function renderItem(sid: string, item: Item, items: Item[], index: number, view:
 
 /** What is happening while a session starts: the worktree, then the agent with its extensions and MCP servers. */
 function SetupCard({ steps }: { steps: SetupStep[] }) {
+  const t = useT();
   const failed = steps.some((x) => x.state === 'error');
   return (
     <div className="rounded-xl border bg-card px-4 py-3 text-sm">
       <div className="mb-2 flex items-center gap-2 font-medium">
         {failed ? <CircleAlertIcon className="size-4 text-destructive" /> : <span className="spark spin" />}
-        {failed ? '会话启动失败' : '正在启动会话…'}
+        {t(failed ? 'transcript.setupFailed' : 'transcript.setupRunning')}
       </div>
       <ul className="space-y-1.5">
         {steps.map((step) => (
@@ -79,12 +82,13 @@ function SetupCard({ steps }: { steps: SetupStep[] }) {
           </li>
         ))}
       </ul>
-      {failed && <div className="mt-2 text-xs text-muted-foreground">再发一条消息会重试；不需要这个会话时可以删除它。</div>}
+      {failed && <div className="mt-2 text-xs text-muted-foreground">{t('transcript.setupRetry')}</div>}
     </div>
   );
 }
 
 function StatusLine({ s }: { s: SessionView }) {
+  const t = useT();
   const [, tick] = useState(0);
   useEffect(() => {
     if (!s.running) return;
@@ -99,8 +103,8 @@ function StatusLine({ s }: { s: SessionView }) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <span className="spark opacity-60" />
-        <button className="rounded-md bg-info/15 px-1.5 py-0.5 text-info hover:bg-info/25" title="Show background tasks" onClick={() => togglePanel(s.meta.id, 'tasks', true)}>
-          {tasks} running task{tasks > 1 ? 's' : ''}
+        <button className="rounded-md bg-info/15 px-1.5 py-0.5 text-info hover:bg-info/25" title={t('transcript.showTasks')} onClick={() => togglePanel(s.meta.id, 'tasks', true)}>
+          {t(tasks > 1 ? 'transcript.runningTasks' : 'transcript.runningTask', { n: tasks })}
         </button>
       </div>
     );
@@ -108,17 +112,17 @@ function StatusLine({ s }: { s: SessionView }) {
   return (
     <div className="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap text-sm text-muted-foreground">
       <span className="spark spin shrink-0" />
-      <span className="shrink-0">{fmtDur(Date.now() - s.t0)} · {fmtTok(s.tokens)} tokens</span>
+      <span className="shrink-0">{t('transcript.tokens', { dur: fmtDur(Date.now() - s.t0), tokens: fmtTok(s.tokens) })}</span>
       {tasks > 0 && (
         <button
           className="shrink-0 rounded-md bg-info/15 px-1.5 py-0.5 text-info hover:bg-info/25"
-          title="Show background tasks"
+          title={t('transcript.showTasks')}
           onClick={() => togglePanel(s.meta.id, 'tasks', true)}
         >
-          {tasks} running task{tasks > 1 ? 's' : ''}
+          {t(tasks > 1 ? 'transcript.runningTasks' : 'transcript.runningTask', { n: tasks })}
         </button>
       )}
-      <span className="min-w-0 flex-1 truncate">{s.waiting ? 'Waiting for you…' : s.statusText || 'Thinking…'}</span>
+      <span className="min-w-0 flex-1 truncate">{s.waiting ? t('transcript.waitingYou') : s.statusText || t('status.thinking')}</span>
     </div>
   );
 }
@@ -141,6 +145,7 @@ const nearBottom = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clie
 
 /** The conversation, kept pinned to the bottom while the user is near it. */
 export function Transcript({ s }: { s: SessionView }) {
+  const t = useT();
   const view = useApp((st) => st.prefs.viewMode);
   const scroller = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLDivElement>(null);
@@ -260,8 +265,8 @@ export function Transcript({ s }: { s: SessionView }) {
         <button
           type="button"
           onClick={jumpToLatest}
-          title="Jump to the newest message"
-          aria-label="Jump to the newest message"
+          title={t('transcript.jump')}
+          aria-label={t('transcript.jump')}
           className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border bg-card/95 px-3 py-1.5 text-xs text-muted-foreground shadow-md backdrop-blur transition-colors hover:bg-accent hover:text-foreground"
         >
           <ChevronDownIcon className="size-3.5" />

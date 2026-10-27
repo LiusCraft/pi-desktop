@@ -3,6 +3,7 @@ import { MessageCircleQuestionIcon, ReplyIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { errText } from '@/lib/api';
 import { replyWith } from '@/store/actions';
+import { useT } from '@/lib/i18n';
 import { askSide } from '@/store/side';
 import { SelectionPrompt, type PromptMode } from './SelectionPrompt';
 
@@ -18,6 +19,7 @@ interface Picked {
  * Either one is typed in a small draggable popup.
  */
 export function SelectionMenu({ sid, scope }: { sid: string; scope: RefObject<HTMLElement | null> }) {
+  const t = useT();
   const [picked, setPicked] = useState<Picked | null>(null);
   const [prompt, setPrompt] = useState<(Picked & { mode: PromptMode }) | null>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -92,7 +94,7 @@ export function SelectionMenu({ sid, scope }: { sid: string; scope: RefObject<HT
     <div
       ref={menu}
       role="menu"
-      aria-label="Selection actions"
+      aria-label={t('selection.actions')}
       // Pressing a button must not collapse the selection it acts on.
       onMouseDown={(e) => e.preventDefault()}
       style={{ left, top: above ? picked.y - 8 : picked.y + 28, transform: above ? 'translate(-50%, -100%)' : 'translateX(-50%)' }}
@@ -103,14 +105,14 @@ export function SelectionMenu({ sid, scope }: { sid: string; scope: RefObject<HT
         className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-accent"
         onClick={() => open('side')}
       >
-        <MessageCircleQuestionIcon className="size-3.5" />Send side chat
+        <MessageCircleQuestionIcon className="size-3.5" />{t('selection.sideChat')}
       </button>
       <button
         role="menuitem"
         className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-accent"
         onClick={() => open('reply')}
       >
-        <ReplyIcon className="size-3.5" />Reply
+        <ReplyIcon className="size-3.5" />{t('selection.reply')}
       </button>
     </div>
   );

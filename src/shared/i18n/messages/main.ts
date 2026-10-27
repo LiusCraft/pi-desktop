@@ -1,0 +1,33 @@
+import { defineMessages } from '../define';
+
+export const main = defineMessages({
+  'main.rename': { en: 'Rename', zh: '重命名' },
+  'main.copyWorktreePath': { en: 'Copy worktree path', zh: '复制 worktree 路径' },
+  'main.copyFolderPath': { en: 'Copy folder path', zh: '复制文件夹路径' },
+  'main.exportHtml': { en: 'Export as HTML', zh: '导出为 HTML' },
+  'main.transcriptView': { en: 'Transcript view', zh: '对话视图' },
+  'main.outputStyle': { en: 'Output style', zh: '输出风格' },
+  'main.archive': { en: 'Archive', zh: '归档' },
+  'main.delete': { en: 'Delete…', zh: '删除…' },
+  'main.tempWorkspace': { en: 'Temporary workspace', zh: '临时工作区' },
+  'main.backgroundTasks': { en: 'Background tasks', zh: '后台任务' },
+  'main.progress': { en: 'Progress', zh: '进度' },
+  'main.terminal': { en: 'Terminal', zh: '终端' },
+  'main.diff': { en: 'Diff', zh: 'Diff' },
+  'main.preview': { en: 'Preview', zh: '预览' },
+  'main.files': { en: 'Files', zh: '文件' },
+  'main.openIn': { en: 'Open in…', zh: '打开方式…' },
+  'main.newTask': { en: 'New task', zh: '新任务' },
+  'main.newSession': { en: 'New session', zh: '新会话' },
+  'main.letsBuild': { en: 'Let’s build', zh: '开始构建吧' },
+  'main.ideasForYou': { en: 'Ideas for you', zh: '给你的灵感' },
+  'main.stillUp': { en: 'Still up?', zh: '还没休息？' },
+  'main.youreHere': { en: 'You’re here!', zh: '你来啦！' },
+
+  'page.customize': { en: 'Customize', zh: '自定义' },
+  'page.scheduled': { en: 'Scheduled', zh: '定时任务' },
+  'page.archived': { en: 'Archived sessions', zh: '已归档的会话' },
+  'page.activity': { en: 'Activity', zh: '活动' },
+  'page.artifacts': { en: 'Artifacts', zh: '制品' },
+  'page.projects': { en: 'Projects', zh: '项目' },
+});

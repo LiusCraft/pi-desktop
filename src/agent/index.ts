@@ -1,6 +1,7 @@
 // Agent host: an Electron utilityProcess that runs every pi session in-process
 // through the SDK. The main process talks to it over the parent port with
 // id-correlated calls; session events flow back as a single event stream.
+import { setActiveLocale } from '@shared/i18n/runtime';
 import type { HostMethod, HostToMain, MainToHost } from '@shared/protocol';
 import { importAttachments } from './attachments';
 import * as git from './git';
@@ -38,7 +39,9 @@ type Handler = (...args: any[]) => unknown;
 const withHub = (fn: (hub: SessionHub, ...args: any[]) => unknown): Handler => async (...args) => fn(await ready, ...args);
 
 const handlers: Record<HostMethod, Handler> = {
-  'host:init': async ({ dataDir, agentDir, demo }) => {
+  'host:locale': (locale) => setActiveLocale(locale),
+  'host:init': async ({ dataDir, agentDir, demo, locale }) => {
+    setActiveLocale(locale);
     if (hub) return;
     hub = new SessionHub({ dataDir, agentDir, demoModel: demo, emit: (event) => send({ kind: 'event', event }) });
     await hub.init();

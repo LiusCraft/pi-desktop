@@ -2,6 +2,7 @@
 //
 // The renderer draws them with xterm.js; this side owns the processes, so a tab
 // keeps running (and keeps its output) while the panel is hidden.
+import { tr } from '@shared/i18n/runtime';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -39,7 +40,7 @@ function windowsShells(): TerminalShell[] {
   const found: (TerminalShell | undefined)[] = [
     pick('PowerShell 7', onPath('pwsh')),
     pick('Windows PowerShell', path.join(system, 'WindowsPowerShell', 'v1.0', 'powershell.exe')),
-    pick('命令提示符', path.join(system, 'cmd.exe')),
+    pick(tr('terminal.cmd'), path.join(system, 'cmd.exe')),
     pick('Git Bash', bashDir ? path.join(bashDir, 'bash.exe') : undefined),
     pick('WSL', path.join(system, 'wsl.exe')),
   ];
@@ -180,7 +181,7 @@ export class Terminals {
 
   private get(id: string) {
     const t = this.terms.get(id);
-    if (!t) throw new Error('终端已关闭');
+    if (!t) throw new Error(tr('terminal.closed'));
     return t;
   }
 }

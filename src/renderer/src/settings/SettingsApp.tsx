@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { BrainIcon, BriefcaseIcon, CodeIcon, DatabaseIcon, FolderIcon, InfoIcon, MonitorSmartphoneIcon, MoonIcon, PlusIcon, SettingsIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AppInfo, Project, Settings, SettingsPayload, SuggestionModelMode, TerminalShell, WorkIdeasModelMode } from '@shared/protocol';
+import { LOCALES, LOCALE_NAMES, type LanguageSetting, type MessageKey } from '@shared/i18n';
 import { SUGGESTION_DEFAULT_CONTEXT, SUGGESTION_MAX_CONTEXT } from '@shared/protocol';
 import { BUILTIN_PETS, BUILTIN_PET_IDS, DEFAULT_PET_ID } from '@shared/pets';
 import { useCopy } from '@/components/common/Copy';
@@ -17,6 +18,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Toaster } from 'sonner';
 import { bridge, call, errText, isMac } from '@/lib/api';
+import { useLocale, useT } from '@/lib/i18n';
 import { applyTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import { allPets, PetSprite } from '@/components/composer/Clawd';
@@ -26,34 +28,30 @@ import { RemoteSection } from './RemoteSection';
 import { StorageSection } from './StorageSection';
 
 type Section = 'appearance' | 'general' | 'work' | 'code' | 'models' | 'projects' | 'remote' | 'storage' | 'about';
-const SECTIONS: { id: Section; label: string; icon: ReactNode }[] = [
-  { id: 'appearance', label: '外观', icon: <MoonIcon className="size-4" /> },
-  { id: 'general', label: '通用', icon: <SettingsIcon className="size-4" /> },
-  { id: 'work', label: 'Work', icon: <BriefcaseIcon className="size-4" /> },
-  { id: 'code', label: 'Code', icon: <CodeIcon className="size-4" /> },
-  { id: 'models', label: '模型管理', icon: <BrainIcon className="size-4" /> },
-  { id: 'projects', label: '项目与文件夹', icon: <FolderIcon className="size-4" /> },
-  { id: 'remote', label: '远程', icon: <MonitorSmartphoneIcon className="size-4" /> },
-  { id: 'storage', label: '对象存储', icon: <DatabaseIcon className="size-4" /> },
-  { id: 'about', label: '关于', icon: <InfoIcon className="size-4" /> },
+const SECTIONS: { id: Section; label: MessageKey | null; icon: ReactNode }[] = [
+  { id: 'appearance', label: 'settings.section.appearance', icon: <MoonIcon className="size-4" /> },
+  { id: 'general', label: 'settings.section.general', icon: <SettingsIcon className="size-4" /> },
+  { id: 'work', label: null, icon: <BriefcaseIcon className="size-4" /> },
+  { id: 'code', label: null, icon: <CodeIcon className="size-4" /> },
+  { id: 'models', label: 'settings.section.models', icon: <BrainIcon className="size-4" /> },
+  { id: 'projects', label: 'settings.section.projects', icon: <FolderIcon className="size-4" /> },
+  { id: 'remote', label: 'settings.section.remote', icon: <MonitorSmartphoneIcon className="size-4" /> },
+  { id: 'storage', label: 'settings.section.storage', icon: <DatabaseIcon className="size-4" /> },
+  { id: 'about', label: 'settings.section.about', icon: <InfoIcon className="size-4" /> },
 ];
 // `keys` was the old section id: keep old links working.
 const normalizeSection = (s: string): Section => (s === 'keys' ? 'models' : (s as Section));
 const isSection = (s: string): s is Section => SECTIONS.some((x) => x.id === s || (x.id === 'models' && s === 'keys'));
 /** Select value standing for `terminalShell: null`. */
 const SYSTEM_SHELL = 'system';
-const revealLabel = isMac ? '在 Finder 中显示' : '在资源管理器中显示';
-const SUGGESTION_MODES: { id: SuggestionModelMode; label: string; hint: string }[] = [
-  { id: 'session', label: '跟随会话', hint: '用会话当前的模型（默认），更好但可能更贵' },
-  { id: 'auto', label: '自动', hint: '同 provider 里单价最低的小模型' },
-  { id: 'fixed', label: '指定', hint: '固定使用下面选择的模型' },
-];
-
-const WORK_IDEAS_MODES: { id: WorkIdeasModelMode; label: string; hint: string }[] = [
-  { id: 'session', label: '跟随会话', hint: '用最近一个 Work 会话的模型（默认）' },
-  { id: 'auto', label: '自动', hint: '同 provider 里单价最低的小模型' },
-  { id: 'fixed', label: '指定', hint: '固定使用下面选择的模型' },
-];
+const revealKey = isMac ? 'settings.showInFinder' : 'settings.showInExplorer';
+/** Built-in pets are named in the app's language; the user's own keep the label they gave. */
+const PET_LABEL_KEY: Record<string, MessageKey> = { cat: 'pet.cat', robot: 'pet.robot' };
+const MODEL_MODE_LABELS = [
+  { id: 'session', label: 'settings.followSession' },
+  { id: 'auto', label: 'settings.auto' },
+  { id: 'fixed', label: 'settings.fixed' },
+] as const satisfies readonly { id: SuggestionModelMode & WorkIdeasModelMode; label: MessageKey }[];
 
 function Row({ title, hint, children, col }: { title: ReactNode; hint?: ReactNode; children?: ReactNode; col?: boolean }) {
   return (
@@ -109,14 +107,15 @@ function SwatchGroup<T extends string>({ value, onChange, options }: { value: T;
   );
 }
 
-const THEMES: readonly Swatch<'light' | 'dark' | 'system'>[] = [
-  { id: 'light', label: '浅色', tile: 'bg-[#faf9f5]' },
-  { id: 'dark', label: '深色', tile: 'bg-[#262624]' },
-  { id: 'system', label: '跟随系统', tile: 'bg-gradient-to-r from-[#faf9f5] from-50% to-[#262624] to-50%' },
+const THEMES: readonly { id: 'light' | 'dark' | 'system'; label: MessageKey; tile: string }[] = [
+  { id: 'light', label: 'settings.themeLight', tile: 'bg-[#faf9f5]' },
+  { id: 'dark', label: 'settings.themeDark', tile: 'bg-[#262624]' },
+  { id: 'system', label: 'settings.themeSystem', tile: 'bg-gradient-to-r from-[#faf9f5] from-50% to-[#262624] to-50%' },
 ];
 
 /** Number input that commits on blur or Enter, so a half-typed count is never saved. */
 function CountInput({ value, disabled, onCommit }: { value: number; disabled?: boolean; onCommit: (value: number) => void }) {
+  const t = useT();
   const [text, setText] = useState(String(value));
   useEffect(() => setText(String(value)), [value]);
   const commit = () => {
@@ -131,7 +130,7 @@ function CountInput({ value, disabled, onCommit }: { value: number; disabled?: b
       max={SUGGESTION_MAX_CONTEXT}
       value={text}
       disabled={disabled}
-      aria-label="预测上下文条数"
+      aria-label={t('settings.predictCountLabel')}
       onChange={(e) => setText(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
@@ -141,12 +140,14 @@ function CountInput({ value, disabled, onCommit }: { value: number; disabled?: b
 }
 
 /** The template shown when adding a pet: the first built-in one, so a new skin starts from a working example. */
-const PET_TEMPLATE = JSON.stringify({ ...BUILTIN_PETS[0], id: 'my-pet', label: '我的宠物' }, null, 2);
+const petTemplate = (label: string) => JSON.stringify({ ...BUILTIN_PETS[0], id: 'my-pet', label }, null, 2);
 
 /** Paste a pet definition (same format as the built-in pets) and save it as a new skin. */
 function AddPet({ onSave }: { onSave: (pet: unknown) => Promise<void> }) {
+  const t = useT();
+  const template = petTemplate(t('settings.petName'));
   const [open, setOpen] = useState(false);
-  const [text, setText] = useState(PET_TEMPLATE);
+  const [text, setText] = useState(template);
   const [error, setError] = useState('');
   const { copy } = useCopy();
   const save = async () => {
@@ -158,24 +159,25 @@ function AddPet({ onSave }: { onSave: (pet: unknown) => Promise<void> }) {
       setError(errText(err));
     }
   };
-  if (!open) return <Button variant="outline" size="sm" onClick={() => setOpen(true)}><PlusIcon className="size-4" />新增宠物</Button>;
+  if (!open) return <Button variant="outline" size="sm" onClick={() => setOpen(true)}><PlusIcon className="size-4" />{t('settings.addPet')}</Button>;
   return (
     <div className="w-full space-y-2">
-      <p className="text-xs text-muted-foreground">
-        和内置宠物同样的格式：一组彩色矩形（x、y、w、h），带 <code>leg a</code> / <code>arm l</code> / <code>eyes</code> / <code>mouth</code> / <code>tail</code> 等部位名的矩形会自动有对应动作。也可以在 Work 里直接对 AI 说「帮我做一只小狐狸宠物」。
-      </p>
+      <p className="text-xs text-muted-foreground">{t('settings.petFormat')}</p>
       <Textarea value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} className="h-56 font-mono text-xs" />
       {error && <p className="text-xs text-destructive">{error}</p>}
       <div className="flex gap-2">
-        <Button size="sm" onClick={() => void save()}>保存</Button>
-        <Button variant="ghost" size="sm" onClick={() => { setOpen(false); setError(''); }}>取消</Button>
-        <Button variant="ghost" size="sm" onClick={() => copy(PET_TEMPLATE)}>复制模板</Button>
+        <Button size="sm" onClick={() => void save()}>{t('settings.save')}</Button>
+        <Button variant="ghost" size="sm" onClick={() => { setOpen(false); setError(''); }}>{t('settings.cancel')}</Button>
+        <Button variant="ghost" size="sm" onClick={() => copy(template)}>{t('settings.copyTemplate')}</Button>
       </div>
     </div>
   );
 }
 
 export function SettingsApp() {
+  const t = useT();
+  const locale = useLocale();
+  useEffect(() => { document.title = t('settings.title'); }, [locale]); // eslint-disable-line react-hooks/exhaustive-deps
   const [settings, setSettings] = useState<Partial<SettingsPayload>>(bridge.boot.settings ?? {});
   const [section, setSection] = useState<Section>(() => (isSection(location.hash.slice(1)) ? normalizeSection(location.hash.slice(1)) : 'appearance'));
   const [info, setInfo] = useState<AppInfo | null>(null);
@@ -240,33 +242,44 @@ export function SettingsApp() {
     setFolders(await call('work:folders'));
   };
 
+  const modeOptions = MODEL_MODE_LABELS.map((o) => ({ id: o.id, label: t(o.label) }));
+  const unspecified = t('settings.unspecified');
   const theme = settings.theme === 'light' || settings.theme === 'dark' ? settings.theme : 'system';
   let body: ReactNode;
   if (section === 'appearance') {
     body = (
       <>
-        <Heading title="外观" sub="Pi Desktop 在这台电脑上的显示方式。" />
+        <Heading title={t('settings.section.appearance')} sub={t('settings.appearance.sub')} />
         <Panel>
-          <Row title="主题" hint="跟随系统时会随 macOS / Windows 的外观自动切换。" col>
-            <SwatchGroup value={theme} onChange={(id) => void patch({ theme: id })} options={THEMES} />
+          <Row title={t('settings.language')} hint={t('settings.language.hint')}>
+            <Select value={settings.language ?? 'system'} onValueChange={(v) => void patch({ language: v as LanguageSetting })}>
+              <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                <SelectItem value="system">{t('settings.language.system')}</SelectItem>
+                {LOCALES.map((l) => <SelectItem key={l} value={l}>{LOCALE_NAMES[l]}</SelectItem>)}
+              </SelectGroup></SelectContent>
+            </Select>
           </Row>
-          <Row title="侧边栏" hint="启动时收起左侧导航。">
+          <Row title={t('settings.theme')} hint={t('settings.theme.hint')} col>
+            <SwatchGroup value={theme} onChange={(id) => void patch({ theme: id })} options={THEMES.map((o) => ({ ...o, label: t(o.label) }))} />
+          </Row>
+          <Row title={t('settings.sidebar')} hint={t('settings.sidebar.hint')}>
             <Switch checked={!!settings.sidebarCollapsed} onCheckedChange={(v) => void patch({ sidebarCollapsed: v })} />
           </Row>
-          <Row title="桌面宠物" hint="输入框上方走来走去、会随 agent 状态变化的像素小宠物。">
+          <Row title={t('settings.pet')} hint={t('settings.pet.hint')}>
             <Switch checked={settings.pet !== false} onCheckedChange={(v) => void patch({ pet: v })} />
           </Row>
           {settings.pet !== false && (
-            <Row title="宠物皮肤" col>
+            <Row title={t('settings.petSkin')} col>
               <SwatchGroup
                 value={settings.petSkin ?? DEFAULT_PET_ID}
                 onChange={(id) => void patch({ petSkin: id })}
-                options={allPets(settings.pets).map((p) => ({ id: p.id, label: p.label, tile: 'bg-muted/50', preview: <PetSprite pet={p} size={1.1} /> }))}
+                options={allPets(settings.pets).map((p) => ({ id: p.id, label: PET_LABEL_KEY[p.id] ? t(PET_LABEL_KEY[p.id]) : p.label, tile: 'bg-muted/50', preview: <PetSprite pet={p} size={1.1} /> }))}
               />
               <div className="mt-3 flex flex-wrap items-start gap-2">
                 <AddPet onSave={savePet} />
                 {(settings.pets ?? []).filter((p) => !BUILTIN_PET_IDS.includes(p.id)).map((p) => (
-                  <Button key={p.id} variant="ghost" size="sm" onClick={() => void removePet(p.id)} title={`删除 ${p.label}`}>
+                  <Button key={p.id} variant="ghost" size="sm" onClick={() => void removePet(p.id)} title={t('settings.deletePet', { name: p.label })}>
                     <Trash2Icon className="size-3.5" />{p.label}
                   </Button>
                 ))}
@@ -279,13 +292,13 @@ export function SettingsApp() {
   } else if (section === 'general') {
     body = (
       <>
-        <Heading title="通用" sub="通知、默认视图、AI 工具、回复渲染与输入预测。" />
+        <Heading title={t('settings.section.general')} sub={t('settings.general.sub')} />
         <div className="space-y-6">
-          <Group title="基础">
-            <Row title="任务通知" hint="任务跑完且窗口不在最前面时，发送系统通知。">
+          <Group title={t('settings.basics')}>
+            <Row title={t('settings.notify')} hint={t('settings.notify.hint')}>
               <Switch checked={settings.notify !== false} onCheckedChange={(v) => void patch({ notify: v })} />
             </Row>
-            <Row title="默认分区" hint="第一次启动时打开的视图；之后会记住你最后切换到的分区。">
+            <Row title={t('settings.defaultMode')} hint={t('settings.defaultMode.hint')}>
               <Segmented
                 value={settings.defaultMode ?? 'code'}
                 options={[{ id: 'code', label: 'Code' }, { id: 'work', label: 'Work' }]}
@@ -294,49 +307,49 @@ export function SettingsApp() {
             </Row>
           </Group>
 
-          <Group title="AI 工具" sub="让 AI 在对话里替你操作这些页面，比如“每天早上 9 点跑一遍测试”。关闭后新开的会话里不再提供对应工具，已打开的会话不受影响。">
-            <Row title="定时任务" hint="创建、修改、运行「定时任务」页里的任务。">
+          <Group title={t('settings.aiTools')} sub={t('settings.aiTools.sub')}>
+            <Row title={t('settings.aiSchedule')} hint={t('settings.aiSchedule.hint')}>
               <Switch checked={settings.aiSchedule !== false} onCheckedChange={(v) => void patch({ aiSchedule: v })} />
             </Row>
-            <Row title="自定义" hint="添加或移除技能、连接器（MCP）和插件。连接器与插件会在本机执行代码。">
+            <Row title={t('settings.aiCustomize')} hint={t('settings.aiCustomize.hint')}>
               <Switch checked={settings.aiCustomize !== false} onCheckedChange={(v) => void patch({ aiCustomize: v })} />
             </Row>
-            <Row title="应用设置" hint="修改主题、宠物、通知、输入预测等设置。API 密钥、终端、文件夹和这几个开关本身不开放给 AI。">
+            <Row title={t('settings.aiSettings')} hint={t('settings.aiSettings.hint')}>
               <Switch checked={settings.aiSettings !== false} onCheckedChange={(v) => void patch({ aiSettings: v })} />
             </Row>
           </Group>
 
-          <Group title="回复渲染">
-            <Row title="渲染 Mermaid 图表" hint="回复里的 mermaid 代码块默认画成图表（可缩放、可在新窗口查看）。关闭后显示为普通代码，单个图表仍可手动渲染。">
+          <Group title={t('settings.replyRendering')}>
+            <Row title={t('settings.mermaid')} hint={t('settings.mermaid.hint')}>
               <Switch checked={settings.renderMermaid !== false} onCheckedChange={(v) => void patch({ renderMermaid: v })} />
             </Row>
           </Group>
 
-          <Group title="输入预测" sub="每轮任务结束后用一个模型猜你下一句想说什么，以灰色文字显示在空输入框里。按 → 或 Tab 采用，Esc 忽略。">
-            <Row title="启用输入预测">
+          <Group title={t('settings.prediction')} sub={t('settings.prediction.sub')}>
+            <Row title={t('settings.prediction.enable')}>
               <Switch checked={settings.suggestions !== false} onCheckedChange={(v) => void patch({ suggestions: v })} />
             </Row>
             {settings.suggestions !== false && (
               <>
-                <Row title="预测模型" hint="自动 = 同 provider 里最便宜的小模型；指定的模型不可用时回退到自动。离线 Demo 模型不参与预测。">
-                  <Segmented value={settings.suggestionModel ?? 'session'} options={SUGGESTION_MODES} onChange={(m) => void patch({ suggestionModel: m })} />
+                <Row title={t('settings.prediction.model')} hint={t('settings.prediction.model.hint')}>
+                  <Segmented value={settings.suggestionModel ?? 'session'} options={modeOptions} onChange={(m) => void patch({ suggestionModel: m })} />
                 </Row>
                 {(settings.suggestionModel ?? 'session') === 'fixed' && (
-                  <Row title="指定模型" hint="只列出当前可用（已配置凭据）的模型。">
-                    <ModelPicker value={settings.suggestionModelId ?? null} onChange={(id) => void patch({ suggestionModelId: id })} emptyLabel="未指定（回退到自动）" label="预测使用的模型" className="w-64 shrink-0" />
+                  <Row title={t('settings.fixedModelRow')} hint={t('settings.fixedModelRow.hint')}>
+                    <ModelPicker value={settings.suggestionModelId ?? null} onChange={(id) => void patch({ suggestionModelId: id })} emptyLabel={unspecified} label={t('settings.prediction.pickerLabel')} className="w-64 shrink-0" />
                   </Row>
                 )}
-                <Row title="上下文范围" hint="发给预测模型的 user / assistant 消息（不含工具输出）。全部对话会按预测模型的上下文窗口截断。">
+                <Row title={t('settings.prediction.context')} hint={t('settings.prediction.context.hint')}>
                   <div className="flex shrink-0 items-center gap-2">
                     {!settings.suggestionFullContext && (
                       <>
                         <CountInput value={settings.suggestionContext ?? SUGGESTION_DEFAULT_CONTEXT} onCommit={(n) => void patch({ suggestionContext: n })} />
-                        <span className="text-sm text-muted-foreground">条</span>
+                        <span className="text-sm text-muted-foreground">{t('settings.messagesUnit')}</span>
                       </>
                     )}
                     <Segmented
                       value={settings.suggestionFullContext ? 'all' : 'recent'}
-                      options={[{ id: 'recent', label: '最近' }, { id: 'all', label: '全部对话' }]}
+                      options={[{ id: 'recent', label: t('settings.recent') }, { id: 'all', label: t('settings.wholeConversation') }]}
                       onChange={(m) => void patch({ suggestionFullContext: m === 'all' })}
                     />
                   </div>
@@ -350,20 +363,20 @@ export function SettingsApp() {
   } else if (section === 'work') {
     body = (
       <>
-        <Heading title="Work" sub="只在 Work 分区生效的设置。" />
+        <Heading title="Work" sub={t('settings.work.sub')} />
         <div className="space-y-6">
-          <Group title="Work 首页建议" sub="Work 首页的「Ideas for you」根据最近的 Work 会话标题生成；结果会缓存，会话有变化才重新生成。关闭后首页不再显示这一块。">
-            <Row title="根据最近的会话推荐">
+          <Group title={t('settings.work.ideas')} sub={t('settings.work.ideas.sub')}>
+            <Row title={t('settings.work.recommend')}>
               <Switch checked={settings.workIdeas !== false} onCheckedChange={(v) => void patch({ workIdeas: v })} />
             </Row>
             {settings.workIdeas !== false && (
               <>
-                <Row title="使用的模型" hint="跟随会话 = 最近一个 Work 会话用的模型；自动 = 同 provider 里最便宜的小模型；模型不可用时回退到自动。离线 Demo 模型不参与。">
-                  <Segmented value={settings.workIdeasModel ?? 'session'} options={WORK_IDEAS_MODES} onChange={(m) => void patch({ workIdeasModel: m })} />
+                <Row title={t('settings.work.model')} hint={t('settings.work.model.hint')}>
+                  <Segmented value={settings.workIdeasModel ?? 'session'} options={modeOptions} onChange={(m) => void patch({ workIdeasModel: m })} />
                 </Row>
                 {(settings.workIdeasModel ?? 'session') === 'fixed' && (
-                  <Row title="指定模型" hint="只列出当前可用（已配置凭据）的模型。">
-                    <ModelPicker value={settings.workIdeasModelId ?? null} onChange={(id) => void patch({ workIdeasModelId: id })} emptyLabel="未指定（回退到自动）" label="生成建议使用的模型" className="w-64 shrink-0" />
+                  <Row title={t('settings.fixedModelRow')} hint={t('settings.fixedModelRow.hint')}>
+                    <ModelPicker value={settings.workIdeasModelId ?? null} onChange={(id) => void patch({ workIdeasModelId: id })} emptyLabel={unspecified} label={t('settings.work.pickerLabel')} className="w-64 shrink-0" />
                   </Row>
                 )}
               </>
@@ -375,17 +388,17 @@ export function SettingsApp() {
   } else if (section === 'code') {
     body = (
       <>
-        <Heading title="Code" sub="只在 Code 分区生效的设置。" />
+        <Heading title="Code" sub={t('settings.code.sub')} />
         <div className="space-y-6">
-          <Group title="终端">
-            <Row title="默认终端" hint="终端面板新建标签页时启动的 shell。已打开的终端不受影响。">
+          <Group title={t('settings.terminal')}>
+            <Row title={t('settings.terminal.default')} hint={t('settings.terminal.default.hint')}>
               <Select value={settings.terminalShell ?? SYSTEM_SHELL} onValueChange={(v) => void patch({ terminalShell: v === SYSTEM_SHELL ? null : v })}>
                 <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
                 <SelectContent><SelectGroup>
-                  <SelectItem value={SYSTEM_SHELL}>系统默认</SelectItem>
+                  <SelectItem value={SYSTEM_SHELL}>{t('settings.systemDefault')}</SelectItem>
                   {shells.map((sh) => <SelectItem key={sh.file} value={sh.file}>{sh.label}</SelectItem>)}
                   {settings.terminalShell && !shells.some((sh) => sh.file === settings.terminalShell) && (
-                    <SelectItem value={settings.terminalShell}>{settings.terminalShell}（未找到）</SelectItem>
+                    <SelectItem value={settings.terminalShell}>{t('settings.notFound', { name: settings.terminalShell })}</SelectItem>
                   )}
                 </SelectGroup></SelectContent>
               </Select>
@@ -417,7 +430,7 @@ export function SettingsApp() {
               <div className="text-sm font-medium">{p.name}</div>
               <div className="truncate font-mono text-xs text-muted-foreground" title={p.path}>{p.path}</div>
             </div>
-            <Button size="sm" variant="outline" onClick={() => call('app:revealPath', p.path).catch((e) => toast.error(errText(e)))}>{revealLabel}</Button>
+            <Button size="sm" variant="outline" onClick={() => call('app:revealPath', p.path).catch((e) => toast.error(errText(e)))}>{t(revealKey)}</Button>
             <Button
               size="sm"
               variant="ghost"
@@ -427,10 +440,10 @@ export function SettingsApp() {
                 await reloadLists();
               }}
             >
-              移除
+              {t('settings.remove')}
             </Button>
           </div>
-        )) : <div className="px-4 py-3 text-sm text-muted-foreground">还没有添加。</div>}
+        )) : <div className="px-4 py-3 text-sm text-muted-foreground">{t('settings.nothingAdded')}</div>}
       </Panel>
     );
     const add = async (kind: 'project' | 'folder') => {
@@ -445,16 +458,16 @@ export function SettingsApp() {
     };
     body = (
       <>
-        <Heading title="项目与文件夹" sub="Code 会话的项目、worktree 位置，以及 Work 可用的工作文件夹。" />
-        <div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">Worktree 位置</h3></div>
+        <Heading title={t('settings.section.projects')} sub={t('settings.projects.sub')} />
+        <div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">{t('settings.worktreeLocation')}</h3></div>
         <Panel>
           <Row
-            title="Code 会话的 worktree 根目录"
-            hint={<span className="break-all font-mono">{worktreePath}{settings.worktreeDir ? '' : '（默认）'}</span>}
+            title={t('settings.worktreeRoot')}
+            hint={<span className="break-all font-mono">{worktreePath}{settings.worktreeDir ? '' : t('settings.defaultSuffix')}</span>}
           >
-            <Button size="sm" variant="outline" onClick={() => void pickWorktree()}>修改…</Button>
+            <Button size="sm" variant="outline" onClick={() => void pickWorktree()}>{t('settings.change')}</Button>
             {settings.worktreeDir && (
-              <Button size="sm" variant="ghost" onClick={() => void patch({ worktreeDir: null })}>恢复默认</Button>
+              <Button size="sm" variant="ghost" onClick={() => void patch({ worktreeDir: null })}>{t('settings.restoreDefault')}</Button>
             )}
             <Button
               size="sm"
@@ -462,13 +475,13 @@ export function SettingsApp() {
               disabled={!worktreePath}
               onClick={() => worktreePath && call('app:revealPath', worktreePath).catch((e) => toast.error(errText(e)))}
             >
-              打开
+              {t('settings.open')}
             </Button>
           </Row>
         </Panel>
-        <div className="mt-6 mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">Code 项目</h3><Button size="sm" variant="outline" onClick={() => void add('project')}>添加…</Button></div>
+        <div className="mt-6 mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">{t('settings.codeProjects')}</h3><Button size="sm" variant="outline" onClick={() => void add('project')}>{t('settings.add')}</Button></div>
         {list(projects, 'project')}
-        <div className="mt-6 mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">Work 文件夹</h3><Button size="sm" variant="outline" onClick={() => void add('folder')}>添加…</Button></div>
+        <div className="mt-6 mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">{t('settings.workFolders')}</h3><Button size="sm" variant="outline" onClick={() => void add('folder')}>{t('settings.add')}</Button></div>
         {list(folders, 'folder')}
       </>
     );
@@ -477,20 +490,20 @@ export function SettingsApp() {
     const ver = [info?.version && `v${info.version}`, v.electron && `Electron ${v.electron}`, v.chrome && `Chromium ${v.chrome}`, v.node && `Node ${v.node}`].filter(Boolean).join(' · ');
     body = (
       <>
-        <Heading title="关于" sub="基于 pi coding agent SDK 的桌面客户端。" />
+        <Heading title={t('settings.section.about')} sub={t('settings.about.sub')} />
         <Panel>
-          <Row title={`Pi Desktop${info?.demo ? '（演示模式）' : ''}`} hint={ver} />
-          <Row title="数据目录" hint={<span className="break-all font-mono">{info?.dataDir}</span>}>
-            <Button size="sm" variant="outline" onClick={() => info && call('app:revealPath', info.dataDir).catch((e) => toast.error(errText(e)))}>打开</Button>
-            <Button size="sm" variant="outline" onClick={() => copy(info?.dataDir ?? '')}>{copied ? '已复制' : '复制路径'}</Button>
+          <Row title={`Pi Desktop${info?.demo ? t('settings.about.demo') : ''}`} hint={ver} />
+          <Row title={t('settings.about.dataDir')} hint={<span className="break-all font-mono">{info?.dataDir}</span>}>
+            <Button size="sm" variant="outline" onClick={() => info && call('app:revealPath', info.dataDir).catch((e) => toast.error(errText(e)))}>{t('settings.open')}</Button>
+            <Button size="sm" variant="outline" onClick={() => copy(info?.dataDir ?? '')}>{copied ? t('settings.copied') : t('settings.copyPath')}</Button>
           </Row>
-          <Row title="Pi Desktop 扩展目录" hint={<span className="break-all font-mono">{info?.extensionsDir}</span>}>
-            <Button size="sm" variant="outline" onClick={() => info && call('app:revealPath', info.extensionsDir).catch((e) => toast.error(errText(e)))}>打开</Button>
-            <Button size="sm" variant="outline" onClick={() => copy(info?.extensionsDir ?? '')}>{copied ? '已复制' : '复制路径'}</Button>
+          <Row title={t('settings.about.extensionsDir')} hint={<span className="break-all font-mono">{info?.extensionsDir}</span>}>
+            <Button size="sm" variant="outline" onClick={() => info && call('app:revealPath', info.extensionsDir).catch((e) => toast.error(errText(e)))}>{t('settings.open')}</Button>
+            <Button size="sm" variant="outline" onClick={() => copy(info?.extensionsDir ?? '')}>{copied ? t('settings.copied') : t('settings.copyPath')}</Button>
           </Row>
-          <Row title="pi 配置目录" hint={<span className="break-all font-mono">{info?.agentDir}</span>}>
-            <Button size="sm" variant="outline" onClick={() => info && call('app:revealPath', info.agentDir).catch((e) => toast.error(errText(e)))}>打开</Button>
-            <Button size="sm" variant="outline" onClick={() => copy(info?.agentDir ?? '')}>{copied ? '已复制' : '复制路径'}</Button>
+          <Row title={t('settings.about.agentDir')} hint={<span className="break-all font-mono">{info?.agentDir}</span>}>
+            <Button size="sm" variant="outline" onClick={() => info && call('app:revealPath', info.agentDir).catch((e) => toast.error(errText(e)))}>{t('settings.open')}</Button>
+            <Button size="sm" variant="outline" onClick={() => copy(info?.agentDir ?? '')}>{copied ? t('settings.copied') : t('settings.copyPath')}</Button>
           </Row>
         </Panel>
       </>
@@ -499,7 +512,7 @@ export function SettingsApp() {
 
   return (
     <div className="flex h-screen flex-col bg-background" data-platform={bridge.platform}>
-      <header className="app-drag titlebar-inset flex h-12 shrink-0 items-center justify-center border-b text-sm font-medium">Settings</header>
+      <header className="app-drag titlebar-inset flex h-12 shrink-0 items-center justify-center border-b text-sm font-medium">{t('settings.title')}</header>
       <Tabs value={section} onValueChange={(v) => setSection(v as Section)} orientation="vertical" className="min-h-0 flex-1 flex-row gap-0">
         <nav className="w-52 shrink-0 border-r bg-sidebar p-3">
           <TabsList className="h-auto w-full flex-col items-stretch gap-0.5 bg-transparent p-0">
@@ -510,7 +523,7 @@ export function SettingsApp() {
                 className="h-8 flex-none justify-start gap-2.5 rounded-lg px-2.5 font-normal text-sidebar-foreground shadow-none hover:bg-sidebar-accent/60 data-[state=active]:bg-sidebar-accent data-[state=active]:font-medium data-[state=active]:shadow-none"
               >
                 <span className="text-muted-foreground">{s.icon}</span>
-                {s.label}
+                {s.label ? t(s.label) : s.id === 'work' ? 'Work' : 'Code'}
               </TabsTrigger>
             ))}
           </TabsList>

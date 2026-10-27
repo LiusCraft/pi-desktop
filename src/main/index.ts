@@ -32,6 +32,8 @@ import { RemoteClient, pingRemote } from '../agent/remote/client';
 import { Tunnel } from '../agent/remote/tunnel';
 import { newRemoteToken, remoteUrls, RemoteServer } from '../agent/remote/server';
 import { browse, existingFolder, ProjectBook, workspaceCall } from '../agent/remote/workspace';
+import { resolveLocale } from '@shared/i18n';
+import { setActiveLocale, tr } from '@shared/i18n/runtime';
 import { Store } from '../agent/store';
 import { AgentClient } from './agent-client';
 import { migrateLegacyKeys } from './agent-auth';
@@ -97,10 +99,14 @@ function ensureDemoProject() {
 function settingsValue(): Settings {
   return { ...DEFAULT_SETTINGS, ...store.get<Partial<Settings>>('settings', {}) };
 }
+/** The language the app runs in: the setting, or the OS language when it follows the system. */
+function currentLocale() {
+  return resolveLocale(settingsValue().language, app.getLocale());
+}
 function settingsPayload(): SettingsPayload {
   const s = settingsValue();
   const resolvedTheme = s.theme === 'light' || s.theme === 'dark' ? s.theme : nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-  return { ...s, resolvedTheme, pets: listPets(appPetsDir(dataDir())) };
+  return { ...s, resolvedTheme, locale: currentLocale(), pets: listPets(appPetsDir(dataDir())) };
 }
 function broadcast<K extends PushChannel>(channel: K, payload: PushEvents[K]) {
   for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(channel, payload);
@@ -148,6 +154,9 @@ function saveSettings(patch: Partial<Settings>) {
 /** Make the stored settings take effect and tell every window; also runs when the agent host edits them for the model. */
 function applySettings() {
   const next = settingsValue();
+  const locale = currentLocale();
+  setActiveLocale(locale);
+  if (agent) void agent.call('host:locale', locale).catch(() => {});
   // Native chrome (title bar, menus, dialogs) follows the app's appearance.
   nativeTheme.themeSource = next.theme === 'light' || next.theme === 'dark' ? next.theme : 'system';
   applyThemeToWindows();
@@ -260,7 +269,7 @@ function createSettingsWindow(section?: string) {
     height: 720,
     minWidth: 720,
     minHeight: 520,
-    title: 'Settings',
+    title: tr('settings.title'),
     backgroundColor: dark ? BG.dark : BG.light,
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
     ...(isMac ? { trafficLightPosition: { x: 16, y: 18 } } : { titleBarOverlay: overlay(dark) }),
@@ -305,7 +314,7 @@ function openDiagram(svg: string) {
     height: 760,
     minWidth: 480,
     minHeight: 360,
-    title: '图表',
+    title: tr('app.diagram'),
     backgroundColor: isDark() ? BG.dark : BG.light,
     autoHideMenuBar: true,
     show: false,
@@ -342,7 +351,7 @@ function openArtifact(id: string) {
     height: 780,
     minWidth: 360,
     minHeight: 280,
-    title: 'Artifact',
+    title: tr('app.artifact'),
     backgroundColor: '#ffffff',
     autoHideMenuBar: true,
     show: false,
@@ -450,7 +459,7 @@ function openSide(sessionId: string) {
     height: 600,
     minWidth: 320,
     minHeight: 320,
-    title: 'Side chat',
+    title: tr('side.title'),
     backgroundColor: isDark() ? BG.dark : BG.light,
     autoHideMenuBar: true,
     show: false,
@@ -764,7 +773,7 @@ const handlers: MainHandlers = {
 
   'attachments:import': (sources) => importAttachments(sources),
   'attachments:pick': async () => {
-    const options = { title: 'Add attachments', properties: ['openFile', 'multiSelections'] as const };
+    const options = { title: tr('composer.addFiles'), properties: ['openFile', 'multiSelections'] as const };
     const r = win ? await dialog.showOpenDialog(win, { ...options, properties: [...options.properties] }) : await dialog.showOpenDialog({ ...options, properties: [...options.properties] });
     return r.canceled ? { attachments: [], errors: [] } : importAttachments(r.filePaths.map((p) => ({ path: p })));
   },
@@ -840,6 +849,7 @@ app.on('second-instance', showMainWindow);
 
 void app.whenReady().then(async () => {
   store = new Store(dataDir());
+  setActiveLocale(currentLocale());
   book = new ProjectBook(store);
   migrateLegacyKeys(store);
   // Own folders only; Electron's Chromium profile is left to its platform default.
@@ -855,7 +865,7 @@ void app.whenReady().then(async () => {
   nativeTheme.themeSource = ['light', 'dark'].includes(String(settingsValue().theme)) ? (settingsValue().theme as 'light' | 'dark') : 'system';
   agent = new AgentClient(
     path.join(here, 'agent.mjs'),
-    () => ({ dataDir: dataDir(), agentDir: piAgentDir(), demo: DEMO_ALLOWED }),
+    () => ({ dataDir: dataDir(), agentDir: piAgentDir(), demo: DEMO_ALLOWED, locale: currentLocale() }),
     (event: HostEvent) => {
       // While a remote host is shown, this machine's own sessions stay out of the windows (but still reach the clients it serves).
       if (!activeRemote) broadcast('host:event', event);

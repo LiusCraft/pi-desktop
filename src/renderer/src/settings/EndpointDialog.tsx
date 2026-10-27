@@ -15,8 +15,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { call, errText } from '@/lib/api';
+import { t, useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import { API_LABELS, agoZh, modelMetaLine } from './model-format';
+import { API_LABELS, agoLabel, modelMetaLine } from './model-format';
 
 const DEFAULT_API = 'openai-completions';
 
@@ -58,8 +59,8 @@ function ModelRow({ model, selected, disabled, onToggle, onEdit }: { model: Endp
         <span className="mt-0.5 block text-[11px] text-muted-foreground">{modelMetaLine(model)}</span>
       </span>
     </Label>
-    <Button type="button" variant="ghost" size="sm" disabled={disabled} aria-label={`编辑模型 ${model.id}`} onClick={onEdit}>
-      <PencilIcon data-icon="inline-start" />编辑
+    <Button type="button" variant="ghost" size="sm" disabled={disabled} aria-label={t('endpoint.editModel', { id: model.id })} onClick={onEdit}>
+      <PencilIcon data-icon="inline-start" />{t('endpoint.editShort')}
     </Button>
     </div>
   );
@@ -77,6 +78,7 @@ export function EndpointDialog({
   onClose: () => void;
   onSaved: (catalog: ModelCatalogInfo) => void;
 }) {
+  const t = useT();
   const editing = Boolean(endpoint);
   const [id, setId] = useState(endpoint?.id ?? '');
   const [name, setName] = useState(endpoint && endpoint.name !== endpoint.id ? endpoint.name : '');
@@ -128,9 +130,9 @@ export function EndpointDialog({
         const firstLoad = models.length === 0;
         setModels((prev) => mergeModels(prev, result.models));
         if (firstLoad) setSelected(new Set(result.models.map((model) => model.id)));
-        toast.success(`获取到 ${result.models.length} 个模型${result.models.some((m) => m.source === 'models.dev') ? '，已按 models.dev 对齐元数据' : ''}`);
+        toast.success(t(result.models.some((m) => m.source === 'models.dev') ? 'endpoint.fetchedAligned' : 'endpoint.fetched', { n: result.models.length }));
       }
-      if (result.error) setError(result.error.replace(/^无法获取模型列表：/, ''));
+      if (result.error) setError(result.error.replace(/^(?:无法获取模型列表：|Cannot fetch the model list: )/, ''));
     } catch (err) {
       setError(errText(err));
     } finally {
@@ -150,9 +152,9 @@ export function EndpointDialog({
 
   const save = async () => {
     setError(null);
-    if (editingModel) return setError('请先应用或取消模型修改');
-    if (!id.trim()) return setError('请填写 Provider ID');
-    if (!baseUrl.trim()) return setError('请填写 API 地址');
+    if (editingModel) return setError(t('endpoint.finishModel'));
+    if (!id.trim()) return setError(t('endpoint.needId'));
+    if (!baseUrl.trim()) return setError(t('endpoint.needUrl'));
     setBusy('save');
     try {
       const draft: EndpointDraft = {
@@ -165,7 +167,7 @@ export function EndpointDialog({
         models: models.filter((model) => selected.has(model.id)),
       };
       const catalog = await call('models:endpointSave', draft);
-      toast.success(editing ? '端点已更新' : '端点已添加');
+      toast.success(t(editing ? 'endpoint.updated' : 'endpoint.added'));
       onSaved(catalog);
     } catch (err) {
       setError(errText(err));
@@ -178,9 +180,9 @@ export function EndpointDialog({
     <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
       <DialogContent className="flex max-h-[86vh] flex-col sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{editing ? `编辑端点 · ${endpoint!.name}` : '添加自定义端点'}</DialogTitle>
+          <DialogTitle>{editing ? t('endpoint.editTitle', { name: endpoint!.name }) : t('endpoint.addTitle')}</DialogTitle>
           <DialogDescription>
-            写入 pi 的 <span className="font-mono">models.json</span>，pi CLI 也会看到这个端点。密钥保存在 <span className="font-mono">auth.json</span>，不会写进 models.json。
+            {t('endpoint.desc')}
           </DialogDescription>
         </DialogHeader>
 
@@ -196,17 +198,17 @@ export function EndpointDialog({
                 placeholder="my-endpoint"
                 onChange={(e) => setId(e.target.value.replace(/[^a-zA-Z0-9._-]/g, ''))}
               />
-              <p className="text-[11px] text-muted-foreground">模型会以 <span className="font-mono">{id.trim().toLowerCase() || 'provider'}/model-id</span> 出现在模型菜单里。</p>
+              <p className="text-[11px] text-muted-foreground">{t('endpoint.idHint', { ref: `${id.trim().toLowerCase() || 'provider'}/model-id` })}</p>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="endpoint-name">显示名称</Label>
-              <Input id="endpoint-name" value={name} placeholder={id || '可留空'} onChange={(e) => setName(e.target.value)} />
-              <p className="text-[11px] text-muted-foreground">留空时使用 Provider ID。</p>
+              <Label htmlFor="endpoint-name">{t('endpoint.displayName')}</Label>
+              <Input id="endpoint-name" value={name} placeholder={id || t('endpoint.optional')} onChange={(e) => setName(e.target.value)} />
+              <p className="text-[11px] text-muted-foreground">{t('endpoint.nameHint')}</p>
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="endpoint-url">API 地址</Label>
+            <Label htmlFor="endpoint-url">{t('endpoint.url')}</Label>
             <Input
               id="endpoint-url"
               value={baseUrl}
@@ -215,26 +217,26 @@ export function EndpointDialog({
               onChange={(e) => setBaseUrl(e.target.value)}
             />
             <p className="text-[11px] text-muted-foreground">
-              OpenAI 兼容端点通常以 <span className="font-mono">/v1</span> 结尾；Anthropic 兼容端点填服务根地址即可。
+              {t('endpoint.urlHint')}
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>API 类型</Label>
+              <Label>{t('endpoint.apiType')}</Label>
               <Select value={api || 'provider-default'} onValueChange={(value) => setApi(value === 'provider-default' ? '' : value)}>
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent><SelectGroup>
                   {apiOptions.map((value) => (
-                    <SelectItem key={value || 'default'} value={value || 'provider-default'}>{value ? API_LABELS[value] ?? value : '跟随 provider 默认'}</SelectItem>
+                    <SelectItem key={value || 'default'} value={value || 'provider-default'}>{value ? API_LABELS[value] ?? value : t('fmt.apiDefault')}</SelectItem>
                   ))}
                 </SelectGroup></SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="endpoint-key">API 密钥</Label>
+              <Label htmlFor="endpoint-key">{t('endpoint.apiKey')}</Label>
               {endpoint?.builtin ? (
-                <p className="flex h-9 items-center text-xs text-muted-foreground">内置 provider：密钥在上方“账号与密钥”里管理。</p>
+                <p className="flex h-9 items-center text-xs text-muted-foreground">{t('endpoint.builtinKey')}</p>
               ) : (
                 <>
                   <Input
@@ -244,18 +246,18 @@ export function EndpointDialog({
                     spellCheck={false}
                     value={apiKey}
                     disabled={removeKey}
-                    placeholder={endpoint?.keySet ? '已保存密钥，留空保持不变' : isLocal ? '本地端点可留空' : '可留空'}
+                    placeholder={endpoint?.keySet ? t('endpoint.keySavedPh') : isLocal ? t('endpoint.localPh') : t('endpoint.optional')}
                     onChange={(e) => setApiKey(e.target.value)}
                   />
                   <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                     <span>
                       {endpoint?.keySet
-                        ? `当前：${endpoint.keySource ?? '已保存'}`
+                        ? t('endpoint.current', { source: endpoint.keySource ?? t('endpoint.saved') })
                         : isLocal
-                          ? '本地地址会自动写入 pi 的占位密钥。'
+                          ? t('endpoint.localKey')
                           : baseUrl.trim()
-                            ? '没有密钥的远程端点不会出现在模型菜单里。'
-                            : '填写地址后会自动判断是否需要密钥。'}
+                            ? t('endpoint.remoteNoKey')
+                            : t('endpoint.enterUrlFirst')}
                     </span>
                     {endpoint?.keySet && (
                       <button
@@ -266,7 +268,7 @@ export function EndpointDialog({
                           setApiKey('');
                         }}
                       >
-                        {removeKey ? '取消移除' : '移除密钥'}
+                        {removeKey ? t('endpoint.undoRemove') : t('endpoint.removeKey')}
                       </button>
                     )}
                   </div>
@@ -278,30 +280,30 @@ export function EndpointDialog({
           <div className="space-y-2 rounded-lg border p-3">
             <div className="flex flex-wrap items-center gap-2">
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium">模型</div>
+                <div className="text-sm font-medium">{t('endpoint.models')}</div>
                 <p className="text-[11px] text-muted-foreground">
-                  已选 {selected.size} / {models.length} · 每个模型均可编辑，models.dev 提供参考值{catalogAt ? `（${agoZh(catalogAt)}更新）` : ''}
+                  {t('endpoint.selected', { n: selected.size, total: models.length })}{catalogAt ? t('endpoint.updatedAgo', { ago: agoLabel(catalogAt) }) : ''}
                 </p>
               </div>
               <Button size="sm" variant="outline" disabled={!!busy || !!editingModel || !baseUrl.trim()} onClick={() => void discover()}>
                 {busy === 'discover' ? <Loader2Icon className="size-3.5 animate-spin" /> : <RefreshCwIcon className="size-3.5" />}
-                获取模型列表
+                {t('endpoint.fetch')}
               </Button>
             </div>
 
             {models.length > 8 && (
               <div className="relative">
                 <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input value={query} disabled={!!editingModel || !!busy} onChange={(e) => setQuery(e.target.value)} placeholder="筛选模型" className="h-8 pl-8 text-xs" />
+                <Input value={query} disabled={!!editingModel || !!busy} onChange={(e) => setQuery(e.target.value)} placeholder={t('endpoint.filter')} className="h-8 pl-8 text-xs" />
               </div>
             )}
 
             {models.length > 0 && (
               <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                <span>{visibleModels.length} 个匹配</span>
+                <span>{t('endpoint.matches', { n: visibleModels.length })}</span>
                 <div className="flex gap-2">
-                  <button type="button" className="hover:underline" onClick={() => setSelected(new Set(models.map((m) => m.id)))}>全选</button>
-                  <button type="button" className="hover:underline" onClick={() => setSelected(new Set())}>清空</button>
+                  <button type="button" className="hover:underline" onClick={() => setSelected(new Set(models.map((m) => m.id)))}>{t('endpoint.selectAll')}</button>
+                  <button type="button" className="hover:underline" onClick={() => setSelected(new Set())}>{t('endpoint.clear')}</button>
                 </div>
               </div>
             )}
@@ -323,7 +325,7 @@ export function EndpointDialog({
                 ))
               ) : (
                 <p className="px-2 py-3 text-xs text-muted-foreground">
-                  {models.length ? '没有匹配的模型。' : '还没有模型。点“获取模型列表”，或手动添加模型 ID。'}
+                  {models.length ? t('endpoint.noMatch') : t('endpoint.noModels')}
                 </p>
               )}
             </div>
@@ -335,29 +337,29 @@ export function EndpointDialog({
                 addModel();
               }}
             >
-              <Input value={newModel} disabled={!!editingModel || !!busy} onChange={(e) => setNewModel(e.target.value)} placeholder="手动添加模型 ID" className="h-8 text-xs" spellCheck={false} />
+              <Input value={newModel} disabled={!!editingModel || !!busy} onChange={(e) => setNewModel(e.target.value)} placeholder={t('endpoint.addById')} className="h-8 text-xs" spellCheck={false} />
               <Button type="submit" size="sm" variant="outline" disabled={!newModel.trim() || !!editingModel || !!busy}>
                 <PlusIcon className="size-3.5" />
-                添加
+                {t('endpoint.add')}
               </Button>
             </form>
 
             {models.some((model) => selected.has(model.id) && model.source === 'models.dev') && (
-              <p className="text-[11px] text-muted-foreground">models.dev 仅补充缺失值；点击模型旁的“编辑”可覆盖上下文、最大输出、价格和能力。</p>
+              <p className="text-[11px] text-muted-foreground">{t('endpoint.alignedNote')}</p>
             )}
           </div>
 
           {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
           {endpoint && endpoint.extra.length > 0 && (
-            <p className="text-[11px] text-muted-foreground">这个条目在 models.json 里还有：{endpoint.extra.join('、')}（保存时保持原样）。</p>
+            <p className="text-[11px] text-muted-foreground">{t('endpoint.extra', { fields: endpoint.extra.join(', ') })}</p>
           )}
         </div>
 
         <DialogFooter>
-          <Button type="button" variant="outline" disabled={!!busy} onClick={onClose}>取消</Button>
+          <Button type="button" variant="outline" disabled={!!busy} onClick={onClose}>{t('endpoint.cancel')}</Button>
           <Button type="button" disabled={!!busy || !!editingModel} onClick={() => void save()}>
             {busy === 'save' && <Loader2Icon className="size-3.5 animate-spin" />}
-            保存
+            {t('endpoint.save')}
           </Button>
         </DialogFooter>
       </DialogContent>
