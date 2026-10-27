@@ -371,6 +371,9 @@
 .term-out .dim { color: var(--muted-foreground); }
 .term-out .cmd { color: var(--primary); font-weight: 500; }
 
+/* The composer's PR card borrows the tooltip for positioning, but it is a card: no pointer arrow (a span beside the card). */
+.pr-card[data-slot="tooltip-content"] > span { display: none; }
+
 /* Pixel mascot in the code composer. */
 /* ---------------------------------------------------------------- Clawd, the composer pet
    Transforms are in SVG user units (1px = one pixel of the sprite). */

@@ -146,7 +146,8 @@ describe('opening a folder that is already a worktree', { timeout: 120_000 }, ()
     expect(await git.worktreeInfo(project)).toBeNull();
     const info = await git.worktreeInfo(linked);
     expect(info?.branch).toBe('feature/x');
-    expect(path.resolve(info!.mainRoot).toLowerCase()).toBe(path.resolve(project).toLowerCase());
+    const real = (p: string) => fs.realpathSync.native(p).toLowerCase();
+    expect(real(info!.mainRoot)).toBe(real(project));
     expect(await git.worktreeInfo(path.join(tmp))).toBeNull();
   });
 

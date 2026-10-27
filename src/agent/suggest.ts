@@ -73,6 +73,7 @@ export function transcriptExcerpt(messages: readonly MessageLike[], options: Exc
     if (!text) continue;
     if (message.role === 'user') {
       if (text.startsWith('[pi-desktop]')) continue; // plan-mode marker and other hidden turns
+      if (text.startsWith('<pr-event ')) continue; // a turn the PR watcher started, not the user
       // Attached context (or a selection comment) is appended after the instruction.
       const attached = text.indexOf('Attached context:');
       if (attached > 0) text = text.slice(0, attached).trim();

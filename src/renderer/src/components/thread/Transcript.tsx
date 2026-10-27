@@ -8,7 +8,7 @@ import { togglePanel } from '@/store/actions';
 import { useApp } from '@/store/app';
 import { rememberScroll, savedScroll } from '@/store/scroll';
 import type { Item, SessionView } from '@/store/types';
-import { AskItem, FootItem, GroupItem, NoteItem, PermItem, PlanItem, SuggestItem, TextItem, TodosItem, UserItem } from './Items';
+import { AskItem, FootItem, GroupItem, NoteItem, PermItem, PlanItem, PrEventItem, SuggestItem, TextItem, TodosItem, UserItem } from './Items';
 
 function renderItem(sid: string, item: Item, items: Item[], index: number, view: string) {
   switch (item.kind) {
@@ -21,6 +21,7 @@ function renderItem(sid: string, item: Item, items: Item[], index: number, view:
     case 'ask': return <AskItem sid={sid} item={item} />;
     case 'plan': return <PlanItem sid={sid} item={item} />;
     case 'suggest': return <SuggestItem sid={sid} item={item} />;
+    case 'prEvent': return <PrEventItem sid={sid} item={item} />;
     case 'foot': {
       let prev: string | undefined;
       for (let i = index - 1; i >= 0; i--) if (items[i].kind === 'text') { prev = (items[i] as any).text; break; }

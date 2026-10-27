@@ -1,19 +1,37 @@
 import {
-  ArrowUpIcon, CheckIcon, ChevronDownIcon, GitBranchIcon, GitCommitHorizontalIcon, GitMergeIcon, GitPullRequestCreateIcon, GitPullRequestIcon, MessageSquareIcon, XIcon,
+  ArrowUpIcon, CheckIcon, ChevronDownIcon, CircleDashedIcon, GitBranchIcon, GitCommitHorizontalIcon, GitMergeIcon, GitPullRequestCreateIcon, GitPullRequestIcon,
+  LoaderCircleIcon, MessageSquareIcon, SquareArrowOutUpRightIcon, TriangleAlertIcon, XIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Checkbox } from '@/components/ui/checkbox';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { call } from '@/lib/api';
-import { fname } from '@/lib/format';
+import { ago, fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { send, sessionDraftKey } from '@/store/actions';
+import { send, sessionDraftKey, setPrAuto } from '@/store/actions';
 import { updateSession } from '@/store/app';
 import { drafts } from '@/store/drafts';
 import type { SessionView } from '@/store/types';
 import { gitActions, type GitAction, type GitActionItem } from './pr-actions';
+import { fmtLines, prBadge, prCiLine, prRepo, prSize, type PrBadge, type PrLike, type PrTone } from '@shared/pr-status';
 
-const DOT: Record<string, string> = { pass: 'bg-success', fail: 'bg-destructive', pending: 'bg-warning', none: 'bg-muted-foreground' };
+const DOT: Record<string, string> = { pass: 'bg-success', fail: 'bg-destructive', pending: 'bg-warning', none: 'bg-muted-foreground/60' };
 const ACTION_ICON: Record<GitAction, typeof ArrowUpIcon> = { pr: GitPullRequestCreateIcon, commit: GitCommitHorizontalIcon, push: ArrowUpIcon };
+const TONE: Record<PrTone, string> = {
+  conflict: 'bg-warning/15 text-warning',
+  review: 'bg-warning/15 text-warning',
+  fail: 'bg-destructive/15 text-destructive',
+  running: 'bg-info/15 text-info',
+  ready: 'bg-success/15 text-success',
+  draft: 'bg-muted text-muted-foreground',
+  open: 'bg-muted text-muted-foreground',
+  merged: 'bg-[#8957e5]/15 text-[#8957e5]',
+  closed: 'bg-destructive/15 text-destructive',
+};
+const STATE_COLOR: Record<string, string> = { open: 'text-success', merged: 'text-[#8957e5]', closed: 'text-destructive' };
+const CHECK_LABEL: Record<string, string> = { pass: 'passed', fail: 'failed', pending: 'running' };
 
 /** Branch / PR status above the Code composer: what the branch still owes, and how to send it. */
 export function PrBar({ s }: { s: SessionView }) {
@@ -33,10 +51,12 @@ export function PrBar({ s }: { s: SessionView }) {
   const add = pending.reduce((a, f) => a + f.add, 0);
   const del = pending.reduce((a, f) => a + f.del, 0);
   const dirty = st?.dirty.length ?? 0;
+  // The PR's own size beats the working tree once there is one: that is the number that gets reviewed.
+  const size = pr ? prSize(pr) : null;
   const sync = st && (
-    <span className="flex shrink-0 items-center gap-2 whitespace-nowrap font-mono text-xs">
-      {dirty > 0 && (pending.length > 0 ? (
-        <span className="flex gap-1"><span className="text-success">+{add}</span><span className="text-destructive">−{del}</span></span>
+    <span className="flex shrink-0 items-center gap-2 whitespace-nowrap font-mono text-[11px]">
+      {dirty > 0 && (pending.length > 0 && !size ? (
+        <Lines add={add} del={del} />
       ) : (
         <span className="text-muted-foreground">{dirty} uncommitted</span>
       ))}
@@ -46,16 +66,21 @@ export function PrBar({ s }: { s: SessionView }) {
     </span>
   );
   const hide = (
-    <button className="shrink-0 text-muted-foreground hover:text-foreground" title="Hide" onClick={() => updateSession(s.meta.id, (v) => void (v.prHidden = true))}>
+    <button
+      className="shrink-0 rounded p-0.5 text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+      title="Hide"
+      aria-label="Hide the branch bar"
+      onClick={() => updateSession(s.meta.id, (v) => void (v.prHidden = true))}
+    >
       <XIcon className="size-3.5" />
     </button>
   );
   if (!pr) {
     return (
-      <div className="mb-2 flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-xs">
+      <div className="mb-2 flex items-center gap-2 rounded-lg border bg-card/60 px-2.5 py-1.5 text-xs transition-colors hover:bg-card">
         <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="shrink-0 whitespace-nowrap font-medium">{fname(s.meta.projectPath)}</span>
-        <span className="min-w-0 truncate font-mono text-muted-foreground" title={s.meta.branch}>{s.meta.branch}</span>
+        <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={s.meta.branch}>{s.meta.branch}</span>
         <span className="flex-1" />
         {sync}
         {current && <SplitButton s={s} current={current} actions={actions} primary={primary} run={ask} />}
@@ -63,45 +88,154 @@ export function PrBar({ s }: { s: SessionView }) {
       </div>
     );
   }
-  const status = pr.state === 'merged' ? 'merged' : pr.state === 'closed' ? 'closed' : pr.draft ? 'draft' : 'open';
-  const label = { open: 'Open', draft: 'Draft', closed: 'Closed', merged: 'Merged' }[status];
-  const tone = { open: 'text-success', draft: 'text-muted-foreground', closed: 'text-destructive', merged: 'text-[#8957e5]' }[status];
   const open = () => call('app:openExternal', pr.url);
+  const badge = prBadge(pr);
+  const color = pr.draft ? 'text-muted-foreground' : STATE_COLOR[pr.state] ?? 'text-muted-foreground';
+  const Icon = pr.state === 'merged' ? GitMergeIcon : GitPullRequestIcon;
   return (
-    <div className="mb-2 flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-xs">
-      <button onClick={open} className={cn('flex shrink-0 items-center gap-1 whitespace-nowrap font-medium', tone)} title={pr.url}>
-        {status === 'merged' ? <GitMergeIcon className="size-3.5" /> : <GitPullRequestIcon className="size-3.5" />}#{pr.num}
-      </button>
-      <span className="min-w-0 truncate text-muted-foreground" title={`${s.meta.projectPath} · ${s.meta.branch}`}>{fname(s.meta.projectPath)}</span>
+    <div className="group/pr mb-2 flex items-center gap-2 rounded-lg border bg-card/60 px-2.5 py-1.5 text-xs transition-colors hover:bg-card">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex min-w-0 cursor-default items-center gap-1.5">
+              <button onClick={open} className={cn('flex shrink-0 items-center gap-1 font-medium tabular-nums', color)} title={`${badge.label} · ${pr.url}`}>
+                {pr.mergeable === 'conflicting' ? <TriangleAlertIcon className="size-3.5 text-warning" /> : <Icon className="size-3.5" />}#{pr.num}
+              </button>
+              <span className="truncate text-muted-foreground" title={s.meta.projectPath}>{fname(s.meta.projectPath)}</span>
+              <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground/70" title={s.meta.branch}>{s.meta.branch}</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="top" align="start" sideOffset={10} className="pr-card max-w-none rounded-xl border bg-popover p-0 text-popover-foreground shadow-xl">
+            <PrCard pr={pr} repo={prRepo(pr.url, fname(s.meta.projectPath))} badge={badge} />
+          </TooltipContent>
+        </Tooltip>
+      </div>
       <span className="flex-1" />
       {sync}
+      {size && <Lines add={size.add} del={size.del} title={size.files != null ? `${size.files} files` : undefined} />}
       {!!pr.comments && (
-        <button className="flex shrink-0 items-center gap-1 text-muted-foreground hover:text-foreground" title="Review comments" onClick={() => ask(`用 gh pr view ${pr.num} --comments 读取 PR #${pr.num} 的评审意见，逐条处理后提交并推送。`)}>
+        <button
+          className="flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          title="Review comments"
+          onClick={() => ask(`用 gh pr view ${pr.num} --comments 读取 PR #${pr.num} 的评审意见，逐条处理后提交并推送。`)}
+        >
           <MessageSquareIcon className="size-3.5" />{pr.comments}
         </button>
       )}
-      <button onClick={open} className={cn('shrink-0 whitespace-nowrap font-medium', tone)}>{label}</button>
-      {!!pr.checks?.length && (
-        <DropdownMenu>
-          <DropdownMenuTrigger className="flex shrink-0 items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-accent">
-            <span className={cn('size-2 rounded-full', DOT[pr.ci ?? 'none'])} />CI
-          </DropdownMenuTrigger>
-          <DropdownMenuContent side="top" align="end" className="w-64">
-            <DropdownMenuLabel className="text-xs text-muted-foreground">Checks · {pr.ci === 'pending' ? 'running' : pr.ci === 'pass' ? 'all passed' : 'failing'}</DropdownMenuLabel>
-            {pr.checks.map((c) => (
-              <div key={c.n} className="flex items-center gap-2 px-2 py-1 text-xs">
-                <span className={cn('size-2 rounded-full', DOT[c.st])} />{c.n}
-              </div>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => ask(`用 gh pr checks ${pr.num} --watch 盯着 PR #${pr.num} 的 CI；如果有检查失败，读取失败日志、修复、提交并推送，直到全部通过。`)}>盯着 CI，失败就自动修</DropdownMenuItem>
-            <DropdownMenuItem onSelect={open}>Open on GitHub</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
+      <CiPanel s={s} pr={pr} open={open} ask={ask} />
       {current && <SplitButton s={s} current={current} actions={actions} primary={primary} run={ask} />}
       {hide}
     </div>
+  );
+}
+
+/** The card that answers "what is this PR?" without leaving the composer. */
+function PrCard({ pr, repo, badge }: { pr: PrLike; repo: string; badge: PrBadge }) {
+  const size = prSize(pr);
+  return (
+    <div className="w-80 p-3">
+      <div className="flex items-center gap-2">
+        <span className={cn('flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium leading-4', TONE[badge.tone])}>
+          {badge.tone === 'conflict' && <TriangleAlertIcon className="size-3" />}
+          {badge.label}
+        </span>
+        <span className="min-w-0 truncate text-[11px] text-muted-foreground">
+          {repo} <span className="opacity-60">#{pr.num}</span>
+        </span>
+        {!!pr.updatedAt && <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground/80">{ago(pr.updatedAt)}</span>}
+      </div>
+      {pr.title && <p className="mt-2 line-clamp-3 text-[13px] font-semibold leading-snug" data-selectable>{pr.title}</p>}
+      <div className="mt-2.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+        {pr.author && <span className="truncate">{pr.author}</span>}
+        <span className="ml-auto flex shrink-0 items-center gap-1.5">
+          {size && <Lines add={size.add} del={size.del} />}
+          {size?.files != null && <span className="tabular-nums">{size.files} files</span>}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** `+2,504 −132` in one chip: the size of the change, whatever its source. */
+function Lines({ add, del, title }: { add: number; del: number; title?: string }) {
+  return (
+    <span className="flex shrink-0 items-center gap-1.5 rounded-md bg-muted/70 px-1.5 py-0.5 font-mono text-[11px] leading-4 tabular-nums" title={title}>
+      <span className="text-success">+{fmtLines(add)}</span>
+      <span className="text-destructive">−{fmtLines(del)}</span>
+    </span>
+  );
+}
+
+/** CI status in a chip, and the panel behind it: the checks themselves plus what the bar may do on its own. */
+function CiPanel({ s, pr, open, ask }: { s: SessionView; pr: PrLike; open: () => void; ask: (text: string) => void }) {
+  const checks = pr.checks ?? [];
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          className="flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent"
+          title={prCiLine(pr)}
+        >
+          <span className={cn('size-1.5 rounded-full', DOT[pr.ci ?? 'none'], pr.ci === 'pending' && 'animate-pulse')} />
+          CI
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="end" sideOffset={8} className="w-72 p-0">
+        <div className="flex items-center gap-2 border-b px-3 py-2">
+          <span className="text-[11.5px] font-medium">CI monitoring</span>
+          <button className="ml-auto rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="Open checks on GitHub" onClick={open}>
+            <SquareArrowOutUpRightIcon className="size-3.5" />
+          </button>
+        </div>
+        <div className="px-3 py-2">
+          <p className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+            {pr.ci === 'pending' ? <LoaderCircleIcon className="size-3 shrink-0 animate-spin" /> : !checks.length ? <CircleDashedIcon className="size-3 shrink-0" /> : null}
+            {prCiLine(pr)}
+          </p>
+          {!!checks.length && (
+            <div className="mt-1.5 max-h-40 space-y-0.5 overflow-y-auto pr-1">
+              {checks.map((c) => (
+                <div key={c.n} className="flex items-center gap-2 py-0.5 text-[11.5px]">
+                  <span className={cn('size-1.5 shrink-0 rounded-full', DOT[c.st])} />
+                  {c.url ? (
+                    <button className="min-w-0 truncate text-left hover:text-foreground hover:underline" title={`在 GitHub 打开 ${c.n}`} onClick={() => call('app:openExternal', c.url!)}>{c.n}</button>
+                  ) : (
+                    <span className="min-w-0 truncate" title={c.n}>{c.n}</span>
+                  )}
+                  <span className="ml-auto shrink-0 text-[10.5px] text-muted-foreground/70">{CHECK_LABEL[c.st]}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="space-y-1 border-t px-3 py-2">
+          <label className="flex cursor-pointer items-start gap-2 py-0.5 text-[11.5px]">
+            <Checkbox className="mt-px size-3.5" checked={!!s.meta.autoFixCi} onCheckedChange={(v) => void setPrAuto(s.meta.id, { fixCi: v === true })} />
+            <span>Auto-fix CI &amp; address comments</span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-2 py-0.5 text-[11.5px]">
+            <Checkbox className="mt-px size-3.5" checked={!!s.meta.autoMerge} onCheckedChange={(v) => void setPrAuto(s.meta.id, { merge: v === true })} />
+            <span>Auto-merge when ready</span>
+          </label>
+        </div>
+        {pr.ci === 'fail' && !s.meta.autoFixCi && (
+          <>
+            <div className="border-t" />
+            <button
+              className="w-full px-3 py-2 text-left text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              onClick={() => ask(`用 gh pr checks ${pr.num} 和 gh run view --log-failed 读出 PR #${pr.num} 的失败原因，修好代码后提交并推送；未解决的评审意见一并处理，直到检查不再失败。`)}
+            >
+              让 Pi 现在处理这一次
+            </button>
+          </>
+        )}
+        {(s.meta.autoFixCi || s.meta.autoMerge) && (
+          <div className="border-t px-3 py-1.5 text-[10.5px] text-muted-foreground">
+            后台监听中：变化会作为事件发到对话里
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
