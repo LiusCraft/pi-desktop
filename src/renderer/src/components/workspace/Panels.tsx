@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowLeftIcon, BotIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CodeIcon, ExternalLinkIcon, FileCodeIcon, FileIcon, FolderIcon,
-  FolderOpenIcon, ListIcon, Maximize2Icon, MessageSquareIcon, Minimize2Icon, RefreshCwIcon, SearchIcon, SquareIcon, SquareTerminalIcon,
+  EyeIcon, FolderOpenIcon, ListIcon, Maximize2Icon, MessageSquareIcon, Minimize2Icon, RefreshCwIcon, SearchIcon, SquareIcon, SquareTerminalIcon,
   Trash2Icon, XIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -556,8 +556,14 @@ export function DetailPanel({ s, ...card }: CardProps & { s: SessionView }) {
   return <FileViewer s={s} {...card} />;
 }
 
+const HTML_FILE = /\.html?$/i;
+
 function FileViewer({ s, ...card }: CardProps & { s: SessionView }) {
   const d = s.detail as Extract<NonNullable<SessionView['detail']>, { type: 'file' }>;
+  // An HTML file opens rendered; the toggle brings the source back. A new file starts rendered again.
+  const [source, setSource] = useState(false);
+  useEffect(() => setSource(false), [d.path]);
+  const rendered = HTML_FILE.test(d.path) && d.text != null && !source;
   const body = useRef<HTMLDivElement>(null);
   const view = d.text != null ? lineWindow(d.text, d.line, d.start) : null;
   const hasDiff = s.changes.some((f) => f.path === d.path);
@@ -577,7 +583,14 @@ function FileViewer({ s, ...card }: CardProps & { s: SessionView }) {
     <Card
       {...card}
       title={<span className="truncate font-mono text-xs" title={d.path}>{d.path}</span>}
-      tools={hasDiff && <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => openDiffRef(d.path)}>Diff</Button>}
+      tools={(
+        <>
+          {HTML_FILE.test(d.path) && d.text != null && (
+            <IconBtn title={source ? '查看渲染效果' : '查看源码'} onClick={() => setSource((v) => !v)}>{source ? <EyeIcon className="size-3.5" /> : <CodeIcon className="size-3.5" />}</IconBtn>
+          )}
+          {hasDiff && <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => openDiffRef(d.path)}>Diff</Button>}
+        </>
+      )}
       onClose={() => closeDetail(s.meta.id)}
       bodyClass="overflow-hidden flex flex-col"
     >
@@ -589,6 +602,8 @@ function FileViewer({ s, ...card }: CardProps & { s: SessionView }) {
             <img src={d.image} alt={fname(d.path)} className="max-h-full max-w-full object-contain shadow-sm" />
           </div>
         ) : <Empty>{'Image preview unavailable\nNot a supported image, outside the session folder, or larger than 20 MiB'}</Empty>
+      ) : rendered ? (
+        <iframe key={d.path} srcDoc={d.text ?? undefined} title={fname(d.path)} className="min-h-0 flex-1 border-0 bg-white" sandbox="allow-scripts" />
       ) : !view ? <Empty>{'File preview unavailable\nBinary, non-text, or larger than 1 MiB'}</Empty> : (
         <>
           {nav}
