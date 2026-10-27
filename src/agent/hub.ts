@@ -1398,19 +1398,6 @@ export class SessionHub {
     for (const s of session.resourceLoader.getSkills().skills) out.push({ name: `skill:${s.name}`, description: s.description, source: 'skill' });
     return out;
   }
-  /** A command typed in the terminal panel; its output joins the next turn's context. */
-  async bash(id: string, command: string) {
-    const live = await this.ensure(id);
-    const session = live.runtime.session;
-    const hooked = await session.extensionRunner.emitUserBash({ type: 'user_bash', command, excludeFromContext: false, cwd: session.sessionManager.getCwd() });
-    if (hooked?.result) {
-      session.recordBashResult(command, hooked.result);
-      return { output: hooked.result.output, exitCode: hooked.result.exitCode };
-    }
-    const r = await session.executeBash(command, undefined, { operations: hooked?.operations });
-    return { output: r.output, exitCode: r.exitCode };
-  }
-
   // ------------------------------------------------------------ files / git
 
   async changes(id: string): Promise<ChangeSet> {

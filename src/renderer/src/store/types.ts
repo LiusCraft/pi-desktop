@@ -101,7 +101,6 @@ export interface SessionView {
   lastTodos: Todo[];
   /** Files Pi Desktop created or edited (Work panel). */
   outputs: { path: string; kind: 'write' | 'edit'; t: number }[];
-  term: { cmd: string; out: string }[];
   changes: ChangedFile[];
   /** Live git state for the branch bar: uncommitted paths and unpushed commits. */
   gitState: GitState | null;

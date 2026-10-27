@@ -7,7 +7,7 @@ import {
 import { toast } from 'sonner';
 import { generatedKind, isGeneratedFile, type GeneratedKind } from '@shared/generated';
 import { lineWindow, WINDOW_LINES } from '@shared/tool-previews';
-import { CodeLines, DiffRows, TermOutput } from '@/components/common/CodeView';
+import { CodeLines, DiffRows } from '@/components/common/CodeView';
 import { CopyGlyph, useCopy } from '@/components/common/Copy';
 import { Markdown } from '@/components/common/Markdown';
 import { TodoList, PlanActions } from '@/components/thread/Items';
@@ -20,7 +20,7 @@ import { fdir, fmtDur, fmtTok, fname } from '@/lib/format';
 import type { ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
 import {
-  closeDetail, diffTarget, fail, loadChanges, loadFiles, openAgent, openDiffRef, openFileRef, runTerminal, setFileWindow, stopTask, togglePanel,
+  closeDetail, diffTarget, fail, loadChanges, loadFiles, openAgent, openDiffRef, openFileRef, setFileWindow, stopTask, togglePanel,
 } from '@/store/actions';
 import { modelName, setPref, updateSession, useApp } from '@/store/app';
 import { findByKey, findTool } from '@/store/transcript';
@@ -381,42 +381,6 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
           );
         })}
       </div>
-    </Card>
-  );
-}
-
-// ------------------------------------------------------------ terminal
-
-export function TerminalPanel({ s, ...card }: CardProps & { s: SessionView }) {
-  const [cmd, setCmd] = useState('');
-  const body = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    body.current?.scrollTo({ top: body.current.scrollHeight });
-  }, [s.term]);
-  return (
-    <Card
-      {...card}
-      title={<>Terminal <span className="truncate font-mono text-xs font-normal text-muted-foreground">{s.meta.cwd}</span></>}
-      onClose={() => togglePanel(s.meta.id, 'terminal', false)}
-      bodyClass="flex flex-col overflow-hidden bg-code"
-    >
-      <div ref={body} className="min-h-0 flex-1 overflow-auto">
-        {s.term.length ? s.term.map((t, i) => <TermOutput key={i} cmd={t.cmd} out={t.out} />) : (
-          <div className="p-3 text-xs text-muted-foreground">Pi Desktop 运行的命令会显示在这里。也可以在下面输入命令，输出会加入对话上下文。</div>
-        )}
-      </div>
-      <form
-        className="flex items-center gap-2 border-t px-3 py-2 font-mono text-xs"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!cmd.trim()) return;
-          void runTerminal(s.meta.id, cmd.trim());
-          setCmd('');
-        }}
-      >
-        <span className="text-primary">❯</span>
-        <input value={cmd} onChange={(e) => setCmd(e.target.value)} aria-label="Run a terminal command" placeholder={`Run a command in ${fname(s.meta.cwd)}`} spellCheck={false} className="flex-1 bg-transparent outline-none" />
-      </form>
     </Card>
   );
 }

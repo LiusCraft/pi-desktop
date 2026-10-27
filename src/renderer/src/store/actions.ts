@@ -1012,23 +1012,6 @@ export async function setPrAuto(id: string, patch: { fixCi?: boolean; merge?: bo
   }
 }
 
-/** A command typed in the terminal panel; its output joins the next turn's context. */
-export async function runTerminal(id: string, cmd: string) {
-  const index = getApp().sessions[id]?.term.length ?? 0;
-  updateSession(id, (v) => void v.term.push({ cmd, out: '…' }));
-  let out: string;
-  try {
-    const r = await call('sessions:bash', id, cmd);
-    out = r.output + (r.exitCode ? `\nCommand exited with code ${r.exitCode}` : '');
-  } catch (err) {
-    out = errText(err);
-  }
-  updateSession(id, (v) => {
-    if (v.term[index]) v.term[index].out = out;
-  });
-  scheduleChanges(id);
-}
-
 // ------------------------------------------------------------ projects and folders
 
 export function selectProject(path: string) {

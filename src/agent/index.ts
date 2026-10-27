@@ -86,7 +86,6 @@ const handlers: Record<HostMethod, Handler> = {
   'sessions:sideStage': withHub((h, id, quote) => h.sideStage(id, quote)),
   'sessions:sideAbort': withHub((h, id) => h.sideAbort(id)),
   'sessions:sideReset': withHub((h, id) => h.sideReset(id)),
-  'sessions:bash': withHub((h, id, command) => h.bash(id, command)),
   'sessions:changes': withHub((h, id) => h.changes(id)),
   'sessions:pr': withHub((h, id) => h.prStatus(id)),
   'sessions:prThreads': withHub((h, id) => h.prThreads(id)),

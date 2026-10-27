@@ -84,7 +84,7 @@ export function findBashDir(probe: ShellProbe): string | null {
   return null;
 }
 
-function realBashDir(): string | null {
+export function realBashDir(): string | null {
   try {
     const programFiles = [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], path.join(os.homedir(), 'AppData', 'Local', 'Programs')];
     return findBashDir({

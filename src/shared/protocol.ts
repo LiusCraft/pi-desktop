@@ -664,6 +664,8 @@ export interface Settings {
   /** The composer pet: shown or not, and which skin (see PET_SKINS in the renderer). */
   pet: boolean;
   petSkin: string;
+  /** Executable the terminal panel starts (a `TerminalShell.file`); null picks the system default. */
+  terminalShell: string | null;
 }
 export interface SettingsPayload extends Settings {
   resolvedTheme: 'light' | 'dark';
@@ -699,6 +701,12 @@ export type OpenTarget =
   | 'vscode' | 'vscode-insiders' | 'cursor' | 'windsurf' | 'trae' | 'antigravity' | 'vscodium' | 'zed' | 'sublime'
   | 'idea' | 'webstorm' | 'pycharm' | 'goland' | 'rustrover' | 'clion' | 'phpstorm'
   | 'terminal' | 'folder';
+/** A shell the terminal panel can start. */
+export interface TerminalShell { file: string; label: string }
+/** One terminal tab of a session. */
+export interface TerminalInfo { id: string; title: string }
+/** What attaching to a terminal returns: the output so far, to repaint a fresh view. */
+export interface TerminalAttach { backlog: string; exited: boolean }
 /** A side chat that lives in its own window. */
 export interface SideWindow { sessionId: string; pinned: boolean }
 /** An "Open in" choice; `icon` is the installed app's own icon as a data URL, when it could be read. */
@@ -747,6 +755,15 @@ export interface Api {
   'side:dock'(sessionId: string): void;
   'side:windows'(): SideWindow[];
   'app:openTargets'(): OpenTargetEntry[];
+  /** Shells found on this machine, for the terminal setting. */
+  'terminal:shells'(): TerminalShell[];
+  'terminal:list'(sessionId: string): TerminalInfo[];
+  /** Start a shell in the session folder. */
+  'terminal:create'(sessionId: string): TerminalInfo;
+  'terminal:attach'(id: string): TerminalAttach;
+  'terminal:write'(id: string, data: string): void;
+  'terminal:resize'(id: string, cols: number, rows: number): void;
+  'terminal:close'(id: string): void;
   'sessions:openIn'(id: string, target: OpenTarget, rel?: string): void;
   'sessions:openPath'(id: string, rel: string, reveal: boolean): void;
 
@@ -786,7 +803,6 @@ export interface Api {
   'sessions:sideAbort'(id: string): void;
   /** Forget the side conversation and start over. */
   'sessions:sideReset'(id: string): void;
-  'sessions:bash'(id: string, command: string): { output: string; exitCode: number | undefined };
   'sessions:changes'(id: string): ChangeSet;
   'sessions:pr'(id: string): PrStatus | null;
   'sessions:prThreads'(id: string): PrThread[];
@@ -848,7 +864,7 @@ export const HOST_CHANNELS = [
   'sessions:list', 'sessions:create', 'sessions:open', 'sessions:prompt', 'sessions:respond',
   'sessions:setMode', 'sessions:setStyle', 'sessions:update', 'sessions:archive', 'sessions:unarchive', 'sessions:inspect', 'sessions:remove', 'sessions:spawn', 'sessions:abort',
   'sessions:clearQueue', 'sessions:newContext', 'sessions:compact', 'sessions:stats', 'sessions:exportHtml',
-  'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:side', 'sessions:sideGet', 'sessions:sideStage', 'sessions:sideAbort', 'sessions:sideReset', 'sessions:bash',
+  'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:side', 'sessions:sideGet', 'sessions:sideStage', 'sessions:sideAbort', 'sessions:sideReset',
   'sessions:changes', 'sessions:pr', 'sessions:prThreads', 'sessions:prReply', 'sessions:prResolve', 'sessions:files', 'sessions:readFile', 'sessions:readImage',
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
   'sessions:import', 'git:branch', 'git:branches', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove',
@@ -866,7 +882,7 @@ export const MAIN_CHANNELS = [
   'projects:list', 'projects:add', 'projects:adoptWorktree', 'projects:remove',
   'work:folders', 'work:addFolder', 'work:useFolder', 'work:removeFolder',
   'attachments:import', 'attachments:pick', 'attachments:clipboard',
-  'app:openTargets', 'sessions:openIn', 'sessions:openPath', 'side:pop', 'side:pin', 'side:dock', 'side:windows',
+  'app:openTargets', 'terminal:shells', 'terminal:list', 'terminal:create', 'terminal:attach', 'terminal:write', 'terminal:resize', 'terminal:close', 'sessions:openIn', 'sessions:openPath', 'side:pop', 'side:pin', 'side:dock', 'side:windows',
 ] as const satisfies readonly ApiChannel[];
 
 export const API_CHANNELS: readonly ApiChannel[] = [...MAIN_CHANNELS, ...HOST_CHANNELS];
@@ -880,9 +896,11 @@ export interface PushEvents {
   'session:focus': string;
   /** A side chat window opened, closed or was pinned; `open: false` means it is gone, and `docked` that it went back inside its session. */
   'side:window': SideWindow & { open: boolean; docked?: boolean };
+  'terminal:data': { id: string; data: string };
+  'terminal:exit': { id: string; code: number };
 }
 export type PushChannel = keyof PushEvents;
-export const PUSH_CHANNELS: readonly PushChannel[] = ['host:event', 'settings:changed', 'settings:section', 'session:focus', 'side:window'];
+export const PUSH_CHANNELS: readonly PushChannel[] = ['host:event', 'settings:changed', 'settings:section', 'session:focus', 'side:window', 'terminal:data', 'terminal:exit'];
 
 // ------------------------------------------------------------ main ⇄ host messages
 
