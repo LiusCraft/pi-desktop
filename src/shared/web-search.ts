@@ -4,6 +4,8 @@
  * Keys live in the agent host's own file and never reach the renderer or the model.
  */
 
+import type { MessageKey } from './i18n';
+
 export const SEARCH_ENGINES = ['exa', 'brave', 'tavily', 'serper'] as const;
 export type SearchEngine = (typeof SEARCH_ENGINES)[number];
 
@@ -11,11 +13,11 @@ export type SearchEngine = (typeof SEARCH_ENGINES)[number];
 export const ENGINE_AUTO = 'auto';
 export type EngineChoice = typeof ENGINE_AUTO | SearchEngine;
 
-export const ENGINE_INFO: Record<SearchEngine, { label: string; free: string; signup: string }> = {
-  exa: { label: 'Exa', free: '注册即送免费额度，结果自带正文高亮', signup: 'https://dashboard.exa.ai/api-keys' },
-  brave: { label: 'Brave Search', free: '每月赠送免费额度，独立索引', signup: 'https://api-dashboard.search.brave.com/app/keys' },
-  tavily: { label: 'Tavily', free: '每月 1000 次免费，专为 AI 检索设计', signup: 'https://app.tavily.com/home' },
-  serper: { label: 'Serper', free: '注册赠送免费额度，Google 搜索结果', signup: 'https://serper.dev/api-keys' },
+export const ENGINE_INFO: Record<SearchEngine, { label: string; free: MessageKey; signup: string }> = {
+  exa: { label: 'Exa', free: 'web.free.exa', signup: 'https://dashboard.exa.ai/api-keys' },
+  brave: { label: 'Brave Search', free: 'web.free.brave', signup: 'https://api-dashboard.search.brave.com/app/keys' },
+  tavily: { label: 'Tavily', free: 'web.free.tavily', signup: 'https://app.tavily.com/home' },
+  serper: { label: 'Serper', free: 'web.free.serper', signup: 'https://serper.dev/api-keys' },
 };
 
 export const SEARCH_FRESHNESS = ['day', 'week', 'month', 'year'] as const;
