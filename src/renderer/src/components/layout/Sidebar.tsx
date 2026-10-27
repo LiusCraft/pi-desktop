@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import {
-  ArchiveIcon, BoxIcon, ChevronDownIcon, ClockIcon, CodeXmlIcon, FlameIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon, BrainIcon,
-  ListChecksIcon, MonitorSmartphoneIcon, MoonIcon, MoreHorizontalIcon, PanelLeftIcon, PencilIcon, PlusIcon, SearchIcon, SettingsIcon, ShapesIcon, SunIcon,
+  ArchiveIcon, BoxIcon, ChevronDownIcon, ChevronRightIcon, ClockIcon, EllipsisIcon, CodeXmlIcon, FlameIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon, BrainIcon,
+  ListChecksIcon, MonitorSmartphoneIcon, MoonIcon, MoreHorizontalIcon, PanelLeftIcon, PencilIcon, PinIcon, PinOffIcon, PlusIcon, SearchIcon, SettingsIcon, ShapesIcon, SunIcon,
   Trash2Icon, TriangleAlertIcon,
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger,
+} from '@/components/ui/context-menu';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { call, isMac, modKey } from '@/lib/api';
 import { ago, fname } from '@/lib/format';
@@ -61,11 +65,40 @@ function nest(list: SessionView[]) {
   return out;
 }
 
+/** One set of actions, rendered by both the "…" dropdown and the right-click menu. */
+type MenuParts = { Item: typeof DropdownMenuItem | typeof ContextMenuItem; Separator: typeof DropdownMenuSeparator | typeof ContextMenuSeparator };
+const DROPDOWN_PARTS: MenuParts = { Item: DropdownMenuItem, Separator: DropdownMenuSeparator };
+const CONTEXT_PARTS: MenuParts = { Item: ContextMenuItem, Separator: ContextMenuSeparator };
+
+function SessionActions({ id, parts: { Item, Separator } }: { id: string; parts: MenuParts }) {
+  return (
+    <>
+      <Item onSelect={() => void renameSession(id)}><PencilIcon />Rename</Item>
+      <Item onSelect={() => void archiveSession(id)}><ArchiveIcon />Archive</Item>
+      <Separator />
+      <Item variant="destructive" onSelect={() => void deleteSession(id)}><Trash2Icon />Delete</Item>
+    </>
+  );
+}
+
+function ProjectActions({ path, parts: { Item, Separator } }: { path: string; parts: MenuParts }) {
+  return (
+    <>
+      <Item onSelect={() => { selectProject(path); showWelcome(); }}><PlusIcon />New session</Item>
+      <Item onSelect={() => void call('app:revealPath', path).catch(() => {})}>{isMac ? 'Reveal in Finder' : 'Show in File Explorer'}</Item>
+      <Separator />
+      <Item variant="destructive" onSelect={() => void removeProject(path)}>Remove from Pi Desktop</Item>
+    </>
+  );
+}
+
 function SessionRow({ s, active, child }: { s: SessionView; active: boolean; child?: boolean }) {
   const prNote = s.pr ? ` · PR #${s.pr.num} ${s.pr.state === 'open' && s.pr.draft ? 'draft' : s.pr.state}` : '';
   const title = s.waiting ? 'Waiting for your approval' : s.running ? 'Working…' : `${s.meta.title} · ${ago(s.meta.updatedAt || Date.now(), true)}${prNote}`;
   return (
-    <div className={cn('group flex h-8 items-center gap-2 rounded-lg px-2.5 text-sm', child && 'ml-4', active ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent/70')}>
+    <ContextMenu>
+    <ContextMenuTrigger asChild>
+    <div className={cn('group flex h-7 items-center gap-2 rounded-lg px-2.5 text-sm', child && 'ml-4', active ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent/70')}>
       <button className="flex min-w-0 flex-1 items-center gap-2 text-left" title={title} onClick={() => void openSession(s.meta.id)}>
         <StatusIcon s={s} />
         <span className={cn('truncate', s.unread && 'font-semibold')}>{s.meta.title}</span>
@@ -77,13 +110,13 @@ function SessionRow({ s, active, child }: { s: SessionView; active: boolean; chi
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-44">
-          <DropdownMenuItem onSelect={() => void renameSession(s.meta.id)}><PencilIcon />Rename</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => void archiveSession(s.meta.id)}><ArchiveIcon />Archive</DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onSelect={() => void deleteSession(s.meta.id)}><Trash2Icon />Delete</DropdownMenuItem>
+          <SessionActions id={s.meta.id} parts={DROPDOWN_PARTS} />
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+    </ContextMenuTrigger>
+    <ContextMenuContent className="w-44"><SessionActions id={s.meta.id} parts={CONTEXT_PARTS} /></ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -93,11 +126,86 @@ function NavItem({ icon, children, onClick, hint, active }: { icon: React.ReactN
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
       title={hint}
-      className={cn('flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm', active ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent')}
+      className={cn('flex h-7 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm', active ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent')}
     >
       <span className="flex size-4 items-center justify-center text-muted-foreground">{icon}</span>
       {children}
     </button>
+  );
+}
+
+type NavId = 'projects' | 'artifacts' | 'scheduled' | 'customize' | 'archived';
+
+/** The configurable nav entries, in display order. "New" is not one of them: it is always on top. */
+const NAV_ITEMS: { id: NavId; label: string; hint: string; icon: React.ReactNode; views: SessionKind[]; open: () => void }[] = [
+  { id: 'projects', label: 'Projects', hint: 'Projects：带着指令、链接和记忆的长期主题', icon: <BoxIcon className="size-4" />, views: ['work'], open: () => showProjects() },
+  { id: 'artifacts', label: 'Artifacts', hint: 'Artifacts：模型做的页面，预览与发布', icon: <ShapesIcon className="size-4" />, views: ['work'], open: showArtifacts },
+  { id: 'scheduled', label: 'Scheduled', hint: 'Scheduled：按计划自动运行的任务', icon: <ClockIcon className="size-4" />, views: ['work', 'code'], open: showScheduled },
+  { id: 'customize', label: 'Customize', hint: 'Customize：技能、连接器与插件', icon: <ShapesIcon className="size-4" />, views: ['work', 'code'], open: showCustomize },
+  { id: 'archived', label: 'Archived', hint: '已归档的会话', icon: <ArchiveIcon className="size-4" />, views: ['work', 'code'], open: showArchived },
+];
+
+const NAV_PINNED_KEY = 'pi.sidebar.pinned';
+const NAV_MORE_KEY = 'pi.sidebar.navMore';
+const DEFAULT_PINNED: Record<SessionKind, NavId[]> = { work: ['projects', 'scheduled'], code: ['scheduled'] };
+
+function readStored<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch { return fallback; }
+}
+function writeStored(key: string, value: unknown) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage unavailable */ }
+}
+
+/** Top nav: "New" plus the entries the user pinned; the rest sit behind "More" (which opens by itself when the current page is in it). */
+function TopNav({ view }: { view: SessionKind }) {
+  const page = usePage();
+  const [pinned, setPinned] = useState<Record<SessionKind, NavId[]>>(() => ({ ...DEFAULT_PINNED, ...readStored<Partial<Record<SessionKind, NavId[]>>>(NAV_PINNED_KEY, {}) }));
+  const [open, setOpen] = useState(() => readStored(NAV_MORE_KEY, false));
+  const items = NAV_ITEMS.filter((i) => i.views.includes(view));
+  const isPinned = (id: NavId) => pinned[view].includes(id);
+  const togglePin = (id: NavId) => {
+    const next = { ...pinned, [view]: isPinned(id) ? pinned[view].filter((x) => x !== id) : [...pinned[view], id] };
+    setPinned(next);
+    writeStored(NAV_PINNED_KEY, next);
+  };
+  const held = items.filter((i) => !isPinned(i.id));
+  const holdsPage = held.some((i) => i.id === page);
+  const shown = open || holdsPage;
+  const row = (i: (typeof items)[number]) => (
+    <ContextMenu key={i.id}>
+      <ContextMenuTrigger asChild>
+        <div>
+          <NavItem icon={i.icon} active={page === i.id} onClick={i.open} hint={i.hint}>{i.label}</NavItem>
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-48">
+        <ContextMenuItem onSelect={() => togglePin(i.id)}>{isPinned(i.id) ? <><PinOffIcon />Move to More</> : <><PinIcon />Pin to sidebar</>}</ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+  return (
+    <nav className="space-y-0.5 px-2">
+      <NavItem icon={<PlusIcon className="size-4" />} onClick={showWelcome}>New</NavItem>
+      {items.filter((i) => isPinned(i.id)).map(row)}
+      {held.length > 0 && (
+        <Collapsible open={shown} onOpenChange={(v) => { setOpen(v); writeStored(NAV_MORE_KEY, v); }}>
+          <CollapsibleTrigger
+            title="右键任意导航项可固定到侧边栏或收进 More"
+            className="group/more flex h-7 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent"
+          >
+            <span className="flex size-4 items-center justify-center text-muted-foreground"><EllipsisIcon className="size-4" /></span>
+            More
+            <ChevronRightIcon className="ml-auto size-3.5 text-muted-foreground transition-transform group-data-[state=open]/more:rotate-90" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mx-3.5 mt-0.5 space-y-0.5 border-l border-sidebar-border pl-2 overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+            {held.map(row)}
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+    </nav>
   );
 }
 
@@ -110,6 +218,8 @@ function CodeNav() {
   const sessions = useApp((s) => s.sessions);
   const current = useApp((s) => s.current);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [folded, setFolded] = useState<Set<string>>(new Set());
+  const toggleFolded = (path: string) => setFolded((f) => { const n = new Set(f); if (!n.delete(path)) n.add(path); return n; });
   const groups = new Map<string, SessionView[]>();
   for (const p of projects) groups.set(p.path, []);
   for (const s of Object.values(sessions).filter((x) => !x.meta.archived && x.meta.kind === 'code').sort((a, b) => (b.meta.updatedAt || 0) - (a.meta.updatedAt || 0))) {
@@ -118,42 +228,44 @@ function CodeNav() {
   }
   return (
     <>
-      <nav className="space-y-0.5 px-2">
-        <NavItem icon={<PlusIcon className="size-4" />} onClick={showWelcome}>New</NavItem>
-        <NavItem icon={<ClockIcon className="size-4" />} active={page === 'scheduled'} onClick={showScheduled} hint="Scheduled：按计划自动运行的任务">Scheduled</NavItem>
-        <NavItem icon={<ShapesIcon className="size-4" />} active={page === 'customize'} onClick={showCustomize} hint="Customize：技能、连接器与插件">Customize</NavItem>
-        <NavItem icon={<ArchiveIcon className="size-4" />} active={page === 'archived'} onClick={showArchived} hint="已归档的会话">Archived</NavItem>
-      </nav>
-      <div className="mt-4 space-y-4 px-2">
+      <TopNav view="code" />
+      <div className="mt-3 space-y-1 px-2">
         {[...groups].map(([path, list]) => {
           const LIMIT = 5;
           const rows = nest(list);
+          const isFolded = folded.has(path);
           const collapsed = rows.length > LIMIT && !expanded.has(path) && !rows.slice(LIMIT).some((r) => r.s.meta.id === current);
           return (
-            <div key={path}>
-              <div className="group flex h-7 items-center gap-0.5 px-2.5 text-xs font-medium text-muted-foreground" title={path}>
-                <span className="flex-1 truncate">{fname(path)}</span>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button className="hidden rounded p-0.5 group-hover:block hover:bg-sidebar-accent hover:text-foreground data-[state=open]:block" title="Project actions" aria-label="Project actions">
-                      <MoreHorizontalIcon className="size-3.5" />
+            <Collapsible key={path} open={!isFolded}>
+              <ContextMenu>
+                <ContextMenuTrigger asChild>
+                  <div className="group flex h-7 items-center gap-0.5 px-2.5 text-xs font-medium text-muted-foreground" title={path}>
+                    <button className="flex min-w-0 flex-1 items-center gap-1 text-left hover:text-foreground" aria-expanded={!isFolded} onClick={() => toggleFolded(path)}>
+                      <ChevronDownIcon className={cn('size-3.5 shrink-0 transition-transform duration-200', isFolded && '-rotate-90')} />
+                      <span className="truncate">{fname(path)}</span>
                     </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-56">
-                    <DropdownMenuItem onSelect={() => void call('app:revealPath', path).catch(() => {})}>{isMac ? 'Reveal in Finder' : 'Show in File Explorer'}</DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem variant="destructive" onSelect={() => void removeProject(path)}>Remove from Pi Desktop</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <button className="hidden rounded p-0.5 group-hover:block hover:bg-sidebar-accent hover:text-foreground" title={`New session in ${fname(path)}`} onClick={() => { selectProject(path); showWelcome(); }}>
-                  <PlusIcon className="size-3.5" />
-                </button>
-              </div>
-              {(collapsed ? rows.slice(0, LIMIT) : rows).map(({ s, child }) => <SessionRow key={s.meta.id} s={s} child={child} active={!page && s.meta.id === current} />)}
-              {collapsed && (
-                <button className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground" onClick={() => setExpanded((e) => new Set(e).add(path))}>Show more</button>
-              )}
-            </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="hidden rounded p-0.5 group-hover:block hover:bg-sidebar-accent hover:text-foreground data-[state=open]:block" title="Project actions" aria-label="Project actions">
+                          <MoreHorizontalIcon className="size-3.5" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-56"><ProjectActions path={path} parts={DROPDOWN_PARTS} /></DropdownMenuContent>
+                    </DropdownMenu>
+                    <button className="hidden rounded p-0.5 group-hover:block hover:bg-sidebar-accent hover:text-foreground" title={`New session in ${fname(path)}`} onClick={() => { selectProject(path); showWelcome(); }}>
+                      <PlusIcon className="size-3.5" />
+                    </button>
+                  </div>
+                </ContextMenuTrigger>
+                <ContextMenuContent className="w-56"><ProjectActions path={path} parts={CONTEXT_PARTS} /></ContextMenuContent>
+              </ContextMenu>
+              <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
+                {(collapsed ? rows.slice(0, LIMIT) : rows).map(({ s, child }) => <SessionRow key={s.meta.id} s={s} child={child} active={!page && s.meta.id === current} />)}
+                {collapsed && (
+                  <button className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground" onClick={() => setExpanded((e) => new Set(e).add(path))}>Show more</button>
+                )}
+              </CollapsibleContent>
+            </Collapsible>
           );
         })}
       </div>
@@ -168,14 +280,7 @@ function WorkNav() {
   const tasks = Object.values(sessions).filter((s) => s.meta.kind === 'work' && !s.meta.archived).sort((a, b) => (b.meta.updatedAt || 0) - (a.meta.updatedAt || 0));
   return (
     <>
-      <nav className="space-y-0.5 px-2">
-        <NavItem icon={<PlusIcon className="size-4" />} onClick={showWelcome}>New</NavItem>
-        <NavItem icon={<BoxIcon className="size-4" />} active={page === 'projects'} onClick={() => showProjects()} hint="Projects：带着指令、链接和记忆的长期主题">Projects</NavItem>
-        <NavItem icon={<ShapesIcon className="size-4" />} active={page === 'artifacts'} onClick={showArtifacts} hint="Artifacts：模型做的页面，预览与发布">Artifacts</NavItem>
-        <NavItem icon={<ClockIcon className="size-4" />} active={page === 'scheduled'} onClick={showScheduled} hint="Scheduled：按计划自动运行的任务">Scheduled</NavItem>
-        <NavItem icon={<ShapesIcon className="size-4" />} active={page === 'customize'} onClick={showCustomize} hint="Customize：技能、连接器与插件">Customize</NavItem>
-        <NavItem icon={<ArchiveIcon className="size-4" />} active={page === 'archived'} onClick={showArchived} hint="已归档的会话">Archived</NavItem>
-      </nav>
+      <TopNav view="work" />
       <div className="mt-4 flex h-7 items-center px-4 text-xs font-medium text-muted-foreground">
         <span className="flex-1">Tasks</span>
         <button className="rounded p-0.5 hover:bg-sidebar-accent hover:text-foreground" title="Search" onClick={() => setApp((s) => void (s.paletteOpen = true))}>
