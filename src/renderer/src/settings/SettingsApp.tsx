@@ -1,7 +1,7 @@
 // Settings window. Every value comes from the main process (single source of
 // truth), so the main window and this one can never disagree.
-import { useEffect, useState, type ReactNode } from 'react';
-import { BrainIcon, BriefcaseIcon, CodeIcon, DatabaseIcon, FolderIcon, InfoIcon, MonitorSmartphoneIcon, MoonIcon, PlusIcon, SettingsIcon, Trash2Icon } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { BrainIcon, ChevronRightIcon, BriefcaseIcon, CodeIcon, DatabaseIcon, FolderIcon, InfoIcon, MonitorSmartphoneIcon, MoonIcon, PlusIcon, SettingsIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AppInfo, Project, Settings, SettingsPayload, SuggestionModelMode, TerminalShell, WorkIdeasModelMode } from '@shared/protocol';
 import { LOCALES, LOCALE_NAMES, type LanguageSetting, type MessageKey } from '@shared/i18n';
@@ -14,7 +14,6 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Toaster } from 'sonner';
 import { bridge, call, errText, isMac } from '@/lib/api';
@@ -29,13 +28,39 @@ import { StorageSection } from './StorageSection';
 import { WebSearchSection } from './WebSearchSection';
 
 type Section = 'appearance' | 'general' | 'work' | 'code' | 'models' | 'projects' | 'remote' | 'storage' | 'about';
-const SECTIONS: { id: Section; label: MessageKey | null; icon: ReactNode }[] = [
+/** A group inside a section: a leaf of the sidebar tree that scrolls to the group's DOM id (`group-<id>`). */
+interface GroupNode {
+  id: string;
+  label: MessageKey;
+}
+const groupDomId = (id: string) => `group-${id}`;
+const SECTIONS: { id: Section; label: MessageKey | null; icon: ReactNode; groups?: GroupNode[] }[] = [
   { id: 'appearance', label: 'settings.section.appearance', icon: <MoonIcon className="size-4" /> },
-  { id: 'general', label: 'settings.section.general', icon: <SettingsIcon className="size-4" /> },
+  {
+    id: 'general',
+    label: 'settings.section.general',
+    icon: <SettingsIcon className="size-4" />,
+    groups: [
+      { id: 'basics', label: 'settings.basics' },
+      { id: 'aiTools', label: 'settings.aiTools' },
+      { id: 'replyRendering', label: 'settings.replyRendering' },
+      { id: 'prediction', label: 'settings.prediction' },
+      { id: 'webSearch', label: 'web.title' },
+    ],
+  },
   { id: 'work', label: null, icon: <BriefcaseIcon className="size-4" /> },
   { id: 'code', label: null, icon: <CodeIcon className="size-4" /> },
   { id: 'models', label: 'settings.section.models', icon: <BrainIcon className="size-4" /> },
-  { id: 'projects', label: 'settings.section.projects', icon: <FolderIcon className="size-4" /> },
+  {
+    id: 'projects',
+    label: 'settings.section.projects',
+    icon: <FolderIcon className="size-4" />,
+    groups: [
+      { id: 'worktree', label: 'settings.worktreeLocation' },
+      { id: 'codeProjects', label: 'settings.codeProjects' },
+      { id: 'workFolders', label: 'settings.workFolders' },
+    ],
+  },
   { id: 'remote', label: 'settings.section.remote', icon: <MonitorSmartphoneIcon className="size-4" /> },
   { id: 'storage', label: 'settings.section.storage', icon: <DatabaseIcon className="size-4" /> },
   { id: 'about', label: 'settings.section.about', icon: <InfoIcon className="size-4" /> },
@@ -67,9 +92,9 @@ function Row({ title, hint, children, col }: { title: ReactNode; hint?: ReactNod
 }
 const Panel = ({ children }: { children: ReactNode }) => <div className="divide-y rounded-xl border bg-card">{children}</div>;
 /** A titled settings group: a small heading (and optional note) above its own panel. */
-function Group({ title, sub, children }: { title: string; sub?: string; children: ReactNode }) {
+function Group({ id, title, sub, children }: { id: string; title: string; sub?: string; children: ReactNode }) {
   return (
-    <section>
+    <section id={groupDomId(id)} className="scroll-mt-2">
       <h3 className="px-1 text-sm font-semibold">{title}</h3>
       {sub && <p className="mt-0.5 px-1 text-xs text-muted-foreground">{sub}</p>}
       <div className="mt-2">
@@ -181,6 +206,13 @@ export function SettingsApp() {
   useEffect(() => { document.title = t('settings.title'); }, [locale]); // eslint-disable-line react-hooks/exhaustive-deps
   const [settings, setSettings] = useState<Partial<SettingsPayload>>(bridge.boot.settings ?? {});
   const [section, setSection] = useState<Section>(() => (isSection(location.hash.slice(1)) ? normalizeSection(location.hash.slice(1)) : 'appearance'));
+  /** Sections whose group list the user folded away; the rest show their groups. */
+  const [folded, setFolded] = useState<ReadonlySet<Section>>(new Set());
+  /** A group to scroll to once its section has rendered; a fresh object each click so the same group can be hit twice. */
+  const [jump, setJump] = useState<{ group: string } | null>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  /** The group nearest the top of the content, so the tree can show where you are. */
+  const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [shells, setShells] = useState<TerminalShell[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -218,6 +250,34 @@ export function SettingsApp() {
       // A file:// document rejects history rewrites; the section state is enough there.
     }
   }, [section]);
+
+  useEffect(() => {
+    if (jump) document.getElementById(groupDomId(jump.group))?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [jump]);
+  const syncActiveGroup = () => {
+    const main = mainRef.current;
+    const groups = SECTIONS.find((x) => x.id === section)?.groups;
+    if (!main || !groups) return setActiveGroup(null);
+    const line = main.getBoundingClientRect().top + 48;
+    let current = groups[0].id;
+    for (const g of groups) {
+      const el = document.getElementById(groupDomId(g.id));
+      if (el && el.getBoundingClientRect().top <= line) current = g.id;
+    }
+    // At the very bottom the last group may be too short to reach the line.
+    if (main.scrollTop + main.clientHeight >= main.scrollHeight - 2) current = groups[groups.length - 1].id;
+    setActiveGroup(current);
+  };
+  useEffect(syncActiveGroup); // content height changes with settings, so re-check every render (setting the same value is a no-op)
+  const openSection = (id: Section) => {
+    setSection(id);
+    mainRef.current?.scrollTo({ top: 0 });
+  };
+  const toggleFold = (id: Section) => setFolded((prev) => {
+    const next = new Set(prev);
+    if (!next.delete(id)) next.add(id);
+    return next;
+  });
 
   const patch = async (values: Partial<Settings>) => {
     try {
@@ -295,7 +355,7 @@ export function SettingsApp() {
       <>
         <Heading title={t('settings.section.general')} sub={t('settings.general.sub')} />
         <div className="space-y-6">
-          <Group title={t('settings.basics')}>
+          <Group id="basics" title={t('settings.basics')}>
             <Row title={t('settings.notify')} hint={t('settings.notify.hint')}>
               <Switch checked={settings.notify !== false} onCheckedChange={(v) => void patch({ notify: v })} />
             </Row>
@@ -308,7 +368,7 @@ export function SettingsApp() {
             </Row>
           </Group>
 
-          <Group title={t('settings.aiTools')} sub={t('settings.aiTools.sub')}>
+          <Group id="aiTools" title={t('settings.aiTools')} sub={t('settings.aiTools.sub')}>
             <Row title={t('settings.aiSchedule')} hint={t('settings.aiSchedule.hint')}>
               <Switch checked={settings.aiSchedule !== false} onCheckedChange={(v) => void patch({ aiSchedule: v })} />
             </Row>
@@ -320,13 +380,13 @@ export function SettingsApp() {
             </Row>
           </Group>
 
-          <Group title={t('settings.replyRendering')}>
+          <Group id="replyRendering" title={t('settings.replyRendering')}>
             <Row title={t('settings.mermaid')} hint={t('settings.mermaid.hint')}>
               <Switch checked={settings.renderMermaid !== false} onCheckedChange={(v) => void patch({ renderMermaid: v })} />
             </Row>
           </Group>
 
-          <Group title={t('settings.prediction')} sub={t('settings.prediction.sub')}>
+          <Group id="prediction" title={t('settings.prediction')} sub={t('settings.prediction.sub')}>
             <Row title={t('settings.prediction.enable')}>
               <Switch checked={settings.suggestions !== false} onCheckedChange={(v) => void patch({ suggestions: v })} />
             </Row>
@@ -359,7 +419,7 @@ export function SettingsApp() {
             )}
           </Group>
 
-          <WebSearchSection />
+          <div id={groupDomId('webSearch')} className="scroll-mt-2"><WebSearchSection /></div>
         </div>
       </>
     );
@@ -368,7 +428,7 @@ export function SettingsApp() {
       <>
         <Heading title="Work" sub={t('settings.work.sub')} />
         <div className="space-y-6">
-          <Group title={t('settings.work.ideas')} sub={t('settings.work.ideas.sub')}>
+          <Group id="ideas" title={t('settings.work.ideas')} sub={t('settings.work.ideas.sub')}>
             <Row title={t('settings.work.recommend')}>
               <Switch checked={settings.workIdeas !== false} onCheckedChange={(v) => void patch({ workIdeas: v })} />
             </Row>
@@ -393,7 +453,7 @@ export function SettingsApp() {
       <>
         <Heading title="Code" sub={t('settings.code.sub')} />
         <div className="space-y-6">
-          <Group title={t('settings.terminal')}>
+          <Group id="terminal" title={t('settings.terminal')}>
             <Row title={t('settings.terminal.default')} hint={t('settings.terminal.default.hint')}>
               <Select value={settings.terminalShell ?? SYSTEM_SHELL} onValueChange={(v) => void patch({ terminalShell: v === SYSTEM_SHELL ? null : v })}>
                 <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
@@ -462,6 +522,7 @@ export function SettingsApp() {
     body = (
       <>
         <Heading title={t('settings.section.projects')} sub={t('settings.projects.sub')} />
+        <div id={groupDomId('worktree')} className="scroll-mt-2">
         <div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">{t('settings.worktreeLocation')}</h3></div>
         <Panel>
           <Row
@@ -482,10 +543,15 @@ export function SettingsApp() {
             </Button>
           </Row>
         </Panel>
+        </div>
+        <div id={groupDomId('codeProjects')} className="scroll-mt-2">
         <div className="mt-6 mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">{t('settings.codeProjects')}</h3><Button size="sm" variant="outline" onClick={() => void add('project')}>{t('settings.add')}</Button></div>
         {list(projects, 'project')}
+        </div>
+        <div id={groupDomId('workFolders')} className="scroll-mt-2">
         <div className="mt-6 mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">{t('settings.workFolders')}</h3><Button size="sm" variant="outline" onClick={() => void add('folder')}>{t('settings.add')}</Button></div>
         {list(folders, 'folder')}
+        </div>
       </>
     );
   } else {
@@ -516,25 +582,64 @@ export function SettingsApp() {
   return (
     <div className="flex h-screen flex-col bg-background" data-platform={bridge.platform}>
       <header className="app-drag titlebar-inset flex h-12 shrink-0 items-center justify-center border-b text-sm font-medium">{t('settings.title')}</header>
-      <Tabs value={section} onValueChange={(v) => setSection(v as Section)} orientation="vertical" className="min-h-0 flex-1 flex-row gap-0">
-        <nav className="w-52 shrink-0 border-r bg-sidebar p-3">
-          <TabsList className="h-auto w-full flex-col items-stretch gap-0.5 bg-transparent p-0">
-            {SECTIONS.map((s) => (
-              <TabsTrigger
-                key={s.id}
-                value={s.id}
-                className="h-8 flex-none justify-start gap-2.5 rounded-lg px-2.5 font-normal text-sidebar-foreground shadow-none hover:bg-sidebar-accent/60 data-[state=active]:bg-sidebar-accent data-[state=active]:font-medium data-[state=active]:shadow-none"
-              >
-                <span className="text-muted-foreground">{s.icon}</span>
-                {s.label ? t(s.label) : s.id === 'work' ? 'Work' : 'Code'}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+      <div className="flex min-h-0 flex-1">
+        <nav className="w-56 shrink-0 overflow-y-auto border-r bg-sidebar p-3">
+          <ul className="flex flex-col gap-0.5">
+            {SECTIONS.map((s) => {
+              const active = section === s.id;
+              const open = !!s.groups && !folded.has(s.id);
+              return (
+                <li key={s.id}>
+                  <div
+                    className={cn(
+                      'flex h-8 items-center rounded-lg text-sm text-sidebar-foreground hover:bg-sidebar-accent/60',
+                      active && 'bg-sidebar-accent font-medium',
+                    )}
+                  >
+                    <button
+                      type="button"
+                      tabIndex={s.groups ? 0 : -1}
+                      disabled={!s.groups}
+                      onClick={() => toggleFold(s.id)}
+                      className="flex size-6 shrink-0 cursor-pointer items-center justify-center text-muted-foreground disabled:invisible"
+                    >
+                      <ChevronRightIcon className={cn('size-3.5 transition-transform', open && 'rotate-90')} />
+                    </button>
+                    <button type="button" onClick={() => openSection(s.id)} className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2.5 pr-2.5 text-left">
+                      <span className="text-muted-foreground">{s.icon}</span>
+                      <span className="truncate">{s.label ? t(s.label) : s.id === 'work' ? 'Work' : 'Code'}</span>
+                    </button>
+                  </div>
+                  {open && (
+                    <ul className="mt-0.5 ml-[22px] flex flex-col gap-0.5 border-l pl-2">
+                      {s.groups!.map((g) => (
+                        <li key={g.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!active) setSection(s.id);
+                              setJump({ group: g.id });
+                            }}
+                            className={cn(
+                              'h-7 w-full cursor-pointer truncate rounded-lg px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground',
+                              active && activeGroup === g.id && 'bg-sidebar-accent/60 font-medium text-sidebar-foreground',
+                            )}
+                          >
+                            {t(g.label)}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         </nav>
-        <main className="min-w-0 flex-1 overflow-y-auto p-8">
+        <main ref={mainRef} onScroll={syncActiveGroup} className="min-w-0 flex-1 overflow-y-auto p-8">
           <div key={section} className="mx-auto max-w-3xl animate-in duration-200 fade-in-0 slide-in-from-bottom-1">{body}</div>
         </main>
-      </Tabs>
+      </div>
       <Toaster position="bottom-right" theme={settings.resolvedTheme ?? 'light'} />
     </div>
   );
