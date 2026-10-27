@@ -77,6 +77,8 @@ export interface KitHost {
     read(id: string, limit: number): { role: string; text: string }[];
     send(id: string, text: string): Promise<'delivered' | 'queued'>;
   };
+  /** Renames this session; omit it (subagents) to leave out the rename tool. */
+  rename?(title: string): void;
   /** The subagent identities to offer (built-in plus the user's); the built-ins when omitted. */
   agents?(): AgentType[];
   /** Pushes the progress of a background task to the UI (its tool call has already returned). */
@@ -108,6 +110,8 @@ const READ_ONLY_TOOLS = new Set([
   'read', 'grep', 'find', 'ls', 'pidesk_todo_write', 'pidesk_exit_plan_mode', 'pidesk_task', 'pidesk_bg_output', 'pidesk_bg_kill', 'tool_search', 'codemode',
   // Nothing here changes anything: a suggestion is only shown to the user, and the session tools below only look.
   'pidesk_suggest_task', 'pidesk_list_sessions', 'pidesk_read_session',
+  // Only changes the label shown in the session list.
+  'pidesk_rename_session',
 ]);
 const EDIT_TOOLS = new Set(['edit', 'write']);
 const SHELL_TOOLS = new Set(['bash', 'powershell', 'pidesk_bg_shell']);
@@ -304,6 +308,25 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         };
       },
     });
+
+    // ---------------------------------------------------------------- pidesk_rename_session
+    const rename = host.rename;
+    if (rename) {
+      pi.registerTool({
+        name: 'pidesk_rename_session',
+        label: 'Rename session',
+        description:
+          'Change the name of this session, shown in the session list. Use it when the user asks for a different name, ' +
+          'or when the work has moved on so far that the current name is misleading. Keep it short (under 60 characters).',
+        parameters: Type.Object({ title: Type.String({ description: 'The new session name' }) }),
+        async execute(_id, params) {
+          const title = params.title.trim().slice(0, 80);
+          if (!title) throw new Error('The name cannot be empty');
+          rename(title);
+          return { content: [{ type: 'text', text: `Session renamed to "${title}".` }], details: { title } };
+        },
+      });
+    }
 
     // ---------------------------------------------------------------- scheduled tasks and customize
     registerManageTools(pi, host);

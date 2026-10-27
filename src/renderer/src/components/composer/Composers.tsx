@@ -39,8 +39,19 @@ function NewSessionChips() {
   const branches = useApp((st) => st.projectBranches);
   const baseRef = useApp((st) => st.baseRef);
   const adopt = useApp((st) => (st.adopt && st.adopt.mainRoot === st.prefs.project ? st.adopt : null));
+  const name = useApp((st) => st.newSessionName);
   return (
     <div className="mb-2.5 flex flex-wrap items-center gap-2">
+      <input
+        {...PET_GROUND}
+        value={name}
+        maxLength={80}
+        onChange={(e) => setApp((st) => void (st.newSessionName = e.target.value))}
+        placeholder="会话名称（可选）"
+        aria-label="Session name"
+        title="提前给会话命名；留空则由第一条消息自动命名"
+        className="h-8 w-44 rounded-lg bg-muted/80 px-2.5 text-sm text-foreground/85 outline-none placeholder:text-muted-foreground focus:bg-accent"
+      />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Chip title="Environment"><LaptopIcon className="size-4 shrink-0" />Local</Chip>

@@ -80,6 +80,8 @@ export interface AppState {
   /** Branches of the selected project, and the one the next worktree starts from (null: the current branch). */
   projectBranches: string[];
   baseRef: string | null;
+  /** A name typed for the next new session; empty lets the first prompt name it. */
+  newSessionName: string;
   sessions: Record<string, SessionView>;
   paletteOpen: boolean;
   /** A footer menu opened by a slash command (/model, /permissions, /context). */
@@ -120,6 +122,7 @@ export const useApp = create<AppState>()(
     projectBranch: null,
     projectBranches: [],
     baseRef: null,
+    newSessionName: '',
     sessions: {},
     paletteOpen: false,
     menu: null,
