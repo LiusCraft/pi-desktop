@@ -32,6 +32,9 @@ const EDGE = 16;
 const SPEED = 30; // px per second
 const NEAR = 4; // px: closer than this counts as already there
 const BLOCK_POLL_MS = 400;
+const DRAG_THRESHOLD = 3; // px of pointer travel before a press becomes a drag
+const JOY_MS = 1400; // how long a double-click reaction lasts
+const HELD_LIFT = 8; // px the pet is lifted while the user holds it
 /** Mark an element that floats over the composer so the pet keeps clear of it. */
 export const PET_BLOCK_ATTR = 'data-pet-block';
 
@@ -55,14 +58,21 @@ interface Patrol { x: number | null; facing: 1 | -1; walking: boolean; dur: numb
 /**
  * Where the pet is. Idle it wanders to random spots along the track; while `working` it walks to the
  * far right end and stays there. Either way it stays inside what is visible of the composer, even when
- * panels open beside it or float over it.
+ * panels open beside it or float over it. The user can pick it up (`grab` / `dragTo` / `drop`): where it is
+ * put down it stays until its job changes (working) or it wanders off again (idle).
  */
 function usePatrol(enabled: boolean, working: boolean, track: React.RefObject<HTMLDivElement | null>, from = 0) {
   const x = useRef<number | null>(null);
   const [state, setState] = useState<Patrol>({ x: null, facing: -1, walking: false, dur: 0, arrived: false });
+  const [held, setHeld] = useState(false);
+  /** The `working` value the user dropped it under; while that holds, the pet is not sent back to the right end. */
+  const pinnedFor = useRef<boolean | null>(null);
   useEffect(() => {
     const el = track.current;
-    if (!enabled || !el) return;
+    // While held, the effect is torn down: its cleanup freezes the pet where it is and cancels every walk.
+    if (!enabled || !el || held) return;
+    if (pinnedFor.current !== working) pinnedFor.current = null;
+    const pinned = pinnedFor.current === working;
     const still = reducedMotion();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const goTo = (to: number, instant: boolean, then?: () => void) => {
@@ -91,14 +101,15 @@ function usePatrol(enabled: boolean, working: boolean, track: React.RefObject<HT
         timer = setTimeout(wander, 2500 + Math.random() * 5000);
       });
     };
-    if (working) goTo(walkRange(el, from).max, false);
+    if (working && pinned) setState((p) => ({ ...p, arrived: true }));
+    else if (working) goTo(walkRange(el, from).max, false);
     else if (!still) timer = setTimeout(wander, 1500 + Math.random() * 2000);
     // Follow the composer as panels open, close or resize beside it, or float over it.
     const fit = () => {
       const { max } = walkRange(el, from);
       const at = x.current ?? max;
       if (at > max) goTo(max, true);
-      else if (working && at < max - NEAR) goTo(max, false);
+      else if (working && !pinned && at < max - NEAR) goTo(max, false);
     };
     const observer = new ResizeObserver(fit);
     observer.observe(el);
@@ -112,8 +123,21 @@ function usePatrol(enabled: boolean, working: boolean, track: React.RefObject<HT
       if (pos) x.current = pos.getBoundingClientRect().left - el.getBoundingClientRect().left;
       setState((p) => ({ ...p, x: x.current, walking: false, dur: 0, arrived: false }));
     };
-  }, [enabled, working, track, from]);
-  return state;
+  }, [enabled, working, held, track, from]);
+  const grab = () => setHeld(true);
+  const dragTo = (left: number) => {
+    const el = track.current;
+    if (!el) return;
+    const to = Math.min(walkRange(el, 0).max, Math.max(EDGE, left));
+    const prev = x.current ?? to;
+    x.current = to;
+    setState((p) => ({ ...p, x: to, facing: Math.abs(to - prev) >= 1 ? (to > prev ? 1 : -1) : p.facing, walking: false, dur: 0 }));
+  };
+  const drop = () => {
+    pinnedFor.current = working;
+    setHeld(false);
+  };
+  return { ...state, held, grab, dragTo, drop };
 }
 
 /** Every skin the user can pick: the built-in pets, then their own. */
@@ -161,10 +185,10 @@ function MonitorProp() {
 }
 
 /** One frame of the pet. The composer animates it by mood; the settings page shows it still. */
-export function PetSprite({ pet, mood = 'idle', walking = false, facing = 1, size = 1 }: { pet: PetDef; mood?: Mood; walking?: boolean; facing?: 1 | -1; size?: number }) {
+export function PetSprite({ pet, mood = 'idle', walking = false, held = false, joy = false, facing = 1, size = 1 }: { pet: PetDef; mood?: Mood; walking?: boolean; held?: boolean; joy?: boolean; facing?: 1 | -1; size?: number }) {
   return (
     <svg
-      className={cn('clawd', `mood-${mood}`, walking && 'walking')}
+      className={cn('clawd', `mood-${mood}`, walking && 'walking', held && 'held', joy && 'joy')}
       // Inline size: the settings tiles' toggle buttons force `svg` to 1rem unless the size is set on the element itself.
       style={{ transform: `scaleX(${facing})`, width: PET_W * size, height: 34 * size }}
       viewBox={`-8 -6 ${SPRITE_UNITS} 20`}
@@ -178,6 +202,13 @@ export function PetSprite({ pet, mood = 'idle', walking = false, facing = 1, siz
       <g className="fx-alert" fill="#d97757">
         <rect x="10" y="-6" width="2" height="3" />
         <rect x="10" y="-2" width="2" height="1" />
+      </g>
+      <g className="fx-heart" fill="#e5675a">
+        <rect x="9" y="-5" width="2" height="1" />
+        <rect x="12" y="-5" width="2" height="1" />
+        <rect x="9" y="-4" width="5" height="1" />
+        <rect x="10" y="-3" width="3" height="1" />
+        <rect x="11" y="-2" width="1" height="1" />
       </g>
       <rect className="fx-sweat" x="20" y="-2" width="1" height="2" fill="var(--info)" />
       <MonitorProp />
@@ -203,12 +234,50 @@ export function Clawd({ mood, from }: { mood: Mood; from?: number }) {
   const skin = useApp((s) => s.settings.petSkin);
   const custom = useApp((s) => s.settings.pets);
   const pet = allPets(custom).find((p) => p.id === skin) ?? BUILTIN_PETS.find((p) => p.id === DEFAULT_PET_ID)!;
-  const { x, facing, walking, dur, arrived } = usePatrol(enabled, mood !== 'idle', track, from);
+  const patrol = usePatrol(enabled, mood !== 'idle', track, from);
+  const press = useRef<{ startX: number; startLeft: number; moved: boolean } | null>(null);
+  const [joy, setJoy] = useState(false);
+  const joyTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(joyTimer.current), []);
   if (!enabled) return null;
+  const { x, facing, walking, dur, arrived, held } = patrol;
+  const left = (el: HTMLElement) => el.getBoundingClientRect().left - track.current!.getBoundingClientRect().left;
   return (
     <div ref={track} className="pointer-events-none absolute inset-x-0 -top-[33px] h-[34px]" aria-hidden>
-      <div className="clawd-pos absolute bottom-0" style={x == null ? { right: 24 } : { left: x, transition: `left ${dur}s linear` }}>
-        <PetSprite pet={pet} mood={walking || !arrived ? 'idle' : mood} walking={walking} facing={facing} />
+      <div
+        className={cn('clawd-pos pointer-events-auto absolute bottom-0 touch-none select-none', held ? 'cursor-grabbing' : 'cursor-grab')}
+        style={{ ...(x == null ? { right: 24 } : { left: x, transition: `left ${dur}s linear, transform 0.12s` }), transform: held ? `translateY(-${HELD_LIFT}px)` : undefined }}
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          e.currentTarget.setPointerCapture(e.pointerId);
+          press.current = { startX: e.clientX, startLeft: left(e.currentTarget), moved: false };
+        }}
+        onPointerMove={(e) => {
+          const p = press.current;
+          if (!p) return;
+          const dx = e.clientX - p.startX;
+          if (!p.moved) {
+            if (Math.abs(dx) < DRAG_THRESHOLD) return;
+            p.moved = true;
+            patrol.grab();
+          }
+          patrol.dragTo(p.startLeft + dx);
+        }}
+        onPointerUp={() => {
+          if (press.current?.moved) patrol.drop();
+          press.current = null;
+        }}
+        onPointerCancel={() => {
+          if (press.current?.moved) patrol.drop();
+          press.current = null;
+        }}
+        onDoubleClick={() => {
+          clearTimeout(joyTimer.current);
+          setJoy(true);
+          joyTimer.current = setTimeout(() => setJoy(false), JOY_MS);
+        }}
+      >
+        <PetSprite pet={pet} mood={walking || !arrived ? 'idle' : mood} walking={walking} held={held} joy={joy} facing={facing} />
       </div>
     </div>
   );

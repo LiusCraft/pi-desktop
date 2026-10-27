@@ -387,7 +387,7 @@
    Transforms are in SVG user units (1px = one pixel of the sprite). */
 .clawd { display: block; overflow: visible; color: var(--muted-foreground); }
 .clawd * { transform-box: fill-box; transform-origin: center; }
-.clawd .fx-think, .clawd .fx-alert, .clawd .fx-sweat, .clawd .mouth, .clawd .prop { opacity: 0; }
+.clawd .fx-think, .clawd .fx-alert, .clawd .fx-sweat, .clawd .fx-heart, .clawd .mouth, .clawd .prop { opacity: 0; }
 .clawd .eyes { animation: clawd-blink 4.5s infinite; }
 
 @keyframes clawd-blink { 0%, 93%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.15); } }
@@ -399,6 +399,8 @@
 @keyframes clawd-scan { 0%, 30% { transform: translateX(-1px); } 50%, 80% { transform: translateX(1px); } 100% { transform: translateX(-1px); } }
 @keyframes clawd-talk { 0%, 49% { transform: scaleY(1); } 50%, 100% { transform: scaleY(2); } }
 @keyframes clawd-hop { 0%, 55%, 100% { transform: translateY(0); } 70% { transform: translateY(-3px); } 85% { transform: translateY(-1px); } }
+@keyframes clawd-joy { 0%, 50%, 100% { transform: translateY(0); } 25% { transform: translateY(-4px); } 75% { transform: translateY(-3px); } }
+@keyframes clawd-heart { 0% { opacity: 0; transform: translateY(2px); } 20%, 60% { opacity: 1; } 100% { opacity: 0; transform: translateY(-3px); } }
 @keyframes clawd-flash { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0.25; } }
 
 /* Idle: legs alternate while strolling. */
@@ -449,6 +451,16 @@
 /* Waiting for the user: hops with a "!". */
 .clawd.mood-waiting .pet { animation: clawd-hop 1.1s infinite; }
 .clawd.mood-waiting .fx-alert { opacity: 1; animation: clawd-flash 1.1s infinite; }
+
+/* Picked up by the mouse: legs dangle. */
+.clawd.held .pet { animation: none; }
+.clawd.held .leg.a { animation: clawd-step 0.14s infinite; }
+.clawd.held .leg.b { animation: clawd-step 0.14s infinite reverse; }
+
+/* Double-clicked: hops twice, squints happily, a heart floats up. */
+.clawd.joy .pet { animation: clawd-joy 0.7s 2; }
+.clawd.joy .eyes { transform: scaleY(0.35); animation: none; }
+.clawd.joy .fx-heart { animation: clawd-heart 1.4s forwards; }
 
 @media (prefers-reduced-motion: reduce) {
   .clawd *, .clawd .eyes { animation: none !important; }
