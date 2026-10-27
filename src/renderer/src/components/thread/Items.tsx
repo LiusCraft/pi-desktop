@@ -1,7 +1,7 @@
 import { memo, useState } from 'react';
 import { ArrowUpRightIcon, BookmarkIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CircleAlertIcon, GitForkIcon, GitMergeIcon, LightbulbIcon, LoaderCircleIcon, MessagesSquareIcon, RotateCcwIcon, TerminalIcon, XIcon } from 'lucide-react';
 import { PLAN_CHOICES } from '@shared/protocol';
-import { BUILTIN_COMMAND_INFO, decodeCommandMessage, type CommandMessage } from '@shared/command-message';
+import { BUILTIN_COMMAND_INFO, commandLabel, decodeCommandMessage, type CommandMessage } from '@shared/command-message';
 import { decodePeerMessage, type PeerMessage } from '@shared/peer-message';
 import * as previews from '@shared/tool-previews';
 import { Markdown } from '@/components/common/Markdown';
@@ -35,7 +35,7 @@ export const UserItem = memo(function UserItem({ sid, item }: { sid: string; ite
   const peer = decodePeerMessage(item.text);
   if (peer) return <PeerMessageCard peer={peer} />;
   const command = decodeCommandMessage(item.text);
-  if (command) return <CommandMessageChip command={command} queued={item.queued} />;
+  if (command) return <CommandMessageChip sid={sid} command={command}queued={item.queued} />;
   return (
     <div className={cn('flex flex-col items-end gap-1.5', item.queued && 'opacity-60')} title={item.queued ? '排队中：Pi Desktop 完成当前步骤后处理' : undefined}>
       <AttachmentTiles attachments={item.attachments} />
@@ -78,18 +78,20 @@ export const UserItem = memo(function UserItem({ sid, item }: { sid: string; ite
 });
 
 /** A button of Pi Desktop's own (Commit, Create PR, ...) shown as the command it ran; click to read the instruction it expanded to. */
-function CommandMessageChip({ command, queued }: { command: CommandMessage; queued?: boolean }) {
+function CommandMessageChip({ sid, command, queued }: { sid: string; command: CommandMessage; queued?: boolean }) {
+  const userCommands = useApp((st) => st.sessions[sid]?.commands);
+  const label = commandLabel(command.name, (userCommands ?? []).map((c) => c.name));
   return (
     <div className={cn('flex justify-end', queued && 'opacity-60')}>
       <Popover>
         <PopoverTrigger asChild>
           <button className="flex items-center gap-1.5 rounded-2xl bg-user-bubble px-3.5 py-2 font-mono text-sm transition-colors hover:bg-accent data-[state=open]:bg-accent" title="查看这条命令展开后的内容">
-            <TerminalIcon className="size-3.5 text-muted-foreground" />/{command.name}
+            <TerminalIcon className="size-3.5 text-muted-foreground" />/{label}
           </button>
         </PopoverTrigger>
         <PopoverContent align="end" className="w-96 p-0">
           <div className="border-b px-3 py-2">
-            <div className="font-mono text-xs font-medium">/{command.name}</div>
+            <div className="font-mono text-xs font-medium">/{label}</div>
             <div className="text-xs text-muted-foreground">{BUILTIN_COMMAND_INFO[command.name]}</div>
           </div>
           <div data-selectable className="max-h-72 overflow-y-auto px-3 py-2 text-xs whitespace-pre-wrap break-words">{command.prompt}</div>

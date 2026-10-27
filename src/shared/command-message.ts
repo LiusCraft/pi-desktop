@@ -29,4 +29,11 @@ export function decodeCommandMessage(wire: string): CommandMessage | null {
   return { name: m[1] as BuiltinCommand, prompt: m[2] };
 }
 
+/** Prefix that tells a built-in command apart from a user's command or skill of the same name. */
+export const BUILTIN_COMMAND_PREFIX = 'pi:';
+
+/** The name to show: bare, unless the user already has a command called that. */
+export const commandLabel = (name: BuiltinCommand, userCommands: Iterable<string>) =>
+  new Set(userCommands).has(name) ? `${BUILTIN_COMMAND_PREFIX}${name}` : name;
+
 export const isCommandMessage = (wire: string) => wire.startsWith('<pi-command ');
