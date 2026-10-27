@@ -744,6 +744,10 @@ export interface Settings {
   petSkin: string;
   /** Executable the terminal panel starts (a `TerminalShell.file`); null picks the system default. */
   terminalShell: string | null;
+  /** Which management tools the model gets (`pidesk_schedule_*`, `pidesk_customize_*`, `pidesk_settings_*`); read when a session starts. */
+  aiSchedule: boolean;
+  aiCustomize: boolean;
+  aiSettings: boolean;
 }
 export interface SettingsPayload extends Settings {
   resolvedTheme: 'light' | 'dark';

@@ -8,11 +8,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, Notification, screen, shell } from 'electron';
 import {
-  HOST_CHANNELS, MAIN_CHANNELS, SUGGESTION_DEFAULT_CONTEXT,
+  HOST_CHANNELS, MAIN_CHANNELS,
   type ApiArgs, type ApiResult, type BootPayload, type HostEvent, type Project, type PushChannel, type PushEvents,
   type Settings, type SettingsPayload, type WorktreeInfo,
 } from '@shared/protocol';
 import { DEFAULT_PET_ID } from '@shared/pets';
+import { DEFAULT_SETTINGS } from '@shared/settings';
 import { ARTIFACT_ENTRY, ARTIFACT_ID_PATTERN, ARTIFACT_SITE_DIR, ARTIFACT_THUMBNAIL, artifactThumbnailName } from '@shared/artifacts';
 import {
   isRemotePort, normalizeRemoteUrl, REMOTE_DEFAULT_PORT, REMOTE_PORT_RANGE, REMOTE_WORKSPACE_METHODS,
@@ -93,13 +94,6 @@ function ensureDemoProject() {
 // ------------------------------------------------------------ settings
 
 // Preferences live in one place so every window reads the same values.
-// `theme: null` means "not chosen yet": follow the system.
-const DEFAULT_SETTINGS: Settings = {
-  theme: null, notify: true, renderMermaid: true, suggestions: true,
-  suggestionModel: 'session', suggestionModelId: null, suggestionContext: SUGGESTION_DEFAULT_CONTEXT, suggestionFullContext: false,
-  defaultMode: 'code', sidebarCollapsed: false, worktreeDir: null, pet: true, petSkin: DEFAULT_PET_ID, terminalShell: null,
-};
-
 function settingsValue(): Settings {
   return { ...DEFAULT_SETTINGS, ...store.get<Partial<Settings>>('settings', {}) };
 }
@@ -130,6 +124,7 @@ function petsChanged() {
   return payload;
 }
 const PET_WATCH_DEBOUNCE_MS = 200;
+const SETTINGS_WATCH_DEBOUNCE_MS = 200;
 /** The model's tools write pet files from the agent host; this is how the windows hear about them. */
 function watchPets() {
   const dir = appPetsDir(dataDir());
@@ -147,14 +142,32 @@ function watchPets() {
 function saveSettings(patch: Partial<Settings>) {
   const clean: Partial<Settings> = { ...patch };
   if ('worktreeDir' in patch) clean.worktreeDir = normalizeWorktreeDir(patch.worktreeDir);
-  const next = { ...settingsValue(), ...clean };
-  store.set('settings', next);
+  store.set('settings', { ...settingsValue(), ...clean });
+  return applySettings();
+}
+/** Make the stored settings take effect and tell every window; also runs when the agent host edits them for the model. */
+function applySettings() {
+  const next = settingsValue();
   // Native chrome (title bar, menus, dialogs) follows the app's appearance.
   nativeTheme.themeSource = next.theme === 'light' || next.theme === 'dark' ? next.theme : 'system';
   applyThemeToWindows();
   const payload = settingsPayload();
   broadcast('settings:changed', payload);
   return payload;
+}
+const SETTINGS_FILE = 'settings.json';
+function watchSettings() {
+  try {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // The folder, not the file: the store replaces the file on every write, which ends a file watch.
+    fs.watch(dataDir(), (_event, name) => {
+      if (name !== SETTINGS_FILE) return;
+      clearTimeout(timer);
+      timer = setTimeout(applySettings, SETTINGS_WATCH_DEBOUNCE_MS);
+    }).on('error', () => {});
+  } catch (err) {
+    console.error('[main] cannot watch the settings file:', err);
+  }
 }
 
 // ------------------------------------------------------------ windows
@@ -832,6 +845,7 @@ void app.whenReady().then(async () => {
   // Own folders only; Electron's Chromium profile is left to its platform default.
   fs.mkdirSync(appExtensionsDir(dataDir()), { recursive: true });
   watchPets();
+  watchSettings();
   try {
     fs.mkdirSync(worktreeDir(dataDir(), settingsValue().worktreeDir), { recursive: true });
   } catch (err) {

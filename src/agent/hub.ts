@@ -20,6 +20,8 @@ import type {
 import { decodeCommandMessage, isCommandMessage } from '@shared/command-message';
 import { decodePeerMessage,encodePeerMessage, isPeerMessage } from '@shared/peer-message';
 import { decodePrEvent, encodePrEvent, isPrEvent } from '@shared/pr-event';
+import { BUILTIN_PET_IDS } from '@shared/pets';
+import { DEFAULT_SETTINGS } from '@shared/settings';
 import { appAgentsDir, appPetsDir, appWorkDir, appExtensionsDir, worktreeDir as resolveWorktreeDir } from './app-paths';
 import { validatePromptPayload } from './attachments';
 import toolsPrompt from './tools-prompt.md?raw';
@@ -28,7 +30,7 @@ import { registerDemoModel } from './demo-model';
 import { applyChildPath } from './env';
 import * as customize from './customize';
 import { agentCatalog, agentPrompt, loadAgents, removeAgent, saveAgent } from './agents';
-import type { CustomizeHost, ScheduleHost } from './manage-tools';
+import type { CustomizeHost, ScheduleHost, SettingsHost } from './manage-tools';
 import { listPets, removePet, savePet } from './pets';
 import { ArtifactService } from './artifacts';
 import { ObjectStorage } from './storage';
@@ -450,6 +452,10 @@ export class SessionHub {
     };
   }
 
+  private storedSettings(): Settings {
+    return { ...DEFAULT_SETTINGS, ...this.store.get<Partial<Settings>>('settings', {}) };
+  }
+
   private kitHost(live: Live): KitHost {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const hub = this;
@@ -467,7 +473,7 @@ export class SessionHub {
       agents: () => loadAgents(appAgentsDir(this.opts.dataDir)),
       get schedule(): ScheduleHost | undefined {
         const scheduler = hub.scheduler;
-        if (!scheduler) return undefined;
+        if (!scheduler || !hub.storedSettings().aiSchedule) return undefined;
         const m = hub.meta(live.id);
         return {
           list: () => scheduler.list(),
@@ -478,7 +484,8 @@ export class SessionHub {
           defaults: { kind: m.kind, projectPath: m.scratch ? null : m.projectPath },
         };
       },
-      get customize(): CustomizeHost {
+      get customize(): CustomizeHost | undefined {
+        if (!hub.storedSettings().aiCustomize) return undefined;
         const project = hub.meta(live.id).projectPath;
         const c = hub.customize;
         return {
@@ -496,6 +503,15 @@ export class SessionHub {
         list: () => listPets(appPetsDir(this.opts.dataDir)),
         save: (raw) => savePet(appPetsDir(this.opts.dataDir), raw),
         remove: (id) => removePet(appPetsDir(this.opts.dataDir), id),
+      },
+      get settings(): SettingsHost | undefined {
+        if (!hub.storedSettings().aiSettings) return undefined;
+        return {
+          get: () => hub.storedSettings(),
+          petIds: () => [...BUILTIN_PET_IDS, ...listPets(appPetsDir(hub.opts.dataDir)).map((p) => p.id)],
+          // The main process watches this file and applies the change (theme, windows) like a click on the Settings page.
+          save: (patch) => hub.store.set('settings', { ...hub.store.get<Partial<Settings>>('settings', {}), ...patch }),
+        };
       },
       artifacts: {
         list: () => hub.artifacts.list(),

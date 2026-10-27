@@ -301,6 +301,18 @@ export function SettingsApp() {
             </Row>
           </Group>
 
+          <Group title="AI 工具" sub="让 AI 在对话里替你操作这些页面，比如“每天早上 9 点跑一遍测试”。关闭后新开的会话里不再提供对应工具，已打开的会话不受影响。">
+            <Row title="定时任务" hint="创建、修改、运行「定时任务」页里的任务。">
+              <Switch checked={settings.aiSchedule !== false} onCheckedChange={(v) => void patch({ aiSchedule: v })} />
+            </Row>
+            <Row title="自定义" hint="添加或移除技能、连接器（MCP）和插件。连接器与插件会在本机执行代码。">
+              <Switch checked={settings.aiCustomize !== false} onCheckedChange={(v) => void patch({ aiCustomize: v })} />
+            </Row>
+            <Row title="应用设置" hint="修改主题、宠物、通知、输入预测等设置。API 密钥、终端、文件夹和这几个开关本身不开放给 AI。">
+              <Switch checked={settings.aiSettings !== false} onCheckedChange={(v) => void patch({ aiSettings: v })} />
+            </Row>
+          </Group>
+
           <Group title="回复渲染">
             <Row title="渲染 Mermaid 图表" hint="回复里的 mermaid 代码块默认画成图表（可缩放、可在新窗口查看）。关闭后显示为普通代码，单个图表仍可手动渲染。">
               <Switch checked={settings.renderMermaid !== false} onCheckedChange={(v) => void patch({ renderMermaid: v })} />

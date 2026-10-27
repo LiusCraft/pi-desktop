@@ -21,7 +21,7 @@ import {
 import { StringEnum } from '@earendil-works/pi-ai';
 import { Type } from 'typebox';
 import { AGENT_TYPES, DEFAULT_AGENT, type AgentType } from './agents';
-import { registerManageTools, type ArtifactHost, type CustomizeHost, type PetHost, type ScheduleHost } from './manage-tools';
+import { registerManageTools, type ArtifactHost, type CustomizeHost, type PetHost, type ScheduleHost, type SettingsHost } from './manage-tools';
 import {
   PLAN_CHOICES, QUESTION_LIMITS,
   type OutputStyle, type PermissionMode, type Question, type QuestionAnswer, type SessionKind, type SubagentProgress, type TaskUpdate, type UiRequestInput, type UiResponse,
@@ -92,6 +92,8 @@ export interface KitHost {
   customize?: CustomizeHost;
   /** The custom pet skins; omit it (subagents) to leave out the pet tools. */
   pets?: PetHost;
+  /** App settings the model may change; present only when the user switched that on, and omitted for subagents. */
+  settings?: SettingsHost;
   /** The saved artifacts; omit it (subagents) to leave out the artifact tools. */
   artifacts?: ArtifactHost;
   /** The project this session runs in (Work or Code): its standing context each turn, and its memory; omit it for sessions in no project. */

@@ -2,12 +2,14 @@
  * Tools that let the model manage what the Scheduled and Customize pages manage, so "run this
  * every morning" or "add the GitHub connector" can be said in the chat. They call the same
  * backends as the pages (`Scheduler`, `customize.ts`), so the UI and the model always agree.
+ * Each group is on by default and can be switched off under Settings → 通用 → AI 工具; it is read when a session starts.
  * The `*_manage` tools change things and are not read-only: plan mode blocks them and auto mode asks.
  */
 import { StringEnum } from '@earendil-works/pi-ai';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { Type, type Static } from 'typebox';
-import type { CustomizeCatalog, SessionKind } from '@shared/protocol';
+import type { CustomizeCatalog, SessionKind, Settings } from '@shared/protocol';
+import { AI_SETTING_FIELDS, AI_SETTING_KEYS, checkAiSettingsPatch } from '@shared/ai-settings';
 import { describeSchedule, validateSchedule, type ScheduledTask, type TaskDraft, type TaskSchedule } from '@shared/schedule';
 import { PERMISSION_MODES } from '@shared/protocol';
 import { publishState, type ArtifactMeta } from '@shared/artifacts';
@@ -44,6 +46,13 @@ export interface PetHost {
   /** Validates, stores and returns the skin; throws a readable message for a bad definition. */
   save(raw: unknown): PetDef;
   remove(id: string): void;
+}
+
+export interface SettingsHost {
+  get(): Settings;
+  /** Every pet skin id a `petSkin` may name: the built-in ones and the user's own. */
+  petIds(): string[];
+  save(patch: Partial<Settings>): void;
 }
 
 export interface ArtifactHost {
@@ -346,6 +355,46 @@ function registerPets(pi: ExtensionAPI, host: PetHost) {
   });
 }
 
+// ------------------------------------------------------------ app settings
+
+function registerSettings(pi: ExtensionAPI, host: SettingsHost) {
+  const describe = () => {
+    const current = host.get();
+    return AI_SETTING_KEYS.map((key) => `- ${key} = ${JSON.stringify(current[key])}  (${AI_SETTING_FIELDS[key].hint})`).join('\n');
+  };
+
+  pi.registerTool({
+    name: 'pidesk_settings_list',
+    label: 'App settings',
+    description: 'Show the app settings you may change (Settings page) with their current values and what each accepts.',
+    parameters: Type.Object({}),
+    annotations: { readOnlyHint: true },
+    async execute() {
+      return text(describe(), { settings: host.get() });
+    },
+  });
+
+  pi.registerTool({
+    name: 'pidesk_settings_manage',
+    label: 'Change app settings',
+    description:
+      'Change app settings on the Settings page: set takes values, an object of setting name to new value (see pidesk_settings_list for the names and accepted values). ' +
+      'Only change what the user asked for. Other settings (API keys, the terminal shell, folders, this switch itself) are not available here and are changed on the Settings page. ' +
+      'Changes apply at once and are shared by every window.',
+    promptSnippet: 'Change app settings (theme, pet, notifications, input prediction …)',
+    parameters: Type.Object({
+      action: StringEnum(['set'] as const),
+      values: Type.Record(Type.String(), Type.Unknown(), { description: 'Setting name → new value, e.g. {"theme":"dark","pet":false}' }),
+    }),
+    annotations: { destructiveHint: true },
+    async execute(_id, p) {
+      const patch = checkAiSettingsPatch(p.values, host.petIds());
+      host.save(patch);
+      return text(`Changed ${Object.keys(patch).join(', ')}.\n${describe()}`, { settings: host.get() });
+    },
+  });
+}
+
 // ------------------------------------------------------------ artifacts
 
 const ARTIFACT_STATE_LABEL = { draft: 'not published', published: 'published', outdated: 'published, newer version not uploaded' } as const;
@@ -416,9 +465,10 @@ function registerArtifacts(pi: ExtensionAPI, host: ArtifactHost) {
   });
 }
 
-export function registerManageTools(pi: ExtensionAPI, host: { schedule?: ScheduleHost; customize?: CustomizeHost; pets?: PetHost; artifacts?: ArtifactHost }) {
+export function registerManageTools(pi: ExtensionAPI, host: { schedule?: ScheduleHost; customize?: CustomizeHost; pets?: PetHost; settings?: SettingsHost; artifacts?: ArtifactHost }) {
   if (host.schedule) registerSchedule(pi, host.schedule);
   if (host.customize) registerCustomize(pi, host.customize);
   if (host.pets) registerPets(pi, host.pets);
+  if (host.settings) registerSettings(pi, host.settings);
   if (host.artifacts) registerArtifacts(pi, host.artifacts);
 }
