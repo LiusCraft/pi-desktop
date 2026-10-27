@@ -1,9 +1,10 @@
-// Git / GitHub helpers for sessions: worktrees, working-tree diffs, PR status.
+// Git / GitHub / GitLab helpers for sessions: worktrees, working-tree diffs, PR status.
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { FileChange, GitState, PrStatus, WorktreeInfo } from '@shared/protocol';
 import type { PrNote } from '@shared/pr-event';
+import { forgeOfUrl, type Forge } from '@shared/forge';
 import { childEnv } from './env';
 
 const MAX_FILE = 512 * 1024;
@@ -130,7 +131,13 @@ export async function workState(cwd: string): Promise<GitState> {
   for (const entry of status.split('\0')) if (entry.length > 3) dirty.push(entry.slice(3));
   const upstream = (await gitSafe(cwd, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'))?.trim() || null;
   const ahead = upstream ? Number((await gitSafe(cwd, 'rev-list', '--count', '@{u}..HEAD'))?.trim()) || 0 : 0;
-  return { dirty, ahead, upstream };
+  const forge = await originForge(cwd);
+  return { dirty, ahead, upstream, ...(forge ? { forge } : {}) };
+}
+
+/** The code host `origin` belongs to, when the host name gives it away. */
+export async function originForge(cwd: string): Promise<Forge | null> {
+  return forgeOfUrl(await gitSafe(cwd, 'remote', 'get-url', 'origin'));
 }
 
 export async function listFiles(cwd: string, limit = 3000): Promise<string[]> {
@@ -163,21 +170,34 @@ export interface PrSnapshot {
   notes: PrNote[];
 }
 
-/** The logged-in GitHub account; asked once per host process, since it cannot change mid-run. */
-let viewerLogin: Promise<string | null> | null = null;
-function viewer(cwd: string): Promise<string | null> {
-  viewerLogin ??= run('gh', ['api', 'user', '-q', '.login'], cwd, { allowFail: true })
-    .then((out) => out?.trim() || null)
-    .catch(() => null);
-  return viewerLogin;
+/** The logged-in account per forge; asked once per host process, since it cannot change mid-run. */
+const viewerLogin = new Map<Forge, Promise<string | null>>();
+function viewer(forge: Forge, cwd: string): Promise<string | null> {
+  if (!viewerLogin.has(forge)) {
+    const ask = forge === 'github'
+      ? run('gh', ['api', 'user', '-q', '.login'], cwd, { allowFail: true }).then((out) => out?.trim() || null)
+      : run('glab', ['api', 'user'], cwd, { allowFail: true }).then((out) => (out ? JSON.parse(out).username || null : null));
+    viewerLogin.set(forge, ask.catch(() => null));
+  }
+  return viewerLogin.get(forge)!;
 }
 
-/** PR state for the current branch via the GitHub CLI; null when gh or a PR is unavailable. */
+/** PR (or GitLab merge request) state for the current branch via gh / glab; null when the CLI or the PR is unavailable. */
 export async function prStatus(cwd: string): Promise<PrStatus | null> {
   return (await readPr(cwd))?.status ?? null;
 }
 
+/** The remote's name picks the CLI; a host we cannot tell by name (self-hosted) gets both, GitHub first. */
 export async function readPr(cwd: string): Promise<PrSnapshot | null> {
+  const known = await originForge(cwd);
+  for (const forge of known ? [known] : (['github', 'gitlab'] as const)) {
+    const snapshot = forge === 'github' ? await readGithubPr(cwd) : await readGitlabPr(cwd);
+    if (snapshot) return snapshot;
+  }
+  return null;
+}
+
+async function readGithubPr(cwd: string): Promise<PrSnapshot | null> {
   const full = 'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author,additions,deletions,changedFiles,mergeable,reviewDecision,headRefOid,updatedAt';
   let out = await run('gh', ['pr', 'view', '--json', full], cwd, { allowFail: true });
   // Older gh builds reject a field they do not know; the card is worth more than the full query, so ask for less.
@@ -204,6 +224,7 @@ export async function readPr(cwd: string): Promise<PrSnapshot | null> {
       url: pr.url,
       state: String(pr.state).toLowerCase(),
       draft: !!pr.isDraft,
+      forge: 'github',
       ci,
       checks,
       comments: (pr.comments || []).length + (pr.reviews || []).filter((r: any) => r.body).length,
@@ -217,7 +238,7 @@ export async function readPr(cwd: string): Promise<PrSnapshot | null> {
       head: typeof pr.headRefOid === 'string' && pr.headRefOid ? pr.headRefOid : undefined,
       updatedAt: pr.updatedAt ? Date.parse(pr.updatedAt) || undefined : undefined,
     };
-    const me = (pr.reviews ?? []).length ? await viewer(cwd) : null;
+    const me = (pr.reviews ?? []).length ? await viewer('github', cwd) : null;
     const mine = (login: string | undefined) => !!login && !!me && login === me;
     const notes: PrNote[] = [];
     for (const c of pr.comments ?? []) {
@@ -236,6 +257,75 @@ export async function readPr(cwd: string): Promise<PrSnapshot | null> {
         self: mine(r.author?.login),
       });
     }
+    return { status, notes };
+  } catch {
+    return null;
+  }
+}
+
+/** `glab api` answers with JSON; anything else (not logged in, no access, a 404) is just "no data". */
+async function glabJson(cwd: string, endpoint: string): Promise<any | null> {
+  const out = await run('glab', ['api', endpoint], cwd, { allowFail: true });
+  try {
+    return out ? JSON.parse(out) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** GitLab job status → the three states the CI dot knows. */
+function gitlabCheck(status: string, allowFailure: boolean): 'pass' | 'fail' | 'pending' {
+  if (['success', 'skipped', 'manual'].includes(status)) return 'pass';
+  if (status === 'failed') return allowFailure ? 'pass' : 'fail';
+  if (['canceled', 'cancelled'].includes(status)) return 'fail';
+  return 'pending';
+}
+
+/** The merge request of the current branch via glab, mapped onto the same shape as a GitHub PR. */
+async function readGitlabPr(cwd: string): Promise<PrSnapshot | null> {
+  const out = await run('glab', ['mr', 'view', '-F', 'json'], cwd, { allowFail: true });
+  if (!out) return null;
+  try {
+    const mr = JSON.parse(out);
+    if (!mr?.iid || !mr.web_url) return null;
+    const base = `projects/${mr.project_id}`;
+    const pipeline = mr.head_pipeline ?? mr.pipeline;
+    // One call for the jobs; without it the pipeline as a whole still tells red from green.
+    const jobs = pipeline?.id && mr.project_id ? await glabJson(cwd, `${base}/pipelines/${pipeline.id}/jobs?per_page=100`) : null;
+    const checks: PrStatus['checks'] = Array.isArray(jobs) && jobs.length
+      ? jobs.map((j: any) => ({ n: String(j.name), st: gitlabCheck(String(j.status), !!j.allow_failure), ...(j.web_url ? { url: j.web_url } : {}) }))
+      : pipeline?.status ? [{ n: 'pipeline', st: gitlabCheck(String(pipeline.status), false), ...(pipeline.web_url ? { url: pipeline.web_url } : {}) }] : [];
+    const ci = !checks.length ? 'none' : checks.some((c) => c.st === 'fail') ? 'fail' : checks.some((c) => c.st === 'pending') ? 'pending' : 'pass';
+    const rawNotes = mr.project_id ? await glabJson(cwd, `${base}/merge_requests/${mr.iid}/notes?per_page=100&sort=asc`) : null;
+    const human = (Array.isArray(rawNotes) ? rawNotes : []).filter((n: any) => n?.id && !n.system);
+    const detailed = String(mr.detailed_merge_status || (mr.merge_status === 'can_be_merged' ? 'mergeable' : ''));
+    const files = Number.parseInt(String(mr.changes_count), 10);
+    const status: PrStatus = {
+      num: mr.iid,
+      url: mr.web_url,
+      state: mr.state === 'merged' ? 'merged' : mr.state === 'closed' ? 'closed' : 'open',
+      draft: !!(mr.draft ?? mr.work_in_progress),
+      forge: 'gitlab',
+      ci,
+      checks,
+      comments: human.length || (typeof mr.user_notes_count === 'number' ? mr.user_notes_count : 0),
+      title: typeof mr.title === 'string' && mr.title.trim() ? mr.title.trim() : undefined,
+      author: mr.author?.username || undefined,
+      files: Number.isFinite(files) ? files : undefined,
+      mergeable: mr.has_conflicts || detailed === 'conflict' ? 'conflicting' : ['', 'checking', 'unchecked', 'preparing'].includes(detailed) ? 'unknown' : 'clean',
+      // Unresolved threads block a GitLab merge the way a change request does on GitHub.
+      review: detailed === 'discussions_not_resolved' ? 'changes' : detailed === 'not_approved' ? 'required' : undefined,
+      head: typeof mr.sha === 'string' && mr.sha ? mr.sha : undefined,
+      updatedAt: mr.updated_at ? Date.parse(mr.updated_at) || undefined : undefined,
+    };
+    const me = human.length ? await viewer('gitlab', cwd) : null;
+    const notes: PrNote[] = human.map((n: any) => ({
+      id: `n${n.id}`,
+      author: n.author?.username ?? 'someone',
+      body: String(n.body ?? ''),
+      url: `${mr.web_url}#note_${n.id}`,
+      self: !!me && n.author?.username === me,
+    }));
     return { status, notes };
   } catch {
     return null;

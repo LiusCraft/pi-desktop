@@ -17,6 +17,7 @@ import { ago, fmtTok } from '@/lib/format';
 import { groupStats, groupSummary, isFileTool, toolLabel, type ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
 import { useApp, updateSession } from '@/store/app';
+import { forgeName, forgeOfUrl } from '@shared/forge';
 import {
   answerUi, dismissSuggested, doSuggestedHere, forkSession, openAgent, openDiffRef, openFileRef, openPlan, openSession, sessionDraftKey, startSuggested, userMessageAction,
 } from '@/store/actions';
@@ -115,7 +116,7 @@ export const PrEventItem = memo(function PrEventItem({ sid, item }: { sid: strin
           <look.Icon className={cn('size-3.5 shrink-0', look.tone)} />
           <span className={cn('font-medium', look.tone)}>{look.label}</span>
           <span className="opacity-50">·</span>
-          <button className="truncate hover:text-foreground" title="在 GitHub 打开" onClick={() => void call('app:openExternal', event.url)}>PR #{event.num}</button>
+          <button className="truncate hover:text-foreground" title={`在 ${forgeName(forgeOfUrl(event.url))} 打开`} onClick={() => void call('app:openExternal', event.url)}>PR #{event.num}</button>
           <span className="ml-auto shrink-0 tabular-nums">{ago(item.at)}</span>
         </div>
         <div className="mt-1.5 text-foreground">{event.summary}</div>

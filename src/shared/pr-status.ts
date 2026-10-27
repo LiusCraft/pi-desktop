@@ -28,13 +28,13 @@ export function prBadge(pr: Status & Partial<Pick<PrStatus, 'review'>>): PrBadge
   return { label: 'Open', tone: 'open' };
 }
 
-/** Lines and files the PR touches; null while GitHub has not told us, so the bar can show the working tree instead. */
+/** Lines and files the PR touches; null while the host has not told us, so the bar can show the working tree instead. */
 export function prSize(pr: Pick<PrStatus, 'additions' | 'deletions' | 'files'>): { add: number; del: number; files: number | null } | null {
   if (pr.additions == null && pr.deletions == null) return null;
   return { add: pr.additions ?? 0, del: pr.deletions ?? 0, files: pr.files ?? null };
 }
 
-/** GitHub says this can merge and nothing is red, running or waiting on changes: a good moment for auto-merge. */
+/** The host says this can merge and nothing is red, running or waiting on changes: a good moment for auto-merge. */
 export function prReady(pr: Status & Partial<Pick<PrStatus, 'review'>>) {
   return pr.state === 'open' && !pr.draft && pr.mergeable === 'clean' && pr.ci !== 'fail' && pr.ci !== 'pending' && pr.review !== 'changes';
 }
@@ -59,10 +59,10 @@ export function prCiLine(pr: Pick<PrLike, 'ci'> & Partial<Pick<PrStatus, 'checks
   return `All ${plural(n)} passed`;
 }
 
-/** `owner/repo` straight from the PR URL, so the card names the repository the way GitHub does. */
+/** `owner/repo` (GitLab: `group/subgroup/project`) straight from the PR URL, so the card names the repository the way the host does. */
 export function prRepo(url: string, fallback: string): string {
-  const m = /github\.com\/([^/]+)\/([^/]+)/.exec(url);
-  return m ? `${m[1]}/${m[2]}` : fallback;
+  const m = /^https?:\/\/(?:github\.com|[^/]*gitlab[^/]*)\/(.+?)\/(?:-\/)?(?:pull|merge_requests)\/\d+/.exec(url);
+  return m ? m[1] : fallback;
 }
 
 /** Thousands separators for the line counts: an 8k-line PR is unreadable as `+8251`. */

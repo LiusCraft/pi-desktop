@@ -1,6 +1,7 @@
 // pi session events → transcript items. Pure functions over an immer draft of a
 // SessionView; anything that needs IPC or global UI is returned as an Effect.
 import { decodeUserContent } from '@shared/attachments';
+import { forgeOfUrl } from '@shared/forge';
 import type { AgentMessage, PiEvent, PrSummary, SessionMeta, TaskUpdate, UiRequest } from '@shared/protocol';
 import { decodePrEvent } from '@shared/pr-event';
 import * as previews from '@shared/tool-previews';
@@ -153,12 +154,12 @@ export function toolEnd(
 
   if (t.kind === 'bash' && !replay) {
     s.term.push({ cmd: t.cmd, out: text });
-    if (!ev.isError && /\bgh\s+pr\s+(?:create|merge|close|reopen|ready|edit)\b/i.test(t.cmd)) {
-      // gh can take a moment to expose a just-created PR through `pr view`.
-      const created = /\bgh\s+pr\s+create\b/i.test(t.cmd) && text.match(/https?:\/\/[^\s<>"'`]+\/pull\/(\d+)/i);
+    if (!ev.isError && /\b(?:gh\s+pr|glab\s+mr)\s+(?:create|merge|close|reopen|ready|edit|update)\b/i.test(t.cmd)) {
+      // gh / glab can take a moment to expose a just-created PR through `pr view`.
+      const created = /\b(?:gh\s+pr|glab\s+mr)\s+create\b/i.test(t.cmd) && text.match(/https?:\/\/[^\s<>"'`]+\/(?:pull|merge_requests)\/(\d+)/i);
       if (created) {
         const pr = { num: Number(created[1]), url: created[0], state: 'open', draft: /(?:^|\s)--draft\b/.test(t.cmd) };
-        s.pr = { ...pr, ci: 'none', checks: [], comments: 0 };
+        s.pr = { ...pr, forge: forgeOfUrl(pr.url) ?? undefined, ci: 'none', checks: [], comments: 0 };
         s.meta.pr = pr;
         fx.prCreated = pr;
       }

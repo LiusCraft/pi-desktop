@@ -5,7 +5,7 @@
 
 const NOTICE =
   'Pi Desktop\'s own PR watcher started this turn, not the user: it saw a change on the pull request and the user left ' +
-  'that automation on. Do the work the instruction asks for — use gh and git for anything it refers to — and keep the ' +
+  'that automation on. Do the work the instruction asks for — use gh (GitHub) or glab (GitLab) and git for anything it refers to — and keep the ' +
   'usual permission rules in mind.';
 
 /** Separates the human-readable situation from what to do about it. */
@@ -15,7 +15,7 @@ const FOOTER_END = ' -->';
 
 export type PrEventKind = 'ci-fail' | 'notes' | 'merge';
 
-/** One comment or review body, as GitHub reports it. */
+/** One comment or review body, as the code host reports it. */
 export interface PrNote {
   id: string;
   author: string;
