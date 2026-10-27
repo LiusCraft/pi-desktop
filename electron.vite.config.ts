@@ -63,6 +63,7 @@ export default defineConfig({
           index: resolve(__dirname, 'src/renderer/index.html'),
           settings: resolve(__dirname, 'src/renderer/settings.html'),
           diagram: resolve(__dirname, 'src/renderer/diagram.html'),
+          side: resolve(__dirname, 'src/renderer/side.html'),
         },
       },
     },

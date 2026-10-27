@@ -15,6 +15,7 @@ import { activeDraft, drafts, getDraft, sessionDraftKey, useDrafts } from './dra
 import { forgetPanels, writePanels } from './layout';
 import { primeSuggestion, resumeSuggestion } from './predict';
 import { forgetScroll } from './scroll';
+import { askSide, showSide } from './side';
 import {
   addUiRequest, applyPiEvent, applyTaskUpdate, applyViewMode, emptySession, findByKey, hasThinking, newKey, push, replay, resolveUi, settle, type Effects,
 } from './transcript';
@@ -346,12 +347,26 @@ export async function openSession(id: string, fresh = false) {
 
 // ------------------------------------------------------------ sending
 
+/** Quote a passage of the conversation into the composer, ready to be answered. */
+export function replyWith(sid: string, passage: string) {
+  const key = sessionDraftKey(sid);
+  const quote = passage.trim().split('\n').map((line) => `> ${line}`).join('\n');
+  const current = getDraft(key).text;
+  const text = current.trim() ? `${current.replace(/\s+$/, '')}\n\n${quote}\n\n` : `${quote}\n\n`;
+  drafts.setText(key, text);
+  requestAnimationFrame(() => {
+    const el = document.querySelector<HTMLTextAreaElement>('textarea[data-composer-input]');
+    el?.focus();
+    el?.setSelectionRange(text.length, text.length);
+  });
+}
+
 const HELP = () => `### Shortcuts
 - \`↵\` 发送（运行中会插话）· \`${modKey}↵\` 排队到当前任务之后 · \`⇧↵\` 换行
 - \`⇧Tab\` 切换模式 · \`Esc\` 中断
 - \`${modKey}O\` 切换 transcript 视图（Normal / Thinking / Verbose）
 - \`${modKey}K\` 搜索 · \`${modKey}B\` 侧边栏 · \`${modKey}D\` Diff
-- 输入 \`@\` 引用文件`;
+- 输入 \`@\` 引用文件 · \`/btw\` 旁路提问 · 选中回复内容可「Send side chat」或「Reply」`;
 
 async function slashCommand(s: SessionView | undefined, head: string, text: string): Promise<boolean> {
   const key = activeDraft()?.key;
@@ -359,6 +374,18 @@ async function slashCommand(s: SessionView | undefined, head: string, text: stri
   if (head === '/model' || head === '/permissions') {
     clear();
     setApp((st) => void (st.menu = head === '/model' ? 'model' : 'mode'));
+    return true;
+  }
+  if (head === '/btw') {
+    if (!s) {
+      toast.warning('先开始一个会话');
+      return true;
+    }
+    clear();
+    const question = text.trim().slice(head.length).trim();
+    // Without a question it only opens the panel, with whatever passage is staged.
+    if (question) askSide(s.meta.id, question).catch(fail);
+    else showSide(s.meta.id);
     return true;
   }
   if (head === '/help') {

@@ -315,6 +315,7 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
           {suggestion && <SuggestionGhost text={suggestion} ghostRef={ghost} />}
           <textarea
             ref={input}
+            data-composer-input
             rows={minRows}
             value={draft.text}
             readOnly={draft.sending}

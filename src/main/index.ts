@@ -139,7 +139,7 @@ function overlay(dark: boolean) {
 }
 const isDark = () => settingsPayload().resolvedTheme === 'dark';
 
-function load(w: BrowserWindow, page: 'index' | 'settings' | 'diagram', hash?: string) {
+function load(w: BrowserWindow, page: 'index' | 'settings' | 'diagram' | 'side', hash?: string) {
   if (DEV_URL) void w.loadURL(`${DEV_URL}/${page}.html${hash ? `#${hash}` : ''}`);
   else void w.loadFile(path.join(RENDERER, `${page}.html`), hash ? { hash } : undefined);
 }
@@ -274,11 +274,48 @@ function openDiagram(svg: string) {
   w.on('closed', () => diagrams.delete(token));
 }
 
+/** Side chats (/btw) that were popped out of their session, by session id. */
+const sideWindows = new Map<string, BrowserWindow>();
+const dockingSide = new Set<string>();
+const sideState = (sessionId: string, w: BrowserWindow | undefined) => ({ sessionId, pinned: !!w && !w.isDestroyed() && w.isAlwaysOnTop(), open: !!w && !w.isDestroyed() });
+
+/** A side chat opens beside the app as its own window; the window shows the same host-held thread as the embedded panel. */
+function openSide(sessionId: string) {
+  if (!/^[\w-]+$/.test(sessionId)) return;
+  const existing = sideWindows.get(sessionId);
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore();
+    existing.show();
+    existing.focus();
+    return;
+  }
+  const w = new BrowserWindow({
+    width: 440,
+    height: 600,
+    minWidth: 320,
+    minHeight: 320,
+    title: 'Side chat',
+    backgroundColor: isDark() ? BG.dark : BG.light,
+    autoHideMenuBar: true,
+    show: false,
+    webPreferences: { preload: PRELOAD, contextIsolation: true, sandbox: true, nodeIntegration: false },
+  });
+  sideWindows.set(sessionId, w);
+  load(w, 'side', sessionId);
+  w.once('ready-to-show', () => w.show());
+  harden(w);
+  w.on('closed', () => {
+    sideWindows.delete(sessionId);
+    broadcast('side:window', { sessionId, pinned: false, open: false, docked: dockingSide.delete(sessionId) });
+  });
+  broadcast('side:window', sideState(sessionId, w));
+}
+
 function applyThemeToWindows() {
   const dark = isDark();
-  for (const w of [win, settingsWin]) {
+  for (const w of [win, settingsWin, ...sideWindows.values()]) {
     if (!w || w.isDestroyed()) continue;
-    if (!isMac) w.setTitleBarOverlay(overlay(dark));
+    if (!isMac && (w === win || w === settingsWin)) w.setTitleBarOverlay(overlay(dark));
     w.setBackgroundColor(dark ? BG.dark : BG.light);
   }
 }
@@ -354,6 +391,21 @@ const handlers: MainHandlers = {
   'settings:set': (patch) => saveSettings(patch || {}),
   'settings:close': () => settingsWin?.close(),
   'diagram:open': (svg) => openDiagram(svg),
+  'side:pop': (sessionId) => openSide(String(sessionId)),
+  'side:pin': (sessionId, pinned) => {
+    const w = sideWindows.get(sessionId);
+    if (!w || w.isDestroyed()) return;
+    // 'floating' keeps it above full-screen apps on macOS too.
+    w.setAlwaysOnTop(!!pinned, 'floating');
+    broadcast('side:window', sideState(sessionId, w));
+  },
+  'side:dock': (sessionId) => {
+    const w = sideWindows.get(sessionId);
+    if (!w || w.isDestroyed()) return;
+    dockingSide.add(sessionId);
+    w.close();
+  },
+  'side:windows': () => [...sideWindows].filter(([, w]) => !w.isDestroyed()).map(([id, w]) => ({ sessionId: id, pinned: w.isAlwaysOnTop() })),
   'diagram:get': (token) => diagrams.get(token) ?? null,
 
   'projects:list': () => projects(),

@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { call } from '@/lib/api';
 import { modeName } from '@/lib/constants';
-import { isLargeDiff } from '@/lib/diff';
+import { firstThread, isLargeDiff } from '@/lib/diff';
 import { fdir, fmtDur, fmtTok, fname } from '@/lib/format';
 import type { ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
@@ -135,7 +135,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   useEffect(() => {
     if (diffTarget.thread) {
       // The first comment is the first one in the order the panel lists files.
-      const first = s.changes.flatMap((f) => s.prThreads.filter((t) => t.path === f.path).slice(0, 1))[0];
+      const first = firstThread(s.changes, s.prThreads);
       if (first) {
         diffTarget.thread = false;
         open(first.path);

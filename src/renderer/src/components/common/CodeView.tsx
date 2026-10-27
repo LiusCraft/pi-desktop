@@ -5,6 +5,7 @@ import { ChevronDownIcon, ChevronsUpDownIcon, ChevronUpIcon, ImageOffIcon } from
 import { lineDiff, PREVIEW_LINES, type DiffRow, type PreviewRow, type ToolPreview } from '@shared/tool-previews';
 import { call } from '@/lib/api';
 import { highlight, langOfPath } from '@/lib/highlight';
+import { placeThreads } from '@/lib/diff';
 import { fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { PrThread } from '@shared/protocol';
@@ -104,13 +105,7 @@ export function DiffRows({ before, after, path, sid, openGaps, onOpenGap, contex
   const open = new Set(openGaps ?? []);
   const keep = rows.map(() => false);
   // A thread belongs to the row on its side with its line number; one whose line moved on is listed after the code.
-  const placed = new Map<number, PrThread[]>();
-  const lost: PrThread[] = [];
-  for (const t of threads ?? []) {
-    const k = rows.findIndex((r) => (t.side === 'old' ? r.t === '-' && r.o === t.line : r.t !== '-' && r.n === t.line));
-    if (k < 0) lost.push(t);
-    else placed.set(k, [...(placed.get(k) ?? []), t]);
-  }
+  const { placed, lost } = useMemo(() => placeThreads(rows, threads ?? []), [rows, threads]);
   const line = (k: number) => {
     const here = placed.get(k);
     const row = <DiffLine key={k} row={rows[k]} lang={lang} selectable={!!sid} />;

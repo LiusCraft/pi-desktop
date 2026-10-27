@@ -33,6 +33,8 @@ import { CustomizePage } from '@/customize/CustomizePage';
 import { ScheduledPage } from '@/scheduled/ScheduledPage';
 import { ArchivedPage } from '@/archived/ArchivedPage';
 import { SidebarToggle } from './Sidebar';
+import { SideChatView } from '@/components/side/SideChat';
+import { useSide } from '@/store/side';
 
 function HeaderButton({ on, children, ...props }: React.ComponentProps<'button'> & { on?: boolean }) {
   return (
@@ -218,10 +220,17 @@ function Thread({ s }: { s: SessionView }) {
   const tools = primary.length + secondary.length > 0;
   // The conversation/workspace split belongs to the session, so switching back restores it.
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({ id: `${s.meta.id}:thread` });
+  const sideOpen = useSide((st) => !!st.open[s.meta.id] && !st.windows[s.meta.id]);
   const conversation = (
-    <div className="flex h-full min-w-0 flex-col">
+    <div className="relative flex h-full min-w-0 flex-col">
       <Transcript s={s} />
       <CodeComposer />
+      {sideOpen && (
+        // Floats over the conversation; the thread underneath keeps running.
+        <div className="absolute top-3 right-3 bottom-auto z-20 h-[min(560px,calc(100%-1.5rem))] w-[min(400px,calc(100%-1.5rem))]">
+          <SideChatView sid={s.meta.id} mode="embedded" />
+        </div>
+      )}
     </div>
   );
   if (!tools) return conversation;

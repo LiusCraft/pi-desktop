@@ -213,6 +213,24 @@ export interface PiEvent {
   [key: string]: any;
 }
 
+/** One message of a side chat (/btw): a question about the session that never enters its context. */
+export interface SideTurn {
+  role: 'user' | 'assistant';
+  text: string;
+  /** User turns: the passage of the conversation the question is about. */
+  quote?: string;
+}
+/** The side conversation of a session. The host owns it so the panel and a popped-out window show the same thing. */
+export interface SideChat {
+  sessionId: string;
+  title: string;
+  turns: SideTurn[];
+  busy: boolean;
+  error?: string;
+  /** A passage waiting to go with the next question. */
+  quote: string | null;
+}
+
 export interface SessionStats {
   userMessages: number;
   assistantMessages: number;
@@ -477,6 +495,7 @@ export type HostEvent =
   | { type: 'setup'; sessionId: string; steps: SetupStep[] | null }
   | { type: 'notify'; sessionId: string; message: string; level: 'info' | 'warning' | 'error' }
   | { type: 'task'; sessionId: string; update: TaskUpdate }
+  | { type: 'side'; sessionId: string; chat: SideChat }
   /** The scheduled tasks changed (edited, ran, or finished a one-off). */
   | { type: 'tasks'; tasks: ScheduledTask[] }
   /** A login flow is waiting for an answer (settings window). */
@@ -673,6 +692,8 @@ export type OpenTarget =
   | 'vscode' | 'vscode-insiders' | 'cursor' | 'windsurf' | 'trae' | 'antigravity' | 'vscodium' | 'zed' | 'sublime'
   | 'idea' | 'webstorm' | 'pycharm' | 'goland' | 'rustrover' | 'clion' | 'phpstorm'
   | 'terminal' | 'folder';
+/** A side chat that lives in its own window. */
+export interface SideWindow { sessionId: string; pinned: boolean }
 /** An "Open in" choice; `icon` is the installed app's own icon as a data URL, when it could be read. */
 export interface OpenTargetEntry { id: OpenTarget; icon?: string }
 
@@ -711,6 +732,13 @@ export interface Api {
 
 
   /** Editors found on this machine, plus the terminal and file manager. */
+  /** Open (or focus) the side chat of a session in a window of its own. */
+  'side:pop'(sessionId: string): void;
+  /** Keep a popped-out side chat above other windows. */
+  'side:pin'(sessionId: string, pinned: boolean): void;
+  /** Close the side chat window; the chat goes back into its session. */
+  'side:dock'(sessionId: string): void;
+  'side:windows'(): SideWindow[];
   'app:openTargets'(): OpenTargetEntry[];
   'sessions:openIn'(id: string, target: OpenTarget, rel?: string): void;
   'sessions:openPath'(id: string, rel: string, reveal: boolean): void;
@@ -743,6 +771,14 @@ export interface Api {
   'sessions:commands'(id: string): SlashCommand[];
   /** One tool-less request that guesses the user's next message; null when unavailable. */
   'sessions:suggest'(id: string, options: SuggestionOptions): { text: string } | null;
+  /** Ask the side chat (/btw) of a session; the answer arrives as `side` host events. The session itself is left untouched. */
+  'sessions:side'(id: string, input: { text: string; quote?: string }): void;
+  'sessions:sideGet'(id: string): SideChat;
+  /** Stage (or clear, with null) the passage the next side question is about. */
+  'sessions:sideStage'(id: string, quote: string | null): void;
+  'sessions:sideAbort'(id: string): void;
+  /** Forget the side conversation and start over. */
+  'sessions:sideReset'(id: string): void;
   'sessions:bash'(id: string, command: string): { output: string; exitCode: number | undefined };
   'sessions:changes'(id: string): ChangeSet;
   'sessions:pr'(id: string): PrStatus | null;
@@ -802,7 +838,7 @@ export const HOST_CHANNELS = [
   'sessions:list', 'sessions:create', 'sessions:open', 'sessions:prompt', 'sessions:respond',
   'sessions:setMode', 'sessions:setStyle', 'sessions:update', 'sessions:archive', 'sessions:unarchive', 'sessions:inspect', 'sessions:remove', 'sessions:spawn', 'sessions:abort',
   'sessions:clearQueue', 'sessions:newContext', 'sessions:compact', 'sessions:stats', 'sessions:exportHtml',
-  'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:bash',
+  'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:side', 'sessions:sideGet', 'sessions:sideStage', 'sessions:sideAbort', 'sessions:sideReset', 'sessions:bash',
   'sessions:changes', 'sessions:pr', 'sessions:prThreads', 'sessions:files', 'sessions:readFile', 'sessions:readImage',
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
   'sessions:import', 'git:branch', 'git:branches', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove',
@@ -820,7 +856,7 @@ export const MAIN_CHANNELS = [
   'projects:list', 'projects:add', 'projects:adoptWorktree', 'projects:remove',
   'work:folders', 'work:addFolder', 'work:useFolder', 'work:removeFolder',
   'attachments:import', 'attachments:pick', 'attachments:clipboard',
-  'app:openTargets', 'sessions:openIn', 'sessions:openPath',
+  'app:openTargets', 'sessions:openIn', 'sessions:openPath', 'side:pop', 'side:pin', 'side:dock', 'side:windows',
 ] as const satisfies readonly ApiChannel[];
 
 export const API_CHANNELS: readonly ApiChannel[] = [...MAIN_CHANNELS, ...HOST_CHANNELS];
@@ -832,9 +868,11 @@ export interface PushEvents {
   'settings:section': string;
   /** A notification was clicked: bring this session to the front. */
   'session:focus': string;
+  /** A side chat window opened, closed or was pinned; `open: false` means it is gone, and `docked` that it went back inside its session. */
+  'side:window': SideWindow & { open: boolean; docked?: boolean };
 }
 export type PushChannel = keyof PushEvents;
-export const PUSH_CHANNELS: readonly PushChannel[] = ['host:event', 'settings:changed', 'settings:section', 'session:focus'];
+export const PUSH_CHANNELS: readonly PushChannel[] = ['host:event', 'settings:changed', 'settings:section', 'session:focus', 'side:window'];
 
 // ------------------------------------------------------------ main ⇄ host messages
 
