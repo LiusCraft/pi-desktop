@@ -93,6 +93,11 @@ export interface KitHost {
   pets?: PetHost;
   /** The saved artifacts; omit it (subagents) to leave out the artifact tools. */
   artifacts?: ArtifactHost;
+  /** The project this session runs in (Work or Code): its standing context each turn, and its memory; omit it for sessions in no project. */
+  project?: {
+    context(): string | null;
+    remember(input: { note?: string; rewrite?: string }): number;
+  };
 }
 
 // Appended to the system prompt for the current turn. These change how Pi Desktop talks,
@@ -114,6 +119,8 @@ const READ_ONLY_TOOLS = new Set([
   'pidesk_suggest_task', 'pidesk_list_sessions', 'pidesk_read_session',
   // Only changes the label shown in the session list.
   'pidesk_rename_session',
+  // Only writes the project's notes, which the user sees and edits on the Projects page.
+  'pidesk_remember',
 ]);
 const EDIT_TOOLS = new Set(['edit', 'write']);
 const SHELL_TOOLS = new Set(['bash', 'powershell', 'pidesk_bg_shell']);
@@ -326,6 +333,27 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
           if (!title) throw new Error('The name cannot be empty');
           rename(title);
           return { content: [{ type: 'text', text: `Session renamed to "${title}".` }], details: { title } };
+        },
+      });
+    }
+
+    // ---------------------------------------------------------------- pidesk_remember
+    const project = host.project;
+    if (project) {
+      pi.registerTool({
+        name: 'pidesk_remember',
+        label: 'Project memory',
+        description:
+          'Save a note to the memory of this project, which every later task in the project sees. Use it for decisions, the preferences of the user, ' +
+          'where things live and what is still open; one short fact per call. To tidy a full memory, pass rewrite with the complete new text instead of note.',
+        promptSnippet: 'Keep notes about the project for later tasks',
+        parameters: Type.Object({
+          note: Type.Optional(Type.String({ description: 'One short fact to add' })),
+          rewrite: Type.Optional(Type.String({ description: 'The complete memory text, replacing what is there' })),
+        }),
+        async execute(_id, params) {
+          const length = project.remember(params);
+          return { content: [{ type: 'text', text: `Saved to project memory (${length} characters).` }], details: { length } };
         },
       });
     }

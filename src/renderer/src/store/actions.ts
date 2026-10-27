@@ -2,7 +2,7 @@
 // in the app store; pi events are folded in by transcript.ts.
 import { toast } from 'sonner';
 import { buildMessage, decodeUserContent, type Attachment } from '@shared/attachments';
-import type { HostEvent, OutputStyle, PermissionMode, PrThread, SessionKind, SessionMeta, SpawnTask, ThinkingLevel, UiResponse } from '@shared/protocol';
+import type { HostEvent, OutputStyle, PermissionMode, PrThread, SessionKind, SessionMeta, SpawnTask, ThinkingLevel, UiResponse, WorkProjectPatch } from '@shared/protocol';
 import { referencePrompt } from '@shared/context-reference';
 import { positiveLine } from '@shared/tool-previews';
 import { call, errText, modKey } from '@/lib/api';
@@ -269,6 +269,7 @@ export function showCustomize() {
     st.archived = false;
     st.activity = false;
     st.artifacts = false;
+    st.workProjects = false;
     st.menu = null;
   });
 }
@@ -280,6 +281,7 @@ export function showScheduled() {
     st.archived = false;
     st.activity = false;
     st.artifacts = false;
+    st.workProjects = false;
     st.menu = null;
   });
 }
@@ -288,7 +290,21 @@ export function showActivity() {
   setApp((st) => {
     st.activity = true;
     st.artifacts = false;
+    st.workProjects = false;
     st.archived = false;
+    st.customize = false;
+    st.scheduled = false;
+    st.menu = null;
+  });
+}
+
+export function showProjects(path: string | null = null) {
+  setApp((st) => {
+    st.workProjects = true;
+    st.openProject = path;
+    st.artifacts = false;
+    st.archived = false;
+    st.activity = false;
     st.customize = false;
     st.scheduled = false;
     st.menu = null;
@@ -298,6 +314,7 @@ export function showActivity() {
 export function showArtifacts() {
   setApp((st) => {
     st.artifacts = true;
+    st.workProjects = false;
     st.archived = false;
     st.activity = false;
     st.customize = false;
@@ -311,6 +328,7 @@ export function showArchived() {
     st.archived = true;
     st.activity = false;
     st.artifacts = false;
+    st.workProjects = false;
     st.customize = false;
     st.scheduled = false;
     st.menu = null;
@@ -326,6 +344,7 @@ export function setView(view: SessionKind) {
     st.archived = false;
     st.activity = false;
     st.artifacts = false;
+    st.workProjects = false;
   });
   try {
     localStorage.setItem('cc_mode', JSON.stringify(view));
@@ -345,6 +364,7 @@ export function showWelcome() {
     st.archived = false;
     st.activity = false;
     st.artifacts = false;
+    st.workProjects = false;
     st.current = null;
     st.lastByView[st.view] = null;
   });
@@ -366,6 +386,7 @@ export async function openSession(id: string, fresh = false) {
     st.archived = false;
     st.activity = false;
     st.artifacts = false;
+    st.workProjects = false;
     st.current = id;
     st.view = view;
     // Starting a session is slow (extensions, MCP): show that it is happening instead of an empty page.
@@ -1326,6 +1347,23 @@ export async function importCliSession() {
   } catch (err) {
     fail(err);
   }
+}
+
+/** Save what the Projects page edits; the list the host answers with replaces the one in the store. */
+export async function updateWorkProject(path: string, patch: WorkProjectPatch) {
+  try {
+    const folders = await call('work:update', path, patch);
+    setApp((st) => void (st.workFolders = folders));
+  } catch (err) {
+    fail(err);
+  }
+}
+
+/** Open a new Work task in a project: the folder is chosen and the welcome page shown. */
+export function newProjectTask(path: string) {
+  setView('work');
+  setWorkFolder(path);
+  showWelcome();
 }
 
 export function setWorkFolder(folder: string | null) {

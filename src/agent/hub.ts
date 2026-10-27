@@ -42,6 +42,8 @@ import type { Scheduler } from './scheduler';
 import { pickSideModel } from './side-model';
 import { ActivityRecorder } from './activity';
 import { Store } from './store';
+import { ProjectBook } from './remote/workspace';
+import { projectContext, remember } from './work-project';
 import * as prediction from './suggest';
 import * as sideChat from './side-chat';
 
@@ -121,6 +123,8 @@ export class SessionHub {
   /** Set by the host once it exists; it needs the hub, so the hub can't build it. */
   scheduler: Scheduler | null = null;
   private readonly store: Store;
+  /** The Work projects, kept in the same store the app's Projects page edits. */
+  private readonly projects: ProjectBook;
   /** What the user did each day; fed by the handlers, so tasks, peers and PR watches never count. */
   readonly activity: ActivityRecorder;
   /** The user's S3-compatible bucket, for everything the app keeps off this machine. */
@@ -149,6 +153,7 @@ export class SessionHub {
   constructor(private readonly opts: HubOptions) {
     this.agentDir = opts.agentDir ?? getAgentDir();
     this.store = new Store(opts.dataDir);
+    this.projects = new ProjectBook(this.store);
     this.activity = new ActivityRecorder(this.store);
     this.storage = new ObjectStorage(opts.dataDir);
     this.artifacts = new ArtifactService(opts.dataDir, this.storage);
@@ -496,6 +501,15 @@ export class SessionHub {
         unpublish: (id) => hub.artifacts.unpublish(id),
         remove: (id, unpublish) => hub.artifacts.remove(id, unpublish),
         storageReady: () => hub.storage.info().ready,
+      },
+      get project(): KitHost['project'] {
+        const m = hub.meta(live.id);
+        if (m.kind !== 'work' || m.scratch) return undefined;
+        const dir = m.projectPath;
+        return {
+          context: () => projectContext(hub.projects.workFolders().find((p) => p.path === dir)),
+          remember: (input) => remember(hub.projects, dir, input),
+        };
       },
       taskUpdate: (update) => {
         if (!live.disposed) this.emit({ type: 'task', sessionId: live.id, update });

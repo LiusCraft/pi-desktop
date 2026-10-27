@@ -482,6 +482,26 @@ export interface Project {
   addedAt: number;
 }
 
+export interface ProjectLink {
+  title: string;
+  url: string;
+}
+
+/** A Work folder with what makes it a project: standing context every session in it starts with. */
+export interface WorkProject extends Project {
+  description?: string;
+  /** Applied to every session in the folder. */
+  instructions?: string;
+  links?: ProjectLink[];
+  /** Notes the model keeps (`pidesk_remember`) and the user can edit; read at the start of every turn. */
+  memory?: string;
+}
+
+/** What the Projects page edits; absent fields stay as they are. */
+export type WorkProjectPatch = Partial<Pick<WorkProject, 'name' | 'description' | 'instructions' | 'links' | 'memory'>>;
+
+export const PROJECT_LIMITS = { name: 80, description: 500, instructions: 16_000, memory: 16_000, links: 20 } as const;
+
 export type AttachmentSource = { path: string } | { name: string; mimeType: string; data: string };
 export interface AttachmentImportResult {
   attachments: Attachment[];
@@ -775,11 +795,13 @@ export interface Api {
   'projects:remove'(path: string): Project[];
   /** Add a project by path: the way to name a folder on a remote machine, where no native picker exists. */
   'projects:addPath'(path: string): Project;
-  'work:folders'(): Project[];
-  'work:addFolder'(): Project | null;
-  'work:useFolder'(path: string): Project | null;
-  'work:removeFolder'(path: string): Project[];
-  'work:addPath'(path: string): Project;
+  'work:folders'(): WorkProject[];
+  'work:addFolder'(): WorkProject | null;
+  'work:useFolder'(path: string): WorkProject | null;
+  'work:removeFolder'(path: string): WorkProject[];
+  'work:addPath'(path: string): WorkProject;
+  /** Change a Work project's description, instructions, links or memory; returns the whole list. */
+  'work:update'(path: string, patch: WorkProjectPatch): WorkProject[];
   /** Folders of the host being driven (the machine itself, or a remote one). */
   'remote:browse'(dir?: string): RemoteListing;
 
@@ -956,7 +978,7 @@ export const MAIN_CHANNELS = [
   'app:info', 'app:notify', 'app:openExternal', 'app:revealPath', 'app:pickFolder',
   'settings:open', 'settings:get', 'settings:set', 'pets:save', 'pets:remove', 'settings:close', 'diagram:open', 'diagram:get', 'artifacts:preview', 'artifacts:thumbnail',
   'projects:list', 'projects:add', 'projects:adoptWorktree', 'projects:remove', 'projects:addPath',
-  'work:folders', 'work:addFolder', 'work:useFolder', 'work:removeFolder', 'work:addPath', 'remote:browse',
+  'work:folders', 'work:addFolder', 'work:useFolder', 'work:removeFolder', 'work:addPath', 'work:update', 'remote:browse',
   'remote:list', 'remote:save', 'remote:remove', 'remote:connect', 'remote:disconnect', 'remote:serveGet', 'remote:serveSet', 'remote:serveRotate',
   'attachments:import', 'attachments:pick', 'attachments:clipboard',
   'app:openTargets', 'terminal:shells', 'terminal:list', 'terminal:create', 'terminal:attach', 'terminal:write', 'terminal:resize', 'terminal:close', 'sessions:openIn', 'sessions:openPath', 'side:pop', 'side:pin', 'side:dock', 'side:windows',

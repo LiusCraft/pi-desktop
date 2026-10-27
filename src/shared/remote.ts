@@ -39,7 +39,7 @@ export interface RemotePing {
 /** The calls beyond the agent host's own: the workspace lists live with whoever serves them. */
 export const REMOTE_WORKSPACE_METHODS = [
   'projects:list', 'projects:addPath', 'projects:remove',
-  'work:folders', 'work:addPath', 'work:useFolder', 'work:removeFolder',
+  'work:folders', 'work:addPath', 'work:useFolder', 'work:removeFolder', 'work:update',
   'remote:browse',
 ] as const;
 export type RemoteWorkspaceMethod = (typeof REMOTE_WORKSPACE_METHODS)[number];

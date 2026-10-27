@@ -3,13 +3,14 @@
 // so this is where they live there.
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Project } from '@shared/protocol';
+import { PROJECT_LIMITS, type Project, type WorkProject, type WorkProjectPatch } from '@shared/protocol';
 import type { RemoteListing, RemoteWorkspaceMethod } from '@shared/remote';
 import { expandHome } from '../app-paths';
 import { localPath } from '../local-path';
 import type { Store } from '../store';
 
-const WORK_FOLDER_LIMIT = 12;
+// A Work folder now carries the user's own instructions and notes, so the list is long enough not to drop them.
+const WORK_FOLDER_LIMIT = 100;
 
 export class ProjectBook {
   constructor(private readonly store: Store) {}
@@ -30,20 +31,47 @@ export class ProjectBook {
     return this.projects();
   }
 
-  /** Work folders the user has worked in, most recent first. */
-  workFolders(): Project[] {
-    return this.store.get<Project[]>('workFolders', []).filter(this.exists);
+  /** Work folders (projects) the user has worked in, most recent first. */
+  workFolders(): WorkProject[] {
+    return this.store.get<WorkProject[]>('workFolders', []).filter(this.exists);
   }
-  addWorkFolder(dir: string): Project {
-    const list = this.store.get<Project[]>('workFolders', []).filter((p) => p.path !== dir);
-    const folder = { path: dir, name: path.basename(dir), addedAt: Date.now() };
-    this.store.set('workFolders', [folder, ...list].slice(0, WORK_FOLDER_LIMIT));
+  /** Adds the folder, or moves a known one to the front with its description, instructions and notes intact. */
+  addWorkFolder(dir: string): WorkProject {
+    const all = this.store.get<WorkProject[]>('workFolders', []);
+    const folder = all.find((p) => p.path === dir) ?? { path: dir, name: path.basename(dir), addedAt: Date.now() };
+    this.store.set('workFolders', [folder, ...all.filter((p) => p.path !== dir)].slice(0, WORK_FOLDER_LIMIT));
     return folder;
   }
-  removeWorkFolder(dir: string): Project[] {
-    this.store.set('workFolders', this.store.get<Project[]>('workFolders', []).filter((p) => p.path !== dir));
+  removeWorkFolder(dir: string): WorkProject[] {
+    this.store.set('workFolders', this.store.get<WorkProject[]>('workFolders', []).filter((p) => p.path !== dir));
     return this.workFolders();
   }
+  /** Changes what a Work project holds without reordering the list. */
+  updateWorkFolder(dir: string, patch: WorkProjectPatch): WorkProject[] {
+    const all = this.store.get<WorkProject[]>('workFolders', []);
+    const at = all.findIndex((p) => p.path === dir);
+    if (at < 0) throw new Error('That folder is not a project.');
+    all[at] = applyPatch(all[at], patch);
+    this.store.set('workFolders', all);
+    return this.workFolders();
+  }
+}
+
+const clip = (value: unknown, max: number) => (typeof value === 'string' ? value.slice(0, max) : '');
+
+function applyPatch(project: WorkProject, patch: WorkProjectPatch): WorkProject {
+  const next = { ...project };
+  if (patch.name !== undefined) next.name = clip(patch.name, PROJECT_LIMITS.name).trim() || project.name;
+  if (patch.description !== undefined) next.description = clip(patch.description, PROJECT_LIMITS.description).trim();
+  if (patch.instructions !== undefined) next.instructions = clip(patch.instructions, PROJECT_LIMITS.instructions);
+  if (patch.memory !== undefined) next.memory = clip(patch.memory, PROJECT_LIMITS.memory);
+  if (patch.links !== undefined) {
+    next.links = (Array.isArray(patch.links) ? patch.links : [])
+      .map((l) => ({ title: clip(l?.title, PROJECT_LIMITS.name).trim(), url: clip(l?.url, 2000).trim() }))
+      .filter((l) => /^https?:\/\//i.test(l.url))
+      .slice(0, PROJECT_LIMITS.links);
+  }
+  return next;
 }
 
 /** A folder named by a remote client: absolute (after `~`), and really a folder. */
@@ -83,6 +111,7 @@ export function workspaceCall(book: ProjectBook, method: RemoteWorkspaceMethod, 
       return fs.existsSync(dir) ? book.addWorkFolder(dir) : null;
     }
     case 'work:removeFolder': return book.removeWorkFolder(String(args[0]));
+    case 'work:update': return book.updateWorkFolder(String(args[0]), (args[1] ?? {}) as WorkProjectPatch);
     case 'remote:browse': return browse(args[0]);
   }
 }

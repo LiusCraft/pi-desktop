@@ -12,7 +12,7 @@ import { call, isMac, modKey } from '@/lib/api';
 import { ago, fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
-  archiveSession, deleteSession, openSession, removeProject, renameSession, selectProject, setView, showActivity, showArchived, showArtifacts, showCustomize, showScheduled, showWelcome, toggleSidebar,
+  archiveSession, deleteSession, openSession, removeProject, renameSession, selectProject, setView, showActivity, showArchived, showArtifacts, showCustomize, showProjects, showScheduled, showWelcome, toggleSidebar,
 } from '@/store/actions';
 import { setApp, useApp } from '@/store/app';
 import type { SessionKind } from '@shared/protocol';
@@ -87,14 +87,13 @@ function SessionRow({ s, active, child }: { s: SessionView; active: boolean; chi
   );
 }
 
-function NavItem({ icon, children, onClick, hint, soon, active }: { icon: React.ReactNode; children: React.ReactNode; onClick?: () => void; hint?: string; soon?: boolean; active?: boolean }) {
+function NavItem({ icon, children, onClick, hint, active }: { icon: React.ReactNode; children: React.ReactNode; onClick?: () => void; hint?: string; active?: boolean }) {
   return (
     <button
-      onClick={soon ? undefined : onClick}
-      aria-disabled={soon || undefined}
+      onClick={onClick}
       aria-current={active ? 'page' : undefined}
       title={hint}
-      className={cn('flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm', soon ? 'cursor-default text-muted-foreground' : active ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent')}
+      className={cn('flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm', active ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent')}
     >
       <span className="flex size-4 items-center justify-center text-muted-foreground">{icon}</span>
       {children}
@@ -103,7 +102,7 @@ function NavItem({ icon, children, onClick, hint, soon, active }: { icon: React.
 }
 
 /** Which full-page view (if any) replaces the conversation. */
-const usePage = () => useApp((s) => (s.scheduled ? 'scheduled' : s.customize ? 'customize' : s.archived ? 'archived' : s.activity ? 'activity' : s.artifacts ? 'artifacts' : null));
+const usePage = () => useApp((s) => (s.scheduled ? 'scheduled' : s.customize ? 'customize' : s.archived ? 'archived' : s.activity ? 'activity' : s.artifacts ? 'artifacts' : s.workProjects ? 'projects' : null));
 
 function CodeNav() {
   const page = usePage();
@@ -171,7 +170,7 @@ function WorkNav() {
     <>
       <nav className="space-y-0.5 px-2">
         <NavItem icon={<PlusIcon className="size-4" />} onClick={showWelcome}>New</NavItem>
-        <NavItem icon={<BoxIcon className="size-4" />} soon hint="Projects 即将推出">Projects</NavItem>
+        <NavItem icon={<BoxIcon className="size-4" />} active={page === 'projects'} onClick={() => showProjects()} hint="Projects：带着指令、链接和记忆的长期主题">Projects</NavItem>
         <NavItem icon={<ShapesIcon className="size-4" />} active={page === 'artifacts'} onClick={showArtifacts} hint="Artifacts：模型做的页面，预览与发布">Artifacts</NavItem>
         <NavItem icon={<ClockIcon className="size-4" />} active={page === 'scheduled'} onClick={showScheduled} hint="Scheduled：按计划自动运行的任务">Scheduled</NavItem>
         <NavItem icon={<ShapesIcon className="size-4" />} active={page === 'customize'} onClick={showCustomize} hint="Customize：技能、连接器与插件">Customize</NavItem>

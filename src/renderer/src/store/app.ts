@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type {
-  AppInfo, ImportableSession, ModelInfo, OutputStyle, PermissionMode, Project, SessionKind, SettingsPayload, ThinkingLevel, WorktreeInfo,
+  AppInfo, ImportableSession, ModelInfo, OutputStyle, PermissionMode, Project, SessionKind, SettingsPayload, ThinkingLevel, WorkProject, WorktreeInfo,
 } from '@shared/protocol';
 import type { RemoteActive } from '@shared/remote';
 import type { ScheduledTask } from '@shared/schedule';
@@ -70,7 +70,7 @@ export interface AppState {
   current: string | null;
   lastByView: Record<SessionKind, string | null>;
   projects: Project[];
-  workFolders: Project[];
+  workFolders: WorkProject[];
   prefs: Prefs;
   models: ModelInfo[];
   /** Thinking levels of the default model (welcome screens). */
@@ -96,6 +96,10 @@ export interface AppState {
   activity: boolean;
   /** The Artifacts page (the model's saved pages, preview and publishing) replaces the conversation area while it is open. */
   artifacts: boolean;
+  /** The Work Projects page (its projects, or one project's detail) replaces the conversation area while it is open. */
+  workProjects: boolean;
+  /** The project whose detail the Projects page shows (its folder), or null for the list. */
+  openProject: string | null;
   /** An existing worktree of the selected project that the next new session will run in. */
   adopt: WorktreeInfo | null;
   tasks: ScheduledTask[];
@@ -135,6 +139,8 @@ export const useApp = create<AppState>()(
     archived: false,
     activity: false,
     artifacts: false,
+    workProjects: false,
+    openProject: null,
     adopt: null,
     tasks: [],
     remote: boot.remote ?? null,

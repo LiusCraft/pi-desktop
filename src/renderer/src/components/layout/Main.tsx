@@ -33,6 +33,7 @@ import { ScheduledPage } from '@/scheduled/ScheduledPage';
 import { ActivityPage } from '@/activity/ActivityPage';
 import { ArchivedPage } from '@/archived/ArchivedPage';
 import { ArtifactsPage } from '@/artifacts/ArtifactsPage';
+import { ProjectsPage } from '@/projects/ProjectsPage';
 import { SidebarToggle } from './Sidebar';
 import { Inbox } from './Inbox';
 import { SideChatView } from '@/components/side/SideChat';
@@ -222,10 +223,11 @@ export function Main() {
   const archived = useApp((st) => st.archived);
   const activity = useApp((st) => st.activity);
   const artifacts = useApp((st) => st.artifacts);
+  const projects = useApp((st) => st.workProjects);
   return (
     <main className="flex h-full min-w-0 flex-col bg-background">
-      <Header s={customize || scheduled || archived || activity || artifacts ? undefined : s} title={customize ? 'Customize' : scheduled ? 'Scheduled' : archived ? 'Archived sessions' : activity ? 'Activity' : artifacts ? 'Artifacts' : undefined} />
-      <div className="flex min-h-0 flex-1 flex-col">{customize ? <CustomizePage /> : scheduled ? <ScheduledPage /> : archived ? <ArchivedPage /> : activity ? <ActivityPage /> : artifacts ? <ArtifactsPage /> : s ? <Thread key={s.meta.id} s={s} /> : view === 'work' ? <WorkWelcome /> : <CodeWelcome />}</div>
+      <Header s={customize || scheduled || archived || activity || artifacts || projects ? undefined : s} title={customize ? 'Customize' : scheduled ? 'Scheduled' : archived ? 'Archived sessions' : activity ? 'Activity' : artifacts ? 'Artifacts' : projects ? 'Projects' : undefined} />
+      <div className="flex min-h-0 flex-1 flex-col">{customize ? <CustomizePage /> : scheduled ? <ScheduledPage /> : archived ? <ArchivedPage /> : activity ? <ActivityPage /> : artifacts ? <ArtifactsPage /> : projects ? <ProjectsPage /> : s ? <Thread key={s.meta.id} s={s} /> : view === 'work' ? <WorkWelcome /> : <CodeWelcome />}</div>
     </main>
   );
 }

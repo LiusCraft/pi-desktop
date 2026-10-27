@@ -738,10 +738,8 @@ const handlers: MainHandlers = {
     return dir ? addWorkFolder(dir) : null;
   },
   'work:useFolder': (dir) => (fs.existsSync(dir) ? addWorkFolder(dir) : null),
-  'work:removeFolder': (dir) => {
-    store.set('workFolders', store.get<Project[]>('workFolders', []).filter((p) => p.path !== dir));
-    return workFolders();
-  },
+  'work:removeFolder': (dir) => book.removeWorkFolder(dir),
+  'work:update': (dir, patch) => book.updateWorkFolder(dir, patch),
 
   'attachments:import': (sources) => importAttachments(sources),
   'attachments:pick': async () => {
