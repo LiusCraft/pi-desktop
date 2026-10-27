@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 import { addWorkFolder, addProject, selectProject, send, setWorkFolder, stop } from '@/store/actions';
 import { modelName, setApp, setPref, useApp, useCurrent } from '@/store/app';
 import { useDrafts } from '@/store/drafts';
-import { Clawd, moodOf } from './Clawd';
+import { Clawd, moodOf, PET_GROUND } from './Clawd';
 import { ComposerInput, pickAttachments, type ComposerHandle } from './ComposerInput';
 import { ContextRing, EffortMenu, FootButton, ModeMenu, ModelMenu } from './Menus';
 import { PrBar } from './PrBar';
@@ -24,7 +24,7 @@ function useSendState() {
 
 function Chip({ children, className, ...props }: React.ComponentProps<'button'>) {
   return (
-    <button {...props} className={cn('flex h-8 max-w-60 items-center gap-1.5 rounded-lg bg-muted/80 px-2.5 text-sm text-foreground/85 hover:bg-accent hover:text-foreground data-[state=open]:bg-accent', className)}>
+    <button {...props} {...PET_GROUND} className={cn('flex h-8 max-w-60 items-center gap-1.5 rounded-lg bg-muted/80 px-2.5 text-sm text-foreground/85 hover:bg-accent hover:text-foreground data-[state=open]:bg-accent', className)}>
       {children}
     </button>
   );
@@ -69,7 +69,7 @@ function NewSessionChips() {
         </DropdownMenuContent>
       </DropdownMenu>
       {adopt && (
-        <div className="flex h-8 items-center rounded-lg bg-muted/80 text-sm text-foreground/85" title={`在已有的 worktree 里工作：${adopt.path}`}>
+        <div {...PET_GROUND} className="flex h-8 items-center rounded-lg bg-muted/80 text-sm text-foreground/85" title={`在已有的 worktree 里工作：${adopt.path}`}>
           <span className="flex items-center gap-1.5 pr-2 pl-2.5">
             <GitBranchIcon className="size-4 shrink-0" />
             <span className="max-w-40 truncate">{adopt.branch ?? fname(adopt.path)}</span>
@@ -81,7 +81,7 @@ function NewSessionChips() {
         </div>
       )}
       {project && !adopt && (
-        <div className="flex h-8 items-center rounded-lg bg-muted/80 text-sm text-foreground/85">
+        <div {...PET_GROUND} className="flex h-8 items-center rounded-lg bg-muted/80 text-sm text-foreground/85">
           {branch && worktree ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -140,14 +140,13 @@ export function CodeComposer() {
   return (
     <div className="mx-auto w-full max-w-[786px] px-6 pb-3">
       {!s && <NewSessionChips />}
-      {/* The pet walks on whatever is topmost: the PR bar when shown, else the input box. */}
-      <div className="relative">
-      <Clawd mood={moodOf(s)} from={s ? 0 : 0.6} />
-      {s && <PrBar s={s} />}
+      {/* The pet lives on the input box and hops onto the PR bar above it (and onto the new-session chips). */}
+      {s && <div {...PET_GROUND}><PrBar s={s} /></div>}
       <div
         className={cn('relative rounded-xl border bg-card px-3.5 py-2 transition-colors focus-within:border-muted-foreground/50', drag && 'ring-2 ring-primary/50')}
         onClick={(e) => !(e.target as HTMLElement).closest('button') && input.current?.focus()}
       >
+        <Clawd mood={moodOf(s)} />
         <div className="flex items-end gap-2">
           <ComposerInput ref={input} placeholder={placeholder} className="min-w-0 flex-1 py-0.5" onDragState={setDrag} />
           <button
@@ -162,7 +161,6 @@ export function CodeComposer() {
             {stopMode ? <CircleStopIcon className="size-[18px]" /> : <CornerDownLeftIcon className="size-4" />}
           </button>
         </div>
-      </div>
       </div>
       <div className="mt-1.5 flex items-center gap-0.5">
         <FootButton title="Add files (type @ to reference a project file)" className="w-7 justify-center px-0" onClick={pickAttachments}>

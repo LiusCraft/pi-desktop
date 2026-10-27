@@ -30,114 +30,232 @@ const SPRITE_UNITS = 38;
 const PET_W = Math.round(SPRITE_UNITS * UNIT);
 const EDGE = 16;
 const SPEED = 30; // px per second
-const NEAR = 4; // px: closer than this counts as already there
-const BLOCK_POLL_MS = 400;
+const AIR_SPEED = 48; // px per second while hopping
+const NEAR = 4; // px: closer than this to its goal counts as already there
+const BLOCK_POLL_MS = 250;
 const DRAG_THRESHOLD = 3; // px of pointer travel before a press becomes a drag
 const JOY_MS = 1400; // how long a double-click reaction lasts
 const HELD_LIFT = 8; // px the pet is lifted while the user holds it
+const GRAVITY = 1400; // px per second squared
+const JUMP_ARC = 12; // px it clears a ledge by at the top of a hop
+const MAX_JUMP = 140; // px: a ledge taller than this is a wall
+const FOOT = 10; // px either side of its middle that count as standing on a ledge
+const LEDGE_GAP = 8; // buttons closer than this form one ledge
+const MIN_LEDGE = 2; // px: lower than this is no ledge at all
 /** Mark an element that floats over the composer so the pet keeps clear of it. */
 export const PET_BLOCK_ATTR = 'data-pet-block';
+/** Mark an element sitting above the composer that the pet can hop onto and walk along (chips, the PR bar). */
+export const PET_GROUND_ATTR = 'data-pet-ground';
+export const PET_GROUND = { [PET_GROUND_ATTR]: '' };
 
 const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/** The stretch of the track (left offsets) the pet may stand on: the composer's width minus whatever floats over it. `from` is the leftmost share it may use. */
-function walkRange(track: HTMLElement, from: number) {
-  const width = track.offsetWidth;
+/** The rightmost spot (left offset) the pet may stand on: the composer's width minus whatever floats over it. */
+function walkMax(track: HTMLElement) {
   const t = track.getBoundingClientRect();
-  let max = Math.max(EDGE, width - PET_W - EDGE);
+  let max = Math.max(EDGE, track.offsetWidth - PET_W - EDGE);
   for (const el of document.querySelectorAll<HTMLElement>(`[${PET_BLOCK_ATTR}]`)) {
     const r = el.getBoundingClientRect();
     if (r.bottom > t.top && r.top < t.bottom && r.right > t.left && r.left < t.right) max = Math.min(max, r.left - t.left - PET_W - EDGE / 2);
   }
-  max = Math.max(EDGE, max);
-  return { min: Math.min(max, Math.max(EDGE, width * from)), max };
+  return Math.max(EDGE, max);
 }
 
-interface Patrol { x: number | null; facing: 1 | -1; walking: boolean; dur: number; arrived: boolean }
+interface Ledge { l: number; r: number; h: number }
+
+/** The things above the composer the pet can stand on, as spans of the track and their height over its floor. */
+function ledgesOf(track: HTMLElement): Ledge[] {
+  const t = track.getBoundingClientRect();
+  const out: Ledge[] = [];
+  for (const el of document.querySelectorAll<HTMLElement>(`[${PET_GROUND_ATTR}]`)) {
+    const r = el.getBoundingClientRect();
+    const h = t.bottom - r.top;
+    if (r.width > 0 && h > MIN_LEDGE && r.bottom <= t.bottom + 1) out.push({ l: r.left - t.left - LEDGE_GAP / 2, r: r.right - t.left + LEDGE_GAP / 2, h });
+  }
+  return out;
+}
+/** How high the floor is under a pet whose left edge is at `x`. */
+const groundAt = (ledges: Ledge[], x: number) => {
+  const mid = x + PET_W / 2;
+  return ledges.reduce((top, l) => (mid + FOOT > l.l && mid - FOOT < l.r ? Math.max(top, l.h) : top), 0);
+};
+
+interface Body { x: number | null; y: number; vy: number; air: boolean; facing: 1 | -1 }
+interface Gait { facing: 1 | -1; walking: boolean; arrived: boolean }
 
 /**
- * Where the pet is. Idle it wanders to random spots along the track; while `working` it walks to the
- * far right end and stays there. Either way it stays inside what is visible of the composer, even when
- * panels open beside it or float over it. The user can pick it up (`grab` / `dragTo` / `drop`): where it is
- * put down it stays until its job changes (working) or it wanders off again (idle).
+ * Where the pet is, simulated frame by frame: it walks at a steady pace, hops up onto ledges in its way
+ * (the new-session chips, the PR bar) and drops off their far side. Idle it wanders to random spots along
+ * the track; while `working` it goes to the far right end and stays there. Either way it stays inside what is
+ * visible of the composer, even when panels open beside it or float over it. The user can pick it up
+ * (`grab` / `dragTo` / `drop`): where it is put down it stays until its job changes (working) or it wanders
+ * off again (idle). Position is written straight to `pos`; React only hears about the gait.
  */
-function usePatrol(enabled: boolean, working: boolean, track: React.RefObject<HTMLDivElement | null>, from = 0) {
-  const x = useRef<number | null>(null);
-  const [state, setState] = useState<Patrol>({ x: null, facing: -1, walking: false, dur: 0, arrived: false });
+function usePatrol(enabled: boolean, working: boolean, track: React.RefObject<HTMLDivElement | null>, pos: React.RefObject<HTMLDivElement | null>) {
+  const body = useRef<Body>({ x: null, y: 0, vy: 0, air: false, facing: -1 });
+  const [gait, setGait] = useState<Gait>({ facing: -1, walking: false, arrived: false });
   const [held, setHeld] = useState(false);
   /** The `working` value the user dropped it under; while that holds, the pet is not sent back to the right end. */
   const pinnedFor = useRef<boolean | null>(null);
   useEffect(() => {
     const el = track.current;
-    // While held, the effect is torn down: its cleanup freezes the pet where it is and cancels every walk.
-    if (!enabled || !el || held) return;
+    const node = pos.current;
+    // While held, the effect is torn down: its cleanup stops every walk and timer.
+    if (!enabled || !el || !node || held) return;
     if (pinnedFor.current !== working) pinnedFor.current = null;
     const pinned = pinnedFor.current === working;
     const still = reducedMotion();
+    const b = body.current;
+    let goal: number | null = null;
+    let onArrive: (() => void) | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const goTo = (to: number, instant: boolean, then?: () => void) => {
-      clearTimeout(timer);
-      const start = x.current ?? to;
-      const dist = Math.abs(to - start);
-      const dur = instant || still ? 0 : dist / SPEED;
-      const walking = dur > 0 && dist > NEAR;
-      x.current = to;
-      setState((p) => ({ x: to, facing: dist > NEAR ? (to >= start ? 1 : -1) : p.facing, walking, dur, arrived: !walking }));
-      const arrive = () => {
-        setState((p) => ({ ...p, walking: false, arrived: true }));
-        then?.();
-      };
-      if (walking) timer = setTimeout(arrive, dur * 1000);
-      else then?.();
+    let raf = 0;
+    let last = 0;
+
+    const jump = (rise: number) => {
+      b.air = true;
+      b.vy = Math.sqrt(2 * GRAVITY * (rise + JUMP_ARC));
     };
-    // Pin the starting spot with `left`, so the first walk animates instead of jumping.
-    if (x.current == null) {
-      x.current = walkRange(el, from).max;
-      setState((p) => ({ ...p, x: x.current, dur: 0 }));
-    }
+    const publish = (walking: boolean, arrived: boolean) =>
+      setGait((p) => (p.facing === b.facing && p.walking === walking && p.arrived === arrived ? p : { facing: b.facing, walking, arrived }));
+
+    /** Advance the simulation; true while something is still moving. */
+    const step = (dt: number) => {
+      const max = walkMax(el);
+      const ledges = ledgesOf(el);
+      const ground = (x: number) => groundAt(ledges, x);
+      b.x = Math.min(max, b.x ?? Math.max(EDGE, el.offsetWidth - PET_W - 24));
+      let walking = false;
+      let arrivedNow = false;
+      if (still) {
+        if (goal != null) {
+          b.x = Math.min(max, goal);
+          goal = null;
+          arrivedNow = true;
+        }
+        b.y = ground(b.x);
+        b.air = false;
+      } else {
+        if (!b.air) {
+          const g = ground(b.x);
+          if (g > b.y + 1) jump(g - b.y); // a ledge appeared under it (the PR bar)
+          else if (g < b.y - 1) {
+            // walked off a ledge, or it went away
+            b.air = true;
+            b.vy = 0;
+          } else b.y = g;
+        }
+        if (goal != null) {
+          const dist = goal - b.x;
+          if (Math.abs(dist) <= 1) {
+            b.x = goal;
+            goal = null;
+            arrivedNow = true;
+          } else {
+            const dir = dist > 0 ? 1 : -1;
+            b.facing = dir;
+            const nx = b.x + dir * Math.min(Math.abs(dist), (b.air ? AIR_SPEED : SPEED) * dt);
+            const rise = ground(nx) - b.y;
+            if (rise <= 1) {
+              b.x = nx;
+              walking = !b.air;
+            } else if (!b.air && rise <= MAX_JUMP) jump(rise); // in the way: hop up onto it
+            else if (!b.air) {
+              // too tall to climb: stop here
+              goal = null;
+              arrivedNow = true;
+            }
+          }
+        }
+        if (b.air) {
+          b.vy -= GRAVITY * dt;
+          b.y += b.vy * dt;
+          const g = ground(b.x);
+          if (b.y <= g && b.vy <= 0) {
+            b.y = g;
+            b.vy = 0;
+            b.air = false;
+          }
+        }
+      }
+      node.style.left = `${b.x}px`;
+      node.style.bottom = `${b.y}px`;
+      node.style.visibility = '';
+      publish(walking, goal == null && !b.air);
+      if (arrivedNow) {
+        const then = onArrive;
+        onArrive = undefined;
+        then?.();
+      }
+      return goal != null || b.air;
+    };
+    const frame = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      raf = step(dt) ? requestAnimationFrame(frame) : 0;
+    };
+    const wake = () => {
+      if (raf) return;
+      last = performance.now();
+      raf = requestAnimationFrame(frame);
+    };
+    const setGoal = (to: number, then?: () => void) => {
+      goal = to;
+      onArrive = then;
+      wake();
+    };
     const wander = () => {
-      const { min, max } = walkRange(el, from);
-      goTo(min + Math.random() * (max - min), false, () => {
+      setGoal(EDGE + Math.random() * (walkMax(el) - EDGE), () => {
         timer = setTimeout(wander, 2500 + Math.random() * 5000);
       });
     };
-    if (working && pinned) setState((p) => ({ ...p, arrived: true }));
-    else if (working) goTo(walkRange(el, from).max, false);
-    else if (!still) timer = setTimeout(wander, 1500 + Math.random() * 2000);
-    // Follow the composer as panels open, close or resize beside it, or float over it.
-    const fit = () => {
-      const { max } = walkRange(el, from);
-      const at = x.current ?? max;
-      if (at > max) goTo(max, true);
-      else if (working && !pinned && at < max - NEAR) goTo(max, false);
+    // Follow the composer as panels open, close or resize beside it, float over it, or ledges come and go.
+    const check = () => {
+      if (working && !pinned && b.x != null) {
+        const max = walkMax(el);
+        if (Math.abs(max - b.x) > NEAR || goal != null) goal = max;
+      }
+      wake();
     };
-    const observer = new ResizeObserver(fit);
+
+    if (working && !pinned) setGoal(walkMax(el));
+    else {
+      if (!working && !still) timer = setTimeout(wander, 1500 + Math.random() * 2000);
+      wake();
+    }
+    const observer = new ResizeObserver(check);
     observer.observe(el);
-    const poll = setInterval(fit, BLOCK_POLL_MS);
+    const poll = setInterval(check, BLOCK_POLL_MS);
     return () => {
+      cancelAnimationFrame(raf);
       clearTimeout(timer);
       clearInterval(poll);
       observer.disconnect();
-      // Stop where it is right now instead of finishing the walk.
-      const pos = el.querySelector<HTMLElement>('.clawd-pos');
-      if (pos) x.current = pos.getBoundingClientRect().left - el.getBoundingClientRect().left;
-      setState((p) => ({ ...p, x: x.current, walking: false, dur: 0, arrived: false }));
+      setGait((p) => ({ ...p, walking: false, arrived: false }));
     };
-  }, [enabled, working, held, track, from]);
+  }, [enabled, working, held, track, pos]);
+
   const grab = () => setHeld(true);
   const dragTo = (left: number) => {
     const el = track.current;
-    if (!el) return;
-    const to = Math.min(walkRange(el, 0).max, Math.max(EDGE, left));
-    const prev = x.current ?? to;
-    x.current = to;
-    setState((p) => ({ ...p, x: to, facing: Math.abs(to - prev) >= 1 ? (to > prev ? 1 : -1) : p.facing, walking: false, dur: 0 }));
+    const node = pos.current;
+    if (!el || !node) return;
+    const b = body.current;
+    const to = Math.min(walkMax(el), Math.max(EDGE, left));
+    if (b.x != null && Math.abs(to - b.x) >= 1) b.facing = to > b.x ? 1 : -1;
+    b.x = to;
+    b.y = groundAt(ledgesOf(el), to) + HELD_LIFT;
+    b.vy = 0;
+    node.style.left = `${to}px`;
+    node.style.bottom = `${b.y}px`;
+    setGait((p) => (p.facing === b.facing ? p : { ...p, facing: b.facing }));
   };
   const drop = () => {
     pinnedFor.current = working;
+    body.current.air = true; // falls to whatever is underneath
     setHeld(false);
   };
-  return { ...state, held, grab, dragTo, drop };
+  return { ...gait, held, grab, dragTo, drop };
 }
 
 /** Every skin the user can pick: the built-in pets, then their own. */
@@ -227,26 +345,30 @@ export function PetSprite({ pet, mood = 'idle', walking = false, held = false, j
   );
 }
 
-/** `from`: keep to the right of this share of the width (e.g. clear of the new-session chips). */
-export function Clawd({ mood, from }: { mood: Mood; from?: number }) {
+/** Lives on the top edge of the input box; mark neighbours above it with `PET_GROUND` to give it something to climb. */
+export function Clawd({ mood }: { mood: Mood }) {
   const track = useRef<HTMLDivElement>(null);
   const enabled = useApp((s) => s.settings.pet) !== false;
   const skin = useApp((s) => s.settings.petSkin);
   const custom = useApp((s) => s.settings.pets);
   const pet = allPets(custom).find((p) => p.id === skin) ?? BUILTIN_PETS.find((p) => p.id === DEFAULT_PET_ID)!;
-  const patrol = usePatrol(enabled, mood !== 'idle', track, from);
+  const pos = useRef<HTMLDivElement>(null);
+  const patrol = usePatrol(enabled, mood !== 'idle', track, pos);
   const press = useRef<{ startX: number; startLeft: number; moved: boolean } | null>(null);
   const [joy, setJoy] = useState(false);
   const joyTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(joyTimer.current), []);
   if (!enabled) return null;
-  const { x, facing, walking, dur, arrived, held } = patrol;
+  const { facing, walking, arrived, held } = patrol;
   const left = (el: HTMLElement) => el.getBoundingClientRect().left - track.current!.getBoundingClientRect().left;
   return (
-    <div ref={track} className="pointer-events-none absolute inset-x-0 -top-[33px] h-[34px]" aria-hidden>
+    <div ref={track} className="pointer-events-none absolute inset-x-0 bottom-full h-[34px]" aria-hidden>
       <div
+        ref={pos}
         className={cn('clawd-pos pointer-events-auto absolute bottom-0 touch-none select-none', held ? 'cursor-grabbing' : 'cursor-grab')}
-        style={{ ...(x == null ? { right: 24 } : { left: x, transition: `left ${dur}s linear, transform 0.12s` }), transform: held ? `translateY(-${HELD_LIFT}px)` : undefined }}
+        // Hidden until the first step has put it somewhere; position is written by `usePatrol`.
+        style={{ left: 0, bottom: 0, visibility: 'hidden' }}
+        onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => {
           if (e.button !== 0) return;
           e.currentTarget.setPointerCapture(e.pointerId);
