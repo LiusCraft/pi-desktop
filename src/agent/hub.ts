@@ -925,18 +925,18 @@ export class SessionHub {
     m.nameAttempted = true;
     this.save();
     this.setTitle(id, placeholder);
-    void this.nameSession(id, text).catch(() => {});
+    void this.nameSession(id, text).catch((err) => console.warn('[naming] nameSession threw:', err));
   }
 
+  /** Names the session with the session's own model: one tool-less request, outside the conversation. */
   private async nameSession(id: string, prompt: string) {
     const m = this.meta(id);
     if (!m.autoName || m.titleLocked || m.autoNamed) return;
-    const live = this.live.get(id);
-    const current = live?.runtime.session.model ? `${live.runtime.session.model.provider}/${live.runtime.session.model.id}` : m.model;
-    const { models, defaultModel } = await this.listModels();
-    const pick = pickSideModel(models, current ?? defaultModel);
-    const model = this.findModel(pick);
-    if (!model) return; // demo/offline: there is no real model to ask
+    const session = this.live.get(id)?.runtime.session;
+    const current = session?.model ? `${session.model.provider}/${session.model.id}` : m.model;
+    const model = this.findModel(current);
+    if (!model || model.provider === 'demo') return; // demo/offline: there is no real model to ask
+    const label = `${model.provider}/${model.id}`;
     const controller = new AbortController();
     this.namers.add(controller);
     const timer = setTimeout(() => controller.abort(), naming.TIMEOUT_MS);
@@ -945,17 +945,25 @@ export class SessionHub {
       const reply = await this.models.completeSimple(model, {
         systemPrompt: naming.SYSTEM_PROMPT,
         messages: [{ role: 'user', content: prompt.slice(0, 2000), timestamp: Date.now() }],
-      }, { signal: controller.signal, maxTokens: 64, sessionId: id });
-      if (reply.stopReason === 'error' || reply.stopReason === 'aborted') return;
+        // Room for a reasoning model to think before it writes the title.
+      }, { signal: controller.signal, maxTokens: 512, sessionId: id });
+      if (reply.stopReason === 'error' || reply.stopReason === 'aborted') {
+        console.warn(`[naming] ${label} failed: ${(reply as any).errorMessage ?? reply.stopReason}`);
+        return;
+      }
       raw = reply.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('');
     } finally {
       clearTimeout(timer);
       this.namers.delete(controller);
     }
     const title = naming.cleanTitle(raw);
+    if (!title) {
+      console.warn(`[naming] ${label} gave no usable title: ${JSON.stringify(raw)}`);
+      return;
+    }
     const now = this.meta(id);
     // A rename that landed while the model was thinking wins.
-    if (!title || now.titleLocked || !now.autoName || now.autoNamed || now.archived) return;
+    if (now.titleLocked || !now.autoName || now.autoNamed || now.archived) return;
     now.autoNamed = true;
     this.save();
     this.setTitle(id, title);

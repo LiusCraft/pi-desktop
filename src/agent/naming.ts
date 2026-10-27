@@ -1,4 +1,4 @@
-// Session naming: one tool-less request to a cheap model of the session's provider.
+// Session naming: one tool-less request to the session's own model.
 //
 // The request goes straight through the shared ModelRuntime, outside any session,
 // so it never enters the conversation's context. The session shows the user's
