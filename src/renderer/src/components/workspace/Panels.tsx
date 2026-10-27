@@ -83,6 +83,11 @@ const TREE_MIN_PX = 140;
 const TREE_START = '32%';
 const TREE_MAX = '70%';
 const VIEW_MIN_PX = 200;
+/** The changed-files tree above the commit list, in pixels and as a share of the tree column. */
+const FILES_MIN_PX = 80;
+const COMMITS_MIN_PX = 60;
+const COMMITS_START = '30%';
+const COMMITS_MAX = '70%';
 
 /** A tree beside its view; the divider between them is dragged to resize the tree (remembered per session). */
 function TreeSplit({ id, tree, children }: { id: string; tree: ReactNode | null; children: ReactNode }) {
@@ -140,6 +145,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const id = s.meta.id;
   const files = commit ? commitFiles : s.changes;
   const hash = commit?.hash ?? null;
+  const columnLayout = useDefaultLayout({ id: `${id}:diff-column` });
   // Contents are read per file as the viewer reaches it; each arrival re-renders the panel.
   const [arrived, arrive] = useReducer((n: number) => n + 1, 0);
   useEffect(() => onContent(arrive), []);
@@ -309,7 +315,9 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
       <TreeSplit
         id={`${id}:diff-split`}
         tree={showTree && (
-          <div className="flex h-full min-h-0 flex-col">
+          <ResizablePanelGroup orientation="vertical" id={`${id}:diff-column`} defaultLayout={columnLayout.defaultLayout} onLayoutChanged={columnLayout.onLayoutChanged}>
+            <ResizablePanel id="files" minSize={FILES_MIN_PX}>
+              <div className="flex h-full min-h-0 flex-col">
             <PathTree
               className="min-h-0 flex-1"
               label="Changed files"
@@ -322,8 +330,13 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
               snapshotOf={(p) => { const f = byPath.get(p); if (f?.status !== 'D') return undefined; wantContent(id, hash, f); return contents(f)?.before ?? undefined; }}
               onOpen={open}
             />
+              </div>
+            </ResizablePanel>
             {commits.length > 0 && (
-              <nav className="max-h-[40%] shrink-0 overflow-y-auto border-t p-1.5" aria-label="Commits">
+              <>
+                <ResizableHandle />
+                <ResizablePanel id="commits" defaultSize={COMMITS_START} minSize={COMMITS_MIN_PX} maxSize={COMMITS_MAX}>
+              <nav className="h-full overflow-y-auto p-1.5" aria-label="Commits">
                 <div className="px-2 py-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Commits · {commits.length}</div>
                 <button
                   className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] hover:bg-accent', !commit && 'bg-accent')}
@@ -344,8 +357,10 @@ ${c.subject}`}
                   </button>
                 ))}
               </nav>
+                </ResizablePanel>
+              </>
             )}
-          </div>
+          </ResizablePanelGroup>
         )}
       >
         <div className="relative h-full min-w-0">
