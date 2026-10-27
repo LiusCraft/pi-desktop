@@ -1,6 +1,6 @@
 # Pi Desktop
 
-基于 [pi coding agent](https://github.com/badlogic/pi-mono) 的桌面端，界面仿照 Claude desktop，有 **Work** 和 **Code** 两种模式。界面用 React + TypeScript + [shadcn/ui](https://ui.shadcn.com) 构建；agent 直接复用 **pi SDK**（`createAgentSession`），所有会话跑在一个常驻的 Electron utilityProcess 里。Claude 风格界面里 pi 没有的能力（权限模式、计划审批、待办、子 agent）由内置的 desktop-kit 扩展补上。
+基于 [pi coding agent](https://github.com/badlogic/pi-mono) 的桌面端，界面仿照 Claude desktop，有 **Work** 和 **Code** 两种模式。界面用 React + TypeScript + [shadcn/ui](https://ui.shadcn.com) 构建；agent 直接复用 **pi SDK**（`createAgentSession`），所有会话跑在一个常驻的 Electron utilityProcess 里。Claude 风格界面里 pi 没有的能力（权限模式、计划审批、待办、子 agent、后台任务）由内置的 desktop-kit 扩展补上。
 
 - **Code**：在项目的独立 git worktree 里写代码，配有 diff、PR / CI 状态、终端和预览。
 - **Work**：在你选的文件夹里做知识类工作，比如整理文件、写文档、做简报；不选文件夹时会新建一个临时工作区。右侧面板显示进度、Pi Desktop 生成的文件和任务上下文。
@@ -57,10 +57,13 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 | `src/shared/protocol.ts` | 三个进程之间的契约：渲染进程能调用的每个通道（`Api`）、哪些转发给 agent host（`HOST_CHANNELS`）、host 推回的事件流（`HostEvent`）、交互请求（`UiRequest`） |
 | `src/agent/app-paths.ts` | 应用自己的数据目录（`~/.pi-desktop`、`PI_DESKTOP_HOME`）、worktree 根目录、扩展目录；pi 的配置目录只读解析，不搬家 |
 | `src/agent/hub.ts` | 会话元数据、worktree、`createAgentSessionRuntime` 创建 / 恢复会话、事件转发、交互请求（权限 / 计划 / 扩展对话框）、子 agent、会话命名、CLI 会话导入 |
-| `src/agent/desktop-kit.ts` | 每个会话一个实例的 pi 扩展：权限模式、output style、`todo_write`、`exit_plan_mode`、`task`（子 agent） |
+| `src/agent/desktop-kit.ts` | 每个会话一个实例的 pi 扩展：权限模式、output style、`pidesk_todo_write`、`pidesk_exit_plan_mode`、`pidesk_task`（子 agent）、`pidesk_bg_*`（后台 shell）、`pidesk_suggest_task`、会话间通信 |
 | `src/agent/model-admin.ts` | 模型管理：provider / 登录方式枚举、OAuth 与 API key 登录事件桥接、登出、自定义端点保存与热加载 |
 | `src/agent/endpoints.ts` | `models.json` 读写（保留手写字段）、`/models` 发现、本地端点占位密钥 |
 | `src/agent/models-dev.ts` | models.dev 目录（按天缓存）：按模型 ID / canonical ID 匹配上下文、输出上限和价格 |
+| `src/agent/scheduler.ts` / `src/shared/schedule.ts` | 定时任务：任务存储与调度循环（host 内）；计划类型、cron 解析、下次运行时间（host 与界面共用的纯函数） |
+| `src/agent/customize.ts` / `src/agent/agents.ts` | Customize 页后端（技能 / MCP / 插件 / 提示模板读写 pi 自己的文件）；子 agent 身份加载 |
+| `src/agent/pr-watch.ts` | host 内的 PR watcher（轮询 `gh pr view`，必要时起 turn） |
 | `src/agent/naming.ts` / `src/agent/suggest.ts` | 后台小请求：会话命名与下一句输入预测（`completeSimple`，不进会话上下文） |
 | `src/agent/side-model.ts` | 给后台请求挑同 provider 里最便宜的小模型 |
 | `src/agent/demo-model.ts` | 离线演示模型：pi-ai 的 faux provider 注册到共享的 `ModelRuntime`，按脚本调用 pi 的**真实工具** |
@@ -166,6 +169,41 @@ Code 会话输入框上方的 PR 条报告当前分支的 PR：状态颜色、`+
 
 会话正在跑的时候事件不会插队，等它空闲后的下一次查看再发，所以既不会打断你，也不会丢。因为那是真正的 turn，`git push` 这类高风险命令仍然会先问你（这就是卡片上「等待你的确认」的由来）。
 
+### 定时任务（Scheduled）
+
+侧边栏的 **Scheduled**（Code 和 Work 各列自己的任务）让任务按计划自动运行。任务在 agent host 里执行，应用开着才会触发。
+
+- **计划类型**：手动、每小时、每天、工作日、每周、一次性、cron（5 个字段，本地时间）。
+- **每次运行都是一个全新会话**：Code 可选在独立 worktree 里跑；Work 可指定文件夹，或每次用临时工作区。权限模式和模型随任务保存。
+- **调度规则**：host 里每 30 秒检查一次；应用关闭期间错过的任务启动时补跑一次（最多回溯 7 天）；上一次运行还没结束就跳过；一次性任务跑完自动停用。
+- 页面支持立即运行、暂停、编辑，并保留最近 30 次运行记录（可跳到对应会话）。
+
+### Customize
+
+**Customize** 页把 pi 的扩展点做成界面，读写的都是 pi 自己的文件，所以和 CLI 始终一致：
+
+| 分区 | 对应 pi |
+|---|---|
+| Skills | `SKILL.md` 技能目录 |
+| Connectors | MCP 服务器（`mcp.json`，个人级和 `<项目>/.pi/mcp.json`） |
+| Plugins | pi packages（`settings.json` 的 `packages`） |
+| Commands | 提示模板（`/` 命令） |
+| Subagents | 子 agent 身份，见下 |
+
+项目级条目只对已信任的项目生效。
+
+### 后台任务与子 agent
+
+- **子 agent**（`pidesk_task`）：内置 `explore`、`plan` 两种身份；自己的身份是 `~/.pi-desktop/agents/*.md`（frontmatter 写 `name`、`description`、可选 `model` 和 `tools` 白名单，正文是系统提示），可在 Customize → Subagents 里编辑。子 agent 始终运行在 plan 模式，配置不能放宽它能改的范围；只加载只读的 MCP 工具。
+- **后台运行**：`pidesk_task` 可带 `run_in_background`，立即返回，报告稍后作为任务通知唤醒模型。`pidesk_bg_shell` / `pidesk_bg_output` / `pidesk_bg_kill` 用来跑长期存活的 shell 命令。两类任务共用 **Background tasks** 面板，可查看、停止，并且不随发起它们的那一轮结束。
+- 内置工具统一使用 `pidesk_` 前缀；transcript 仍能读懂旧会话里记录的裸名称。
+
+### 其他界面细节
+
+- **Mermaid**：回复里的 `mermaid` 代码块渲染成图。
+- **桌宠**：输入框旁的状态宠物，可在设置里关闭或换皮肤；侧边栏的会话状态图标一眼看出谁在跑、谁在等批准。
+- **系统通知**：需要批准或会话完成时发 OS 通知，点击跳回对应会话；toast 只用于出问题的情况。
+
 ### Work 与 Code 的区别
 
 | | Code | Work |
@@ -205,6 +243,7 @@ npm run test:desktop # 构建后用项目自带的 Electron 运行 Playwright �
 - `test/desktop/interactions.spec.ts`：临时配置目录（`PI_DESKTOP_HOME`）中的真实 Electron 窗口，覆盖模型元数据编辑、价格 0、token 限制校验、文件菜单、预览引用、Diff 评论、随消息发送及历史回退 / 分支；`test/context-reference.test.ts` 覆盖引用格式、草稿隔离与恢复、容量限制。
 - `test/desktop/sessions.spec.ts`：真实窗口里的会话生命周期（新建、归档、恢复、删除、移除项目），以及每个会话自己的工作区（不会自动弹出 Diff，切回来时布局还在）。
 - `test/session-ui-memory.test.ts` / `test/diff-fold.test.ts`：面板与滚动位置的记忆（按会话隔离、删除会话时清掉），以及大 diff 的折叠阈值和改动行数缓存。
+- `test/schedule.test.ts` / `test/background-tasks.test.ts` / `test/agents.test.ts` / `test/customize.test.ts`：计划与 cron 计算、后台任务生命周期、子 agent 身份加载、Customize 对 pi 配置文件的读写。
 - `test/bash-shell.test.ts`：Windows 上挑 `bash.exe` 的规则（标准 Git 安装、`where git` 指向的自定义安装、MSYS2，以及绝不选中 System32 的 WSL 启动器）。
 - `test/attachment-message.test.ts` / `test/attachments-backend.test.ts`：附件消息往返、校验限制、剪贴板格式（macOS / Windows / Linux）和图片规范化。
 - `test/tool-previews.test.ts` / `test/files.test.ts`：原生工具输出、行号 / 分页，以及文件边界、符号链接（需要系统允许创建符号链接）、二进制和大小限制。
@@ -288,7 +327,7 @@ xattr -cr /Applications/Pi\ Desktop.app   # 只在你自己确认过来源的情
 
 ## 已知限制 / 下一步
 
-- Work 的 **Projects / Artifacts / Scheduled** 入口还是占位。简报类任务现在需要手动触发，定时任务还没做。
+- Work 的 **Projects / Artifacts** 入口还是占位（Scheduled 和 Customize 已可用）。定时任务只在应用运行时触发，没有系统级后台服务。
 - Work 还没接日历、邮箱这类连接器；可以通过 pi 的 MCP（`~/.pi/agent/mcp.json`）或扩展接入。
 - **Cloud 环境**还没实现，菜单里是禁用状态。
 - pi 的 `find` 工具依赖 `fd`，pi 会自动下载；在离线环境下这一项会失败（`grep` 用系统里的 `rg`）。
