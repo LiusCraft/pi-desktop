@@ -33,6 +33,7 @@ import { CustomizePage } from '@/customize/CustomizePage';
 import { ScheduledPage } from '@/scheduled/ScheduledPage';
 import { ArchivedPage } from '@/archived/ArchivedPage';
 import { SidebarToggle } from './Sidebar';
+import { Inbox } from './Inbox';
 import { SideChatView } from '@/components/side/SideChat';
 import { useSide } from '@/store/side';
 
@@ -178,6 +179,7 @@ function CodeWelcome() {
         ) : (
           <Button variant="outline" onClick={() => void addProject()}><PlusIcon className="size-4" />Open folder…</Button>
         )}
+        <Inbox />
       </div>
       <CodeComposer />
     </div>

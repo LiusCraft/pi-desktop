@@ -20,7 +20,7 @@ import { fmtLines, prBadge, prCiLine, prRepo, prSize, type PrBadge, type PrLike,
 
 const DOT: Record<string, string> = { pass: 'bg-success', fail: 'bg-destructive', pending: 'bg-warning', none: 'bg-muted-foreground/60' };
 const ACTION_ICON: Record<GitAction, typeof ArrowUpIcon> = { pr: GitPullRequestCreateIcon, commit: GitCommitHorizontalIcon, push: ArrowUpIcon };
-const TONE: Record<PrTone, string> = {
+export const TONE: Record<PrTone, string> = {
   conflict: 'bg-warning/15 text-warning',
   review: 'bg-warning/15 text-warning',
   fail: 'bg-destructive/15 text-destructive',
