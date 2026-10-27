@@ -192,7 +192,8 @@ export function WorkComposer() {
   const folder = prefs.workFolder;
   return (
     <div className="w-full">
-      <div className={cn('rounded-2xl border bg-card p-3 shadow-sm transition-shadow focus-within:shadow-md', drag && 'ring-2 ring-primary/50')} onClick={(e) => !(e.target as HTMLElement).closest('button') && input.current?.focus()}>
+      <div className={cn('relative rounded-2xl border bg-card p-3 shadow-sm transition-shadow focus-within:shadow-md', drag && 'ring-2 ring-primary/50')} onClick={(e) => !(e.target as HTMLElement).closest('button') && input.current?.focus()}>
+        <Clawd mood="idle" />
         <ComposerInput ref={input} placeholder="How can I help you today?" minRows={2} maxHeight={240} className="px-1" onDragState={setDrag} />
         <div className="mt-2 flex items-center gap-1">
           <button className="rounded-lg border p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground" title="Add files" onClick={pickAttachments}>

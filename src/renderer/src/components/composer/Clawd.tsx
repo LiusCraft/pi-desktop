@@ -357,10 +357,48 @@ export function PetSprite({ pet, mood = 'idle', walking = false, held = false, j
   );
 }
 
+const GREETED_KEY = 'pet-greeted-on';
+const GREETING_MS = 7000;
+const GREETINGS: Record<'morning' | 'afternoon' | 'evening' | 'night', string[]> = {
+  morning: ['Good morning! Ready when you are.', 'Morning! What are we building today?', 'Rise and shine — coffee first?'],
+  afternoon: ['Good afternoon! What\'s next?', 'Back at it? I\'m here.', 'Afternoon! Got something for me?'],
+  evening: ['Good evening! Wrapping something up?', 'Evening! One more thing before you rest?', 'Hey, nice to see you tonight.'],
+  night: ['Burning the midnight oil? I\'m with you.', 'Still up? Let\'s make it quick.', 'Late night session — I\'ll keep you company.'],
+};
+
+const pick = <T,>(list: readonly T[]) => list[Math.floor(Math.random() * list.length)];
+
+function greetingFor(date: Date) {
+  const h = date.getHours();
+  return pick(GREETINGS[h >= 5 && h < 12 ? 'morning' : h >= 12 && h < 18 ? 'afternoon' : h >= 18 && h < 23 ? 'evening' : 'night']);
+}
+
+/** The pet's first words of the day: returns a greeting once per calendar day, then null until tomorrow. */
+function useDailyGreeting(enabled: boolean) {
+  const [text, setText] = useState<string | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    const now = new Date();
+    const today = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+    try {
+      if (localStorage.getItem(GREETED_KEY) === today) return;
+      localStorage.setItem(GREETED_KEY, today);
+    } catch { /* storage unavailable: greet this session only */ }
+    setText(greetingFor(now));
+  }, [enabled]);
+  useEffect(() => {
+    if (!text) return;
+    const timer = setTimeout(() => setText(null), GREETING_MS);
+    return () => clearTimeout(timer);
+  }, [text]);
+  return text;
+}
+
 /** Lives on the top edge of the input box; mark neighbours above it with `PET_GROUND` to give it something to climb. */
 export function Clawd({ mood }: { mood: Mood }) {
   const track = useRef<HTMLDivElement>(null);
   const enabled = useApp((s) => s.settings.pet) !== false;
+  const greeting = useDailyGreeting(enabled);
   const skin = useApp((s) => s.settings.petSkin);
   const custom = useApp((s) => s.settings.pets);
   const pet = allPets(custom).find((p) => p.id === skin) ?? BUILTIN_PETS.find((p) => p.id === DEFAULT_PET_ID)!;
@@ -440,6 +478,11 @@ export function Clawd({ mood }: { mood: Mood }) {
           joyTimer.current = setTimeout(() => setJoy(false), JOY_MS);
         }}
       >
+        {greeting && (
+          <div className="pointer-events-none absolute bottom-full left-1/2 mb-1 w-max max-w-[220px] -translate-x-1/2 animate-in rounded-lg border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md duration-300 fade-in-0 slide-in-from-bottom-1">
+            {greeting}
+          </div>
+        )}
         <PetSprite pet={pet} mood={walking || !arrived ? 'idle' : mood} walking={walking} held={held} joy={joy} facing={facing} />
       </div>
     </div>
