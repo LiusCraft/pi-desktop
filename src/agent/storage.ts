@@ -10,11 +10,8 @@ import {
   EMPTY_STORAGE, STORAGE_NOT_CONFIGURED, missingStorageField, storageUrl,
   type ObjectStorageConfig, type ObjectStorageDraft, type ObjectStorageInfo,
 } from '@shared/storage';
-import { appLegacyArtifactStorageFile, appObjectStorageFile } from './app-paths';
+import { appObjectStorageFile } from './app-paths';
 import { checkBucket, contentTypeFor, deleteObject, putObject, type S3Target } from './s3';
-
-/** What the first version of the settings page used as its default prefix, before the connection became app-wide. */
-const LEGACY_DEFAULT_PREFIX = 'artifacts';
 
 type Stored = Partial<ObjectStorageConfig> & { secretAccessKey?: string };
 
@@ -22,21 +19,12 @@ export class ObjectStorage {
   constructor(private readonly dataDir: string) {}
 
   private read(): { config: ObjectStorageConfig; secret: string } {
-    const load = (file: string) => JSON.parse(fs.readFileSync(file, 'utf8')) as Stored;
-    let raw: Stored;
     try {
-      raw = load(appObjectStorageFile(this.dataDir));
+      const { secretAccessKey, ...rest } = JSON.parse(fs.readFileSync(appObjectStorageFile(this.dataDir), 'utf8')) as Stored;
+      return { config: { ...EMPTY_STORAGE, ...rest }, secret: secretAccessKey ?? '' };
     } catch {
-      try {
-        // The connection used to be artifact-only; its default prefix is now the artifacts folder inside the bucket.
-        raw = load(appLegacyArtifactStorageFile(this.dataDir));
-        if (raw.prefix === LEGACY_DEFAULT_PREFIX) raw = { ...raw, prefix: '' };
-      } catch {
-        return { config: { ...EMPTY_STORAGE }, secret: '' };
-      }
+      return { config: { ...EMPTY_STORAGE }, secret: '' };
     }
-    const { secretAccessKey, ...rest } = raw;
-    return { config: { ...EMPTY_STORAGE, ...rest }, secret: secretAccessKey ?? '' };
   }
 
   info(): ObjectStorageInfo {

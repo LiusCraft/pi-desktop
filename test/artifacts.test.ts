@@ -167,17 +167,6 @@ describe('ArtifactService', () => {
       expect(svc.get(id).publishedUrl).toBeNull();
     });
 
-    it('reads the connection the artifact-only version saved, without its old default prefix', () => {
-      const dataDir = path.join(tmp, 'legacy');
-      fs.mkdirSync(dataDir);
-      fs.writeFileSync(path.join(dataDir, 'artifact-storage.json'), JSON.stringify({
-        endpoint: 'https://s3.example.com', region: 'auto', bucket: 'b', accessKeyId: 'AK', secretAccessKey: 'SK',
-        publicBaseUrl: 'https://cdn.example.com', prefix: 'artifacts', pathStyle: true,
-      }));
-      const info = new ObjectStorage(dataDir).info();
-      expect(info).toMatchObject({ ready: true, bucket: 'b', prefix: '' });
-    });
-
     it('takes the upload down when the artifact is deleted', async () => {
       const { id } = svc.save({ source: page('d.html') });
       await svc.publish(id);
