@@ -12,9 +12,11 @@ import {
   type ApiArgs, type ApiResult, type BootPayload, type HostEvent, type Project, type PushChannel, type PushEvents,
   type Settings, type SettingsPayload, type WorktreeInfo,
 } from '@shared/protocol';
+import { DEFAULT_PET_ID } from '@shared/pets';
 import { childEnv } from '../agent/env';
+import { listPets, removePet, savePet } from '../agent/pets';
 import {
-  appDataDir, appDemoDir, appExtensionsDir, defaultWorktreeDir, expandHome, piAgentDir, worktreeDir,
+  appDataDir, appDemoDir, appExtensionsDir, appPetsDir, defaultWorktreeDir, expandHome, piAgentDir, worktreeDir,
 } from '../agent/app-paths';
 import { resolveInside } from '../agent/files';
 import { localPath } from '../agent/local-path';
@@ -95,7 +97,7 @@ function ensureDemoProject() {
 const DEFAULT_SETTINGS: Settings = {
   theme: null, notify: true, renderMermaid: true, suggestions: true,
   suggestionModel: 'session', suggestionModelId: null, suggestionContext: SUGGESTION_DEFAULT_CONTEXT, suggestionFullContext: false,
-  defaultMode: 'code', sidebarCollapsed: false, worktreeDir: null, pet: true, petSkin: 'clawd',
+  defaultMode: 'code', sidebarCollapsed: false, worktreeDir: null, pet: true, petSkin: DEFAULT_PET_ID,
 };
 
 function settingsValue(): Settings {
@@ -104,7 +106,7 @@ function settingsValue(): Settings {
 function settingsPayload(): SettingsPayload {
   const s = settingsValue();
   const resolvedTheme = s.theme === 'light' || s.theme === 'dark' ? s.theme : nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-  return { ...s, resolvedTheme };
+  return { ...s, resolvedTheme, pets: listPets(appPetsDir(dataDir())) };
 }
 function broadcast<K extends PushChannel>(channel: K, payload: PushEvents[K]) {
   for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(channel, payload);
@@ -116,6 +118,27 @@ function normalizeWorktreeDir(value: unknown): string | null {
   const abs = localPath(expandHome(raw));
   fs.mkdirSync(abs, { recursive: true });
   return abs;
+}
+/** Tell every window the set of custom pets changed (the Settings page, the model's tools and hand edits all land here). */
+function petsChanged() {
+  const payload = settingsPayload();
+  broadcast('settings:changed', payload);
+  return payload;
+}
+const PET_WATCH_DEBOUNCE_MS = 200;
+/** The model's tools write pet files from the agent host; this is how the windows hear about them. */
+function watchPets() {
+  const dir = appPetsDir(dataDir());
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    fs.watch(dir, () => {
+      clearTimeout(timer);
+      timer = setTimeout(petsChanged, PET_WATCH_DEBOUNCE_MS);
+    }).on('error', () => {});
+  } catch (err) {
+    console.error('[main] cannot watch the pets folder:', err);
+  }
 }
 function saveSettings(patch: Partial<Settings>) {
   const clean: Partial<Settings> = { ...patch };
@@ -389,6 +412,16 @@ const handlers: MainHandlers = {
   'settings:open': (section) => openSettings(section),
   'settings:get': () => settingsPayload(),
   'settings:set': (patch) => saveSettings(patch || {}),
+  'pets:save': (pet) => {
+    savePet(appPetsDir(dataDir()), pet);
+    return petsChanged();
+  },
+  'pets:remove': (id) => {
+    removePet(appPetsDir(dataDir()), String(id));
+    // A deleted skin that was in use falls back to the default one.
+    if (settingsValue().petSkin === id) store.set('settings', { ...settingsValue(), petSkin: DEFAULT_PET_ID });
+    return petsChanged();
+  },
   'settings:close': () => settingsWin?.close(),
   'diagram:open': (svg) => openDiagram(svg),
   'side:pop': (sessionId) => openSide(String(sessionId)),
@@ -498,6 +531,7 @@ void app.whenReady().then(async () => {
   migrateLegacyKeys(store);
   // Own folders only; Electron's Chromium profile is left to its platform default.
   fs.mkdirSync(appExtensionsDir(dataDir()), { recursive: true });
+  watchPets();
   try {
     fs.mkdirSync(worktreeDir(dataDir(), settingsValue().worktreeDir), { recursive: true });
   } catch (err) {

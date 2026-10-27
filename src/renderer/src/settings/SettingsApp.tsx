@@ -1,14 +1,16 @@
 // Settings window. Every value comes from the main process (single source of
 // truth), so the main window and this one can never disagree.
 import { useEffect, useState, type ReactNode } from 'react';
-import { BrainIcon, FolderIcon, InfoIcon, MoonIcon, SettingsIcon } from 'lucide-react';
+import { BrainIcon, FolderIcon, InfoIcon, MoonIcon, PlusIcon, SettingsIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AppInfo, Project, Settings, SettingsPayload, SuggestionModelMode } from '@shared/protocol';
 import { SUGGESTION_DEFAULT_CONTEXT, SUGGESTION_MAX_CONTEXT } from '@shared/protocol';
+import { BUILTIN_PETS, BUILTIN_PET_IDS, DEFAULT_PET_ID } from '@shared/pets';
 import { useCopy } from '@/components/common/Copy';
 import { Segmented } from '@/components/common/Segmented';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -16,7 +18,7 @@ import { Toaster } from 'sonner';
 import { bridge, call, errText, isMac } from '@/lib/api';
 import { applyTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
-import { PET_SKINS, PetSprite } from '@/components/composer/Clawd';
+import { allPets, PetSprite } from '@/components/composer/Clawd';
 import { ModelPicker } from './ModelPicker';
 import { ModelsSection } from './ModelsSection';
 
@@ -123,6 +125,41 @@ function CountInput({ value, disabled, onCommit }: { value: number; disabled?: b
   );
 }
 
+/** The template shown when adding a pet: the first built-in one, so a new skin starts from a working example. */
+const PET_TEMPLATE = JSON.stringify({ ...BUILTIN_PETS[0], id: 'my-pet', label: '我的宠物' }, null, 2);
+
+/** Paste a pet definition (same format as the built-in pets) and save it as a new skin. */
+function AddPet({ onSave }: { onSave: (pet: unknown) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState(PET_TEMPLATE);
+  const [error, setError] = useState('');
+  const { copy } = useCopy();
+  const save = async () => {
+    try {
+      await onSave(JSON.parse(text));
+      setOpen(false);
+      setError('');
+    } catch (err) {
+      setError(errText(err));
+    }
+  };
+  if (!open) return <Button variant="outline" size="sm" onClick={() => setOpen(true)}><PlusIcon className="size-4" />新增宠物</Button>;
+  return (
+    <div className="w-full space-y-2">
+      <p className="text-xs text-muted-foreground">
+        和内置宠物同样的格式：一组彩色矩形（x、y、w、h），带 <code>leg a</code> / <code>arm l</code> / <code>eyes</code> / <code>mouth</code> / <code>tail</code> 等部位名的矩形会自动有对应动作。也可以在 Work 里直接对 AI 说「帮我做一只小狐狸宠物」。
+      </p>
+      <Textarea value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} className="h-56 font-mono text-xs" />
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      <div className="flex gap-2">
+        <Button size="sm" onClick={() => void save()}>保存</Button>
+        <Button variant="ghost" size="sm" onClick={() => { setOpen(false); setError(''); }}>取消</Button>
+        <Button variant="ghost" size="sm" onClick={() => copy(PET_TEMPLATE)}>复制模板</Button>
+      </div>
+    </div>
+  );
+}
+
 export function SettingsApp() {
   const [settings, setSettings] = useState<Partial<SettingsPayload>>(bridge.boot.settings ?? {});
   const [section, setSection] = useState<Section>(() => (isSection(location.hash.slice(1)) ? normalizeSection(location.hash.slice(1)) : 'appearance'));
@@ -169,6 +206,16 @@ export function SettingsApp() {
       toast.error(errText(err));
     }
   };
+  const savePet = async (pet: unknown) => {
+    setSettings(await call('pets:save', pet));
+  };
+  const removePet = async (id: string) => {
+    try {
+      setSettings(await call('pets:remove', id));
+    } catch (err) {
+      toast.error(errText(err));
+    }
+  };
   const reloadLists = async () => {
     setProjects(await call('projects:list'));
     setFolders(await call('work:folders'));
@@ -193,10 +240,18 @@ export function SettingsApp() {
           {settings.pet !== false && (
             <Row title="宠物皮肤" col>
               <SwatchGroup
-                value={settings.petSkin ?? 'clawd'}
+                value={settings.petSkin ?? DEFAULT_PET_ID}
                 onChange={(id) => void patch({ petSkin: id })}
-                options={PET_SKINS.map((p) => ({ id: p.id, label: p.label, tile: 'bg-muted/50', preview: <PetSprite skin={p.id} size={1.1} /> }))}
+                options={allPets(settings.pets).map((p) => ({ id: p.id, label: p.label, tile: 'bg-muted/50', preview: <PetSprite pet={p} size={1.1} /> }))}
               />
+              <div className="mt-3 flex flex-wrap items-start gap-2">
+                <AddPet onSave={savePet} />
+                {(settings.pets ?? []).filter((p) => !BUILTIN_PET_IDS.includes(p.id)).map((p) => (
+                  <Button key={p.id} variant="ghost" size="sm" onClick={() => void removePet(p.id)} title={`删除 ${p.label}`}>
+                    <Trash2Icon className="size-3.5" />{p.label}
+                  </Button>
+                ))}
+              </div>
             </Row>
           )}
         </Panel>

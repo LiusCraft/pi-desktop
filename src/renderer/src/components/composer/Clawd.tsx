@@ -1,6 +1,7 @@
 // Claude Code's pixel mascot. It strolls along the composer's top edge while nothing is
 // happening and acts out what the agent is doing (thinking, editing, running a command…).
 import { useEffect, useRef, useState } from 'react';
+import { BUILTIN_PETS, DEFAULT_PET_ID, type PetDef } from '@shared/pets';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/store/app';
 import type { SessionView } from '@/store/types';
@@ -23,148 +24,150 @@ export function moodOf(s: SessionView | undefined): Mood {
   return s.statusText.startsWith('Responding') ? 'talking' : 'thinking';
 }
 
-const PET_W = 38;
+/** Sprite units are 1.727px wide at size 1; the viewBox is symmetric around the body so mirroring it keeps the body put. */
+const UNIT = 38 / 22;
+const SPRITE_UNITS = 38;
+const PET_W = Math.round(SPRITE_UNITS * UNIT);
 const EDGE = 16;
 const SPEED = 30; // px per second
+const NEAR = 4; // px: closer than this counts as already there
+const BLOCK_POLL_MS = 400;
+/** Mark an element that floats over the composer so the pet keeps clear of it. */
+export const PET_BLOCK_ATTR = 'data-pet-block';
 
 const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/** Wander to random spots along the track while `enabled`, pausing between walks. `from` is the leftmost share of the track it may use. */
-function usePatrol(enabled: boolean, track: React.RefObject<HTMLDivElement | null>, from = 0) {
+/** The stretch of the track (left offsets) the pet may stand on: the composer's width minus whatever floats over it. `from` is the leftmost share it may use. */
+function walkRange(track: HTMLElement, from: number) {
+  const width = track.offsetWidth;
+  const t = track.getBoundingClientRect();
+  let max = Math.max(EDGE, width - PET_W - EDGE);
+  for (const el of document.querySelectorAll<HTMLElement>(`[${PET_BLOCK_ATTR}]`)) {
+    const r = el.getBoundingClientRect();
+    if (r.bottom > t.top && r.top < t.bottom && r.right > t.left && r.left < t.right) max = Math.min(max, r.left - t.left - PET_W - EDGE / 2);
+  }
+  max = Math.max(EDGE, max);
+  return { min: Math.min(max, Math.max(EDGE, width * from)), max };
+}
+
+interface Patrol { x: number | null; facing: 1 | -1; walking: boolean; dur: number; arrived: boolean }
+
+/**
+ * Where the pet is. Idle it wanders to random spots along the track; while `working` it walks to the
+ * far right end and stays there. Either way it stays inside what is visible of the composer, even when
+ * panels open beside it or float over it.
+ */
+function usePatrol(enabled: boolean, working: boolean, track: React.RefObject<HTMLDivElement | null>, from = 0) {
   const x = useRef<number | null>(null);
-  const [state, setState] = useState<{ x: number | null; facing: 1 | -1; walking: boolean; dur: number }>({ x: null, facing: -1, walking: false, dur: 0 });
+  const [state, setState] = useState<Patrol>({ x: null, facing: -1, walking: false, dur: 0, arrived: false });
   useEffect(() => {
-    if (!enabled || reducedMotion()) {
-      setState((p) => ({ ...p, walking: false, dur: 0 }));
-      return;
-    }
-    let timer: ReturnType<typeof setTimeout>;
+    const el = track.current;
+    if (!enabled || !el) return;
+    const still = reducedMotion();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const goTo = (to: number, instant: boolean, then?: () => void) => {
+      clearTimeout(timer);
+      const start = x.current ?? to;
+      const dist = Math.abs(to - start);
+      const dur = instant || still ? 0 : dist / SPEED;
+      const walking = dur > 0 && dist > NEAR;
+      x.current = to;
+      setState((p) => ({ x: to, facing: dist > NEAR ? (to >= start ? 1 : -1) : p.facing, walking, dur, arrived: !walking }));
+      const arrive = () => {
+        setState((p) => ({ ...p, walking: false, arrived: true }));
+        then?.();
+      };
+      if (walking) timer = setTimeout(arrive, dur * 1000);
+      else then?.();
+    };
     // Pin the starting spot with `left`, so the first walk animates instead of jumping.
-    if (x.current == null && track.current) {
-      x.current = Math.max(EDGE, track.current.offsetWidth - PET_W - 24);
+    if (x.current == null) {
+      x.current = walkRange(el, from).max;
       setState((p) => ({ ...p, x: x.current, dur: 0 }));
     }
-    const walk = () => {
-      const width = track.current?.offsetWidth ?? 0;
-      const max = Math.max(EDGE, width - PET_W - EDGE);
-      const min = Math.min(max, Math.max(EDGE, width * from));
-      const start = x.current ?? max;
-      const to = min + Math.random() * (max - min);
-      const dist = Math.abs(to - start);
-      const dur = dist / SPEED;
-      x.current = to;
-      setState({ x: to, facing: to >= start ? 1 : -1, walking: dist > 4, dur });
-      timer = setTimeout(() => {
-        setState((p) => ({ ...p, walking: false }));
-        timer = setTimeout(walk, 2500 + Math.random() * 5000);
-      }, dur * 1000);
+    const wander = () => {
+      const { min, max } = walkRange(el, from);
+      goTo(min + Math.random() * (max - min), false, () => {
+        timer = setTimeout(wander, 2500 + Math.random() * 5000);
+      });
     };
-    timer = setTimeout(walk, 1500 + Math.random() * 2000);
+    if (working) goTo(walkRange(el, from).max, false);
+    else if (!still) timer = setTimeout(wander, 1500 + Math.random() * 2000);
+    // Follow the composer as panels open, close or resize beside it, or float over it.
+    const fit = () => {
+      const { max } = walkRange(el, from);
+      const at = x.current ?? max;
+      if (at > max) goTo(max, true);
+      else if (working && at < max - NEAR) goTo(max, false);
+    };
+    const observer = new ResizeObserver(fit);
+    observer.observe(el);
+    const poll = setInterval(fit, BLOCK_POLL_MS);
     return () => {
       clearTimeout(timer);
+      clearInterval(poll);
+      observer.disconnect();
       // Stop where it is right now instead of finishing the walk.
-      const el = track.current?.querySelector<HTMLElement>('.clawd-pos');
-      if (el && track.current) x.current = el.getBoundingClientRect().left - track.current.getBoundingClientRect().left;
-      setState((p) => ({ ...p, x: x.current, walking: false, dur: 0 }));
+      const pos = el.querySelector<HTMLElement>('.clawd-pos');
+      if (pos) x.current = pos.getBoundingClientRect().left - el.getBoundingClientRect().left;
+      setState((p) => ({ ...p, x: x.current, walking: false, dur: 0, arrived: false }));
     };
-  }, [enabled, track, from]);
+  }, [enabled, working, track, from]);
   return state;
 }
 
-export const PET_SKINS = [
-  { id: 'clawd', label: 'Clawd' },
-  { id: 'cat', label: '像素猫' },
-  { id: 'robot', label: '机器人' },
-] as const;
-export type PetSkin = (typeof PET_SKINS)[number]['id'];
-const skinOf = (id: string | undefined): PetSkin => PET_SKINS.find((s) => s.id === id)?.id ?? 'clawd';
+/** Every skin the user can pick: the built-in pets, then their own. */
+export function allPets(custom: readonly PetDef[] | undefined): PetDef[] {
+  return [...BUILTIN_PETS, ...(custom ?? [])];
+}
 
-/** Everything that differs between skins; limbs/eyes/mouth keep their class names so one set of CSS animates them all. */
-function Body({ skin }: { skin: PetSkin }) {
-  if (skin === 'cat') {
-    return (
-      <>
-        <g fill="#e0a458">
-          <rect className="tail" x="19" y="5" width="3" height="2" />
-          <rect className="leg a" x="4" y="10" width="2" height="4" />
-          <rect className="leg b" x="8" y="10" width="2" height="4" />
-          <rect className="leg a" x="12" y="10" width="2" height="4" />
-          <rect className="leg b" x="16" y="10" width="2" height="4" />
-          <rect className="arm l" x="0" y="4" width="3" height="3" />
-          <rect x="3" y="0" width="16" height="10" />
-          <rect x="3" y="-2" width="3" height="3" />
-          <rect x="16" y="-2" width="3" height="3" />
-        </g>
-        <g fill="#f2b8b0">
-          <rect x="4" y="-1" width="1" height="2" />
-          <rect x="17" y="-1" width="1" height="2" />
-          <rect x="10" y="5" width="2" height="1" />
-        </g>
-        <g fill="#b9763a">
-          <rect x="7" y="0" width="1" height="2" />
-          <rect x="10" y="0" width="2" height="1" />
-          <rect x="14" y="0" width="1" height="2" />
-        </g>
-        <g className="eyes" fill="#141413">
-          <rect x="6" y="3" width="2" height="2" />
-          <rect x="14" y="3" width="2" height="2" />
-        </g>
-        <rect className="mouth" x="10" y="7" width="2" height="1" fill="#141413" />
-      </>
-    );
-  }
-  if (skin === 'robot') {
-    return (
-      <>
-        <g fill="#8aa4bd">
-          <rect x="10" y="-3" width="2" height="3" />
-          <rect className="leg a" x="4" y="10" width="2" height="4" />
-          <rect className="leg b" x="8" y="10" width="2" height="4" />
-          <rect className="leg a" x="12" y="10" width="2" height="4" />
-          <rect className="leg b" x="16" y="10" width="2" height="4" />
-          <rect className="arm l" x="0" y="4" width="3" height="3" />
-          <rect className="arm r" x="19" y="4" width="3" height="3" />
-          <rect x="3" y="0" width="16" height="10" />
-        </g>
-        <rect x="9" y="-4" width="4" height="2" fill="#e5675a" />
-        <rect x="5" y="2" width="12" height="6" fill="#1f2a37" />
-        <g className="eyes" fill="#7ee0b0">
-          <rect x="6" y="3" width="2" height="2" />
-          <rect x="14" y="3" width="2" height="2" />
-        </g>
-        <rect className="mouth" x="9" y="6" width="4" height="1" fill="#7ee0b0" />
-      </>
-    );
-  }
+/** One pet drawn from its definition; limbs, eyes and mouth keep their part names so one set of CSS animates every skin. */
+function Body({ pet }: { pet: PetDef }) {
   return (
     <>
-      <g fill="#d97757">
-        <rect className="leg a" x="4" y="10" width="2" height="4" />
-        <rect className="leg b" x="8" y="10" width="2" height="4" />
-        <rect className="leg a" x="12" y="10" width="2" height="4" />
-        <rect className="leg b" x="16" y="10" width="2" height="4" />
-        <rect className="arm l" x="0" y="4" width="3" height="3" />
-        <rect className="arm r" x="19" y="4" width="3" height="3" />
-        <rect x="3" y="0" width="16" height="10" />
+      {pet.shapes.map((shape, i) => (
+        <g key={i} fill={shape.fill} className={shape.part}>
+          {shape.rects.map((r, j) => (
+            <rect key={j} className={r.part} x={r.x} y={r.y} width={r.w} height={r.h} />
+          ))}
+        </g>
+      ))}
+    </>
+  );
+}
+
+/** A small computer beside the pet; the keyboard shows while editing, the prompt while running a command. */
+function MonitorProp() {
+  return (
+    <>
+      <g className="prop prop-screen" fill="#55534d">
+        <rect x="23" y="-1" width="7" height="6" />
+        <rect x="26" y="5" width="1" height="3" />
       </g>
-      <g className="eyes" fill="#141413">
-        <rect x="6" y="3" width="2" height="2" />
-        <rect x="14" y="3" width="2" height="2" />
+      <rect className="prop prop-screen" x="24" y="0" width="5" height="4" fill="#1f2a37" />
+      <g className="prop prop-typing">
+        <g className="lines" fill="#7ee0b0">
+          <rect x="25" y="1" width="3" height="1" />
+          <rect x="25" y="3" width="2" height="1" />
+        </g>
+        <rect x="22" y="8" width="7" height="1" fill="#55534d" />
       </g>
-      <rect className="mouth" x="10" y="7" width="2" height="1" fill="#141413" />
+      <g className="prop prop-running" fill="#7ee0b0">
+        <rect x="25" y="1" width="1" height="1" />
+        <rect className="cursor" x="27" y="3" width="2" height="1" />
+      </g>
     </>
   );
 }
 
 /** One frame of the pet. The composer animates it by mood; the settings page shows it still. */
-export function PetSprite({ skin, mood = 'idle', walking = false, facing = 1, size = 1 }: { skin: string | undefined; mood?: Mood; walking?: boolean; facing?: 1 | -1; size?: number }) {
+export function PetSprite({ pet, mood = 'idle', walking = false, facing = 1, size = 1 }: { pet: PetDef; mood?: Mood; walking?: boolean; facing?: 1 | -1; size?: number }) {
   return (
     <svg
       className={cn('clawd', `mood-${mood}`, walking && 'walking')}
-      style={{ transform: `scaleX(${facing})` }}
-      viewBox="0 -6 22 20"
-      width={PET_W * size}
-      height={34 * size}
+      // Inline size: the settings tiles' toggle buttons force `svg` to 1rem unless the size is set on the element itself.
+      style={{ transform: `scaleX(${facing})`, width: PET_W * size, height: 34 * size }}
+      viewBox={`-8 -6 ${SPRITE_UNITS} 20`}
       shapeRendering="crispEdges"
     >
       <g className="fx-think" fill="currentColor">
@@ -177,7 +180,18 @@ export function PetSprite({ skin, mood = 'idle', walking = false, facing = 1, si
         <rect x="10" y="-2" width="2" height="1" />
       </g>
       <rect className="fx-sweat" x="20" y="-2" width="1" height="2" fill="var(--info)" />
-      <g className="pet"><Body skin={skinOf(skin)} /></g>
+      <MonitorProp />
+      <g className="prop prop-reading">
+        <rect x="22" y="3" width="7" height="5" fill="#f3efe3" />
+        <rect x="25" y="3" width="1" height="5" fill="#b9763a" />
+        <g className="lines" fill="#9b9588">
+          <rect x="23" y="4" width="2" height="1" />
+          <rect x="23" y="6" width="2" height="1" />
+          <rect x="26" y="4" width="2" height="1" />
+          <rect x="26" y="6" width="2" height="1" />
+        </g>
+      </g>
+      <g className="pet"><Body pet={pet} /></g>
     </svg>
   );
 }
@@ -187,12 +201,14 @@ export function Clawd({ mood, from }: { mood: Mood; from?: number }) {
   const track = useRef<HTMLDivElement>(null);
   const enabled = useApp((s) => s.settings.pet) !== false;
   const skin = useApp((s) => s.settings.petSkin);
-  const { x, facing, walking, dur } = usePatrol(enabled && mood === 'idle', track, from);
+  const custom = useApp((s) => s.settings.pets);
+  const pet = allPets(custom).find((p) => p.id === skin) ?? BUILTIN_PETS.find((p) => p.id === DEFAULT_PET_ID)!;
+  const { x, facing, walking, dur, arrived } = usePatrol(enabled, mood !== 'idle', track, from);
   if (!enabled) return null;
   return (
     <div ref={track} className="pointer-events-none absolute inset-x-0 -top-[33px] h-[34px]" aria-hidden>
       <div className="clawd-pos absolute bottom-0" style={x == null ? { right: 24 } : { left: x, transition: `left ${dur}s linear` }}>
-        <PetSprite skin={skin} mood={mood} walking={walking} facing={facing} />
+        <PetSprite pet={pet} mood={walking || !arrived ? 'idle' : mood} walking={walking} facing={facing} />
       </div>
     </div>
   );
