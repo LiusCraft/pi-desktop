@@ -11,14 +11,14 @@ import { fmtTok, fname, relPath } from '@/lib/format';
 import { currentSession, getApp, isWork, read, savePref, setApp, setPref, updateSession, type AppState } from './app';
 import { dialogs } from './dialogs';
 import { activeDraft, drafts, getDraft, sessionDraftKey, useDrafts } from './drafts';
-import { forgetPanels, writePanels } from './layout';
+import { forgetPanels, writeArrangement, writePanels } from './layout';
 import { primeSuggestion, resumeSuggestion } from './predict';
 import { forgetScroll } from './scroll';
 import { askSide, showSide } from './side';
 import {
   addUiRequest, applyPiEvent, applyTaskUpdate, applyViewMode, emptySession, findByKey, hasThinking, newKey, push, replay, resolveUi, settle, type Effects,
 } from './transcript';
-import type { CardId, Item, Panels, SessionView } from './types';
+import type { Arrangement, CardId, Column, DropPlace, Item, Panels, SessionView } from './types';
 
 export const fail = (err: unknown) => toast.error(errText(err));
 
@@ -876,9 +876,30 @@ export function togglePanel(id: string, panel: keyof Panels, open?: boolean) {
   if (panel === 'files' && s?.panels.files && !s.files) void loadFiles(id);
 }
 
-/** Blow one card up over the whole workspace, or put it back — remembered per session. */
-export function expandCard(id: string, card: CardId | null) {
-  updateSession(id, (v) => void (v.expanded = card));
+/**
+ * Drop a dragged card next to another one, possibly in the other column. `columns` is what is on screen now,
+ * so the saved arrangement starts from it and the move is kept for every later combination of open cards.
+ */
+export function moveCard(id: string, card: CardId, target: CardId, place: DropPlace, columns: Arrangement) {
+  if (card === target) return;
+  const next: Arrangement = { primary: columns.primary.filter((c) => c !== card), secondary: columns.secondary.filter((c) => c !== card) };
+  if (place === 'left' || place === 'right') {
+    // The side edge sends the card to the left or right column, at its bottom; an empty side opens a new column.
+    next[place === 'left' ? 'primary' : 'secondary'].push(card);
+  } else {
+    const column: Column = next.primary.includes(target) ? 'primary' : 'secondary';
+    next[column].splice(next[column].indexOf(target) + (place === 'after' ? 1 : 0), 0, card);
+  }
+  updateSession(id, (v) => void (v.arrangement = next));
+  writeArrangement(id, next);
+}
+
+/** Blow one card up over the whole workspace (or, `wide`, the whole session with the conversation), or put it back — remembered per session. */
+export function expandCard(id: string, card: CardId | null, wide = false) {
+  updateSession(id, (v) => {
+    v.expanded = card;
+    v.expandedWide = !!card && wide;
+  });
 }
 
 export function closeDetail(id: string) {

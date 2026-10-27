@@ -71,6 +71,15 @@ export type ChangedFile = FileChange;
 /** The cards the workspace can show beside the conversation. */
 export type CardId = 'progress' | 'tasks' | 'diff' | 'preview' | 'detail' | 'files' | 'terminal';
 
+/** The two tool columns of the workspace. */
+export type Column = 'primary' | 'secondary';
+
+/** Where a dragged card lands relative to the card it is dropped on: above/below it, or in the left/right column. */
+export type DropPlace = 'before' | 'after' | 'left' | 'right';
+
+/** Where the user dragged the cards: the order of each column. Cards not listed keep their default place. */
+export type Arrangement = Record<Column, CardId[]>;
+
 export interface Panels {
   diff: boolean;
   preview: boolean;
@@ -115,8 +124,11 @@ export interface SessionView {
   /** The Files card's tabs; `detail` is the one showing. */
   fileTabs: FileTab[];
   panels: Panels;
+  arrangement: Arrangement;
   /** Card blown up over the whole workspace, remembered per session like the panels. */
   expanded: CardId | null;
+  /** The expanded card covers the conversation too, not just the workspace. */
+  expandedWide: boolean;
   detail: Detail | null;
   previewUrl: string | null;
   /** User items not yet confirmed by pi. */

@@ -1,7 +1,7 @@
 // What the user left open in a session's workspace: which cards were visible and which
 // one was expanded. Kept next to the session id in localStorage, so reopening a
 // conversation (even after a restart) shows its own layout instead of a default one.
-import type { Panels } from './types';
+import type { Arrangement, CardId, Column, Panels } from './types';
 
 /** A brand new session opens with nothing but Work's progress card. */
 export const DEFAULT_PANELS: Panels = { diff: false, preview: false, files: false, terminal: false, progress: true, tasks: false };
@@ -50,8 +50,42 @@ export function writePanels(id: string, panels: Panels) {
   }
 }
 
+const arrangementKey = (id: string) => `pd_arrangement:${id}`;
+
+const CARD_IDS: readonly CardId[] = ['progress', 'tasks', 'diff', 'preview', 'detail', 'files', 'terminal'];
+
+export function readArrangement(id: string): Arrangement {
+  const arrangement: Arrangement = { primary: [], secondary: [] };
+  try {
+    const saved = JSON.parse(store.getItem(arrangementKey(id)) ?? 'null');
+    const seen = new Set<CardId>();
+    for (const column of Object.keys(arrangement) as Column[]) {
+      const list = saved?.[column];
+      if (!Array.isArray(list)) continue;
+      for (const card of list) {
+        if (CARD_IDS.includes(card) && !seen.has(card)) {
+          seen.add(card);
+          arrangement[column].push(card);
+        }
+      }
+    }
+  } catch {
+    // An unreadable entry just means the default arrangement.
+  }
+  return arrangement;
+}
+
+export function writeArrangement(id: string, arrangement: Arrangement) {
+  try {
+    store.setItem(arrangementKey(id), JSON.stringify(arrangement));
+  } catch {
+    // A full or blocked storage only costs the memory, never the change itself.
+  }
+}
+
 export function forgetPanels(id: string) {
   try {
+    store.removeItem(arrangementKey(id));
     store.removeItem(panelsKey(id));
   } catch {
     // Nothing to do: the entry is unreachable once the session is gone.

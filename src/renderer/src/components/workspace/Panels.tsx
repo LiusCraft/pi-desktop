@@ -31,7 +31,7 @@ import {
 } from '@/store/actions';
 import { modelName, setPref, updateSession, useApp } from '@/store/app';
 import { findByKey, findTool } from '@/store/transcript';
-import type { ChangedFile, SessionView } from '@/store/types';
+import type { CardId, ChangedFile, DropPlace, SessionView } from '@/store/types';
 import { FindBar, SearchResults, type FindScope } from './FindBar';
 import { PathTree, type PathStatus } from './PathTree';
 
@@ -39,22 +39,78 @@ import { PathTree, type PathStatus } from './PathTree';
 
 export interface CardProps {
   expanded: boolean;
-  onExpand: () => void;
+  /** `wide`: cover the conversation as well (Ctrl+click, or triple-click on the header). */
+  onExpand: (wide: boolean) => void;
+  /** Drag the card by its header: set where the card can be dropped next to another one. */
+  cardId?: CardId;
+  onMove?: (dragged: CardId, place: DropPlace) => void;
 }
 
-export function Card({ title, tools, children, onClose, expanded, onExpand, bodyClass }: CardProps & {
+/** dataTransfer type of a card being dragged by its header. */
+const CARD_DRAG = 'application/x-pi-card';
+
+/** Share of a card's width, at each side, that sends a dropped card to the left or right column. */
+const SIDE_ZONE = 0.25;
+
+export function Card({ title, tools, children, onClose, expanded, onExpand, bodyClass, cardId, onMove }: CardProps & {
   title: ReactNode;
   tools?: ReactNode;
   children: ReactNode;
   onClose?: () => void;
   bodyClass?: string;
 }) {
+  // Which edge of this card the dragged one would land on.
+  const [drop, setDrop] = useState<DropPlace | null>(null);
+  const movable = cardId && onMove;
+  const edge = (e: React.DragEvent<HTMLElement>): DropPlace => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const side = rect.width * SIDE_ZONE;
+    if (e.clientX < rect.left + side) return 'left';
+    if (e.clientX > rect.right - side) return 'right';
+    return e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+  };
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border bg-card">
-      <header className="flex h-10 shrink-0 items-center gap-1 border-b px-2">
+    <section
+      className={cn(
+        'relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border bg-card',
+        drop && 'after:pointer-events-none after:absolute after:bg-primary',
+        (drop === 'before' || drop === 'after') && 'after:inset-x-0 after:h-1',
+        (drop === 'left' || drop === 'right') && 'after:inset-y-0 after:w-1',
+        drop === 'before' && 'after:top-0', drop === 'after' && 'after:bottom-0', drop === 'left' && 'after:left-0', drop === 'right' && 'after:right-0',
+      )}
+      onDragOver={movable ? (e) => {
+        if (!e.dataTransfer.types.includes(CARD_DRAG)) return;
+        e.preventDefault();
+        setDrop(edge(e));
+      } : undefined}
+      onDragLeave={movable ? (e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrop(null);
+      } : undefined}
+      onDrop={movable ? (e) => {
+        const dragged = e.dataTransfer.getData(CARD_DRAG) as CardId;
+        setDrop(null);
+        if (!dragged) return;
+        e.preventDefault();
+        onMove(dragged, edge(e));
+      } : undefined}
+    >
+      <header
+        className={cn('flex h-10 shrink-0 items-center gap-1 border-b px-2', movable && 'cursor-grab active:cursor-grabbing')}
+        draggable={movable ? true : undefined}
+        onDragStart={movable ? (e) => {
+          e.dataTransfer.setData(CARD_DRAG, cardId);
+          e.dataTransfer.effectAllowed = 'move';
+        } : undefined}
+        onDragEnd={movable ? () => setDrop(null) : undefined}
+        onClick={(e) => {
+          // Double-click expands the card, triple-click takes the whole session; the header's own buttons are left alone.
+          if (e.detail < 2 || (e.target as HTMLElement).closest('button, input, a')) return;
+          onExpand(e.detail >= 3);
+        }}
+      >
         <div className="flex min-w-0 flex-1 items-center gap-1.5 px-1 text-sm font-medium">{title}</div>
         {tools}
-        <IconBtn title={expanded ? 'Restore' : 'Expand'} onClick={onExpand}>
+        <IconBtn title={expanded ? 'Restore' : 'Expand (Ctrl+click: whole session)'} onClick={(e) => onExpand(e.ctrlKey || e.metaKey)}>
           {expanded ? <Minimize2Icon className="size-3.5" /> : <Maximize2Icon className="size-3.5" />}
         </IconBtn>
         {onClose && (

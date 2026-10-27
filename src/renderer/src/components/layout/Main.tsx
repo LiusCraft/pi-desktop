@@ -7,7 +7,7 @@ import { PET_BLOCK_ATTR } from '@/components/composer/Clawd';
 import { CodeComposer, WorkComposer } from '@/components/composer/Composers';
 import { copyText } from '@/components/common/Copy';
 import { Transcript } from '@/components/thread/Transcript';
-import { openCards, Workspace } from '@/components/workspace/Workspace';
+import { openCards, soloCard, Workspace } from '@/components/workspace/Workspace';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup,
   DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -200,6 +200,7 @@ function Thread({ s }: { s: SessionView }) {
     </div>
   );
   if (!tools) return conversation;
+  if (s.expandedWide && soloCard(s)) return <Workspace s={s} />;
   return (
     <ResizablePanelGroup orientation="horizontal" id={`${s.meta.id}:thread`} defaultLayout={defaultLayout} onLayoutChanged={onLayoutChanged}>
       <ResizablePanel id="conversation" minSize={320}>{conversation}</ResizablePanel>
