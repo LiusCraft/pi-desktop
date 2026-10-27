@@ -29,7 +29,6 @@ import * as customize from './customize';
 import { agentCatalog, agentPrompt, loadAgents, removeAgent, saveAgent } from './agents';
 import type { CustomizeHost, ScheduleHost } from './manage-tools';
 import { listPets, removePet, savePet } from './pets';
-import { createOpencodeHeaders } from './opencode-headers';
 import { createDesktopKit, type KitHost, type KitState, type SubagentRun } from './desktop-kit';
 import { toWireEvent } from './events';
 import { readSessionFile, readSessionImage, resolveInside } from './files';
@@ -415,7 +414,6 @@ export class SessionHub {
             createCodemodeExtension(),
             createToolSearchExtension(),
             createMcpExtension(),
-            createOpencodeHeaders(),
           ],
           // Pi Desktop's own extensions; pi's <agentDir>/extensions still load as before.
           additionalExtensionPaths: [appExtensionsDir(this.opts.dataDir)],
@@ -688,7 +686,6 @@ export class SessionHub {
           createDesktopKit({ state: kit, ask: async () => ({ cancelled: true }), setMode: () => {} }),
           createToolSearchExtension(),
           createMcpExtension(),
-          createOpencodeHeaders(),
         ],
         appendSystemPrompt: [agentPrompt(agent)],
       });
@@ -908,7 +905,7 @@ export class SessionHub {
       const reply = await this.models.completeSimple(model, {
         systemPrompt: naming.SYSTEM_PROMPT,
         messages: [{ role: 'user', content: prompt.slice(0, 2000), timestamp: Date.now() }],
-      }, { signal: controller.signal, maxTokens: 64 });
+      }, { signal: controller.signal, maxTokens: 64, sessionId: id });
       if (reply.stopReason === 'error' || reply.stopReason === 'aborted') return;
       raw = reply.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('');
     } finally {
@@ -998,7 +995,7 @@ export class SessionHub {
         const reply = await this.models.completeSimple(model, {
           systemPrompt: prediction.SYSTEM_PROMPT,
           messages: [{ role: 'user', content: excerpt.text, timestamp: Date.now() }],
-        }, { signal: controller.signal, maxTokens: 256 });
+        }, { signal: controller.signal, maxTokens: 256, sessionId: id });
         // A new turn, a replaced session or a closed one makes the reply stale.
         const now = this.live.get(id);
         if (!now || now !== live || now.disposed || now.generation !== generation) return null;
@@ -1079,7 +1076,7 @@ export class SessionHub {
       if (!model) throw new Error('No model is available for a side chat');
       const messages = sideChat.sideMessages(sideChat.sideTranscript(session.messages, { contextWindow: model.contextWindow }), chat.turns);
       if (!messages) throw new Error('Ask a question first');
-      const reply = await this.models.completeSimple(model, { systemPrompt: sideChat.SIDE_SYSTEM_PROMPT, messages }, { signal: controller.signal, maxTokens: 4096 });
+      const reply = await this.models.completeSimple(model, { systemPrompt: sideChat.SIDE_SYSTEM_PROMPT, messages }, { signal: controller.signal, maxTokens: 4096, sessionId: id });
       if (this.sideChats.get(id) !== chat) return; // reset while waiting
       if (reply.stopReason === 'aborted') throw new Error(timedOut ? 'The side chat timed out' : 'Cancelled');
       if (reply.stopReason === 'error') throw new Error(reply.errorMessage || 'The model returned an error');
