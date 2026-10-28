@@ -76,7 +76,8 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await driver.hub.shutdown();
-  fs.rmSync(tmp, { recursive: true, force: true });
+  // Windows can report EBUSY for a moment after a shell holding the folder was killed.
+  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 const codeSession = async (mode: PermissionMode = 'auto', worktree = false) => {

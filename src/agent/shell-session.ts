@@ -17,7 +17,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createLocalBashOperations, type BashOperations } from '@earendil-works/pi-coding-agent';
 import type { ShellSessionMode } from '@shared/protocol';
@@ -29,6 +29,8 @@ const MARKER = '__PI_DONE__';
 const HOLD_BACK = 64;
 /** How long a fresh shell gets to answer its first marker before we give up on it. */
 const START_TIMEOUT_MS = 8_000;
+/** How long the Windows tree kill may take before dispose stops waiting on it. */
+const KILL_TIMEOUT_MS = 5_000;
 const NEWLINE = 0x0a;
 
 export interface ShellRun {
@@ -207,7 +209,9 @@ export class SharedShell {
     if (run) this.settle(run, () => run.reject(err));
     if (!child?.pid) return;
     if (process.platform === 'win32') {
-      try { spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); } catch { /* already gone */ }
+      // Synchronous on purpose: a shell that still holds its folder makes deleting a worktree
+      // fail with EBUSY, so dispose must not return before the tree is gone.
+      try { spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore', timeout: KILL_TIMEOUT_MS }); } catch { /* already gone */ }
     } else {
       try { process.kill(-child.pid, 'SIGKILL'); } catch { try { child.kill('SIGKILL'); } catch { /* already gone */ } }
     }
