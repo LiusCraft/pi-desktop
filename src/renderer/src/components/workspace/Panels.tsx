@@ -26,7 +26,7 @@ import { fileDiffOf } from '@/lib/file-diff';
 import { modeName } from '@/lib/constants';
 import { firstThread } from '@/lib/diff';
 import { fdir, fmtDur, fmtTok, fname } from '@/lib/format';
-import { groupSummary, toolLabel, type ToolState } from '@/lib/tools';
+import type { ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
 import {
   closeDetail, closeFiles, closeFileTab, diffTarget, fail, FIND_EVENT, findTarget, loadChanges, loadFiles, openAgent, openDiffRef, openFileRef, pinFileTab, setDiffBase, stopTask, togglePanel,
@@ -34,6 +34,7 @@ import {
 import { modelName, setPref, updateSession, useApp } from '@/store/app';
 import { findByKey, findTool } from '@/store/transcript';
 import type { CardId, ChangedFile, DropPlace, Item, SessionView } from '@/store/types';
+import { FileContextMenu } from './FileContextMenu';
 import { FindBar, SearchResults, type FindScope } from './FindBar';
 import { PathTree, type PathStatus } from './PathTree';
 
@@ -960,33 +961,28 @@ function FileViewer({ s, ...card }: CardProps & { s: SessionView }) {
 
 // ------------------------------------------------------------ work progress
 
-const ACTIVITY_SHOWN = 6;
-
-/** The tool calls since the user's last message, oldest first. */
-function turnTools(items: Item[]): ToolState[] {
+/** The subagents dispatched since the user's last message, oldest first. */
+function turnAgents(items: Item[]): ToolState[] {
   let from = items.length - 1;
   while (from >= 0 && items[from].kind !== 'user') from--;
-  return items.slice(from + 1).flatMap((item) => (item.kind === 'group' ? item.tools : []));
+  return items.slice(from + 1).flatMap((item) => (item.kind === 'group' ? item.tools.filter((tool) => tool.kind === 'agent') : []));
 }
 
-/** What the model has done this turn, for when it keeps no checklist. */
-function Activity({ tools }: { tools: ToolState[] }) {
+/** What the model has dispatched this turn, for when it keeps no checklist. */
+function Dispatched({ tasks }: { tasks: ToolState[] }) {
   return (
-    <>
-      <p className="text-sm text-muted-foreground">{groupSummary(tools)}</p>
-      <ul className="space-y-1">
-        {tools.slice(-ACTIVITY_SHOWN).map((tool) => (
-          <li key={tool.id} className="flex items-center gap-2 text-sm">
-            <span className="flex size-4 shrink-0 items-center justify-center">
-              {tool.status === 'running' ? <span className="size-1.5 animate-pulse rounded-full bg-primary" />
-                : tool.status === 'done' ? <CheckIcon className="size-3.5 text-muted-foreground" />
-                : <XIcon className="size-3.5 text-destructive" />}
-            </span>
-            <span className={cn('min-w-0 truncate', tool.status !== 'running' && 'text-muted-foreground')}>{toolLabel(tool)}</span>
-          </li>
-        ))}
-      </ul>
-    </>
+    <ul className="space-y-1">
+      {tasks.map((task) => (
+        <li key={task.id} className="flex items-center gap-2 text-sm">
+          <span className="flex size-4 shrink-0 items-center justify-center">
+            {task.status === 'running' ? <span className="size-1.5 animate-pulse rounded-full bg-primary" />
+              : task.status === 'done' ? <CheckIcon className="size-3.5 text-muted-foreground" />
+              : <XIcon className="size-3.5 text-destructive" />}
+          </span>
+          <span className={cn('min-w-0 truncate', task.status !== 'running' && 'text-muted-foreground')} title={task.desc}>{task.desc}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -994,7 +990,7 @@ export function WorkPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const t = useT();
   const models = useApp((st) => st.models);
   const todos = s.lastTodos;
-  const tools = todos.length ? [] : turnTools(s.items);
+  const tasks = todos.length ? [] : turnAgents(s.items);
   const done = todos.filter((todo) => todo.status === 'completed').length;
   const outputs = [...s.outputs].sort((a, b) => b.t - a.t);
   const id = s.meta.id;
@@ -1011,13 +1007,14 @@ export function WorkPanel({ s, ...card }: CardProps & { s: SessionView }) {
               <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${(done / todos.length) * 100}%` }} /></div>
               <TodoList items={todos} />
             </>
-          ) : tools.length ? <Activity tools={tools} />
+          ) : tasks.length ? <Dispatched tasks={tasks} />
             : <p className="text-sm text-muted-foreground">{t(s.running ? 'progress.learning' : 'progress.multiStep')}</p>}
         </section>
         <section className="space-y-1 p-4">
           <h3 className="flex items-center justify-between text-xs font-semibold tracking-wide text-muted-foreground uppercase">{t('progress.files')}{outputs.length > 0 && <span>{outputs.length}</span>}</h3>
           {outputs.length ? outputs.map((o) => (
-            <div key={o.path} className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-accent">
+            <FileContextMenu key={o.path} meta={s.meta} path={o.path}>
+            <div className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-accent">
               <button className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => void openFileRef(o.path)}>
                 <FileIcon className="size-4 shrink-0 text-muted-foreground" />
                 <span className="min-w-0">
@@ -1028,6 +1025,7 @@ export function WorkPanel({ s, ...card }: CardProps & { s: SessionView }) {
               <IconBtn title={t('progress.open')} onClick={() => call('sessions:openPath', id, o.path, false).catch(fail)}><ExternalLinkIcon className="size-3.5" /></IconBtn>
               <IconBtn title={t('progress.reveal')} onClick={() => call('sessions:openPath', id, o.path, true).catch(fail)}><FolderIcon className="size-3.5" /></IconBtn>
             </div>
+            </FileContextMenu>
           )) : <p className="text-sm text-muted-foreground">{t('progress.filesEmpty')}</p>}
         </section>
         <section className="space-y-1 p-4">
