@@ -296,6 +296,12 @@
 }
 
 /* ---------------------------------------------------------------- markdown */
+/* Streamed text rises into place. The words are inline spans, which ignore transform, so it moves with `top`. */
+@keyframes sd-rise {
+  from { opacity: 0; top: 0.5em; filter: blur(3px); }
+  to { opacity: 1; top: 0; filter: blur(0); }
+}
+[data-sd-animate] { position: relative; }
 .prose-chat {
   line-height: 1.65;
   overflow-wrap: anywhere;

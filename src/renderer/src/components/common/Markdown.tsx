@@ -1,7 +1,9 @@
 import { t as tr, useT } from '@/lib/i18n';
-import { memo, useState, type ReactNode } from 'react';
+import { memo, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
 import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { createAnimatePlugin } from 'streamdown';
+import 'streamdown/styles.css';
 import { CheckIcon, ChevronRightIcon, CopyIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { call } from '@/lib/api';
@@ -144,10 +146,17 @@ const components: Components = {
 
 const urlTransform = (url: string) => (url.startsWith(FILE_SCHEME) ? url : defaultUrlTransform(url));
 
-export const Markdown = memo(function Markdown({ text, className, children }: { text: string; className?: string; children?: ReactNode }) {
+/** Each arriving chunk fades in as a whole (no per-character stagger); Chinese has no spaces, so it splits by character. */
+const FADE = { animation: 'rise', duration: 600, easing: 'ease-out', sep: 'char', stagger: 0 } as const;
+
+/** `animate`: fade in newly arrived text (the reply is still streaming). */
+export const Markdown = memo(function Markdown({ text, className, children, animate }: { text: string; className?: string; children?: ReactNode; animate?: boolean }) {
+  // The plugin remembers how much text was already shown, so it lives as long as the component.
+  const fade = useMemo(() => createAnimatePlugin(FADE), []);
+  useLayoutEffect(() => fade.commit());
   return (
     <div className={cn('prose-chat', className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkTrimAutolinks, remarkFileRefs]} components={components} urlTransform={urlTransform}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkTrimAutolinks, remarkFileRefs]} rehypePlugins={animate ? [fade.rehypePlugin] : undefined} components={components} urlTransform={urlTransform}>
         {text}
       </ReactMarkdown>
       {children}

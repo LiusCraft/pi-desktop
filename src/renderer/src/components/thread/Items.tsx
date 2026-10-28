@@ -326,7 +326,7 @@ export const SuggestItem = memo(function SuggestItem({ sid, item }: { sid: strin
 
 export const TextItem = memo(function TextItem({ item }: { item: ItemOf<'text'> }) {
   return (
-    <Markdown text={item.text}>
+    <Markdown text={item.text} animate={!!item.live}>
       {item.live && <span className="ml-0.5 inline-block size-2 animate-pulse rounded-full bg-primary align-middle" />}
     </Markdown>
   );
