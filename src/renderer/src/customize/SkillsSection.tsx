@@ -13,7 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { call, errText } from '@/lib/api';
+import { call, errText, isRemote } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { fname } from '@/lib/format';
 import { BackButton, Empty, Field, Heading, Panel, Segmented, stripFrontmatter } from './ui';
@@ -58,11 +58,11 @@ function SkillDetail({ skill, onBack }: { skill: SkillInfo; onBack: () => void }
       <Heading
         title={skill.name}
         sub={skill.description || t('customize.noDescription')}
-        action={
+        action={!isRemote && (
           <Button size="sm" variant="outline" onClick={() => call('app:revealPath', skill.file, true).catch((e) => toast.error(errText(e)))}>
             <FolderOpenIcon className="size-4" />{t('skills.showFile')}
           </Button>
-        }
+        )}
       />
       <div className="mb-3 truncate font-mono text-xs text-muted-foreground" title={skill.file}>{skill.file}</div>
       <div className="rounded-xl border bg-card p-5">
@@ -159,13 +159,15 @@ export function SkillsSection({ catalog, project, onCatalog }: Props) {
         sub={t('skills.sub')}
         action={
           <div className="flex shrink-0 gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild><Button size="sm" variant="outline"><FolderOpenIcon className="size-4" />{t('skills.openFolder')}</Button></DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => void reveal(catalog.dirs.skills)}>{t('skills.piSkills')}</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => void reveal(catalog.dirs.agentsSkills)}>{t('skills.sharedSkills')}</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {!isRemote && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild><Button size="sm" variant="outline"><FolderOpenIcon className="size-4" />{t('skills.openFolder')}</Button></DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => void reveal(catalog.dirs.skills)}>{t('skills.piSkills')}</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => void reveal(catalog.dirs.agentsSkills)}>{t('skills.sharedSkills')}</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <Button size="sm" onClick={() => setCreating(true)}><PlusIcon className="size-4" />{t('skills.new')}</Button>
           </div>
         }

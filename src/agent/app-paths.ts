@@ -42,6 +42,10 @@ export const appAgentsDir = (dataDir: string) => path.join(dataDir, 'agents');
 export const appPetsDir = (dataDir: string) => path.join(dataDir, 'pets');
 /** Artifacts the model built: one folder each (see `@shared/artifacts`). */
 export const appArtifactsDir = (dataDir: string) => path.join(dataDir, 'artifacts');
+/** Previews of another machine's artifacts, one folder per connection. */
+export const appRemoteArtifactsDir = (dataDir: string) => path.join(dataDir, 'remote-artifacts');
+/** Files a remote client sent to attach to a prompt: the session reads them by path. */
+export const appUploadsDir = (dataDir: string) => path.join(dataDir, 'uploads');
 /** The user's S3-compatible bucket connection, shared by everything the app stores remotely. */
 export const appObjectStorageFile = (dataDir: string) => path.join(dataDir, 'object-storage.json');
 /** The web search engine choice and the user's API keys for them (see `@shared/web-search`). */

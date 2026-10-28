@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { call, errText } from '@/lib/api';
+import { call, errText, isRemote } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { ModelPicker } from '@/settings/ModelPicker';
 import { ToolsInput } from '@/settings/ToolsInput';
@@ -107,9 +107,11 @@ export function AgentsSection() {
       <Heading title={t('agents.title')} sub={t('agents.sub')} />
       <div className="mb-3 flex items-center gap-2">
         <Button size="sm" onClick={() => setForm({ ...blank })}><PlusIcon className="size-4" />{t('agents.new')}</Button>
-        <Button size="sm" variant="outline" disabled={!catalog} onClick={() => catalog && call('app:revealPath', catalog.dir).catch((e) => toast.error(errText(e)))}>
-          <FolderOpenIcon className="size-4" />{t('agents.openFolder')}
-        </Button>
+        {!isRemote && (
+          <Button size="sm" variant="outline" disabled={!catalog} onClick={() => catalog && call('app:revealPath', catalog.dir).catch((e) => toast.error(errText(e)))}>
+            <FolderOpenIcon className="size-4" />{t('agents.openFolder')}
+          </Button>
+        )}
         <span className="flex-1" />
         <span className="text-xs text-muted-foreground">{t('agents.newOnly')}</span>
       </div>

@@ -80,7 +80,7 @@ function flushEvents() {
         st.tasks = ev.tasks;
         continue;
       }
-      if (ev.type === 'auth_prompt' || ev.type === 'auth_event' || ev.type === 'models_changed' || ev.type === 'remote_link') continue;
+      if (ev.type === 'auth_prompt' || ev.type === 'auth_event' || ev.type === 'models_changed' || ev.type === 'remote_link' || ev.type === 'terminal_data' || ev.type === 'terminal_exit') continue;
       if (ev.type === 'host_exit') {
         for (const s of Object.values(st.sessions)) {
           if (s.running) settle(s, true, view);

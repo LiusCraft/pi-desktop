@@ -58,6 +58,16 @@ export const remote = defineMessages({
   'remote.title': { en: 'Remote', zh: '远程' },
   'remote.sub': { en: "Control Pi sessions on another computer from this one.", zh: '用一台电脑遥控另一台电脑上的 Pi 会话。' },
 
+  'remote.upload.invalid': { en: 'The file could not be sent.', zh: '文件无法发送。' },
+  'remote.upload.tooBig': { en: 'Too large to send to the remote (20 MiB in total).', zh: '文件太大，无法发送到远程（合计 20 MiB）。' },
+  'remote.upload.gone': { en: 'This file no longer exists.', zh: '文件已不存在。' },
+  'remote.upload.unreadable': { en: 'This file could not be read.', zh: '无法读取这个文件。' },
+  'remote.upload.notFile': { en: 'Only regular files can be attached.', zh: '只能附加普通文件。' },
+  'remote.terminal.unavailable': { en: 'This remote has no terminal.', zh: '这个远程不支持终端。' },
+  'remote.artifact.invalid': { en: 'The artifact has an invalid file path.', zh: '制品里有无效的文件路径。' },
+  'remote.artifact.tooBig': { en: 'The artifact is too large to preview remotely.', zh: '制品太大，无法远程预览。' },
+  'remote.artifact.none': { en: 'This artifact has no page to show.', zh: '这个制品没有可显示的页面。' },
+
   'storage.title': { en: 'Object storage', zh: '对象存储' },
   'storage.sub': { en: 'Your own S3-compatible bucket for content kept off this machine.', zh: '你自己的 S3 兼容存储桶，存放不在本机的内容。' },
   'storage.tip': { en: 'AWS S3, Cloudflare R2, Alibaba OSS, Tencent COS, MinIO and so on. Artifacts use it to publish pages today; everything else works without it.', zh: 'AWS S3、Cloudflare R2、阿里云 OSS、腾讯云 COS、MinIO 等。目前 Artifacts 用它发布页面，其他功能不依赖它。' },

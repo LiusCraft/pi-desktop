@@ -11,7 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { BackButton, Empty, Heading, Panel } from '@/customize/ui';
-import { call, isMac } from '@/lib/api';
+import { call, isMac, isRemote } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { ago, fname } from '@/lib/format';
 import { addWorkFolder, newProjectTask, openSession, showProjects, showScheduled, updateWorkProject } from '@/store/actions';
@@ -208,9 +208,11 @@ function ProjectDetail({ p }: { p: WorkProject }) {
           />
           <div className="mt-1 flex items-center gap-1 px-1 text-xs text-muted-foreground">
             <code className="truncate font-mono" title={p.path}>{p.path}</code>
-            <Button size="icon-xs" variant="ghost" title={t(isMac ? 'projects.revealMac' : 'projects.revealOther')} onClick={() => void call('app:revealPath', p.path).catch(() => {})}>
-              <FolderOpenIcon className="size-3.5" />
-            </Button>
+            {!isRemote && (
+              <Button size="icon-xs" variant="ghost" title={t(isMac ? 'projects.revealMac' : 'projects.revealOther')} onClick={() => void call('app:revealPath', p.path).catch(() => {})}>
+                <FolderOpenIcon className="size-3.5" />
+              </Button>
+            )}
           </div>
         </div>
         <Button size="sm" onClick={() => newProjectTask(p.path)}><PlusIcon className="size-4" />{t('projects.newTask')}</Button>

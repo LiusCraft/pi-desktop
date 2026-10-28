@@ -9,22 +9,22 @@ import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, Notification, screen, shell } from 'electron';
 import {
   HOST_CHANNELS, MAIN_CHANNELS,
-  type ApiArgs, type ApiResult, type BootPayload, type HostEvent, type Project, type PushChannel, type PushEvents,
+  type ApiArgs, type ApiResult, type AttachmentSource, type BootPayload, type HostEvent, type Project, type PushChannel, type PushEvents,
   type Settings, type SettingsPayload, type WorktreeInfo,
 } from '@shared/protocol';
 import { DEFAULT_PET_ID } from '@shared/pets';
 import { DEFAULT_SETTINGS } from '@shared/settings';
 import { ARTIFACT_ENTRY, ARTIFACT_ID_PATTERN, ARTIFACT_SITE_DIR, ARTIFACT_THUMBNAIL, artifactThumbnailName } from '@shared/artifacts';
 import {
-  isRemotePort, normalizeRemoteUrl, REMOTE_DEFAULT_PORT, REMOTE_PORT_RANGE, REMOTE_WORKSPACE_METHODS,
-  type RemoteActive, type RemoteConnection, type RemoteConnectionDraft, type RemoteConnectionInfo, type RemoteServeSettings, type RemoteServeState, type RemoteWorkspaceMethod,
+  isRemotePort, isTerminalMethod, isTransferMethod, normalizeRemoteUrl, REMOTE_DEFAULT_PORT, REMOTE_PORT_RANGE, REMOTE_TERMINAL_METHODS, REMOTE_WORKSPACE_METHODS,
+  type RemoteActive, type RemoteArtifactSite, type RemoteTerminalMethod, type RemoteConnection, type RemoteConnectionDraft, type RemoteConnectionInfo, type RemoteServeSettings, type RemoteServeState, type RemoteWorkspaceMethod,
 } from '@shared/remote';
 import { childEnv } from '../agent/env';
 import { listPets, removePet, savePet } from '../agent/pets';
 import { ArtifactService } from '../agent/artifacts';
 import { ObjectStorage } from '../agent/storage';
 import {
-  appDataDir, appDemoDir, appExtensionsDir, appPetsDir, appArtifactsDir, defaultWorktreeDir, expandHome, piAgentDir, worktreeDir,
+  appDataDir, appDemoDir, appExtensionsDir, appPetsDir, appArtifactsDir, appRemoteArtifactsDir, defaultWorktreeDir, expandHome, piAgentDir, worktreeDir,
 } from '../agent/app-paths';
 import { resolveInside } from '../agent/files';
 import { localPath } from '../agent/local-path';
@@ -39,6 +39,7 @@ import { AgentClient } from './agent-client';
 import { migrateLegacyKeys } from './agent-auth';
 import { clipboardAttachments, type ClipboardItemLike } from './clipboard';
 import { openIn, openTargets } from './open-in';
+import { uploadAttachments } from './remote-upload';
 import { Terminals, terminalShells } from './terminal';
 import { checkForUpdate, downloadInstaller } from './updater';
 import { UPDATE_CHECK_INTERVAL_MS, UPDATE_FIRST_CHECK_MS } from '@shared/update';
@@ -339,12 +340,13 @@ const artifactWindows = new Map<string, BrowserWindow>();
  * An artifact is arbitrary HTML the model wrote, so it opens in a plain sandboxed window: no preload (nothing of
  * this app is reachable from it), no Node, and it may only show its own files. Links to the web open in the browser.
  */
-function openArtifact(id: string) {
+async function openArtifact(id: string) {
   if (!ARTIFACT_ID_PATTERN.test(id)) return;
-  const dir = path.join(appArtifactsDir(dataDir()), id, ARTIFACT_SITE_DIR);
+  const { root } = await artifactFolder(id);
+  const dir = path.join(root, ARTIFACT_SITE_DIR);
   const entry = path.join(dir, ARTIFACT_ENTRY);
-  if (!fs.existsSync(entry)) throw new Error('This artifact has no page to show');
-  const existing = artifactWindows.get(id);
+  if (!fs.existsSync(entry)) throw new Error(tr('remote.artifact.none'));
+  const existing = artifactWindows.get(root);
   if (existing && !existing.isDestroyed()) {
     existing.show();
     existing.focus();
@@ -386,8 +388,42 @@ function openArtifact(id: string) {
   });
   void w.loadFile(entry);
   w.once('ready-to-show', () => w.show());
-  w.on('closed', () => artifactWindows.delete(id));
-  artifactWindows.set(id, w);
+  w.on('closed', () => artifactWindows.delete(root));
+  artifactWindows.set(root, w);
+}
+
+/**
+ * Where an artifact's files are on this machine, and which version they are. A remote host's artifact is
+ * fetched into a folder of its own first, so the preview window and the thumbnail work the same for both.
+ */
+async function artifactFolder(id: string): Promise<{ root: string; version: number }> {
+  if (!activeRemote) {
+    const meta = new ArtifactService(dataDir(), new ObjectStorage(dataDir())).find(id);
+    return { root: path.join(appArtifactsDir(dataDir()), id), version: meta?.version ?? 0 };
+  }
+  const root = path.join(appRemoteArtifactsDir(dataDir()), activeRemote.info.id, id);
+  const versionFile = path.join(root, '.version');
+  let have = -1;
+  try {
+    have = Number(fs.readFileSync(versionFile, 'utf8'));
+  } catch {
+    // Never fetched.
+  }
+  if (!fs.existsSync(path.join(root, ARTIFACT_SITE_DIR, ARTIFACT_ENTRY))) have = -1;
+  const site = await activeRemote.client.call<RemoteArtifactSite | null>('artifacts:site', id, have);
+  if (!site) throw new Error(tr('remote.artifact.none'));
+  if (site.files) {
+    const dir = path.join(root, ARTIFACT_SITE_DIR);
+    fs.rmSync(dir, { recursive: true, force: true });
+    for (const file of site.files) {
+      const target = resolveInside(dir, file.rel);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, Buffer.from(file.data, 'base64'));
+    }
+    fs.mkdirSync(root, { recursive: true });
+    fs.writeFileSync(versionFile, String(site.version));
+  }
+  return { root, version: site.version };
 }
 
 /** One screenshot at a time: each one is a whole hidden page, and a grid of cards asks for many at once. */
@@ -395,22 +431,29 @@ let thumbnailQueue: Promise<unknown> = Promise.resolve();
 const thumbnailRuns = new Map<string, Promise<string | null>>();
 
 /** The artifact's page rendered offscreen once per version and kept as a small JPEG next to it. */
-function artifactThumbnail(id: string): Promise<string | null> {
-  if (!ARTIFACT_ID_PATTERN.test(id)) return Promise.resolve(null);
-  const meta = new ArtifactService(dataDir(), new ObjectStorage(dataDir())).find(id);
-  if (!meta) return Promise.resolve(null);
-  const file = path.join(appArtifactsDir(dataDir()), id, artifactThumbnailName(meta.version));
+async function artifactThumbnail(id: string): Promise<string | null> {
+  if (!ARTIFACT_ID_PATTERN.test(id)) return null;
+  try {
+    const { root, version } = await artifactFolder(id);
+    return version ? await renderThumbnail(root, version) : null;
+  } catch {
+    return null;
+  }
+}
+
+function renderThumbnail(root: string, version: number): Promise<string | null> {
+  const file = path.join(root, artifactThumbnailName(version));
   const asUrl = (buf: Buffer) => `data:image/jpeg;base64,${buf.toString('base64')}`;
   try {
     return Promise.resolve(asUrl(fs.readFileSync(file)));
   } catch {
     // Not captured yet.
   }
-  const key = `${id}:${meta.version}`;
+  const key = `${root}:${version}`;
   const running = thumbnailRuns.get(key);
   if (running) return running;
   const run = thumbnailQueue.then(async () => {
-    const entry = path.join(appArtifactsDir(dataDir()), id, ARTIFACT_SITE_DIR, ARTIFACT_ENTRY);
+    const entry = path.join(root, ARTIFACT_SITE_DIR, ARTIFACT_ENTRY);
     const { width, height, scaledWidth, quality, settleMs, timeoutMs } = ARTIFACT_THUMBNAIL;
     const w = new BrowserWindow({
       icon: WINDOW_ICON,
@@ -510,7 +553,7 @@ const connectionInfos = (): RemoteConnectionInfo[] => connections().map(({ token
 function resetWindows() {
   terminals.closeAll();
   for (const w of sideWindows.values()) if (!w.isDestroyed()) w.close();
-  if (win && !win.isDestroyed()) win.webContents.reload();
+  for (const w of [win, settingsWin]) if (w && !w.isDestroyed()) w.webContents.reload();
 }
 function closeRemote() {
   activeRemote?.client.close();
@@ -524,7 +567,11 @@ async function connectRemote(id: string): Promise<RemoteActive> {
     url: conn.url,
     token: conn.token,
     onEvent: (event) => {
-      if (activeRemote?.client === client) broadcast('host:event', event);
+      if (activeRemote?.client !== client) return;
+      // The remote's terminal output reaches the panels the way a local terminal's does.
+      if (event.type === 'terminal_data') broadcast('terminal:data', { id: event.id, data: event.data });
+      else if (event.type === 'terminal_exit') broadcast('terminal:exit', { id: event.id, code: event.code });
+      else broadcast('host:event', event);
     },
     onState: (state) => {
       if (activeRemote?.client !== client) return;
@@ -594,18 +641,37 @@ function serveState(): RemoteServeState {
     pluginDir: fs.existsSync(path.join(pluginDir, 'index.js')) ? pluginDir : null,
   };
 }
+/** Terminal tabs of remote clients: kept apart from this machine's own, and their output goes to the clients' event stream. */
+const remoteTerminals = new Terminals({
+  data: (id, data) => remoteServer?.publish({ type: 'terminal_data', id, data }),
+  exit: (id, code) => remoteServer?.publish({ type: 'terminal_exit', id, code }),
+});
+async function remoteTerminalCall(method: RemoteTerminalMethod, args: unknown[]): Promise<unknown> {
+  switch (method) {
+    case 'terminal:list': return remoteTerminals.list(String(args[0]));
+    case 'terminal:create': return remoteTerminals.create(String(args[0]), await sessionCwd(String(args[0])), settingsValue().terminalShell);
+    case 'terminal:attach': return remoteTerminals.attach(String(args[0]));
+    case 'terminal:text': return remoteTerminals.text(String(args[0]), Number(args[1]));
+    case 'terminal:write': return remoteTerminals.write(String(args[0]), String(args[1]));
+    case 'terminal:resize': return remoteTerminals.resize(String(args[0]), Number(args[1]), Number(args[2]));
+    case 'terminal:close': return remoteTerminals.close(String(args[0]));
+  }
+}
 /** What other machines may ask of this one: the agent host and the project lists. */
 const serveBackend = {
   kind: 'desktop' as const,
   call: async (method: string, args: unknown[]) => {
+    if (isTerminalMethod(method)) return remoteTerminalCall(method, args);
+    if (isTransferMethod(method)) return agent.call('host:transfer', method, args);
     if ((REMOTE_WORKSPACE_METHODS as readonly string[]).includes(method)) return workspaceCall(book, method as RemoteWorkspaceMethod, args);
-    if (method === 'sessions:remove') terminals.closeSession(String(args[0]));
+    if (method === 'sessions:remove') remoteTerminals.closeSession(String(args[0]));
     return agent.call(method as Parameters<AgentClient['call']>[0], ...args);
   },
 };
 async function applyServe(): Promise<RemoteServeState> {
   remoteTunnel.stop();
   await remoteServer?.stop();
+  remoteTerminals.closeAll();
   remoteServer = null;
   remoteListening = false;
   remoteServeError = undefined;
@@ -652,7 +718,8 @@ async function pickFolder() {
   const r = win ? await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] }) : await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
   return r.canceled ? null : r.filePaths[0];
 }
-const importAttachments = (sources: unknown[]) => agent.call<ApiResult<'attachments:import'>>('host:importAttachments', sources);
+const importAttachments = (sources: AttachmentSource[]) =>
+  activeRemote ? uploadAttachments(activeRemote.client, sources) : agent.call<ApiResult<'attachments:import'>>('host:importAttachments', sources);
 const sessionCwd = async (id: string) => (await agent.call<{ cwd: string }>('host:meta', id)).cwd;
 
 type MainHandlers = { [K in (typeof MAIN_CHANNELS)[number]]: (...args: ApiArgs<K>) => ApiResult<K> | Promise<ApiResult<K>> };
@@ -857,9 +924,9 @@ const handlers: MainHandlers = {
 };
 
 /** Main-handled calls a remote host answers itself. */
-const REMOTE_ROUTED = new Set<string>(REMOTE_WORKSPACE_METHODS);
+const REMOTE_ROUTED = new Set<string>([...REMOTE_WORKSPACE_METHODS, ...REMOTE_TERMINAL_METHODS]);
 /** Calls that act on this machine's own files and windows, and so have no remote counterpart. */
-const LOCAL_ONLY = new Set<string>(['projects:add', 'projects:adoptWorktree', 'work:addFolder', 'terminal:create', 'sessions:openIn', 'sessions:openPath', 'update:install']);
+const LOCAL_ONLY = new Set<string>(['projects:add', 'projects:adoptWorktree', 'work:addFolder', 'sessions:openIn', 'sessions:openPath', 'update:install']);
 
 function registerIpc() {
   // Read synchronously by the preload: every window boots with the right theme,
@@ -886,7 +953,10 @@ function registerIpc() {
     ipcMain.handle(channel, (_e, ...args) => {
       if (activeRemote) return activeRemote.client.call(channel, ...args);
       // Shells go first: one sitting in the session's worktree would keep it from being deleted.
-      if (channel === 'sessions:remove') terminals.closeSession(String(args[0]));
+      if (channel === 'sessions:remove') {
+        terminals.closeSession(String(args[0]));
+        remoteTerminals.closeSession(String(args[0]));
+      }
       return agent.call(channel, ...args);
     });
   }

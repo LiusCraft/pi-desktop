@@ -71,7 +71,9 @@ describe('remote protocol', () => {
     expect(isServedMethod('projects:list')).toBe(true);
     expect(isServedMethod('models:login')).toBe(false);
     expect(isServedMethod('host:shutdown')).toBe(false);
-    expect(isServedMethod('terminal:create')).toBe(false);
+    expect(isServedMethod('terminal:create')).toBe(true);
+    expect(isServedMethod('terminal:shells')).toBe(false);
+    expect(isServedMethod('attachments:upload')).toBe(true);
   });
 
   it('rejects a method it does not serve before it reaches the backend', async () => {

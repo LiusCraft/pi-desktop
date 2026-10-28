@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
-import { bridge, call, errText } from '@/lib/api';
+import { bridge, call, errText, isRemote } from '@/lib/api';
 import { t, useT } from '@/lib/i18n';
 import { EndpointDialog } from './EndpointDialog';
 import { LoginDialog, type AuthUiState } from './LoginDialog';
@@ -452,16 +452,20 @@ export function ModelsSection() {
         <div className="flex items-center gap-2">
           <span className="w-20 shrink-0">{t('models.credentials')}</span>
           <span className="min-w-0 flex-1 truncate font-mono">{catalog?.paths.auth}</span>
-          <Button size="sm" variant="ghost" className="h-6 px-1.5" onClick={() => catalog && reveal(catalog.paths.auth)}>
-            <ExternalLinkIcon className="size-3" />
-          </Button>
+          {!isRemote && (
+            <Button size="sm" variant="ghost" className="h-6 px-1.5" onClick={() => catalog && reveal(catalog.paths.auth)}>
+              <ExternalLinkIcon className="size-3" />
+            </Button>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <span className="w-20 shrink-0">{t('models.endpoints')}</span>
           <span className="min-w-0 flex-1 truncate font-mono">{catalog?.paths.models}</span>
-          <Button size="sm" variant="ghost" className="h-6 px-1.5" onClick={() => catalog && reveal(catalog.paths.models)}>
-            <ExternalLinkIcon className="size-3" />
-          </Button>
+          {!isRemote && (
+            <Button size="sm" variant="ghost" className="h-6 px-1.5" onClick={() => catalog && reveal(catalog.paths.models)}>
+              <ExternalLinkIcon className="size-3" />
+            </Button>
+          )}
         </div>
         <p className="pt-1">
           {catalog?.catalogAt ? t('models.metaUpdated', { ago: agoLabel(catalog.catalogAt) }) : t('models.metaNever')}

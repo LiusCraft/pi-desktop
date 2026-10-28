@@ -646,6 +646,9 @@ export type HostEvent =
   | { type: 'extension_error'; sessionId: string; error: string }
   /** The link to the remote host the windows are showing changed (only while one is active). */
   | { type: 'remote_link'; state: RemoteLinkState }
+  /** Output and exit of a terminal the serving Desktop runs for a remote client; the client turns them into its own `terminal:*` pushes. */
+  | { type: 'terminal_data'; id: string; data: string }
+  | { type: 'terminal_exit'; id: string; code: number }
   | { type: 'host_exit'; code: number | null; stderr: string };
 
 // ------------------------------------------------------------ settings and app info
@@ -1176,6 +1179,8 @@ export interface HostInternal {
   'host:cancelLogins'(): void;
   'host:meta'(id: string): SessionMeta;
   'host:importAttachments'(sources: AttachmentSource[]): AttachmentImportResult;
+  /** A file-moving call of a remote client (see `REMOTE_TRANSFER_METHODS`). */
+  'host:transfer'(method: string, args: unknown[]): unknown;
   'host:worktree'(dir: string): WorktreeInfo | null;
   'host:shutdown'(): void;
 }

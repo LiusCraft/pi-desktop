@@ -44,10 +44,43 @@ export const REMOTE_WORKSPACE_METHODS = [
 ] as const;
 export type RemoteWorkspaceMethod = (typeof REMOTE_WORKSPACE_METHODS)[number];
 
+/** Calls that move file contents between the machines: what the client's own disk holds can't be read by the server. */
+export const REMOTE_TRANSFER_METHODS = ['attachments:upload', 'artifacts:site'] as const;
+export type RemoteTransferMethod = (typeof REMOTE_TRANSFER_METHODS)[number];
+export const isTransferMethod = (method: string): method is RemoteTransferMethod => (REMOTE_TRANSFER_METHODS as readonly string[]).includes(method);
+
+/** Terminal tabs run on the serving machine. Only a Desktop serves them: a plain pi has no pseudo-terminal. */
+export const REMOTE_TERMINAL_METHODS = ['terminal:list', 'terminal:create', 'terminal:attach', 'terminal:text', 'terminal:write', 'terminal:resize', 'terminal:close'] as const;
+export type RemoteTerminalMethod = (typeof REMOTE_TERMINAL_METHODS)[number];
+export const isTerminalMethod = (method: string): method is RemoteTerminalMethod => (REMOTE_TERMINAL_METHODS as readonly string[]).includes(method);
+/** Whether the other end can run terminals. */
+export const remoteHasTerminals = (kind: RemoteKind) => kind === 'desktop';
+
+/** How long a file a client uploaded stays on the server's disk. */
+export const REMOTE_UPLOAD_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
+/** Raw bytes of one upload call; base64 and the JSON around it must stay under `REMOTE_MAX_BODY_BYTES`. */
+export const REMOTE_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
+/** Raw bytes of the files of one artifact a client may fetch for its preview. */
+export const REMOTE_ARTIFACT_MAX_BYTES = 16 * 1024 * 1024;
+
+/** One file a client sends to attach to a prompt. */
+export interface RemoteUpload {
+  name: string;
+  /** Base64. */
+  data: string;
+}
+
+/** The page of an artifact, as the client fetches it for a preview. */
+export interface RemoteArtifactSite {
+  version: number;
+  /** Left out when the client already holds this version. */
+  files?: { rel: string; data: string }[];
+}
+
 /** Calls that need the serving machine's own UI (browser logins) and so are never served. */
 const NOT_SERVED: ReadonlySet<string> = new Set(['models:login', 'models:loginRespond', 'models:loginCancel']);
 
-const SERVED: ReadonlySet<string> = new Set<string>([...HOST_CHANNELS, ...REMOTE_WORKSPACE_METHODS].filter((m) => !NOT_SERVED.has(m)));
+const SERVED: ReadonlySet<string> = new Set<string>([...HOST_CHANNELS, ...REMOTE_WORKSPACE_METHODS, ...REMOTE_TRANSFER_METHODS, ...REMOTE_TERMINAL_METHODS].filter((m) => !NOT_SERVED.has(m)));
 export const isServedMethod = (method: unknown): method is string => typeof method === 'string' && SERVED.has(method);
 
 export interface RemoteRpcRequest {

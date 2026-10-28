@@ -19,7 +19,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { Tip } from '@/components/common/Tip';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Toaster } from 'sonner';
-import { bridge, call, errText, isMac } from '@/lib/api';
+import { bridge, call, errText, isMac, isRemote } from '@/lib/api';
 import { useLocale, useT } from '@/lib/i18n';
 import { petVoices, previewSound } from '@/lib/sounds';
 import { applyTheme } from '@/lib/theme';
@@ -564,7 +564,7 @@ export function SettingsApp() {
               <div className="text-sm font-medium">{p.name}</div>
               <div className="truncate font-mono text-xs text-muted-foreground" title={p.path}>{p.path}</div>
             </div>
-            <Button size="sm" variant="outline" onClick={() => call('app:revealPath', p.path).catch((e) => toast.error(errText(e)))}>{t(revealKey)}</Button>
+            {!isRemote && <Button size="sm" variant="outline" onClick={() => call('app:revealPath', p.path).catch((e) => toast.error(errText(e)))}>{t(revealKey)}</Button>}
             <Button
               size="sm"
               variant="ghost"
@@ -616,11 +616,11 @@ export function SettingsApp() {
         </Panel>
         </div>
         <div id={groupDomId('codeProjects')} className="scroll-mt-2">
-        <div className="mt-6 mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">{t('settings.codeProjects')}</h3><Button size="sm" variant="outline" onClick={() => void add('project')}>{t('settings.add')}</Button></div>
+        <div className="mt-6 mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">{t('settings.codeProjects')}</h3>{!isRemote && <Button size="sm" variant="outline" onClick={() => void add('project')}>{t('settings.add')}</Button>}</div>
         {list(projects, 'project')}
         </div>
         <div id={groupDomId('workFolders')} className="scroll-mt-2">
-        <div className="mt-6 mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">{t('settings.workFolders')}</h3><Button size="sm" variant="outline" onClick={() => void add('folder')}>{t('settings.add')}</Button></div>
+        <div className="mt-6 mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">{t('settings.workFolders')}</h3>{!isRemote && <Button size="sm" variant="outline" onClick={() => void add('folder')}>{t('settings.add')}</Button>}</div>
         {list(folders, 'folder')}
         </div>
       </>

@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
-import { call, isMac } from '@/lib/api';
+import { call, isMac, isRemote } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { contentOf, onContent, wantContent } from '@/lib/change-content';
 import { fileDiffOf } from '@/lib/file-diff';
@@ -1022,15 +1022,15 @@ export function WorkPanel({ s, ...card }: CardProps & { s: SessionView }) {
                   <span className="block truncate text-xs text-muted-foreground">{fdir(o.path) || folderName} · {t(o.kind === 'write' ? 'progress.created' : 'progress.edited')}</span>
                 </span>
               </button>
-              <IconBtn title={t('progress.open')} onClick={() => call('sessions:openPath', id, o.path, false).catch(fail)}><ExternalLinkIcon className="size-3.5" /></IconBtn>
-              <IconBtn title={t('progress.reveal')} onClick={() => call('sessions:openPath', id, o.path, true).catch(fail)}><FolderIcon className="size-3.5" /></IconBtn>
+              {!isRemote && <IconBtn title={t('progress.open')} onClick={() => call('sessions:openPath', id, o.path, false).catch(fail)}><ExternalLinkIcon className="size-3.5" /></IconBtn>}
+              {!isRemote && <IconBtn title={t('progress.reveal')} onClick={() => call('sessions:openPath', id, o.path, true).catch(fail)}><FolderIcon className="size-3.5" /></IconBtn>}
             </div>
             </FileContextMenu>
           )) : <p className="text-sm text-muted-foreground">{t('progress.filesEmpty')}</p>}
         </section>
         <section className="space-y-1 p-4">
           <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{t('progress.context')}</h3>
-          <button className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-accent" onClick={() => call('sessions:openPath', id, '.', false).catch(fail)}>
+          <button className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left enabled:hover:bg-accent" disabled={isRemote} onClick={() => call('sessions:openPath', id, '.', false).catch(fail)}>
             <FolderIcon className="size-4 shrink-0 text-muted-foreground" />
             <span className="min-w-0"><span className="block truncate text-sm font-medium">{folderName}</span><span className="block truncate text-xs text-muted-foreground">{s.meta.cwd}</span></span>
           </button>

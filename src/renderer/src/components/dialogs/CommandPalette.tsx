@@ -1,5 +1,5 @@
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from '@/components/ui/command';
-import { call, modKey } from '@/lib/api';
+import { call, canTerminal, modKey } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { ago, fname } from '@/lib/format';
 import { addProject, openSession, setView, showWelcome, togglePanel } from '@/store/actions';
@@ -24,7 +24,7 @@ export function CommandPalette() {
     { label: t('palette.openFolder'), run: () => void addProject() },
     ...(codeSession ? [
       { label: t('palette.toggleDiff'), hint: `${modKey}D`, run: () => { const s = currentSession(); if (s) togglePanel(s.meta.id, 'diff'); } },
-      { label: t('palette.toggleTerminal'), run: () => { const s = currentSession(); if (s) togglePanel(s.meta.id, 'terminal'); } },
+      ...(canTerminal ? [{ label: t('palette.toggleTerminal'), run: () => { const s = currentSession(); if (s) togglePanel(s.meta.id, 'terminal'); } }] : []),
     ] : []),
     { label: t('palette.models'), run: () => call('settings:open', 'models') },
     { label: t('palette.toggleTheme'), run: () => call('settings:set', { theme: getApp().settings.resolvedTheme === 'dark' ? 'light' : 'dark' }) },

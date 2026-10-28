@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { useDefaultLayout } from 'react-resizable-panels';
-import { call, isMac, modKey } from '@/lib/api';
+import { call, canTerminal, isMac, modKey } from '@/lib/api';
 import { workIdeas, OUTPUT_STYLE_INFO, VIEW_MODES, type ViewMode } from '@/lib/constants';
 import { useT } from '@/lib/i18n';
 import { fname } from '@/lib/format';
@@ -149,7 +149,7 @@ function PanelsMenu({ s, hasTasks }: { s: SessionView; hasTasks: boolean }) {
   const p = s.panels;
   const items: { key: PanelKey; label: string }[] = [
     ...(hasTasks ? [{ key: 'tasks' as const, label: t('main.backgroundTasks') }] : []),
-    { key: 'terminal', label: t('main.terminal') },
+    ...(canTerminal ? [{ key: 'terminal' as const, label: t('main.terminal') }] : []),
     { key: 'diff', label: t('main.diff') },
     { key: 'preview', label: t('main.preview') },
     { key: 'files', label: t('main.files') },
@@ -225,7 +225,7 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
             <>
               <PanelsMenu s={s} hasTasks={hasTasks} />
               {hasTasks && <HeaderButton on={p!.tasks} title={t('main.backgroundTasks')} onClick={() => togglePanel(s.meta.id, 'tasks')} className="hidden @2xl:flex"><BotIcon className="size-4" /></HeaderButton>}
-              <HeaderButton on={p!.terminal} title={t('main.terminal')} onClick={() => togglePanel(s.meta.id, 'terminal')} className="hidden @2xl:flex"><SquareTerminalIcon className="size-4" /></HeaderButton>
+              {canTerminal && <HeaderButton on={p!.terminal} title={t('main.terminal')} onClick={() => togglePanel(s.meta.id, 'terminal')} className="hidden @2xl:flex"><SquareTerminalIcon className="size-4" /></HeaderButton>}
               <HeaderButton on={p!.diff} title={`${t('main.diff')}  ${modKey}D`} onClick={() => togglePanel(s.meta.id, 'diff')} className="hidden @2xl:flex"><FileTextIcon className="size-4" /></HeaderButton>
               <HeaderButton on={p!.preview} title={t('main.preview')} onClick={() => togglePanel(s.meta.id, 'preview')} className="hidden @2xl:flex"><GlobeIcon className="size-4" /></HeaderButton>
               <HeaderButton on={p!.files} title={t('main.files')} onClick={() => togglePanel(s.meta.id, 'files')} className="hidden @2xl:flex"><FolderIcon className="size-4" /></HeaderButton>

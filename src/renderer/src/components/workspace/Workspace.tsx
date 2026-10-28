@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from 'react';
 import { useDefaultLayout } from 'react-resizable-panels';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import { canTerminal } from '@/lib/api';
 import { expandCard, moveCard } from '@/store/actions';
 import type { Arrangement, CardId, SessionView } from '@/store/types';
 import { WorkPanel, DetailPanel, DiffPanel, FilesPanel, PreviewPanel, TasksPanel, type CardProps } from './Panels';
@@ -42,7 +43,7 @@ function defaultCards(s: SessionView): Arrangement {
   if (s.detail && s.detail.type !== 'file') primary.push('detail');
   const secondary: CardId[] = [];
   if (s.panels.files) secondary.push('files');
-  if (s.panels.terminal) secondary.push('terminal');
+  if (s.panels.terminal && canTerminal) secondary.push('terminal');
   return { primary, secondary };
 }
 

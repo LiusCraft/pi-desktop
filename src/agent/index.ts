@@ -8,6 +8,8 @@ import * as git from './git';
 import { sessionHandlers } from './handlers';
 import { applyChildPath } from './env';
 import { SessionHub } from './hub';
+import { isTransferMethod } from '@shared/remote';
+import { transferCall } from './remote/transfer';
 import { Scheduler } from './scheduler';
 import { Store } from './store';
 
@@ -30,6 +32,7 @@ function send(message: HostToMain) {
   }
 }
 
+let dataDir = '';
 let hub: SessionHub | null = null;
 let scheduler: Scheduler | null = null;
 let resolveReady!: (hub: SessionHub) => void;
@@ -40,7 +43,9 @@ const withHub = (fn: (hub: SessionHub, ...args: any[]) => unknown): Handler => a
 
 const handlers: Record<HostMethod, Handler> = {
   'host:locale': (locale) => setActiveLocale(locale),
-  'host:init': async ({ dataDir, agentDir, demo, locale }) => {
+  'host:init': async (options) => {
+    const { agentDir, demo, locale } = options;
+    dataDir = options.dataDir;
     setActiveLocale(locale);
     if (hub) return;
     hub = new SessionHub({ dataDir, agentDir, demoModel: demo, emit: (event) => send({ kind: 'event', event }) });
@@ -53,6 +58,10 @@ const handlers: Record<HostMethod, Handler> = {
   'host:cancelLogins': withHub((h) => h.admin.cancelAll()),
   'host:meta': withHub((h, id) => ({ ...h.meta(id) })),
   'host:importAttachments': (sources) => importAttachments(sources),
+  'host:transfer': (method, args) => {
+    if (!isTransferMethod(method)) throw new Error(`Unknown transfer: ${method}`);
+    return transferCall(dataDir, method, args);
+  },
   'host:worktree': (dir) => git.worktreeInfo(dir),
   'host:shutdown': async () => {
     scheduler?.stop();

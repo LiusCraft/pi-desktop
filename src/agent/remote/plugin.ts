@@ -5,11 +5,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { getAgentDir, type ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { HOST_CHANNELS } from '@shared/protocol';
-import { isRemotePort, REMOTE_DEFAULT_PORT, REMOTE_PORT_RANGE, REMOTE_WORKSPACE_METHODS, type RemoteServeSettings, type RemoteWorkspaceMethod } from '@shared/remote';
+import { tr } from '@shared/i18n/runtime';
+import { isRemotePort, isTerminalMethod, isTransferMethod, REMOTE_DEFAULT_PORT, REMOTE_PORT_RANGE, REMOTE_WORKSPACE_METHODS, type RemoteServeSettings, type RemoteWorkspaceMethod } from '@shared/remote';
 import { sessionHandlers } from '../handlers';
 import { SessionHub } from '../hub';
 import { Store } from '../store';
 import { newRemoteToken, remoteUrls, RemoteServer } from './server';
+import { transferCall } from './transfer';
 import { Tunnel } from './tunnel';
 import { ProjectBook, workspaceCall } from './workspace';
 
@@ -72,6 +74,8 @@ export default function piRemote(pi: ExtensionAPI) {
       backend: {
         kind: 'plugin',
         call: async (method, args) => {
+          if (isTerminalMethod(method)) throw new Error(tr('remote.terminal.unavailable'));
+          if (isTransferMethod(method)) return transferCall(dataDir, method, args);
           if ((REMOTE_WORKSPACE_METHODS as readonly string[]).includes(method)) return workspaceCall(book, method as RemoteWorkspaceMethod, args);
           const handler = handlers[method as (typeof HOST_CHANNELS)[number]];
           if (!handler) throw new Error(`Unknown method: ${method}`);

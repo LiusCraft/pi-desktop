@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { OpenTargetIcon } from '@/components/common/OpenTargetIcon';
-import { call } from '@/lib/api';
+import { call, isRemote } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { OPEN_TARGET_INFO, refreshOpenTargets, useOpenTargets } from '@/lib/open-targets';
 import { fail } from '@/store/actions';
@@ -10,6 +10,7 @@ import { fail } from '@/store/actions';
 export function OpenInMenu({ id, children }: { id: string; /** The button that opens the menu. */ children: ReactElement }) {
   const targets = useOpenTargets();
   const t = useT();
+  if (isRemote) return null;
   return (
     <DropdownMenu onOpenChange={(o) => o && refreshOpenTargets()}>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>

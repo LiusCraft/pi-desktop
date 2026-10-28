@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/context-menu';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { call, isMac, modKey } from '@/lib/api';
+import { call, isMac, isRemote, modKey } from '@/lib/api';
 import { ago, fname } from '@/lib/format';
 import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -91,7 +91,7 @@ function ProjectActions({ path, parts: { Item, Separator } }: { path: string; pa
   return (
     <>
       <Item onSelect={() => { selectProject(path); showWelcome(); collapseSidebarIfCompact(); }}><PlusIcon />{t('sidebar.newSession')}</Item>
-      <Item onSelect={() => void call('app:revealPath', path).catch(() => {})}>{t(isMac ? 'sidebar.revealMac' : 'sidebar.revealOther')}</Item>
+      {!isRemote && <Item onSelect={() => void call('app:revealPath', path).catch(() => {})}>{t(isMac ? 'sidebar.revealMac' : 'sidebar.revealOther')}</Item>}
       <Separator />
       <Item variant="destructive" onSelect={() => void removeProject(path)}>{t('sidebar.removeProject')}</Item>
     </>

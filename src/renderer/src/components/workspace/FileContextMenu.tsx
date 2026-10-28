@@ -7,7 +7,7 @@ import {
   ContextMenu, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuSeparator,
   ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger, ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import { call, isMac } from '@/lib/api';
+import { call, isMac, isRemote } from '@/lib/api';
 import { fname } from '@/lib/format';
 import { useT } from '@/lib/i18n';
 import { OpenTargetIcon } from '@/components/common/OpenTargetIcon';
@@ -69,17 +69,21 @@ export function FileMenuContent({ meta, path, directory = false, snapshot }: Men
             <ContextMenuItem onSelect={makeArtifact}><PackageIcon />{t('fileMenu.makeArtifact')}</ContextMenuItem>
           )}
         </ContextMenuGroup>
-        <ContextMenuSeparator />
-        <ContextMenuGroup>
-          <ContextMenuSub>
-            <ContextMenuSubTrigger><ExternalLinkIcon className="mr-2" />{t('fileMenu.openIn')}</ContextMenuSubTrigger>
-            <ContextMenuSubContent><ContextMenuGroup>
-              {targets.filter((o) => o.id !== 'folder').map((o) => <ContextMenuItem key={o.id} disabled={snapshot !== undefined} onSelect={() => openIn(o.id)}><OpenTargetIcon target={o} />{OPEN_TARGET_INFO[o.id].label}</ContextMenuItem>)}
-              <ContextMenuItem disabled={snapshot !== undefined} onSelect={() => void call('sessions:openPath', meta.id, path, false).catch(fail)}>{t('fileMenu.defaultApp')}</ContextMenuItem>
-            </ContextMenuGroup></ContextMenuSubContent>
-          </ContextMenuSub>
-          <ContextMenuItem disabled={snapshot !== undefined} onSelect={() => void call('sessions:openPath', meta.id, path, true).catch(fail)}><FolderOpenIcon />{t(isMac ? 'fileMenu.revealMac' : 'fileMenu.revealOther')}</ContextMenuItem>
-        </ContextMenuGroup>
+        {!isRemote && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuGroup>
+              <ContextMenuSub>
+                <ContextMenuSubTrigger><ExternalLinkIcon className="mr-2" />{t('fileMenu.openIn')}</ContextMenuSubTrigger>
+                <ContextMenuSubContent><ContextMenuGroup>
+                  {targets.filter((o) => o.id !== 'folder').map((o) => <ContextMenuItem key={o.id} disabled={snapshot !== undefined} onSelect={() => openIn(o.id)}><OpenTargetIcon target={o} />{OPEN_TARGET_INFO[o.id].label}</ContextMenuItem>)}
+                  <ContextMenuItem disabled={snapshot !== undefined} onSelect={() => void call('sessions:openPath', meta.id, path, false).catch(fail)}>{t('fileMenu.defaultApp')}</ContextMenuItem>
+                </ContextMenuGroup></ContextMenuSubContent>
+              </ContextMenuSub>
+              <ContextMenuItem disabled={snapshot !== undefined} onSelect={() => void call('sessions:openPath', meta.id, path, true).catch(fail)}><FolderOpenIcon />{t(isMac ? 'fileMenu.revealMac' : 'fileMenu.revealOther')}</ContextMenuItem>
+            </ContextMenuGroup>
+          </>
+        )}
       </ContextMenuContent>
   );
 }
