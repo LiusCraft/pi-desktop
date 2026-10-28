@@ -22,6 +22,7 @@ import { AUTO_REVIEW_DEFAULT_TIMEOUT, AUTO_REVIEW_MAX_TIMEOUT, AUTO_REVIEW_MIN_T
 import { decodeCommandMessage, isCommandMessage } from '@shared/command-message';
 import { decodePeerMessage,encodePeerMessage, isPeerMessage } from '@shared/peer-message';
 import { decodePrEvent, encodePrEvent, isPrEvent } from '@shared/pr-event';
+import { decodeTaskMessage, encodeTaskMessage, isTaskMessage } from '@shared/task-message';
 import { BUILTIN_PET_IDS } from '@shared/pets';
 import { DEFAULT_SETTINGS } from '@shared/settings';
 import { appAgentsDir, appPetsDir, appWorkDir, appExtensionsDir, worktreeDir as resolveWorktreeDir } from './app-paths';
@@ -1023,7 +1024,7 @@ export class SessionHub {
   private maybeNameFromPrompt(id: string, message: string) {
     const m = this.meta(id);
     const text = message.trim();
-    if (!m.autoName || m.titleLocked || m.nameAttempted || !text || text.startsWith('/') || isPeerMessage(text) || isPrEvent(text) || isCommandMessage(text)) return;
+    if (!m.autoName || m.titleLocked || m.nameAttempted || !text || text.startsWith('/') || isPeerMessage(text) || isPrEvent(text) || isCommandMessage(text) || isTaskMessage(text)) return;
     const placeholder = naming.titleFromPrompt(text);
     if (!placeholder) return;
     m.nameAttempted = true;
@@ -1482,7 +1483,7 @@ export class SessionHub {
       this.emitMeta(from);
     }
     this.emitMeta(meta);
-    void this.prompt(meta.id, { text: prompt, attachments: [], clientId: crypto.randomUUID() }, 'steer').catch((err: Error) =>
+    void this.prompt(meta.id, { text: encodeTaskMessage(task.title, prompt), attachments: [], clientId: crypto.randomUUID() }, 'steer').catch((err: Error) =>
       this.emit({ type: 'notify', sessionId: meta.id, message: err.message, level: 'error' }));
     return { ...meta };
   }
@@ -1955,6 +1956,8 @@ export function readTranscript(file: string, limit: number): TranscriptLine[] {
         if (event) text = `(PR #${event.num} · ${event.summary}) ${event.instruction ?? ''}`.trim();
         const command = decodeCommandMessage(text);
         if (command) text = `(/${command.name}) ${command.prompt}`;
+        const task = decodeTaskMessage(text);
+        if (task) text = task.prompt;
       } else if (!text) {
         const tools = blocks.filter((b) => b.type === 'toolCall').map((b) => b.name);
         if (!tools.length) continue;

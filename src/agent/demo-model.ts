@@ -68,6 +68,20 @@ const SUBAGENT_MARK = "只读、小范围探索";
 
 const scenarios: Scenario[] = [
 	{
+		match: (p) => /建议任务|suggest/i.test(p),
+		steps: [
+			() => [
+				call("pidesk_suggest_task", {
+					tasks: [
+						{ title: "补充 isOverdue 的边界测试", prompt: "为 src/utils/date.js 里的 isOverdue 补充单元测试：纯日期、带时间、跨月、跨年各一例，并确认现有测试全部通过。" },
+						{ title: "统一日期格式化入口", prompt: "src/components 里有三处各自拼接日期字符串，请改为统一调用 formatDate，不改变现有显示结果。" },
+					],
+				}),
+			],
+			() => [text("我顺手发现了两件和当前任务无关的事，已经放进建议任务里，想做的话点「开始」就会在新会话里进行。")],
+		],
+	},
+	{
 		// subagent run (child process started by the `pidesk_task` tool)
 		match: (p) => p.startsWith(SUBAGENT_MARK),
 		steps: [

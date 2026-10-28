@@ -4,6 +4,8 @@ import { PLAN_CHOICES } from '@shared/protocol';
 import type { MessageKey } from '@shared/i18n';
 import { BUILTIN_COMMAND_INFO, commandLabel, decodeCommandMessage, type CommandMessage } from '@shared/command-message';
 import { decodePeerMessage, type PeerMessage } from '@shared/peer-message';
+import { decodeSkillMessage, type SkillMessage } from '@shared/skill-message';
+import { decodeTaskMessage, type TaskMessage } from '@shared/task-message';
 import * as previews from '@shared/tool-previews';
 import { CodeBlock, Markdown } from '@/components/common/Markdown';
 import { ToolOutput } from '@/components/common/ToolOutput';
@@ -44,11 +46,15 @@ export const UserItem = memo(function UserItem({ sid, item, quoted }: { sid: str
   const busy = useApp((state) => !!(state.sessions[sid]?.running || state.sessions[sid]?.historyBusy || state.sessions[sid]?.pendingUser.length));
   const peer = decodePeerMessage(item.text);
   if (peer) return <PeerMessageCard peer={peer} />;
+  const task = decodeTaskMessage(item.text);
+  if (task) return <TaskMessageCard task={task} queued={item.queued} />;
   const command = decodeCommandMessage(item.text);
   if (command) return <CommandMessageChip sid={sid} command={command}queued={item.queued} />;
   // Context the user attached is shown as cards, like in the composer; only what they typed stays text.
   const attached = decodeReferencePrompt(item.text);
-  const typed = attached ? attached.text : item.text;
+  const body = attached ? attached.text : item.text;
+  const skill = decodeSkillMessage(body);
+  const typed = skill ? skill.args : body;
   // @ references live inline as badges; only the refs whose badge was deleted fall back to cards.
   const inline = attached ? messageSegments(typed, attached.references).filter((segment) => segment.kind === 'reference') : [];
   const shown = new Set(inline.map((segment) => (segment.kind === 'reference' ? segment.reference : null)));
@@ -57,6 +63,7 @@ export const UserItem = memo(function UserItem({ sid, item, quoted }: { sid: str
     <div className={cn('flex flex-col items-end gap-1.5', item.queued && 'opacity-60')} title={item.queued ? t('thread.queued') : undefined}>
       <AttachmentTiles attachments={item.attachments} />
       {!!cards.length && <div className="flex max-w-[85%] justify-end"><ContextCards references={cards} onOpen={(reference) => openContextReference(reference, quoted?.[attached?.references.indexOf(reference) ?? 0] ?? null)} /></div>}
+      {skill && <SkillChip skill={skill} />}
       {typed && (
         <div data-selectable className="max-w-[85%] rounded-2xl bg-user-bubble px-4 py-2.5 whitespace-pre-wrap break-words">
           <InlineMessage text={typed} references={attached?.references ?? []} />
@@ -94,6 +101,42 @@ export const UserItem = memo(function UserItem({ sid, item, quoted }: { sid: str
     </div>
   );
 });
+
+/** The task a session was started with, as a card instead of a wall of instructions. */
+function TaskMessageCard({ task, queued }: { task: TaskMessage; queued?: boolean }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={cn('flex justify-end', queued && 'opacity-60')}>
+      <div className="max-w-[85%] rounded-xl border bg-card px-3.5 py-2.5 text-sm shadow-sm">
+        <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><LightbulbIcon className="size-3.5" />{task.title || t('suggest.title')}</div>
+        <button data-selectable className={cn('text-left text-xs break-words whitespace-pre-wrap text-muted-foreground hover:text-foreground', !open && 'line-clamp-3')} onClick={() => setOpen(!open)} title={t('suggest.toggle')}>
+          {task.prompt}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** `/skill:name` shown as a badge; click to read the instructions it expanded to. */
+function SkillChip({ skill }: { skill: SkillMessage }) {
+  const t = useT();
+  return (
+    <div className="flex justify-end">
+      <Popover>
+        <PopoverTrigger asChild>
+          <button className="flex items-center gap-1.5 rounded-2xl bg-user-bubble px-3.5 py-2 font-mono text-sm transition-colors hover:bg-accent data-[state=open]:bg-accent" title={t('thread.skillTip')}>
+            <BookmarkIcon className="size-3.5 text-muted-foreground" />/{skill.name}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-96 p-0">
+          <div className="border-b px-3 py-2 font-mono text-xs font-medium">/skill:{skill.name}</div>
+          <div data-selectable className="max-h-72 overflow-y-auto px-3 py-2 text-xs whitespace-pre-wrap break-words">{skill.content}</div>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
 
 /** A button of Pi Desktop's own (Commit, Create PR, ...) shown as the command it ran; click to read the instruction it expanded to. */
 function CommandMessageChip({ sid, command, queued }: { sid: string; command: CommandMessage; queued?: boolean }) {

@@ -11,6 +11,7 @@ export const thread = defineMessages({
   'thread.fork.tip': { en: 'Creates a new session from before this message, with the text in its input box; the current conversation stays.', zh: '从此消息之前创建新会话，原文放入新会话输入框，保留当前对话。' },
   'thread.deliveryFailed': { en: 'Delivery not confirmed. Check the conversation before retrying.', zh: '没有确认送达。重试前请先看一下对话。' },
   'thread.restoreDraft': { en: 'Restore draft', zh: '恢复草稿' },
+  'thread.skillTip': { en: 'See the skill instructions', zh: '查看技能内容' },
   'thread.commandTip': { en: 'See what this command expanded to', zh: '查看这条命令展开后的内容' },
   'thread.peerOpen': { en: 'Open the session that sent this message', zh: '打开发来消息的会话' },
   'thread.peerGone': { en: 'That session no longer exists', zh: '那个会话已不存在' },

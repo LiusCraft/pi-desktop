@@ -7,6 +7,7 @@ import { referencePrompt, type ContextReference } from '@shared/context-referenc
 import { cacheHitRate } from '@shared/usage';
 import { revealItem } from '@/lib/quote-links';
 import { positiveLine } from '@shared/tool-previews';
+import { encodeTaskMessage } from '@shared/task-message';
 import { call, errText, modKey } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { cuePet } from '@/lib/pet-cue';
@@ -1416,7 +1417,7 @@ export async function doSuggestedHere(sid: string, item: { toolCallId: string },
     const meta = await call('sessions:update', sid, { suggestion: { key: keyOf(item, index), state: 'here' } });
     updateSession(sid, (v) => void (v.meta = meta));
     const busy = !!getApp().sessions[sid]?.running;
-    await call('sessions:prompt', sid, { text: task.prompt, attachments: [], clientId: crypto.randomUUID() }, busy ? 'followUp' : 'steer');
+    await call('sessions:prompt', sid, { text: encodeTaskMessage(task.title, task.prompt), attachments: [], clientId: crypto.randomUUID() }, busy ? 'followUp' : 'steer');
   } catch (err) {
     fail(err);
   }
