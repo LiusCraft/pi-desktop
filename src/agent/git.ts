@@ -142,8 +142,8 @@ export async function diffBase(cwd: string, base: string | null, baseBranch: str
     if (fork) return (await squashMerged(cwd, fork, baseBranch)) ? head(cwd) : fork;
   } else if (baseBranch) {
     // On the base branch itself, what is already pushed is synced: only what is not yet there is a change.
-    const ahead = (await gitSafe(cwd, 'rev-list', '--count', '@{u}..HEAD'))?.trim();
-    if (ahead === '0') return head(cwd);
+    const synced = await mergeBase(cwd, '@{u}');
+    if (synced) return synced;
   }
   return base;
 }
