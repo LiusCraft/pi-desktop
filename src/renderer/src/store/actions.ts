@@ -146,6 +146,9 @@ function flushEvents() {
             s.pr = null;
           }
           break;
+        case 'git_fetched':
+          effects.push([s.meta.id, { scheduleChanges: true }]);
+          break;
         case 'status':
           if (ev.status === 'idle' && s.running) effects.push([s.meta.id, settle(s, false, view)]);
           break;

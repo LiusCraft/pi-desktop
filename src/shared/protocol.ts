@@ -58,6 +58,8 @@ export interface PrStatus extends PrSummary {
   mergeable?: 'clean' | 'conflicting' | 'unknown';
   /** Review state, so the bar can address a change request without waiting for CI to fail. */
   review?: 'approved' | 'changes' | 'required';
+  /** The branch the PR merges into; it can differ from the session's base. */
+  base?: string;
   /** Head commit: CI results belong to it, so auto-fix acts once per commit. */
   head?: string;
   updatedAt?: number;
@@ -481,12 +483,21 @@ export interface CommitInfo {
   date: string;
 }
 
+/** How the branch bar brings the base branch's new commits into the current branch. */
+export type SyncStrategy = 'merge' | 'rebase';
+
 /** Live working-tree state: what the composer's branch bar reports (never the session base). */
 export interface GitState {
   /** Paths with uncommitted changes, untracked files included. */
   dirty: string[];
   /** Commits HEAD has that its upstream branch does not. */
   ahead: number;
+  /** Commits its upstream branch has that HEAD does not (as of the last fetch). */
+  behind: number;
+  /** Commits the session's base branch has that HEAD does not. */
+  baseBehind: number;
+  /** The ref `baseBehind` was measured against: the open PR's target when there is one, else the session base. */
+  base: string | null;
   /** Upstream ref, or null when the branch tracks nothing yet. */
   upstream: string | null;
   /** The code host `origin` points at, when its name says so. */
@@ -602,6 +613,8 @@ export type HostEvent =
   | { type: 'status'; sessionId: string; status: 'idle' | 'running' }
   /** Fresh PR state from the host's watcher: the bar reads this instead of polling `gh` itself. */
   | { type: 'pr'; sessionId: string; status: PrStatus | null }
+  /** The repository's remotes were fetched: the bar's behind counts may have changed. */
+  | { type: 'git_fetched'; sessionId: string }
   | { type: 'meta'; sessionId: string; meta: SessionMeta }
   /** Start-up progress of a session; null once it is ready. */
   | { type: 'setup'; sessionId: string; steps: SetupStep[] | null }

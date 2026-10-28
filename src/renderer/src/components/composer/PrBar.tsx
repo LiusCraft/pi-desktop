@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { call } from '@/lib/api';
@@ -12,16 +12,17 @@ import { useT } from '@/lib/i18n';
 import { ago, fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { openDiffPanel, openPrComments, send, sessionDraftKey, setPrAuto } from '@/store/actions';
-import { updateSession } from '@/store/app';
+import { setPref, updateSession, useApp } from '@/store/app';
 import { drafts } from '@/store/drafts';
 import type { SessionView } from '@/store/types';
+import type { SyncStrategy } from '@shared/protocol';
 import { encodeCommandMessage, type BuiltinCommand } from '@shared/command-message';
 import { forgeName, forgeWords } from '@shared/forge';
 import { gitActions, type GitAction, type GitActionItem } from './pr-actions';
 import { fmtLines, prBadge, prCiLine, prRepo, prSize, type PrBadge, type PrLike, type PrTone } from '@shared/pr-status';
 
 const DOT: Record<string, string> = { pass: 'bg-success', fail: 'bg-destructive', pending: 'bg-warning', none: 'bg-muted-foreground/60' };
-const ACTION_ICON: Record<GitAction, typeof ArrowUpIcon> = { pr: GitPullRequestCreateIcon, commit: GitCommitHorizontalIcon, push: ArrowUpIcon };
+const ACTION_ICON: Record<GitAction, typeof ArrowUpIcon> = { pr: GitPullRequestCreateIcon, commit: GitCommitHorizontalIcon, push: ArrowUpIcon, sync: GitMergeIcon };
 export const TONE: Record<PrTone, string> = {
   conflict: 'bg-warning/15 text-warning',
   review: 'bg-warning/15 text-warning',
@@ -46,13 +47,15 @@ const CHECK_LABEL = { pass: 'prbar.checkPass', fail: 'prbar.checkFail', pending:
 export function PrBar({ s }: { s: SessionView }) {
   const t = useT();
   if (s.meta.kind === 'work' || s.prHidden || !s.meta.branch) return null;
+  const strategy = useApp((a) => a.prefs.syncStrategy);
   const id = s.meta.id;
   const st = s.gitState;
   const pr = s.pr;
-  const { actions, primary } = gitActions({ branch: s.meta.branch, baseBranch: s.meta.baseBranch, st, pr, forge: pr?.forge ?? st?.forge });
+  const { actions, primary } = gitActions({ branch: s.meta.branch, baseBranch: s.meta.baseBranch, st, pr, forge: pr?.forge ?? st?.forge, strategy });
   // Nothing to commit, push or open: the bar would only restate the branch name.
-  if (st && !pr && !actions.some((a) => a.enabled)) return null;
-  const current = actions.find((a) => a.act === primary);
+  if (st && !pr && !st.behind && !st.baseBehind && !actions.some((a) => a.enabled)) return null;
+  // With nothing else to send, a base branch that moved on is the only thing the button offers.
+  const current = actions.find((a) => a.act === primary) ?? actions.find((a) => a.act === 'sync' && a.enabled);
   const ask = (command: BuiltinCommand, text: string) => {
     drafts.setText(sessionDraftKey(id), encodeCommandMessage(command, text));
     void send(false);
@@ -73,8 +76,10 @@ export function PrBar({ s }: { s: SessionView }) {
         <span className="text-muted-foreground">{t('prbar.uncommitted', { n: dirty })}</span>
       ))}
       {st.ahead > 0 && <span className="text-warning">{t('prbar.toPush', { n: st.ahead })}</span>}
+      {st.behind > 0 && <span className="text-info">{t('prbar.toPull', { n: st.behind })}</span>}
+      {st.baseBehind > 0 && st.base && <span className="text-info">{t('prbar.baseBehind', { base: st.base, n: st.baseBehind })}</span>}
       {!st.upstream && <span className="text-muted-foreground">{t('prbar.notPushed')}</span>}
-      {!dirty && !st.ahead && st.upstream && <span className="flex items-center gap-1 text-muted-foreground"><CheckIcon className="size-3" />{t('prbar.synced')}</span>}
+      {!dirty && !st.ahead && !st.behind && !st.baseBehind && st.upstream && <span className="flex items-center gap-1 text-muted-foreground"><CheckIcon className="size-3" />{t('prbar.synced')}</span>}
     </span>
   );
   const hide = (
@@ -141,7 +146,7 @@ export function PrBar({ s }: { s: SessionView }) {
           className="h-6 shrink-0 gap-1 border-warning/50 px-2 text-xs text-warning hover:text-warning"
           disabled={s.running}
           title={t('prbar.fixConflictsTip')}
-          onClick={() => ask('fix-conflicts', t('prbar.conflictPrompt', { num: pr.num, base: s.meta.baseBranch ?? t('gitact.targetFallback') }))}
+          onClick={() => ask('fix-conflicts', t('prbar.conflictPrompt', { num: pr.num, base: pr.base ?? s.meta.baseBranch ?? t('gitact.targetFallback') }))}
         >
           <TriangleAlertIcon className="size-3" />{t('prbar.fixConflicts')}
         </Button>
@@ -281,6 +286,7 @@ function SplitButton({ s, current, actions, primary, run }: {
 }) {
   const t = useT();
   const { branch, baseBranch } = s.meta;
+  const strategy = useApp((a) => a.prefs.syncStrategy);
   return (
     <div className="flex shrink-0">
       <Button size="xs" variant="outline" className="h-6 rounded-r-none px-2 text-xs" disabled={s.running} title={current.hint} onClick={() => run(current.command, current.prompt)}>
@@ -310,6 +316,16 @@ function SplitButton({ s, current, actions, primary, run }: {
               </DropdownMenuItem>
             );
           })}
+          {!!baseBranch && baseBranch !== branch && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-xs text-muted-foreground">{t('gitact.strategy')}</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={strategy} onValueChange={(v) => setPref('syncStrategy', v as SyncStrategy)}>
+                <DropdownMenuRadioItem value="merge" onSelect={(e) => e.preventDefault()}>{t('gitact.strategyMerge')}</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="rebase" onSelect={(e) => e.preventDefault()}>{t('gitact.strategyRebase')}</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

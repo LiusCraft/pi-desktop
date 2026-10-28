@@ -12,9 +12,9 @@ const MAX_FILE = 512 * 1024;
 /** How much of the base commit's hash tells one base from another in a file's revision. */
 const REV_BASE = 12;
 
-function run(cmd: string, args: string[], cwd: string, { allowFail = false } = {}): Promise<string | null> {
+function run(cmd: string, args: string[], cwd: string, { allowFail = false, timeout = 0, env = {} as Record<string, string> } = {}): Promise<string | null> {
   return new Promise((resolve, reject) => {
-    execFile(cmd, args, { cwd, env: childEnv(), maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
+    execFile(cmd, args, { cwd, env: childEnv(env), timeout, maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
       if (err && !allowFail) return reject(Object.assign(err, { stderr: String(stderr) }));
       resolve(err ? null : String(stdout));
     });
@@ -22,6 +22,26 @@ function run(cmd: string, args: string[], cwd: string, { allowFail = false } = {
 }
 export const git = (cwd: string, ...args: string[]) => run('git', args, cwd);
 const gitSafe = (cwd: string, ...args: string[]) => run('git', args, cwd, { allowFail: true });
+
+/** How long a repository's remotes are trusted before the next background fetch. */
+const FETCH_INTERVAL_MS = 60 * 60 * 1000;
+const FETCH_TIMEOUT_MS = 60 * 1000;
+const lastFetch = new Map<string, number>();
+
+/**
+ * Refresh the remote-tracking refs, at most once per interval per repository (worktrees share one).
+ * Resolves true only when a fetch actually succeeded, i.e. when the bar's counts may have changed.
+ */
+export async function fetchIfDue(cwd: string): Promise<boolean> {
+  const common = (await gitSafe(cwd, 'rev-parse', '--git-common-dir'))?.trim();
+  if (!common) return false;
+  const key = path.resolve(cwd, common);
+  if (Date.now() - (lastFetch.get(key) ?? 0) < FETCH_INTERVAL_MS) return false;
+  // Marked before the fetch: an offline or failing remote is not retried on every refresh.
+  lastFetch.set(key, Date.now());
+  const out = await run('git', ['fetch', '--quiet'], cwd, { allowFail: true, timeout: FETCH_TIMEOUT_MS, env: { GIT_TERMINAL_PROMPT: '0' } });
+  return out !== null;
+}
 
 export async function repoRoot(dir: string) {
   const out = await gitSafe(dir, 'rev-parse', '--show-toplevel');
@@ -233,14 +253,21 @@ export async function changeContent(cwd: string, base: string | null, file: stri
 }
 
 /** Uncommitted paths plus upstream tracking: what the composer's branch bar reports. */
-export async function workState(cwd: string): Promise<GitState> {
+export async function workState(cwd: string, baseBranch: string | null = null, remoteBase = false): Promise<GitState> {
   const status = (await gitSafe(cwd, 'status', '--porcelain', '-z', '--no-renames')) || '';
   const dirty: string[] = [];
   for (const entry of status.split('\0')) if (entry.length > 3) dirty.push(entry.slice(3));
   const upstream = (await gitSafe(cwd, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'))?.trim() || null;
-  const ahead = upstream ? Number((await gitSafe(cwd, 'rev-list', '--count', '@{u}..HEAD'))?.trim()) || 0 : 0;
+  const count = async (range: string) => (upstream ? Number((await gitSafe(cwd, 'rev-list', '--count', range))?.trim()) || 0 : 0);
+  const [ahead, behind] = await Promise.all([count('@{u}..HEAD'), count('HEAD..@{u}')]);
+  // The base only matters when the session sits on another branch and the base ref still exists.
+  const onBase = !baseBranch || baseBranch === (await currentBranch(cwd));
+  // A PR's target is judged by the remote's copy: that is what the PR will be merged into.
+  let base: string | null = null;
+  if (!onBase) for (const ref of remoteBase ? [`origin/${baseBranch}`, baseBranch!] : [baseBranch!]) if (await resolveRef(cwd, ref)) { base = ref; break; }
+  const baseBehind = base ? Number((await gitSafe(cwd, 'rev-list', '--count', `HEAD..${base}`))?.trim()) || 0 : 0;
   const forge = await originForge(cwd);
-  return { dirty, ahead, upstream, ...(forge ? { forge } : {}) };
+  return { dirty, ahead, behind, baseBehind, base, upstream, ...(forge ? { forge } : {}) };
 }
 
 /** The code host `origin` belongs to, when the host name gives it away. */
@@ -467,7 +494,7 @@ function rollupChecks(rows: RollupContext[]): PrStatus['checks'] {
 }
 
 async function readGithubPr(cwd: string): Promise<PrSnapshot | null> {
-  const full = 'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author,additions,deletions,changedFiles,mergeable,reviewDecision,headRefOid,updatedAt';
+  const full = 'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author,additions,deletions,changedFiles,mergeable,reviewDecision,headRefOid,updatedAt,baseRefName';
   let out = await run('gh', ['pr', 'view', '--json', full], cwd, { allowFail: true });
   // Older gh builds reject a field they do not know; the card is worth more than the full query, so ask for less.
   if (!out) out = await run('gh', ['pr', 'view', '--json', 'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author'], cwd, { allowFail: true });
@@ -497,6 +524,7 @@ async function readGithubPr(cwd: string): Promise<PrSnapshot | null> {
       files: size(pr.changedFiles),
       mergeable: mergeable[String(pr.mergeable || '').toUpperCase() as keyof typeof mergeable] ?? (pr.mergeable ? 'unknown' : undefined),
       review: review[String(pr.reviewDecision || '').toUpperCase() as keyof typeof review],
+      base: typeof pr.baseRefName === 'string' && pr.baseRefName ? pr.baseRefName : undefined,
       head: typeof pr.headRefOid === 'string' && pr.headRefOid ? pr.headRefOid : undefined,
       updatedAt: pr.updatedAt ? Date.parse(pr.updatedAt) || undefined : undefined,
     };
@@ -577,6 +605,7 @@ async function readGitlabPr(cwd: string): Promise<PrSnapshot | null> {
       mergeable: mr.has_conflicts || detailed === 'conflict' ? 'conflicting' : ['', 'checking', 'unchecked', 'preparing'].includes(detailed) ? 'unknown' : 'clean',
       // Unresolved threads block a GitLab merge the way a change request does on GitHub.
       review: detailed === 'discussions_not_resolved' ? 'changes' : detailed === 'not_approved' ? 'required' : undefined,
+      base: typeof mr.target_branch === 'string' && mr.target_branch ? mr.target_branch : undefined,
       head: typeof mr.sha === 'string' && mr.sha ? mr.sha : undefined,
       updatedAt: mr.updated_at ? Date.parse(mr.updated_at) || undefined : undefined,
     };

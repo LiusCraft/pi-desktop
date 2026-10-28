@@ -179,6 +179,8 @@ export class SessionHub {
    * and the session's switches decide which of its changes are worth a turn of their own.
    */
   private readonly prWatches = new Map<string, PrWatchEntry>();
+  /** Where each session's open PR merges into, when that is known. */
+  private readonly prBases = new Map<string, string>();
 
   constructor(private readonly opts: HubOptions) {
     this.agentDir = opts.agentDir ?? getAgentDir();
@@ -247,6 +249,11 @@ export class SessionHub {
     m.branch = current;
     this.save();
     this.emitMeta(m);
+  }
+  /** Entering a session brings its remotes up to date (hourly at most); the renderer re-reads the counts afterwards. */
+  private async fetchRemotes(m: SessionMeta) {
+    if (m.kind !== 'code') return;
+    if (await git.fetchIfDue(m.cwd)) this.emit({ type: 'git_fetched', sessionId: m.id });
   }
   /** A session made on the host's own initiative (a scheduled task run): tell the renderer it exists. */
   announce(m: SessionMeta) {
@@ -1702,9 +1709,11 @@ export class SessionHub {
   async changes(id: string): Promise<ChangeSet> {
     const m = this.meta(id);
     await this.syncBranch(m);
+    void this.fetchRemotes(m);
     // Session-base diff for the Diff panel, plus live working-tree state for the branch bar.
     const base = await git.diffBase(m.cwd, m.baseCommit, m.baseBranch);
-    const [files, state] = await Promise.all([git.changes(m.cwd, base), git.workState(m.cwd)]);
+    const prBase = this.prBases.get(id);
+    const [files, state] = await Promise.all([git.changes(m.cwd, base), git.workState(m.cwd, prBase ?? m.baseBranch, !!prBase)]);
     return { files, state };
   }
   /** Measure the session's changes from another branch: the diff, commit list and file contents all follow `baseBranch`. */
@@ -1841,6 +1850,9 @@ export class SessionHub {
       m.pr = summary;
       this.save();
     }
+    // Only a live PR has a target worth following; a merged or closed one no longer asks for updates.
+    const open = status && (status.state === 'open' || status.state === 'draft');
+    if (open && status.base) this.prBases.set(m.id, status.base); else this.prBases.delete(m.id);
     this.emit({ type: 'pr', sessionId: m.id, status });
   }
 

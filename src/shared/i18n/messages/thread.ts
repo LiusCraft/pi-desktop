@@ -22,6 +22,7 @@ export const thread = defineMessages({
   'cmdinfo.update-pr': { en: 'Push and update the existing PR', zh: '推送并更新已有的 PR' },
   'cmdinfo.new-pr': { en: 'Open a new PR for the finished one', zh: '为已结束的 PR 重新提一个' },
   'cmdinfo.fix-conflicts': { en: 'Merge the target branch and resolve conflicts', zh: '合并目标分支并解决冲突' },
+  'cmdinfo.sync-base': { en: 'Bring the base branch into this branch', zh: '把基础分支的更新带入当前分支' },
   'cmdinfo.fix-ci': { en: 'Fix failing checks and review comments', zh: '修复失败的检查与评审意见' },
 
   'prevent.ciFail': { en: 'CI failed', zh: 'CI 失败' },

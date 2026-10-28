@@ -2,10 +2,10 @@
 // Each action becomes a prompt: the agent runs git/gh/glab, the bar only decides what to ask for.
 import type { BuiltinCommand } from '@shared/command-message';
 import { forgeWords, type Forge } from '@shared/forge';
-import type { GitState, PrSummary } from '@shared/protocol';
+import type { GitState, PrSummary, SyncStrategy } from '@shared/protocol';
 import { tr } from '@shared/i18n/runtime';
 
-export type GitAction = 'pr' | 'commit' | 'push';
+export type GitAction = 'pr' | 'commit' | 'push' | 'sync';
 
 export interface GitActionItem {
   act: GitAction;
@@ -25,6 +25,8 @@ export interface BranchWork {
   pr: Pick<PrSummary, 'num' | 'state'> | null;
   /** The code host, when known: decides gh or glab in the prompts. */
   forge?: Forge | null;
+  /** How new commits on the base branch are brought in. */
+  strategy: SyncStrategy;
 }
 
 /**
@@ -34,7 +36,7 @@ export interface BranchWork {
 /** A prompt starts a sentence: an optional lead-in may have put a lowercase verb first. */
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
-export function gitActions({ branch, baseBranch, st, pr, forge }: BranchWork): { actions: GitActionItem[]; primary: GitAction | null } {
+export function gitActions({ branch, baseBranch, st, pr, forge, strategy }: BranchWork): { actions: GitActionItem[]; primary: GitAction | null } {
   const w = forgeWords(forge);
   const onBase = !baseBranch || branch === baseBranch;
   const dirty = st?.dirty.length ?? 0;
@@ -75,6 +77,21 @@ export function gitActions({ branch, baseBranch, st, pr, forge }: BranchWork): {
     { act: 'commit', label: tr('gitact.commit'), hint: dirty > 0 ? tr('gitact.commitHint', { n: dirty }) : tr('gitact.commitNone'), command: 'commit', prompt: commitPrompt, enabled: dirty > 0 },
     { act: 'push', label: tr('gitact.push'), hint: unpushed ? (ahead > 0 ? tr('gitact.pushHintAhead', { n: ahead }) : tr('gitact.pushHintFirst')) : tr('gitact.pushNone'), command: 'push', prompt: pushPrompt, enabled: unpushed },
   ];
+  // Only a feature branch can fall behind its base; the action never becomes the default button.
+  if (!onBase) {
+    const behind = st?.baseBehind ?? 0;
+    // The open PR's target (as the host measured it) beats the session's base.
+    const base = st?.base ?? baseBranch!;
+    const rebase = strategy === 'rebase';
+    actions.push({
+      act: 'sync',
+      label: tr(rebase ? 'gitact.syncRebase' : 'gitact.syncMerge', { base }),
+      hint: behind > 0 ? tr('gitact.syncHint', { base, n: behind }) : tr('gitact.syncNone'),
+      command: 'sync-base',
+      prompt: tr(rebase ? 'gitact.syncRebasePrompt' : 'gitact.syncMergePrompt', { base, branch }),
+      enabled: behind > 0,
+    });
+  }
   // Submit the PR by default; on the base branch itself that would mean branching off, so
   // the default there is the smaller direct git step instead.
   const primary: GitAction | null = pr

@@ -4,7 +4,7 @@
 
 import type { MessageKey } from './i18n';
 
-export type BuiltinCommand = 'commit' | 'push' | 'create-pr' | 'update-pr' | 'new-pr' | 'fix-conflicts' | 'fix-ci';
+export type BuiltinCommand = 'commit' | 'push' | 'create-pr' | 'update-pr' | 'new-pr' | 'fix-conflicts' | 'fix-ci' | 'sync-base';
 
 /** What each command is for, shown beside the instruction it expands to. */
 export const BUILTIN_COMMAND_INFO: Record<BuiltinCommand, MessageKey> = {
@@ -15,6 +15,7 @@ export const BUILTIN_COMMAND_INFO: Record<BuiltinCommand, MessageKey> = {
   'new-pr': 'cmdinfo.new-pr',
   'fix-conflicts': 'cmdinfo.fix-conflicts',
   'fix-ci': 'cmdinfo.fix-ci',
+  'sync-base': 'cmdinfo.sync-base',
 };
 
 export interface CommandMessage {

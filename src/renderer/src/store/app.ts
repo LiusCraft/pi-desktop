@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type {
-  AppInfo, ImportableSession, ModelInfo, OutputStyle, PermissionMode, Project, SessionKind, SettingsPayload, ThinkingLevel, WorkProject, WorktreeInfo,
+  AppInfo, ImportableSession, ModelInfo, OutputStyle, PermissionMode, Project, SessionKind, SettingsPayload, SyncStrategy, ThinkingLevel, WorkProject, WorktreeInfo,
 } from '@shared/protocol';
 import type { RemoteActive } from '@shared/remote';
 import type { ScheduledTask } from '@shared/schedule';
@@ -37,11 +37,13 @@ export interface Prefs {
   /** Work: undefined = not chosen yet, null = temporary workspace. */
   workFolder: string | null | undefined;
   previewUrl: string;
+  /** Branch bar: merge or rebase when the base branch has moved on. */
+  syncStrategy: SyncStrategy;
 }
 
 const PREF_KEYS: Record<keyof Prefs, string> = {
   project: 'pd_project', worktree: 'pd_worktree', mode: 'pd_mode', model: 'pd_model', effort: 'pd_effort',
-  viewMode: 'pd_view_mode', outputStyle: 'pd_output_style', workFolder: 'pd_work_folder', previewUrl: 'pd_preview',
+  viewMode: 'pd_view_mode', outputStyle: 'pd_output_style', workFolder: 'pd_work_folder', previewUrl: 'pd_preview', syncStrategy: 'pd_sync_strategy',
 };
 
 function loadPrefs(): Prefs {
@@ -55,7 +57,9 @@ function loadPrefs(): Prefs {
     outputStyle: read('pd_output_style', 'default'),
     workFolder: read<string | null | undefined>('pd_work_folder', undefined),
     previewUrl: read('pd_preview', 'http://localhost:5173'),
+    syncStrategy: read('pd_sync_strategy', 'merge'),
   };
+  if (p.syncStrategy !== 'rebase') p.syncStrategy = 'merge';
   if (!['normal', 'thinking', 'verbose'].includes(p.viewMode)) p.viewMode = 'normal';
   return p;
 }

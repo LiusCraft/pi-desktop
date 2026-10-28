@@ -40,7 +40,7 @@ describe('working-tree state', () => {
   });
 
   it('reports a pushed, clean tree as in sync', async () => {
-    assert.deepEqual(await workState(repo), { dirty: [], ahead: 0, upstream: 'origin/main' });
+    assert.deepEqual(await workState(repo), { dirty: [], ahead: 0, behind: 0, baseBehind: 0, base: null, upstream: 'origin/main' });
   });
 
   it('lists modified and untracked paths, including names with spaces', async () => {
@@ -61,6 +61,18 @@ describe('working-tree state', () => {
   it('drops back to in sync once the commits are pushed', async () => {
     git(repo, 'push');
     assert.equal((await workState(repo)).ahead, 0);
+  });
+
+  it('counts commits the base branch has that the branch lacks', async () => {
+    git(repo, 'checkout', '-b', 'topic');
+    git(repo, 'checkout', 'main');
+    write('tracked.txt', 'moved on\n');
+    git(repo, 'commit', '-am', 'main moves');
+    git(repo, 'checkout', 'topic');
+    const state = await workState(repo, 'main');
+    assert.equal(state.baseBehind, 1);
+    assert.equal(state.base, 'main');
+    assert.equal((await workState(repo, 'gone')).baseBehind, 0);
   });
 
   it('reports no upstream for a branch that was never pushed', async () => {

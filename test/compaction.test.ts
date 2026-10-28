@@ -1,5 +1,6 @@
 // What the transcript shows while a compaction runs and once it ends.
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { setActiveLocale } from '../src/shared/i18n/runtime';
 import type { SessionMeta } from '../src/shared/protocol';
 import { applyPiEvent, collapsedItems, emptySession, newKey, replay, transcriptItems } from '../src/renderer/src/store/transcript';
 import type { Item } from '../src/renderer/src/store/types';
@@ -9,6 +10,9 @@ const cards = (items: Item[]) => items.flatMap((i) => (i.kind === 'compaction' ?
 const notes = (items: Item[]) => items.flatMap((i) => (i.kind === 'note' ? [i.text] : []));
 
 describe('compaction in the transcript', () => {
+  // The messages follow the machine's language; the assertions read English.
+  beforeAll(() => setActiveLocale('en'));
+
   it('marks the session compacting, then replaces the note with a summary card', () => {
     const s = emptySession(meta);
     applyPiEvent(s, { type: 'compaction_start', reason: 'manual' }, 'normal');
