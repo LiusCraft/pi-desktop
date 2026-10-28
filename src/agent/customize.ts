@@ -8,6 +8,7 @@ import { tr } from '@shared/i18n/runtime';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import spawn from 'cross-spawn';
 import {
   DefaultPackageManager, DefaultResourceLoader, parseFrontmatter, SettingsManager,
 } from '@earendil-works/pi-coding-agent';
@@ -287,10 +288,31 @@ export function removeConnector(env: CustomizeEnv, name: string, scope: 'user' |
 
 // ------------------------------------------------------------ plugins (pi packages)
 
+/**
+ * pi runs npm/git with inherited stdio and no `windowsHide`, which pops a console window on
+ * Windows. Swap its two spawn helpers (private in the typings) for hidden, piped ones.
+ */
+function hideChildWindows(pm: DefaultPackageManager) {
+  const patch = pm as unknown as {
+    spawnCommand: (command: string, args: string[], options?: { cwd?: string }) => ReturnType<typeof spawn>;
+    spawnCaptureCommand: (command: string, args: string[], options?: { cwd?: string; env?: NodeJS.ProcessEnv }) => ReturnType<typeof spawn>;
+  };
+  const hidden = (command: string, args: string[], options?: { cwd?: string; env?: NodeJS.ProcessEnv }) =>
+    spawn(command, args, { cwd: options?.cwd, env: { ...process.env, ...options?.env }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  patch.spawnCommand = (command, args, options) => {
+    const child = hidden(command, args, options);
+    child.stdout?.resume();
+    child.stderr?.resume();
+    return child;
+  };
+  patch.spawnCaptureCommand = hidden;
+  return pm;
+}
+
 function packageManager(env: CustomizeEnv) {
   const cwd = env.project ?? env.agentDir;
   const settingsManager = SettingsManager.create(cwd, env.agentDir, { projectTrusted: env.projectTrusted });
-  return new DefaultPackageManager({ cwd, agentDir: env.agentDir, settingsManager });
+  return hideChildWindows(new DefaultPackageManager({ cwd, agentDir: env.agentDir, settingsManager }));
 }
 
 export async function installPlugin(env: CustomizeEnv, source: string, scope: 'user' | 'project') {
