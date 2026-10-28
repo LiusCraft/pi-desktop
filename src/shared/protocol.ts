@@ -1100,6 +1100,11 @@ export interface Api {
   'customize:connectorSave'(draft: ConnectorDraft, project: string | null): CustomizeCatalog;
   'customize:connectorSetEnabled'(name: string, scope: 'user' | 'project', enabled: boolean, project: string | null): CustomizeCatalog;
   'customize:connectorRemove'(name: string, scope: 'user' | 'project', project: string | null): CustomizeCatalog;
+  /** Copy the skills of a git repository into the personal skills folder (installing again updates them). */
+  'customize:skillsFromGit'(repo: string, subdir: string, project: string | null): CustomizeCatalog;
+  'customize:skillDelete'(file: string, project: string | null): CustomizeCatalog;
+  /** Remove the skills a `customize:skillsFromGit` install of `repo` copied in. */
+  'customize:skillsFromGitRemove'(repo: string, project: string | null): CustomizeCatalog;
   'customize:pluginInstall'(source: string, scope: 'user' | 'project', project: string | null): CustomizeCatalog;
   'customize:pluginRemove'(source: string, scope: 'user' | 'project', project: string | null): CustomizeCatalog;
   'customize:pluginUpdate'(source: string | null, project: string | null): CustomizeCatalog;
@@ -1161,7 +1166,7 @@ export const HOST_CHANNELS = [
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
   'sessions:import', 'git:branch', 'git:branches', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove',
   'customize:list', 'customize:readFile', 'customize:skillSetDisabled', 'customize:skillCreate', 'customize:promptCreate', 'customize:promptDelete', 'customize:claudeImport', 'customize:claudeDismiss', 'customize:connectorSave',
-  'customize:connectorSetEnabled', 'customize:connectorRemove', 'customize:pluginInstall', 'customize:pluginRemove', 'customize:pluginUpdate', 'customize:pluginResources', 'customize:pluginSetResource',
+  'customize:connectorSetEnabled', 'customize:connectorRemove', 'customize:skillsFromGit', 'customize:skillDelete', 'customize:skillsFromGitRemove', 'customize:pluginInstall', 'customize:pluginRemove', 'customize:pluginUpdate', 'customize:pluginResources', 'customize:pluginSetResource',
   'activity:get', 'tasks:list', 'tasks:save', 'tasks:setEnabled', 'tasks:remove', 'tasks:run',
   'artifacts:list', 'artifacts:fromFile', 'artifacts:remove', 'artifacts:publish', 'artifacts:unpublish', 'storage:get', 'storage:save', 'storage:test',
   'web:get', 'web:save', 'web:test',

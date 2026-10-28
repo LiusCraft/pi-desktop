@@ -79,6 +79,10 @@ export const thread = defineMessages({
   'tool.thought': { en: 'Thought', zh: '思考' },
   'tool.thinking': { en: 'Thinking…', zh: '思考中…' },
 
+  'toolLabel.skillLoading': { en: 'Loading skill', zh: '正在加载技能' },
+  'toolLabel.skillLoaded': { en: 'Used skill', zh: '使用了技能' },
+  'group.usedSkill': { en: 'used a skill', zh: '使用了技能' },
+  'group.usedSkills': { en: 'used {n} skills', zh: '使用了 {n} 个技能' },
   'toolLabel.reading': { en: 'Reading {name}', zh: '正在读取 {name}' },
   'toolLabel.read': { en: 'Read {name}', zh: '读取了 {name}' },
   'toolLabel.editing': { en: 'Editing {name}', zh: '正在编辑 {name}' },

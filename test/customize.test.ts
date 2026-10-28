@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { catalog, createSkill, importClaudeSkills, pluginResources, removeConnector, saveConnector, setConnectorEnabled, setPluginResource, setSkillDisabled, type CustomizeEnv } from '../src/agent/customize';
+import { catalog, createSkill, deleteSkill, healPackages, importClaudeSkills, installSkillRepo, pluginResources, removeSkillRepo, removeConnector, saveConnector, setConnectorEnabled, setPluginResource, setSkillDisabled, type CustomizeEnv } from '../src/agent/customize';
 import { setActiveLocale } from '../src/shared/i18n/runtime';
 
 // These assertions read the host's Chinese messages.
@@ -123,5 +124,63 @@ describe('customize plugin resources', () => {
     await setPluginResource(env, pkg, 'user', a, true);
     expect(await state()).toEqual([['extensions/a.js', true], ['extensions/b.js', true]]);
     expect(JSON.parse(fs.readFileSync(settings, 'utf8')).packages).toEqual([pkg]);
+  });
+});
+
+describe('customize package healing', () => {
+  const source = 'git:github.com/acme/skills';
+  const clone = () => path.join(env.agentDir, 'git', 'github.com', 'acme', 'skills');
+  const setup = (gitFiles: string[]) => {
+    fs.mkdirSync(path.join(clone(), '.git'), { recursive: true });
+    for (const name of gitFiles) fs.writeFileSync(path.join(clone(), '.git', name), '');
+    fs.writeFileSync(path.join(clone(), 'README.md'), 'hi');
+    fs.writeFileSync(path.join(env.agentDir, 'settings.json'), JSON.stringify({ packages: [source] }));
+  };
+
+  it('clears a clone whose .git lacks HEAD or config', () => {
+    setup(['packed-refs']);
+    healPackages(env);
+    expect(fs.existsSync(clone())).toBe(false);
+  });
+
+  it('leaves a complete clone alone', () => {
+    setup(['HEAD', 'config']);
+    healPackages(env);
+    expect(fs.existsSync(clone())).toBe(true);
+  });
+});
+
+describe('customize skills from a git repository', () => {
+  it('copies the skill folders in and leaves no clone behind', async () => {
+    const repo = path.join(root, 'skill-repo');
+    fs.mkdirSync(path.join(repo, 'skills', 'delta', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(repo, 'skills', 'delta', 'SKILL.md'), '---\nname: delta\ndescription: Third skill\n---\nDo gamma.\n');
+    fs.writeFileSync(path.join(repo, 'skills', 'delta', 'rules', 'a.md'), 'rule');
+    fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ devDependencies: { x: 'catalog:' } }));
+    const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: repo });
+    git('init', '-q');
+    git('add', '-A');
+    git('commit', '-q', '-m', 'init');
+    const done = await installSkillRepo(env, repo, 'skills');
+    expect(done.skills.some((s) => s.name === 'delta')).toBe(true);
+    expect(fs.existsSync(path.join(env.agentDir, 'skills', 'delta', 'rules', 'a.md'))).toBe(true);
+    await expect(installSkillRepo(env, repo, 'nothing-here')).rejects.toThrow();
+    const removed = await removeSkillRepo(env, repo);
+    expect(removed.skills.some((s) => s.name === 'delta')).toBe(false);
+    expect(fs.existsSync(path.join(env.agentDir, 'skills', 'delta'))).toBe(false);
+    await expect(removeSkillRepo(env, repo)).rejects.toThrow();
+  });
+
+  it('deletes a personal skill, and refuses one outside the skills folders', async () => {
+    await createSkill(env, { name: 'epsilon', description: 'Temp', body: 'Do epsilon.', scope: 'user' });
+    const file = path.join(env.agentDir, 'skills', 'epsilon', 'SKILL.md');
+    const after = await deleteSkill(env, file);
+    expect(after.skills.some((s) => s.name === 'epsilon')).toBe(false);
+    expect(fs.existsSync(path.dirname(file))).toBe(false);
+    const stray = path.join(root, 'elsewhere', 'SKILL.md');
+    fs.mkdirSync(path.dirname(stray), { recursive: true });
+    fs.writeFileSync(stray, 'x');
+    await expect(deleteSkill(env, stray)).rejects.toThrow();
+    expect(fs.existsSync(stray)).toBe(true);
   });
 });

@@ -457,6 +457,12 @@ export class SessionHub {
     return live;
   }
 
+  /** The folders of the skills this session has loaded. */
+  private skillFolders(id: string): string[] {
+    const loader = this.live.get(id)?.runtime.session.resourceLoader;
+    return loader ? loader.getSkills().skills.map((s) => path.dirname(s.filePath)) : [];
+  }
+
   /** Where a Work session may touch files: its folder to write, and that plus the project's Code folders to read. */
   private workScope(id: string): WorkScope | undefined {
     const m = this.meta(id);
@@ -464,7 +470,8 @@ export class SessionHub {
     return {
       cwd: m.cwd,
       // Read fresh, so a folder linked on the Projects page applies to the next call.
-      readable: () => [...(this.projects.workFolders().find((p) => p.path === m.projectPath)?.codeFolders ?? []), this.agentDir],
+      // Skills are read on the model's own initiative, so wherever the loaded ones live counts too (~/.agents/skills, an imported folder).
+      readable: () => [...(this.projects.workFolders().find((p) => p.path === m.projectPath)?.codeFolders ?? []), this.agentDir, ...this.skillFolders(id)],
     };
   }
 
@@ -474,6 +481,8 @@ export class SessionHub {
       const m = this.meta(live.id);
       const projectTrusted = !hasTrustRequiringProjectResources(cwd) || this.trust.get(cwd) === true;
       const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted });
+      // pi installs missing packages as the session starts, and stumbles on a half-cloned one.
+      customize.healPackages({ agentDir, project: cwd, projectTrusted, claudeSkillsDeclined: false });
       const services = await createAgentSessionServices({
         cwd, agentDir, settingsManager, modelRuntime: this.models,
         resourceLoaderOptions: {
@@ -790,6 +799,9 @@ export class SessionHub {
     saveConnector: (draft: ConnectorDraft, project: string | null) => customize.saveConnector(this.customizeEnv(project), draft),
     setConnectorEnabled: (name: string, scope: 'user' | 'project', enabled: boolean, project: string | null) => customize.setConnectorEnabled(this.customizeEnv(project), name, scope, enabled),
     removeConnector: (name: string, scope: 'user' | 'project', project: string | null) => customize.removeConnector(this.customizeEnv(project), name, scope),
+    deleteSkill: (file: string, project: string | null) => customize.deleteSkill(this.customizeEnv(project), file),
+    removeSkillRepo: (repo: string, project: string | null) => customize.removeSkillRepo(this.customizeEnv(project), repo),
+    installSkillRepo: (repo: string, subdir: string, project: string | null) => customize.installSkillRepo(this.customizeEnv(project), repo, subdir),
     installPlugin: (source: string, scope: 'user' | 'project', project: string | null) => customize.installPlugin(this.customizeEnv(project), source, scope),
     removePlugin: (source: string, scope: 'user' | 'project', project: string | null) => customize.removePlugin(this.customizeEnv(project), source, scope),
     updatePlugins: (source: string | null, project: string | null) => customize.updatePlugins(this.customizeEnv(project), source),

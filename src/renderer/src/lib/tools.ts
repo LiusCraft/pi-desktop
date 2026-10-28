@@ -110,8 +110,15 @@ export function codemodeSubject(tool: ToolState): string {
 }
 
 /** Plain-text label, e.g. "Ran npm test" / "Reading date.js". */
+/** The skill a `read` call is loading: pi has the model read a skill's SKILL.md, so that read is the skill being used. */
+export function skillOf(tool: ToolState): string | undefined {
+  return tool.kind === 'read' ? /(?:^|[\\/])([^\\/]+)[\\/]SKILL\.md$/i.exec(tool.path ?? '')?.[1] : undefined;
+}
+
 export function toolLabel(tool: ToolState) {
   const run = tool.status === 'running';
+  const skill = skillOf(tool);
+  if (skill) return `${t(run ? 'toolLabel.skillLoading' : 'toolLabel.skillLoaded')} ${skill}`;
   if (bareName(tool.name) === CODEMODE_TOOL) {
     const what = codemodeSubject(tool);
     return t(run ? 'toolLabel.scripting' : 'toolLabel.scripted') + (what ? `: ${what}` : '');
@@ -146,9 +153,10 @@ export function toolScope(tool: ToolState): string {
 
 /** "Ran 2 commands, read 3 files, edited a file". */
 export function groupSummary(tools: ToolState[]) {
-  const c = { cmd: 0, fail: 0, read: new Set<string>(), edit: new Set<string>(), write: new Set<string>(), search: 0, agent: 0, other: 0 };
+  const c = { cmd: 0, fail: 0, skill: new Set<string>(), read: new Set<string>(), edit: new Set<string>(), write: new Set<string>(), search: 0, agent: 0, other: 0 };
   for (const t of tools) {
     if (t.kind === 'bash') { c.cmd++; if (t.status === 'err') c.fail++; }
+    else if (skillOf(t)) c.skill.add(skillOf(t)!);
     else if (t.kind === 'read') c.read.add(t.path ?? '');
     else if (t.kind === 'edit') c.edit.add(t.path ?? '');
     else if (t.kind === 'write') c.write.add(t.path ?? '');
@@ -158,6 +166,7 @@ export function groupSummary(tools: ToolState[]) {
   }
   const parts: string[] = [];
   if (c.cmd) parts.push((c.cmd === 1 ? t('group.ranCommand') : t('group.ranCommands', { n: c.cmd })) + (c.fail ? t('group.failed', { n: c.fail }) : ''));
+  if (c.skill.size) parts.push(c.skill.size === 1 ? t('group.usedSkill') : t('group.usedSkills', { n: c.skill.size }));
   if (c.read.size) parts.push(c.read.size === 1 ? t('group.readFile') : t('group.readFiles', { n: c.read.size }));
   if (c.write.size) parts.push(c.write.size === 1 ? t('group.wroteFile') : t('group.wroteFiles', { n: c.write.size }));
   if (c.edit.size) parts.push(c.edit.size === 1 ? t('group.editedFile') : t('group.editedFiles', { n: c.edit.size }));

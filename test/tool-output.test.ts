@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import { parseJsonOutput, splitFences, splitScriptHeader } from '@/lib/tool-output';
-import { nestedCalls } from '@/lib/tools';
+import { nestedCalls, skillOf, toolFromArgs } from '@/lib/tools';
 
 describe('tool output rendering', () => {
   it('keeps an output without fences as one text run', () => {
@@ -70,5 +70,18 @@ describe('codemode nested calls', () => {
   it('reads a missing or non-array details.calls as no calls', () => {
     assert.deepEqual(nestedCalls(undefined), []);
     assert.deepEqual(nestedCalls({ calls: [] }), []);
+  });
+});
+
+describe('skill use in the transcript', () => {
+  const read = (path: string) => toolFromArgs('t1', 'read', { path });
+  it('names the skill when a SKILL.md is read', () => {
+    assert.equal(skillOf(read('C:/Users/me/.pi/agent/skills/make-slides/SKILL.md')), 'make-slides');
+    assert.equal(skillOf(read('/home/me/.agents/skills/voiceover/SKILL.md')), 'voiceover');
+  });
+  it('ignores other reads, and files the skill brings along', () => {
+    assert.equal(skillOf(read('notes/README.md')), undefined);
+    assert.equal(skillOf(read('/home/me/.agents/skills/voiceover/rules/a.md')), undefined);
+    assert.equal(skillOf(toolFromArgs('t2', 'write', { path: '/x/skills/a/SKILL.md' })), undefined);
   });
 });

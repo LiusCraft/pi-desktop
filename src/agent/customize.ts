@@ -192,6 +192,42 @@ export async function createPrompt(env: CustomizeEnv, draft: PromptDraft) {
   return catalog(env);
 }
 
+/** Folders a skill may be deleted from: the personal and project skill folders, never a linked folder or a package. */
+function skillRoots(env: CustomizeEnv) {
+  return [path.join(env.agentDir, 'skills'), agentsSkillsDir(), ...(env.project ? [path.join(env.project, '.pi', 'skills'), path.join(env.project, '.agents', 'skills')] : [])];
+}
+
+/** Delete a personal or project skill: its folder, or the single Markdown file it is. */
+export async function deleteSkill(env: CustomizeEnv, file: string) {
+  const isFolderSkill = path.basename(file).toLowerCase() === 'skill.md';
+  const target = isFolderSkill ? path.dirname(file) : file;
+  const parent = norm(path.dirname(target));
+  if (!skillRoots(env).some((root) => norm(root) === parent)) throw new Error(tr('ag.skillNotDeletable'));
+  // Drop its off-switch from settings too, so a later skill of the same name starts enabled.
+  await setSkillDisabled(env, file, false);
+  if (isFolderSkill) removeTree(target);
+  else fs.rmSync(target, { force: true });
+  return catalog(env);
+}
+
+/** Remove the skills `installSkillRepo` copied in from `repo`. */
+export async function removeSkillRepo(env: CustomizeEnv, repo: string) {
+  const root = path.join(env.agentDir, 'skills');
+  let removed = 0;
+  if (fs.existsSync(root)) {
+    for (const e of fs.readdirSync(root, { withFileTypes: true })) {
+      const mark = path.join(root, e.name, SOURCE_MARK);
+      if (e.isDirectory() && fs.existsSync(mark) && fs.readFileSync(mark, 'utf8') === repo) {
+        removeTree(path.join(root, e.name));
+        removed++;
+      }
+    }
+  }
+  // Saying "uninstalled" when nothing was found would hide that these skills have to be deleted by hand.
+  if (!removed) throw new Error(tr('ag.nothingToRemove'));
+  return catalog(env);
+}
+
 export async function deletePrompt(env: CustomizeEnv, file: string) {
   ownPromptFile(env, file);
   fs.rmSync(file, { force: true });
@@ -362,8 +398,97 @@ export async function installPlugin(env: CustomizeEnv, source: string, scope: 'u
   const s = source.trim();
   if (!s) throw new Error(tr('ag.needPackage'));
   if (scope === 'project' && !env.project) throw new Error(tr('ag.needProjectShort'));
-  await packageManager(env).installAndPersist(s, { local: scope === 'project' });
+  const manager = packageManager(env);
+  clearBrokenClone(manager.getInstalledPath(s, scope));
+  healPackages(env);
+  await manager.installAndPersist(s, { local: scope === 'project' });
   return catalog(env);
+}
+
+/** Files a working clone always has; a clone cut short can lack them. */
+const CLONE_MARKERS = ['HEAD', 'config'];
+
+/**
+ * A clone cut short (the app closed, a virus scanner held a file) can leave a folder whose `.git` lacks HEAD or config.
+ * pi takes any existing folder for an installed package and tries to update it, so it fails on every retry; clear it,
+ * and the next install or session start clones it afresh.
+ */
+function clearBrokenClone(dir: string | undefined) {
+  const git = dir && path.join(dir, '.git');
+  if (!dir || !git || !fs.existsSync(git) || CLONE_MARKERS.every((name) => fs.existsSync(path.join(git, name)))) return;
+  try {
+    removeTree(dir);
+  } catch {
+    // Held open by another program: the install reports its own error and the next try gets another chance.
+  }
+}
+
+/** Delete a folder tree. Git marks its object files read-only, which Windows refuses to delete until the flag is cleared. */
+function removeTree(dir: string) {
+  const writable = (p: string) => {
+    for (const e of fs.readdirSync(p, { withFileTypes: true })) {
+      const child = path.join(p, e.name);
+      if (e.isDirectory()) writable(child);
+      else fs.chmodSync(child, 0o666);
+    }
+  };
+  try { writable(dir); } catch { /* removed below or reported by rmSync */ }
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+}
+
+const CLONE_TIMEOUT_MS = 120_000;
+const SOURCE_MARK = '.pi-desktop-source';
+
+function gitClone(repo: string, dest: string) {
+  return new Promise<void>((resolve, reject) => {
+    const child = spawn('git', ['clone', '--depth', '1', repo, dest], { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+    let stderr = '';
+    child.stderr?.on('data', (d) => { stderr += d; });
+    const timer = setTimeout(() => child.kill(), CLONE_TIMEOUT_MS);
+    child.on('error', (err) => { clearTimeout(timer); reject(err); });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve();
+      else reject(new Error(stderr.trim().split(/\r?\n/).pop() || `git clone exited with code ${code}`));
+    });
+  });
+}
+
+/**
+ * Copy the skills of a git repository (every folder with a SKILL.md under `subdir`) into the personal skills folder.
+ * Unlike a pi package this never runs npm in the clone, which suits repositories whose package.json is for their own development.
+ * Installing again updates the copies.
+ */
+export async function installSkillRepo(env: CustomizeEnv, repo: string, subdir: string) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-skills-'));
+  try {
+    const clone = path.join(tmp, 'repo');
+    await gitClone(repo, clone);
+    const root = path.join(clone, subdir);
+    const names = fs.existsSync(root)
+      ? fs.readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory() && fs.existsSync(path.join(root, e.name, 'SKILL.md'))).map((e) => e.name)
+      : [];
+    if (!names.length) throw new Error(tr('ag.noSkillsInRepo', { repo }));
+    const dest = path.join(env.agentDir, 'skills');
+    fs.mkdirSync(dest, { recursive: true });
+    for (const name of names) {
+      fs.cpSync(path.join(root, name), path.join(dest, name), { recursive: true, force: true });
+      // Remembers where the copy came from, so uninstalling removes exactly what this installed.
+      fs.writeFileSync(path.join(dest, name, SOURCE_MARK), repo, 'utf8');
+    }
+  } finally {
+    try { removeTree(tmp); } catch { /* the temp folder is cleared by the system eventually */ }
+  }
+  return catalog(env);
+}
+
+/** Clear the broken clones among the configured packages. Runs before an install or update and when a session starts. */
+export function healPackages(env: CustomizeEnv) {
+  try {
+    for (const p of packageManager(env).listConfiguredPackages()) clearBrokenClone(p.installedPath);
+  } catch {
+    // Healing is best effort; the operation that follows reports a real failure.
+  }
 }
 
 export async function removePlugin(env: CustomizeEnv, source: string, scope: 'user' | 'project') {
@@ -373,6 +498,7 @@ export async function removePlugin(env: CustomizeEnv, source: string, scope: 'us
 }
 
 export async function updatePlugins(env: CustomizeEnv, source: string | null) {
+  healPackages(env);
   await packageManager(env).update(source ?? undefined);
   return catalog(env);
 }

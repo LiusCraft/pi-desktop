@@ -26,7 +26,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { call } from '@/lib/api';
 import { t as tr, useT } from '@/lib/i18n';
 import { ago, fmtCost, fmtMs, fmtTok, fname } from '@/lib/format';
-import { bareName, CODEMODE_TOOL, codemodeSubject, groupStats, groupSummary, isFileTool, toolLabel, toolScope, type NestedToolCall, type ToolState } from '@/lib/tools';
+import { bareName, CODEMODE_TOOL, codemodeSubject, groupStats, groupSummary, isFileTool, skillOf, toolLabel, toolScope, type NestedToolCall, type ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
 import { useApp, updateSession } from '@/store/app';
 import { forgeName, forgeOfUrl } from '@shared/forge';
@@ -548,6 +548,8 @@ function splitLabel(tool: ToolState): [string, string] {
     return [tr(tool.status === 'running' ? 'toolLabel.scripting' : 'toolLabel.scripted'), what];
   }
   if (tool.kind === 'other') return [toolLabel(tool), ''];
+  const skill = skillOf(tool);
+  if (skill) return [tr(tool.status === 'running' ? 'toolLabel.skillLoading' : 'toolLabel.skillLoaded'), skill];
   if (tool.kind === 'websearch') return [tr(tool.status === 'running' ? 'toolLabel.webSearching.verb' : 'toolLabel.webSearched.verb'), tool.q];
   const label = toolLabel(tool);
   const cut = label.indexOf(' ');

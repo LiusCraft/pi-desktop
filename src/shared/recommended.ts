@@ -28,12 +28,21 @@ export interface RecommendedConnector extends Base {
   kind: 'connector';
   connector: Omit<ConnectorDraft, 'scope'>;
 }
-export type Recommended = RecommendedSkill | RecommendedPlugin | RecommendedConnector;
+/** The skills of a git repository, copied in; for repositories that are not pi packages. */
+export interface RecommendedSkillRepo extends Base {
+  kind: 'skillRepo';
+  repo: string;
+  /** Folder in the repository that holds the skill folders. */
+  subdir: string;
+  /** A skill the repository brings; once it is listed the set counts as installed. */
+  marker: string;
+}
+export type Recommended = RecommendedSkill | RecommendedPlugin | RecommendedConnector | RecommendedSkillRepo;
 
 export const RECOMMENDED: readonly Recommended[] = [
   { id: 'slides', group: 'create', kind: 'skill', name: 'make-slides', title: 'rec.slides.title', desc: 'rec.slides.desc', skillDesc: 'rec.slides.skillDesc', body: 'rec.slides.body' },
-  { id: 'remotion', group: 'create', kind: 'plugin', source: 'git:github.com/remotion-dev/skills', title: 'rec.remotion.title', desc: 'rec.remotion.desc' },
-  { id: 'edge-tts', group: 'create', kind: 'connector', connector: { name: 'edge-tts', transport: 'stdio', command: 'uvx', args: ['--from', 'saitrogen-edge-tts-mcp', 'edge-tts-mcp'] }, title: 'rec.tts.title', desc: 'rec.tts.desc' },
+  { id: 'remotion', group: 'create', kind: 'skillRepo', repo: 'https://github.com/remotion-dev/skills', subdir: 'skills', marker: 'remotion-best-practices', title: 'rec.remotion.title', desc: 'rec.remotion.desc' },
+  { id: 'edge-tts', group: 'create', kind: 'connector', connector: { name: 'edge-tts', transport: 'stdio', command: 'uvx', args: ['--from', 'saitrogen-edge-tts-mcp', '--with', 'mcp<2', 'edge-tts-mcp'] }, title: 'rec.tts.title', desc: 'rec.tts.desc' },
   { id: 'voiceover', group: 'create', kind: 'skill', name: 'voiceover', title: 'rec.voiceover.title', desc: 'rec.voiceover.desc', skillDesc: 'rec.voiceover.skillDesc', body: 'rec.voiceover.body' },
   { id: 'pm', group: 'roles', kind: 'skill', name: 'product-manager', title: 'rec.pm.title', desc: 'rec.pm.desc', skillDesc: 'rec.pm.skillDesc', body: 'rec.pm.body' },
   { id: 'architect', group: 'roles', kind: 'skill', name: 'architect', title: 'rec.arch.title', desc: 'rec.arch.desc', skillDesc: 'rec.arch.skillDesc', body: 'rec.arch.body' },

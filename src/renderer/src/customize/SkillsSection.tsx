@@ -2,7 +2,7 @@
 // skills can be switched off (kept on disk, not loaded) or created here; skills that come
 // with a plugin are read-only because the plugin owns them.
 import { useEffect, useState } from 'react';
-import { ChevronRightIcon, FolderOpenIcon, PlusIcon, SparklesIcon } from 'lucide-react';
+import { ChevronRightIcon, FolderOpenIcon, PlusIcon, SparklesIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
 import type { CustomizeCatalog, CustomizeScope, SkillDraft, SkillInfo } from '@shared/protocol';
 import { Markdown } from '@/components/common/Markdown';
@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { call, errText, isRemote } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { fname } from '@/lib/format';
+import { dialogs } from '@/store/dialogs';
 import { BackButton, Empty, Field, Heading, Panel, Segmented, stripFrontmatter } from './ui';
 
 interface Props {
@@ -26,7 +27,7 @@ interface Props {
 
 const SCOPE_TITLE = { user: 'skills.scope.user', project: 'skills.scope.project', package: 'skills.scope.package' } as const;
 
-function SkillRow({ skill, onOpen, onToggle }: { skill: SkillInfo; onOpen: () => void; onToggle?: (on: boolean) => void }) {
+function SkillRow({ skill, onOpen, onToggle, onDelete }: { skill: SkillInfo; onOpen: () => void; onToggle?: (on: boolean) => void; onDelete?: () => void }) {
   const t = useT();
   return (
     <div className="flex items-center gap-3 px-4 py-3">
@@ -40,6 +41,7 @@ function SkillRow({ skill, onOpen, onToggle }: { skill: SkillInfo; onOpen: () =>
           <span className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{skill.description || t('customize.noDescription')}</span>
         </span>
       </button>
+      {onDelete && <Button size="icon" variant="ghost" className="size-8 text-destructive" title={t('skills.delete')} onClick={onDelete}><Trash2Icon className="size-4" /></Button>}
       {onToggle && <Switch checked={!skill.disabled} onCheckedChange={onToggle} aria-label={t(skill.disabled ? 'skills.enable' : 'skills.disable', { name: skill.name })} />}
     </div>
   );
@@ -135,6 +137,15 @@ export function SkillsSection({ catalog, project, onCatalog }: Props) {
       toast.error(errText(err));
     }
   };
+  const remove = async (s: SkillInfo) => {
+    if (!(await dialogs.confirm(t('skills.deleteTitle', { name: s.name }), t('skills.deleteBody'), t('skills.delete'), true))) return;
+    try {
+      onCatalog(await call('customize:skillDelete', s.file, project));
+      toast.success(t('skills.deleted'));
+    } catch (err) {
+      toast.error(errText(err));
+    }
+  };
   const toggleGroup = (origin: string) =>
     setExpanded((e) => {
       const next = new Set(e);
@@ -211,7 +222,7 @@ export function SkillsSection({ catalog, project, onCatalog }: Props) {
           return (
             <section key={scope}>
               <h3 className="mb-2 text-sm font-medium text-muted-foreground">{t(SCOPE_TITLE[scope])}{scope === 'project' && project ? ` · ${fname(project)}` : ''}</h3>
-              <Panel>{list.map((s) => <SkillRow key={s.file} skill={s} onOpen={() => setOpen(s.file)} onToggle={(on) => void toggle(s, on)} />)}</Panel>
+              <Panel>{list.map((s) => <SkillRow key={s.file} skill={s} onOpen={() => setOpen(s.file)} onToggle={(on) => void toggle(s, on)} onDelete={() => void remove(s)} />)}</Panel>
             </section>
           );
         })}
