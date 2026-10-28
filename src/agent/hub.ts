@@ -9,16 +9,16 @@ import path from 'node:path';
 import {
   createAgentSession, createAgentSessionFromServices, createAgentSessionRuntime, createAgentSessionServices,
   createCodemodeExtension, createMcpExtension, createToolSearchExtension, DefaultResourceLoader, estimateTokens,
-  formatSkillsForPrompt, getAgentDir, hasTrustRequiringProjectResources, ModelRuntime, ProjectTrustStore, SessionManager, SettingsManager,
+  formatSkillsForPrompt, getAgentDir, getLatestCompactionEntry, hasTrustRequiringProjectResources, ModelRuntime, ProjectTrustStore, sessionEntryToContextMessages, SessionManager, SettingsManager,
   type AgentSession, type AgentSessionRuntime, type CreateAgentSessionRuntimeFactory, type ExtensionUIContext,
 } from '@earendil-works/pi-coding-agent';
 import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import { buildMessage, decodeUserContent } from '@shared/attachments';
 import type {
-  AgentDraft, ConnectorDraft, SkillDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
+  AgentDraft, AgentMessage, ConnectorDraft, SkillDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
   PrStatus, PrSummary, SessionCleanup, SessionMeta, SessionRemoval, SessionStats, SetupStep, Settings, SideChat, SpawnTask, SubagentProgress, WorkIdea, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
 } from '@shared/protocol';
-import { SHELL_SESSION_MODES } from '@shared/protocol';
+import { MAX_SESSION_TITLE, SHELL_SESSION_MODES } from '@shared/protocol';
 import { decodeCommandMessage, isCommandMessage } from '@shared/command-message';
 import { decodePeerMessage,encodePeerMessage, isPeerMessage } from '@shared/peer-message';
 import { decodePrEvent, encodePrEvent, isPrEvent } from '@shared/pr-event';
@@ -122,6 +122,20 @@ interface PrWatchEntry {
   /** A look is running; another request waits for it instead of reading the same snapshot twice. */
   busy?: boolean;
   again?: boolean;
+}
+
+/** Messages the latest compaction summarized away: still in the session entries, no longer in the model's context. */
+export function compactedMessages(manager: SessionManager): AgentMessage[] {
+  const branch = manager.getBranch();
+  const latest = getLatestCompactionEntry(branch);
+  if (!latest) return [];
+  const at = branch.findIndex((entry) => entry.id === latest.id);
+  const kept = branch.findIndex((entry) => entry.id === latest.firstKeptEntryId);
+  // Everything before the kept tail, and never the summary itself: it is the card the transcript shows.
+  const end = kept >= 0 && (at < 0 || kept < at) ? kept : at;
+  if (end < 0) return [];
+  // SAFETY: the protocol reads a subset of SDK messages; their content blocks are structured-cloneable.
+  return branch.slice(0, end).flatMap((entry) => sessionEntryToContextMessages(entry)) as unknown as AgentMessage[];
 }
 
 export class SessionHub {
@@ -855,9 +869,15 @@ export class SessionHub {
       levels: session.getAvailableThinkingLevels() as ThinkingLevel[],
       isStreaming: session.isStreaming,
       isCompacting: session.isCompacting,
+      hiddenMessages: this.compactedMessages(session).length,
       stats: this.statsOf(session),
       pending: [...live.pending.values()].map((p) => p.request),
     };
+  }
+
+  /** The messages the latest compaction summarized away: still in the session file, no longer in the model's context. */
+  private compactedMessages(session: AgentSession): AgentMessage[] {
+    return compactedMessages(session.sessionManager);
   }
 
   private messagesWithIds(session: AgentSession) {
@@ -1299,7 +1319,7 @@ export class SessionHub {
     if (patch.prAuto || patch.pr !== undefined) this.kickPrWatch(id, 0);
     if (patch.title?.trim()) {
       // A title set by the user is final: stop the placeholder/auto-naming path.
-      Object.assign(m, { title: patch.title.trim(), titleLocked: true, autoName: false });
+      Object.assign(m, { title: patch.title.trim().slice(0, MAX_SESSION_TITLE), titleLocked: true, autoName: false });
       this.live.get(id)?.runtime.session.setSessionName(m.title);
     }
     this.save();
@@ -1477,6 +1497,11 @@ export class SessionHub {
     const live = await this.ensure(id);
     const r = await live.runtime.session.compact(instructions);
     return { tokensBefore: r.tokensBefore, estimatedTokensAfter: r.estimatedTokensAfter };
+  }
+  /** Messages the latest compaction left out of the context, for showing them again on demand. */
+  async compactedHistory(id: string): Promise<AgentMessage[]> {
+    const live = await this.ensure(id);
+    return this.compactedMessages(live.runtime.session);
   }
   private statsOf(session: AgentSession): SessionStats | null {
     try {

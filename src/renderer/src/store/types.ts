@@ -49,6 +49,11 @@ export type Item =
   | { kind: 'plan'; key: string; toolCallId: string | null; title: string; md: string; requestId: string | null; resolved: string | null }
   /** Tasks the agent suggests; what the user did with each lives in `meta.suggestions`. */
   | { kind: 'suggest'; key: string; toolCallId: string; tasks: SpawnTask[] }
+  /**
+   * A compaction checkpoint: the summary is what the model keeps, and the messages above it are
+   * the history it replaces. Those start hidden behind "show earlier messages".
+   */
+  | { kind: 'compaction'; key: string; summary: string; tokensBefore?: number; tokensAfter?: number; /** The earlier messages are shown. */ open: boolean; /** Messages pi dropped, not in the transcript yet; fetched when they are shown. */ hidden: number; loading?: boolean; /** The summary body is expanded. */ openSummary: boolean }
   /** A turn the PR watcher started: shown as an incoming event, never as something the user typed. */
   | { kind: 'prEvent'; key: string; event: PrEvent; at: number }
   | { kind: 'foot'; key: string; t: number; usage?: string };

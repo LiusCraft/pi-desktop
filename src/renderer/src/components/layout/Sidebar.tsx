@@ -17,11 +17,12 @@ import { ago, fname } from '@/lib/format';
 import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import {
-  archiveSession, deleteSession, openSession, removeProject, renameSession, selectProject, setView, showActivity, showArchived, showArtifacts, showCustomize, showProjects, showScheduled, showWelcome, toggleSidebar,
+  archiveSession, deleteSession, openSession, removeProject, selectProject, setSessionTitle, setView, showActivity, showArchived, showArtifacts, showCustomize, showProjects, showScheduled, showWelcome, toggleSidebar,
 } from '@/store/actions';
 import { setApp, useApp } from '@/store/app';
+import { InlineEdit } from '@/components/common/InlineEdit';
 import type { MessageKey } from '@shared/i18n';
-import type { SessionKind } from '@shared/protocol';
+import { MAX_SESSION_TITLE, type SessionKind } from '@shared/protocol';
 import type { SessionView } from '@/store/types';
 
 export function SidebarToggle({ className }: { className?: string }) {
@@ -73,11 +74,11 @@ type MenuParts = { Item: typeof DropdownMenuItem | typeof ContextMenuItem; Separ
 const DROPDOWN_PARTS: MenuParts = { Item: DropdownMenuItem, Separator: DropdownMenuSeparator };
 const CONTEXT_PARTS: MenuParts = { Item: ContextMenuItem, Separator: ContextMenuSeparator };
 
-function SessionActions({ id, parts: { Item, Separator } }: { id: string; parts: MenuParts }) {
+function SessionActions({ id, parts: { Item, Separator }, onRename }: { id: string; parts: MenuParts; onRename: () => void }) {
   const t = useT();
   return (
     <>
-      <Item onSelect={() => void renameSession(id)}><PencilIcon />{t('sidebar.rename')}</Item>
+      <Item onSelect={onRename}><PencilIcon />{t('sidebar.rename')}</Item>
       <Item onSelect={() => void archiveSession(id)}><ArchiveIcon />{t('sidebar.archive')}</Item>
       <Separator />
       <Item variant="destructive" onSelect={() => void deleteSession(id)}><Trash2Icon />{t('sidebar.delete')}</Item>
@@ -101,29 +102,48 @@ const PR_STATE_KEY = { open: 'sidebar.prOpen', merged: 'sidebar.prMerged', close
 
 function SessionRow({ s, active, child }: { s: SessionView; active: boolean; child?: boolean }) {
   const t = useT();
+  const [renaming, setRenaming] = useState(false);
   const prNote = s.pr ? ` · PR #${s.pr.num} ${s.pr.state === 'open' && s.pr.draft ? t('sidebar.prDraft') : PR_STATE_KEY[s.pr.state as keyof typeof PR_STATE_KEY] ? t(PR_STATE_KEY[s.pr.state as keyof typeof PR_STATE_KEY]) : s.pr.state}` : '';
   const title = s.waiting ? t('sidebar.waiting') : s.compacting ? t('status.compacting') : s.running ? t('sidebar.working') : `${s.meta.title} · ${ago(s.meta.updatedAt || Date.now(), true)}${prNote}`;
   return (
     <ContextMenu>
     <ContextMenuTrigger asChild>
     <div className={cn('group flex h-7 items-center gap-2 rounded-lg px-2.5 text-sm', child && 'ml-4', active ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent/70')}>
-      <button className="flex min-w-0 flex-1 items-center gap-2 text-left" title={title} onClick={() => void openSession(s.meta.id)}>
-        <StatusIcon s={s} />
-        <span className={cn('truncate', s.unread && 'font-semibold')}>{s.meta.title}</span>
-      </button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button className="hidden shrink-0 text-muted-foreground group-hover:block hover:text-foreground data-[state=open]:block" title={t('sidebar.more')} aria-label={t('sidebar.sessionActions')}>
-            <MoreHorizontalIcon className="size-4" />
+      {renaming ? (
+        <InlineEdit
+          value={s.meta.title}
+          ariaLabel={t('sidebar.rename')}
+          maxLength={MAX_SESSION_TITLE}
+          className="flex-1"
+          onCommit={(next) => { setRenaming(false); void setSessionTitle(s.meta.id, next); }}
+          onCancel={() => setRenaming(false)}
+        />
+      ) : (
+        <>
+          <button
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+            title={title}
+            onClick={() => void openSession(s.meta.id)}
+            onDoubleClick={() => setRenaming(true)}
+          >
+            <StatusIcon s={s} />
+            <span className={cn('truncate', s.unread && 'font-semibold')}>{s.meta.title}</span>
           </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-44">
-          <SessionActions id={s.meta.id} parts={DROPDOWN_PARTS} />
-        </DropdownMenuContent>
-      </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="hidden shrink-0 text-muted-foreground group-hover:block hover:text-foreground data-[state=open]:block" title={t('sidebar.more')} aria-label={t('sidebar.sessionActions')}>
+                <MoreHorizontalIcon className="size-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-44">
+              <SessionActions id={s.meta.id} parts={DROPDOWN_PARTS} onRename={() => setRenaming(true)} />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      )}
     </div>
     </ContextMenuTrigger>
-    <ContextMenuContent className="w-44"><SessionActions id={s.meta.id} parts={CONTEXT_PARTS} /></ContextMenuContent>
+    <ContextMenuContent className="w-44"><SessionActions id={s.meta.id} parts={CONTEXT_PARTS} onRename={() => setRenaming(true)} /></ContextMenuContent>
     </ContextMenu>
   );
 }

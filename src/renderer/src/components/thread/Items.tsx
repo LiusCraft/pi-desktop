@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { ArrowUpRightIcon, BookmarkIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CircleAlertIcon, CodeIcon, GitForkIcon, GitMergeIcon, LightbulbIcon, LoaderCircleIcon, MessageCircleQuestionIcon, MessagesSquareIcon, MinusCircleIcon, RotateCcwIcon, TerminalIcon, XIcon, type LucideIcon } from 'lucide-react';
+import { ArrowUpRightIcon, BookmarkIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CircleAlertIcon, CodeIcon, GitForkIcon, GitMergeIcon, LayersIcon, LightbulbIcon, LoaderCircleIcon, MessageCircleQuestionIcon, MessagesSquareIcon, MinusCircleIcon, RotateCcwIcon, TerminalIcon, XIcon, type LucideIcon } from 'lucide-react';
 import { PLAN_CHOICES } from '@shared/protocol';
 import type { MessageKey } from '@shared/i18n';
 import { BUILTIN_COMMAND_INFO, commandLabel, decodeCommandMessage, type CommandMessage } from '@shared/command-message';
@@ -28,7 +28,7 @@ import { cn } from '@/lib/utils';
 import { useApp, updateSession } from '@/store/app';
 import { forgeName, forgeOfUrl } from '@shared/forge';
 import {
-  answerUi, dismissSuggested, doSuggestedHere, forkSession, openAgent, openContextReference, openDiffRef, openFileRef, openPlan, openSession, sessionDraftKey, startSuggested, userMessageAction,
+  answerUi, dismissSuggested, doSuggestedHere, forkSession, openAgent, openContextReference, openDiffRef, openFileRef, openPlan, openSession, sessionDraftKey, startSuggested, toggleCompactionHistory, toggleCompactionSummary, userMessageAction,
 } from '@/store/actions';
 import { drafts } from '@/store/drafts';
 import { findByKey, findTool, permissionTitle } from '@/store/transcript';
@@ -294,8 +294,52 @@ export const FootItem = memo(function FootItem({ sid, item, prevText }: { sid: s
   );
 });
 
-// ------------------------------------------------------------ todos
+// ------------------------------------------------------------ compaction
 
+/**
+ * A compaction checkpoint. The summary is what the model keeps; the messages it replaced sit above
+ * the card and stay hidden until asked for, so a long conversation still reads as one page.
+ */
+export const CompactionItem = memo(function CompactionItem({ sid, item, before }: { sid: string; item: ItemOf<'compaction'>; before: number }) {
+  const t = useT();
+  const earlier = before + item.hidden;
+  return (
+    <div className="rounded-xl border bg-muted/20">
+      <div className="flex items-center gap-2 px-3.5 py-2.5 text-sm">
+        <LayersIcon className="size-4 shrink-0 text-muted-foreground" />
+        <span className="shrink-0 font-medium">{t('compact.title')}</span>
+        {item.tokensBefore != null && (
+          <span className="min-w-0 truncate text-xs text-muted-foreground">
+            {item.tokensAfter != null
+              ? t('compact.sizes', { before: fmtTok(item.tokensBefore), after: fmtTok(item.tokensAfter) })
+              : t('compact.before', { before: fmtTok(item.tokensBefore) })}
+          </span>
+        )}
+        <span className="flex-1" />
+        {earlier > 0 && (
+          <Button variant="ghost" size="sm" className="h-6 shrink-0 px-2 text-xs" disabled={item.loading} onClick={() => void toggleCompactionHistory(sid, item.key)}>
+            {item.loading ? t('compact.loadingEarlier') : t(item.open ? 'compact.hideEarlier' : 'compact.showEarlier', { n: earlier })}
+          </Button>
+        )}
+        <button
+          className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          title={t('compact.summaryTip')}
+          aria-expanded={item.openSummary}
+          onClick={() => toggleCompactionSummary(sid, item.key)}
+        >
+          <ChevronDownIcon className={cn('size-3.5 transition-transform', !item.openSummary && '-rotate-90')} />
+        </button>
+      </div>
+      {item.openSummary && item.summary && (
+        <div className="border-t px-3.5 py-2.5 text-sm">
+          <Markdown text={item.summary} />
+        </div>
+      )}
+    </div>
+  );
+});
+
+// ------------------------------------------------------------ todos
 export function TodoList({ items }: { items: ItemOf<'todos'>['items'] }) {
   return (
     <div className="space-y-1">

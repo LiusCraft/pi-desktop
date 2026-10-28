@@ -27,7 +27,7 @@ import { registerManageTools, type ArtifactHost, type CustomizeHost, type PetHos
 import type { WebSearch } from './web-search';
 import { ENGINE_INFO, SEARCH_FRESHNESS, WEB_LIMITS } from '@shared/web-search';
 import {
-  PLAN_CHOICES, QUESTION_LIMITS,
+  MAX_SESSION_TITLE, PLAN_CHOICES, QUESTION_LIMITS,
   type OutputStyle, type PermissionMode, type Question, type QuestionAnswer, type SessionKind, type ShellSessionMode, type SubagentProgress, type TaskUpdate, type UiRequestInput, type UiResponse,
 } from '@shared/protocol';
 
@@ -505,7 +505,7 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
           'or when the work has moved on so far that the current name is misleading. Keep it short (under 60 characters).',
         parameters: Type.Object({ title: Type.String({ description: 'The new session name' }) }),
         async execute(_id, params) {
-          const title = params.title.trim().slice(0, 80);
+          const title = params.title.trim().slice(0, MAX_SESSION_TITLE);
           if (!title) throw new Error('The name cannot be empty');
           rename(title);
           return { content: [{ type: 'text', text: `Session renamed to "${title}".` }], details: { title } };

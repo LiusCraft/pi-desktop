@@ -42,6 +42,7 @@ export function sessionHandlers(ready: Promise<SessionHub>, getScheduler: () => 
     'sessions:clearQueue': withHub((h, id) => h.clearQueue(id)),
     'sessions:newContext': withHub((h, id) => h.newContext(id)),
     'sessions:compact': withHub((h, id, instructions) => h.compact(id, instructions)),
+    'sessions:compactedHistory': withHub((h, id) => h.compactedHistory(id)),
     'sessions:stats': withHub((h, id) => h.stats(id)),
     'sessions:exportHtml': withHub((h, id) => h.exportHtml(id)),
     'sessions:clone': withHub((h, id) => h.clone(id)),

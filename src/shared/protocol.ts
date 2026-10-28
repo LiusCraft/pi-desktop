@@ -76,6 +76,9 @@ export interface PrThread {
   comments: { id: string; author: string; body: string; url: string; at: number }[];
 }
 
+/** Longest session title kept: the rename tool and the inline editor cut at this, and the host enforces it. */
+export const MAX_SESSION_TITLE = 80;
+
 export interface SessionMeta {
   id: string;
   kind: SessionKind;
@@ -435,6 +438,8 @@ export interface OpenSessionResult {
   isStreaming: boolean;
   /** A compaction is running: the session is busy, but not in a turn. */
   isCompacting: boolean;
+  /** Messages the latest compaction summarized away: they are no longer in `messages`, but still in the session file. */
+  hiddenMessages: number;
   stats: SessionStats | null;
   /** Interactive requests still waiting for an answer (e.g. after a window reload). */
   pending: UiRequest[];
@@ -940,6 +945,8 @@ export interface Api {
   'sessions:clearQueue'(id: string): { steering: string[]; followUp: string[] };
   'sessions:newContext'(id: string): void;
   'sessions:compact'(id: string, instructions?: string): { tokensBefore: number; estimatedTokensAfter?: number };
+  /** The messages the latest compaction summarized away, so the transcript can show them again. */
+  'sessions:compactedHistory'(id: string): AgentMessage[];
   'sessions:stats'(id: string): SessionStats | null;
   'sessions:exportHtml'(id: string): { path: string };
   'sessions:clone'(id: string): void;
@@ -1047,7 +1054,7 @@ export type ApiResult<K extends ApiChannel> = Awaited<ReturnType<Api[K]>>;
 export const HOST_CHANNELS = [
   'sessions:list', 'sessions:create', 'sessions:open', 'sessions:prompt', 'sessions:respond',
   'sessions:setMode', 'sessions:setStyle', 'sessions:update', 'sessions:archive', 'sessions:unarchive', 'sessions:inspect', 'sessions:remove', 'sessions:spawn', 'sessions:abort',
-  'sessions:clearQueue', 'sessions:newContext', 'sessions:compact', 'sessions:stats', 'sessions:exportHtml',
+  'sessions:clearQueue', 'sessions:newContext', 'sessions:compact', 'sessions:compactedHistory', 'sessions:stats', 'sessions:exportHtml',
   'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:side', 'sessions:sideGet', 'sessions:sideStage', 'sessions:sideAbort', 'sessions:sideReset', 'sessions:workIdeas',
   'sessions:changes', 'sessions:commits', 'sessions:commitChanges', 'sessions:changeContent', 'sessions:pr', 'sessions:prThreads', 'sessions:prReply', 'sessions:prResolve', 'sessions:files', 'sessions:readFile', 'sessions:search', 'sessions:readImage',
   'sessions:context', 'sessions:stopTask', 'sessions:importable',

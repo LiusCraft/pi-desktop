@@ -96,6 +96,28 @@ test('archive hides a session, the Archived page restores or deletes it', async 
   await expect.poll(() => (fs.existsSync(worktrees) ? fs.readdirSync(worktrees).length : 0)).toBe(0);
 });
 
+test('a title is renamed where it stands, from the sidebar or the header', async () => {
+  await startSession('hello');
+  await expect(row('hello')).toBeVisible();
+
+  // Double-click the title in the sidebar: it turns into a field with the text selected.
+  await row('hello').getByRole('button', { name: 'hello', exact: true }).dblclick();
+  const field = sidebar().getByRole('textbox', { name: 'Rename' });
+  await field.fill('Design the fix');
+  await field.press('Enter');
+  await expect(row('Design the fix')).toBeVisible();
+  await expect(row('hello')).toHaveCount(0);
+
+  // The header shows a pencil on hover; Escape leaves the title as it was.
+  const title = page.locator('header').getByRole('button', { name: 'Design the fix' });
+  await title.hover();
+  await page.locator('header').getByRole('button', { name: 'Rename' }).click();
+  const headerField = page.locator('header').getByRole('textbox', { name: 'Rename' });
+  await headerField.fill('throw this away');
+  await headerField.press('Escape');
+  await expect(title).toBeVisible();
+});
+
 test('removing a project archives its sessions and leaves the folder alone', async () => {
   await startSession('hello');
   const project = path.join(dataDir, 'demo', 'todo-app');

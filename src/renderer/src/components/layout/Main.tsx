@@ -1,11 +1,12 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import {
-  BotIcon, ChevronDownIcon, ExternalLinkIcon, FileTextIcon, FolderIcon, GlobeIcon, LaptopIcon, PanelRightIcon,
+  BotIcon, ChevronDownIcon, ExternalLinkIcon, FileTextIcon, FolderIcon, GlobeIcon, LaptopIcon, PencilIcon, PanelRightIcon,
   SquareTerminalIcon,
 } from 'lucide-react';
 import { PET_BLOCK_ATTR } from '@/components/composer/Clawd';
 import { CodeComposer, WorkComposer } from '@/components/composer/Composers';
 import { copyText } from '@/components/common/Copy';
+import { InlineEdit } from '@/components/common/InlineEdit';
 import { AskDock, Transcript } from '@/components/thread/Transcript';
 import { openCards, soloCard, Workspace } from '@/components/workspace/Workspace';
 import {
@@ -21,14 +22,14 @@ import { fname } from '@/lib/format';
 import { OpenInMenu } from '@/components/common/OpenInMenu';
 import { cn } from '@/lib/utils';
 import {
-  archiveSession, deleteSession, exportHtml, renameSession, setOutputStyle, setViewMode,
+  archiveSession, deleteSession, exportHtml, setOutputStyle, setSessionTitle, setViewMode,
   togglePanel, welcomeDraftKey,
 } from '@/store/actions';
 import { useApp, useCurrent } from '@/store/app';
 import { drafts } from '@/store/drafts';
 import { hasThinking } from '@/store/transcript';
 import type { SessionView } from '@/store/types';
-import type { OutputStyle, WorkIdea } from '@shared/protocol';
+import { MAX_SESSION_TITLE, type OutputStyle, type WorkIdea } from '@shared/protocol';
 import { CustomizePage } from '@/customize/CustomizePage';
 import { ScheduledPage } from '@/scheduled/ScheduledPage';
 import { ActivityPage } from '@/activity/ActivityPage';
@@ -54,7 +55,7 @@ function HeaderButton({ on, children, ...props }: React.ComponentProps<'button'>
  * Opens where the user clicked: the menu hangs off an invisible anchor placed at
  * the pointer (or under the button, for a keyboard activation).
  */
-function SessionMenu({ s, children }: { s: SessionView; children: (props: { onClick: (e: MouseEvent<HTMLElement>) => void }) => ReactNode }) {
+function SessionMenu({ s, onRename, children }: { s: SessionView; onRename: () => void; children: (props: { onClick: (e: MouseEvent<HTMLElement>) => void }) => ReactNode }) {
   const t = useT();
   const view = useApp((st) => st.prefs.viewMode);
   const views = VIEW_MODES.filter((m) => m.id !== 'thinking' || hasThinking(s));
@@ -74,7 +75,7 @@ function SessionMenu({ s, children }: { s: SessionView; children: (props: { onCl
           <span aria-hidden className="pointer-events-none fixed size-0" style={{ left: at.x, top: at.y }} />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" sideOffset={0} className="w-60" onCloseAutoFocus={(e) => e.preventDefault()}>
-        <DropdownMenuItem onSelect={() => void renameSession(s.meta.id)}>{t('main.rename')}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onRename}>{t('main.rename')}</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => void copyText(s.meta.cwd)}>{t(s.meta.worktree ? 'main.copyWorktreePath' : 'main.copyFolderPath')}</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => void exportHtml(s.meta.id)}>{t('main.exportHtml')}</DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -99,6 +100,7 @@ function SessionMenu({ s, children }: { s: SessionView; children: (props: { onCl
 function Header({ s, title }: { s?: SessionView; title?: string }) {
   const t = useT();
   const collapsed = useApp((st) => st.sidebarCollapsed);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
   const work = s?.meta.kind === 'work';
   const p = s?.panels;
   const hasTasks = !!s?.items.some((i) => i.kind === 'group' && i.tools.some((t) => t.kind === 'agent'));
@@ -107,15 +109,39 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
       {collapsed && <SidebarToggle />}
       {s ? (
         <>
-          <SessionMenu s={s}>
-            {(trigger) => (
-              <button {...trigger} className="flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium hover:bg-accent">
-                {work ? <FolderIcon className="size-4 shrink-0 text-muted-foreground" /> : <LaptopIcon className="size-4 shrink-0 text-muted-foreground" />}
-                <span className="truncate">{s.meta.title}</span>
-                <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
-              </button>
-            )}
-          </SessionMenu>
+          {renamingId === s.meta.id ? (
+            <span className="flex min-w-0 items-center gap-1.5 px-2 py-1 text-sm font-medium">
+              {work ? <FolderIcon className="size-4 shrink-0 text-muted-foreground" /> : <LaptopIcon className="size-4 shrink-0 text-muted-foreground" />}
+              <InlineEdit
+                value={s.meta.title}
+                ariaLabel={t('main.rename')}
+                maxLength={MAX_SESSION_TITLE}
+                className="w-56"
+                onCommit={(next) => { setRenamingId(null); void setSessionTitle(s.meta.id, next); }}
+                onCancel={() => setRenamingId(null)}
+              />
+            </span>
+          ) : (
+            <SessionMenu s={s} onRename={() => setRenamingId(s.meta.id)}>
+              {(trigger) => (
+                <span className="group/title flex min-w-0 items-center rounded-md text-sm font-medium hover:bg-accent">
+                  <button {...trigger} className="flex min-w-0 items-center gap-1.5 py-1 pl-2 pr-1 text-left">
+                    {work ? <FolderIcon className="size-4 shrink-0 text-muted-foreground" /> : <LaptopIcon className="size-4 shrink-0 text-muted-foreground" />}
+                    <span className="truncate">{s.meta.title}</span>
+                    <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                  </button>
+                  <button
+                    onClick={() => setRenamingId(s.meta.id)}
+                    title={t('main.rename')}
+                    aria-label={t('main.rename')}
+                    className="mr-1 flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/title:opacity-100"
+                  >
+                    <PencilIcon className="size-3.5" />
+                  </button>
+                </span>
+              )}
+            </SessionMenu>
+          )}
           <span className="truncate rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
             {work ? (s.meta.scratch ? t('main.tempWorkspace') : fname(s.meta.projectPath)) : `${fname(s.meta.projectPath)}${s.meta.branch ? ` · ${s.meta.branch}` : ''}`}
           </span>

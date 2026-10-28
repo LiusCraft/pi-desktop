@@ -9,10 +9,11 @@ import { PET_PERCH } from '@/components/composer/Clawd';
 import { runningTasks } from '@/components/workspace/Panels';
 import { togglePanel } from '@/store/actions';
 import { useApp } from '@/store/app';
+import { collapsedItems } from '@/store/transcript';
 import { rememberScroll, savedScroll, type ScrollSpot } from '@/store/scroll';
 import type { Item, ItemOf, SessionView } from '@/store/types';
 import { SelectionMenu } from './SelectionMenu';
-import { AskCard, FootItem, GroupItem, isPendingAsk, NoteItem, PermItem, PlanItem, PrEventItem, SuggestItem, TextItem, TodosItem, UserItem } from './Items';
+import { AskCard, CompactionItem, FootItem, GroupItem, isPendingAsk, NoteItem, PermItem, PlanItem, PrEventItem, SuggestItem, TextItem, TodosItem, UserItem } from './Items';
 
 /** Under a passage that was replied to: a pin per reply, which jumps to the message that quoted it. */
 function QuotePins({ pins }: { pins?: QuotePin[] }) {
@@ -36,7 +37,7 @@ function QuotePins({ pins }: { pins?: QuotePin[] }) {
   );
 }
 
-function renderItem(sid: string, item: Item, items: Item[], index: number, view: string, quoted?: (string | null)[]) {
+function renderItem(sid: string, item: Item, items: Item[], index: number, view: string, quoted?: (string | null)[], before?: Map<string, number>) {
   switch (item.kind) {
     case 'user': return <UserItem sid={sid} item={item} quoted={quoted} />;
     case 'text': return <TextItem item={item} />;
@@ -47,6 +48,7 @@ function renderItem(sid: string, item: Item, items: Item[], index: number, view:
     case 'ask': return <AskCard sid={sid} item={item} />;
     case 'plan': return <PlanItem sid={sid} item={item} />;
     case 'suggest': return <SuggestItem sid={sid} item={item} />;
+    case 'compaction': return <CompactionItem sid={sid} item={item} before={before?.get(item.key) ?? 0} />;
     case 'prEvent': return <PrEventItem sid={sid} item={item} />;
     case 'foot': {
       let prev: string | undefined;
@@ -166,6 +168,7 @@ export function Transcript({ s }: { s: SessionView }) {
   const [atBottom, setAtBottom] = useState(true);
   const sid = s.meta.id;
   const links = useMemo(() => quoteLinks(s.items), [s.items]);
+  const collapse = useMemo(() => collapsedItems(s.items), [s.items]);
   const quoted = useRef<{ range: Range; userKey: string }[]>([]);
 
   // The exact text that was replied to stays faintly marked.
@@ -300,9 +303,9 @@ export function Transcript({ s }: { s: SessionView }) {
       <SelectionMenu sid={sid} scope={frame} />
       <div ref={scroller} onScroll={onScroll} onWheel={onWheel} onPointerDown={endRestore} onTouchStart={endRestore} onClick={onQuoteClick} onMouseMove={onQuoteHover} className="h-full overflow-y-auto">
         <div ref={content} className="mx-auto flex w-full max-w-[786px] flex-col gap-4 px-6 pt-6 pb-4">
-          {s.items.map((item, i) => (isPendingAsk(item) ? null : (
+          {s.items.map((item, i) => (isPendingAsk(item) || collapse.hidden.has(item.key) ? null : (
             <div key={item.key} data-item-key={item.key} className="transcript-item">
-              {renderItem(s.meta.id, item, s.items, i, view, links.targets.get(item.key))}
+              {renderItem(s.meta.id, item, s.items, i, view, links.targets.get(item.key), collapse.before)}
               <QuotePins pins={links.pins.get(item.key)} />
             </div>
           )))}

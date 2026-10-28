@@ -359,11 +359,14 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
       s.compacting = false;
       if (!ev.aborted) {
         const r = ev.result;
-        const error = ev.errorMessage ? String(ev.errorMessage).replace(/^Compaction failed:\s*/, '') : '';
-        let text = t('status.compacted');
-        if (error) text = t('status.compactionFailed', { error });
-        else if (r) text = t('act.compacted', { before: fmtTok(r.tokensBefore), after: fmtTok(r.estimatedTokensAfter ?? 0) });
-        push(s, { kind: 'note', key: newKey(), text }, view);
+        if (ev.errorMessage) {
+          const error = String(ev.errorMessage).replace(/^Compaction failed:\s*/, '');
+          push(s, { kind: 'note', key: newKey(), level: 'error', text: t('status.compactionFailed', { error }) }, view);
+        } else if (r) {
+          push(s, { kind: 'compaction', key: newKey(), summary: String(r.summary ?? ''), tokensBefore: r.tokensBefore, tokensAfter: r.estimatedTokensAfter, open: false, hidden: 0, openSummary: true }, view);
+        } else {
+          push(s, { kind: 'note', key: newKey(), text: t('status.compacted') }, view);
+        }
       }
       return { refreshStats: true };
     }
@@ -460,6 +463,23 @@ export function replay(s: SessionView, messages: AgentMessage[], view: ViewMode)
   s.detail = null;
   s.pendingUser = [];
   s.compacting = false;
+  appendMessages(s, messages, view);
+  for (const i of s.items) if (i.kind === 'group') i.open = verbose(view);
+}
+
+/** The items a message list produces, without touching a live transcript (older messages behind a compaction). */
+export function transcriptItems(meta: SessionMeta, messages: AgentMessage[], view: ViewMode): Item[] {
+  const s = emptySession(meta);
+  appendMessages(s, messages, view);
+  // These are shown on demand, so their own older summaries stay folded away.
+  for (const i of s.items) if (i.kind === 'compaction') {
+    i.open = true;
+    i.openSummary = false;
+  }
+  return s.items;
+}
+
+function appendMessages(s: SessionView, messages: AgentMessage[], view: ViewMode) {
   let sawAssistant = false;
   for (const m of messages) {
     if (m.role === 'user') {
@@ -492,10 +512,30 @@ export function replay(s: SessionView, messages: AgentMessage[], view: ViewMode)
       toolEnd(s, { toolCallId: m.toolCallId!, toolName: m.toolName!, result: { content: m.content, details: m.details }, isError: m.isError }, view, true);
     } else if (m.role === 'custom' && m.display) {
       s.items.push({ kind: 'note', key: newKey(), text: textOf(m.content) });
+    } else if (m.role === 'compactionSummary') {
+      const tokensBefore = Number(m.tokensBefore) || undefined;
+      s.items.push({ kind: 'compaction', key: newKey(), summary: String(m.summary ?? ''), tokensBefore, open: false, hidden: 0, openSummary: true });
     }
   }
   if (sawAssistant) s.items.push({ kind: 'foot', key: newKey(), t: s.meta.updatedAt });
-  for (const i of s.items) if (i.kind === 'group') i.open = verbose(view);
+}
+
+/**
+ * Which items a collapsed compaction card hides, and how many sit above each card.
+ * A card hides everything since the previous one, so nested compactions fold inside out.
+ */
+export function collapsedItems(items: Item[]) {
+  const hidden = new Set<string>();
+  const before = new Map<string, number>();
+  let from = 0;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (item.kind !== 'compaction') continue;
+    before.set(item.key, i - from);
+    if (!item.open) for (let j = from; j < i; j++) hidden.add(items[j].key);
+    from = i + 1;
+  }
+  return { hidden, before };
 }
 
 /** Re-fold groups and thoughts for a new transcript view, keeping what the user toggled. */

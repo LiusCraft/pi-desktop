@@ -19,7 +19,7 @@ import { primeSuggestion, resumeSuggestion } from './predict';
 import { forgetScroll } from './scroll';
 import { askSide, showSide } from './side';
 import {
-  addUiRequest, applyPiEvent, applyTaskUpdate, applyViewMode, emptySession, findByKey, hasThinking, newKey, push, replay, resolveUi, settle, type Effects,
+  addUiRequest, applyPiEvent, applyTaskUpdate, applyViewMode, emptySession, findByKey, hasThinking, newKey, push, replay, resolveUi, settle, transcriptItems, type Effects,
 } from './transcript';
 import type { Arrangement, CardId, Column, DropPlace, Item, ItemOf, Panels, SessionView } from './types';
 
@@ -415,7 +415,11 @@ export async function openSession(id: string, fresh = false) {
       const x = st.sessions[id];
       if (!x) return;
       x.meta = r.meta;
-      if (!fresh) replay(x, r.messages, st.prefs.viewMode);
+      if (!fresh) {
+        replay(x, r.messages, st.prefs.viewMode);
+        // The reopened transcript starts at the summary; the messages it replaced are loaded on demand.
+        markCompactionHistory(x, r.hiddenMessages);
+      }
       x.loaded = true;
       x.setup = null;
       x.compacting = r.isCompacting;
@@ -558,6 +562,50 @@ export async function compactSession(id: string, instructions?: string) {
     updateSession(id, (x) => void (x.compacting = false));
     void refreshStats(id);
   }
+}
+
+/** A reopened transcript has only the latest summary; remember how many messages it stands in for. */
+function markCompactionHistory(s: SessionView, hidden: number) {
+  const card = s.items.findLast((i): i is ItemOf<'compaction'> => i.kind === 'compaction');
+  if (card) card.hidden = hidden;
+}
+
+/** Show or hide the messages above a compaction card, loading them from the session file when needed. */
+export async function toggleCompactionHistory(id: string, key: string) {
+  const s = getApp().sessions[id];
+  const card = findByKey(s, key);
+  if (!s || card?.kind !== 'compaction' || card.loading) return;
+  const set = (patch: Partial<ItemOf<'compaction'>>) => updateSession(id, (x) => {
+    const c = findByKey(x, key);
+    if (c?.kind === 'compaction') Object.assign(c, patch);
+  });
+  // Once loaded (or when the live transcript still holds them), the items are already above the card.
+  if (s.items.findIndex((i) => i.key === key) > 0 || card.open || !card.hidden) return set({ open: !card.open });
+  set({ loading: true });
+  try {
+    const messages = await call('sessions:compactedHistory', id);
+    setApp((st) => {
+      const x = st.sessions[id];
+      const c = findByKey(x, key);
+      if (c?.kind !== 'compaction') return;
+      const at = x.items.findIndex((i) => i.key === key);
+      x.items.splice(at, 0, ...transcriptItems(x.meta, messages, st.prefs.viewMode));
+      c.open = true;
+      c.hidden = 0;
+      c.loading = false;
+    });
+  } catch (err) {
+    set({ loading: false });
+    fail(err);
+  }
+}
+
+/** Expand or collapse the summary of a compaction card. */
+export function toggleCompactionSummary(id: string, key: string) {
+  updateSession(id, (x) => {
+    const card = findByKey(x, key);
+    if (card?.kind === 'compaction') card.openSummary = !card.openSummary;
+  });
 }
 
 function pushItem(id: string, item: Item) {
@@ -829,11 +877,8 @@ export async function chooseEffort(level: ThinkingLevel) {
   } else setPref('effort', level);
 }
 
-export async function renameSession(id: string) {
-  const s = getApp().sessions[id];
-  if (!s) return;
-  const title = await dialogs.prompt(t('act.renameTitle'), s.meta.title, { action: t('act.save') });
-  if (!title?.trim()) return;
+/** Rename a session to a title the user typed in place; the host locks it against auto-naming. */
+export async function setSessionTitle(id: string, title: string) {
   try {
     const meta = await call('sessions:update', id, { title });
     updateSession(id, (v) => void (v.meta = meta));
@@ -913,6 +958,7 @@ export async function userMessageAction(id: string, entryId: string, action: 're
       const target = st.sessions[session.meta.id] ??= emptySession(session.meta);
       target.meta = session.meta;
       replay(target, session.messages, st.prefs.viewMode);
+      markCompactionHistory(target, session.hiddenMessages);
       target.loaded = true;
       target.running = session.isStreaming;
       target.model = session.model;

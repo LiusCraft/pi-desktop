@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { decodeUserContent } from '@shared/attachments';
-import type { HostEvent, PermissionMode, PiEvent, UiRequest, UiResponse } from '@shared/protocol';
+import { MAX_SESSION_TITLE, type HostEvent, type PermissionMode, type PiEvent, type UiRequest, type UiResponse } from '@shared/protocol';
 import { importAttachments } from '../src/agent/attachments';
 import { SessionHub } from '../src/agent/hub';
 import { setActiveLocale } from '../src/shared/i18n/runtime';
@@ -273,6 +273,9 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect(driver.hub.meta(meta.id).title).toBe('日期显示少了一个月 帮我修一下');
     driver.hub.update(meta.id, { title: 'Dates' });
     expect(driver.hub.meta(meta.id)).toMatchObject({ title: 'Dates', titleLocked: true, autoName: false });
+    // A pasted-in paragraph is cut, not stored whole.
+    driver.hub.update(meta.id, { title: 'x'.repeat(MAX_SESSION_TITLE + 20) });
+    expect(driver.hub.meta(meta.id).title).toHaveLength(MAX_SESSION_TITLE);
   });
 
   it('skips next-message prediction when only the offline demo model exists', async () => {
