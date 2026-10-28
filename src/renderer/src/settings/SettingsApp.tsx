@@ -46,6 +46,7 @@ const SECTIONS: { id: Section; label: MessageKey | null; icon: ReactNode; groups
     groups: [
       { id: 'basics', label: 'settings.basics' },
       { id: 'aiTools', label: 'settings.aiTools' },
+      { id: 'autoReview', label: 'settings.autoReview' },
       { id: 'replyRendering', label: 'settings.replyRendering' },
       { id: 'prediction', label: 'settings.prediction' },
       { id: 'webSearch', label: 'web.title' },
@@ -365,7 +366,27 @@ export function SettingsApp() {
             </Panel>
           </Group>
 
-          <Group id="replyRendering" title={t('settings.replyRendering')}>
+          <Group id="autoReview" title={t('settings.autoReview')} sub={t('settings.autoReview.sub')} tip={t('settings.autoReview.tip')}>
+            <Panel>
+              <Row title={t('settings.autoReview.enable')}>
+                <Switch checked={settings.autoReview !== false} onCheckedChange={(v) => void patch({ autoReview: v })} />
+              </Row>
+              {settings.autoReview !== false && (
+                <>
+                  <Row title={t('settings.autoReview.model')} tip={t('settings.autoReview.model.tip')}>
+                    <Segmented value={settings.autoReviewModel ?? 'session'} options={modeOptions} onChange={(m) => void patch({ autoReviewModel: m })} />
+                  </Row>
+                  {(settings.autoReviewModel ?? 'session') === 'fixed' && (
+                    <Row title={t('settings.fixedModelRow')} tip={t('settings.fixedModelRow.tip')}>
+                      <ModelPicker value={settings.autoReviewModelId ?? null} onChange={(id) => void patch({ autoReviewModelId: id })} emptyLabel={unspecified} label={t('settings.autoReview.pickerLabel')} className="w-64 shrink-0" />
+                    </Row>
+                  )}
+                </>
+              )}
+            </Panel>
+          </Group>
+
+          <Group id="replyRendering"title={t('settings.replyRendering')}>
             <Panel>
               <Row title={t('settings.mermaid')} hint={t('settings.mermaid.hint')} tip={t('settings.mermaid.tip')}>
                 <Switch checked={settings.renderMermaid !== false} onCheckedChange={(v) => void patch({ renderMermaid: v })} />

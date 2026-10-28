@@ -25,6 +25,9 @@ import { AGENT_TYPES, DEFAULT_AGENT, type AgentType } from './agents';
 import { ShellCommands, commandInFolder } from './shell-session';
 import { registerManageTools, type ArtifactHost, type CustomizeHost, type PetHost, type ProjectHost, type ScheduleHost, type SettingsHost } from './manage-tools';
 import type { WebSearch } from './web-search';
+import { checkScope, type WorkScope } from './work-scope';
+import type { CommandVerdict } from './command-review';
+import { tr } from '@shared/i18n/runtime';
 import { ENGINE_INFO, SEARCH_FRESHNESS, WEB_LIMITS } from '@shared/web-search';
 import {
   MAX_SESSION_TITLE, PLAN_CHOICES, QUESTION_LIMITS,
@@ -72,6 +75,10 @@ export interface KitHost {
   state: KitState;
   /** The folder this session runs in (a worktree folder for worktree sessions); the shell's default. */
   cwd?: string;
+  /** Work only: where the session may write and read; anything else is asked first. */
+  scope?: WorkScope;
+  /** Auto mode: a model's verdict on a command no rule settles; null when review is off or it could not answer, and the user is asked. */
+  review?(command: string, cwd: string, signal?: AbortSignal): Promise<CommandVerdict | null>;
   /** How the model's shell commands keep their folder; read for every command (see `SHELL_SESSION_MODES`). */
   shellSession?: () => ShellSessionMode;
   /** Ask the user. Resolves `{ cancelled: true }` when nobody can answer. */
@@ -316,6 +323,15 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       const name = event.toolName;
       const input = event.input as Record<string, unknown>;
 
+      // Work stays in its own folder: other places need the user's say-so, whatever the tool.
+      const scope = host.scope && checkScope(host.scope, state.allowed, name, input, ctx.cwd, isReadOnlyCommand(String(input.command ?? '')), {
+        read: (path) => tr('ag.scopeRead', { path }),
+        write: (path) => tr('ag.scopeWrite', { path }),
+        run: (command, path) => tr('ag.scopeRun', { command, path }),
+      });
+      if (scope?.kind === 'ask') return ask(ctx, event.toolCallId, scope.title, scope.key);
+      if (scope?.kind === 'granted' && !SHELL_TOOLS.has(name)) return undefined;
+
       if (READ_ONLY_TOOLS.has(name)) return undefined;
 
       if (EDIT_TOOLS.has(name)) {
@@ -332,7 +348,14 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         const readOnly = isReadOnlyCommand(command);
         if (mode === 'plan') return readOnly ? undefined : { block: true, reason: 'Plan mode only allows read-only commands.' };
         if (readOnly || state.allowed.has(commandKey(command))) return undefined;
-        if (mode === 'auto' && !isRiskyCommand(command, state.profile)) return undefined;
+        if (mode === 'auto' && !isRiskyCommand(command, state.profile)) {
+          // No rule settles it: a model reads it first and authorizes it. Without that authorization
+          // (review off, failed, timed out or doubtful) the user decides, as in every mode but bypass.
+          const review = (await host.review?.(command, ctx.cwd, ctx.signal)) ?? null;
+          if (review?.verdict === 'allow') return undefined;
+          const title = review?.reason ? tr('ag.reviewAsk', { command, reason: review.reason }) : `Run ${command}`;
+          return ask(ctx, event.toolCallId, title, commandKey(command));
+        }
         return ask(ctx, event.toolCallId, `Run ${command}`, commandKey(command));
       }
 

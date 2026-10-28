@@ -16,7 +16,7 @@ import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import { buildMessage, decodeUserContent } from '@shared/attachments';
 import type {
   AgentDraft, AgentMessage, ConnectorDraft, SkillDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
-  PrStatus, PrSummary, SessionCleanup, SessionMeta, SessionRemoval, SessionStats, SetupStep, Settings, SideChat, SpawnTask, SubagentProgress, WorkIdea, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
+  PrStatus, PrSummary, SessionCleanup, SessionMeta, SessionRemoval, SessionStats, SetupStep, Settings, SideChat, SpawnTask, SubagentProgress, WorkIdea, WorkIdeasModelMode, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
 } from '@shared/protocol';
 import { MAX_SESSION_TITLE, SHELL_SESSION_MODES } from '@shared/protocol';
 import { decodeCommandMessage, isCommandMessage } from '@shared/command-message';
@@ -50,9 +50,11 @@ import { ActivityRecorder } from './activity';
 import { Store } from './store';
 import { ProjectBook } from './remote/workspace';
 import { editProject, projectContext, remember } from './work-project';
+import type { WorkScope } from './work-scope';
 import * as prediction from './suggest';
 import * as sideChat from './side-chat';
 import * as workIdeas from './work-ideas';
+import * as commandReview from './command-review';
 
 const NAMES = ['trusting-maxwell', 'eager-lovelace', 'quiet-hopper', 'brave-turing', 'calm-knuth', 'swift-ritchie', 'bold-curie', 'keen-dijkstra'];
 /** Tools on top of pi's defaults (read, bash, edit, write). */
@@ -443,6 +445,17 @@ export class SessionHub {
     return live;
   }
 
+  /** Where a Work session may touch files: its folder to write, and that plus the project's Code folders to read. */
+  private workScope(id: string): WorkScope | undefined {
+    const m = this.meta(id);
+    if (m.kind !== 'work') return undefined;
+    return {
+      cwd: m.cwd,
+      // Read fresh, so a folder linked on the Projects page applies to the next call.
+      readable: () => [...(this.projects.workFolders().find((p) => p.path === m.projectPath)?.codeFolders ?? []), this.agentDir],
+    };
+  }
+
   /** Recreates cwd-bound services; runs for the first session and every replacement. */
   private factory(live: Live): CreateAgentSessionRuntimeFactory {
     return async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
@@ -483,6 +496,8 @@ export class SessionHub {
     return {
       state: live.kit,
       cwd: this.meta(live.id).cwd,
+      scope: hub.workScope(live.id),
+      review: (command, cwd, signal) => hub.reviewCommand(live, command, cwd, signal),
       // Read for every command, so switching it on the Settings page applies without a new session.
       shellSession: () => {
         const mode = hub.storedSettings().shellSession;
@@ -789,6 +804,7 @@ export class SessionHub {
         extensionFactories: [
           createDesktopKit({
             state: kit,
+            scope: this.workScope(live.id),
             ask: async (request, signal) => (request.kind === 'plan' ? { cancelled: true } : this.ask(live, request, signal)),
             setMode: () => {},
           }),
@@ -1089,10 +1105,54 @@ export class SessionHub {
 
   /** The model that writes the ideas, per the setting; a choice that cannot answer falls back to the cheap automatic one. */
   private async workIdeasModel(settings: Settings, current: string | null | undefined) {
-    const requested = settings.workIdeasModel === 'fixed' ? settings.workIdeasModelId : settings.workIdeasModel === 'session' ? current : null;
+    return this.modelFor(settings.workIdeasModel, settings.workIdeasModelId, current);
+  }
+
+  /** The model a side request uses, per a `session | auto | fixed` setting; a choice that cannot answer falls back to the cheap automatic one. */
+  private modelFor(mode: WorkIdeasModelMode, fixedId: string | null, current: string | null | undefined) {
+    const requested = mode === 'fixed' ? fixedId : mode === 'session' ? current : null;
     const model = this.findModel(requested);
     if (model && model.provider !== 'demo' && this.isAvailable(model)) return model;
     return this.autoSideModel(current);
+  }
+
+  // ------------------------------------------------------------ auto mode review
+
+  /**
+   * A model's verdict on a command that no rule settles. Null when review is off or the model failed or timed
+   * out, which the kit treats as "ask the user"; the offline demo has no model to ask, so it is let through.
+   */
+  private async reviewCommand(live: Live, command: string, cwd: string, signal?: AbortSignal): Promise<commandReview.CommandVerdict | null> {
+    const settings = this.storedSettings();
+    if (!settings.autoReview) return null;
+    const session = live.runtime.session;
+    const current = session.model ? `${session.model.provider}/${session.model.id}` : this.meta(live.id).model;
+    if (current?.startsWith('demo/')) return { verdict: 'allow', reason: '' };
+    const model = current ? this.modelFor(settings.autoReviewModel, settings.autoReviewModelId, current) : null;
+    if (!model || model.provider === 'demo') return null;
+    const controller = new AbortController();
+    this.namers.add(controller);
+    const stop = () => controller.abort();
+    signal?.addEventListener('abort', stop, { once: true });
+    const timer = setTimeout(stop, commandReview.TIMEOUT_MS);
+    try {
+      // No `reasoning` option: the review runs with thinking off.
+      const reply = await this.models.completeSimple(model, {
+        systemPrompt: commandReview.SYSTEM_PROMPT,
+        messages: [{
+          role: 'user', timestamp: Date.now(),
+          content: commandReview.reviewRequest({ command, cwd, kind: this.meta(live.id).kind, request: commandReview.latestRequest(session.messages) }),
+        }],
+      }, { signal: controller.signal, maxTokens: commandReview.REVIEW_MAX_TOKENS, sessionId: live.id });
+      if (reply.stopReason === 'error' || reply.stopReason === 'aborted') return null;
+      return commandReview.parseVerdict(prediction.contentText(reply.content));
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', stop);
+      this.namers.delete(controller);
+    }
   }
 
   // ------------------------------------------------------------ next-message prediction

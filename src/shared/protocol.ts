@@ -785,6 +785,12 @@ export interface Settings {
   workIdeasModel: WorkIdeasModelMode;
   /** provider/model id used by `workIdeasModel: 'fixed'`; unavailable ids fall back to auto. */
   workIdeasModelId: string | null;
+  /** Auto mode: a model reviews each command that no rule settles before it runs; off runs such commands unreviewed. */
+  autoReview: boolean;
+  /** session: the session's own model; auto: cheapest model of its provider; fixed: `autoReviewModelId`. */
+  autoReviewModel: WorkIdeasModelMode;
+  /** provider/model id used by `autoReviewModel: 'fixed'`; unavailable ids fall back to auto. */
+  autoReviewModelId: string | null;
   defaultMode: SessionKind;
   sidebarCollapsed: boolean;
   /** Root folder for Code-session git worktrees; null/empty uses `<dataDir>/.worktree`. */

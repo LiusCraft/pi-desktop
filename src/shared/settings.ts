@@ -6,6 +6,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: null, language: 'system', notify: true, renderMermaid: true, suggestions: true,
   suggestionModel: 'session', suggestionModelId: null, suggestionContext: SUGGESTION_DEFAULT_CONTEXT, suggestionFullContext: false,
   workIdeas: true, workIdeasModel: 'session', workIdeasModelId: null,
+  autoReview: true, autoReviewModel: 'session', autoReviewModelId: null,
   defaultMode: 'code', sidebarCollapsed: false, worktreeDir: null, pet: true, petSkin: DEFAULT_PET_ID, terminalShell: null,
   autoUpdateCheck: true, ignoredUpdate: null,
   terminalContextLines: TERMINAL_DEFAULT_LINES,

@@ -1,6 +1,7 @@
 /**
  * The app settings the model may change through `pidesk_settings_manage`, and how each value is checked.
- * Left out on purpose: the `ai*` switches (the model must not widen its own access), `terminalShell`
+ * Left out on purpose: the `ai*` switches and `autoReview*` (the model must not widen its own access or
+ * switch off the review of its own commands), `terminalShell`
  * (an executable the app launches), `shellSession` (how its own commands run) and `worktreeDir`
  * (a folder the app creates and writes into).
  */

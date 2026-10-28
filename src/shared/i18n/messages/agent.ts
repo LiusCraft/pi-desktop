@@ -42,6 +42,10 @@ export const agent = defineMessages({
   'ag.gitNoThread': { en: 'Cannot find the review thread of this comment', zh: '找不到这条评论所在的 review thread' },
   'ag.inlineOnly': { en: '(inline comments only, state {state}: use gh pr view {num} --comments to read them)', zh: '（只有行内评论，状态 {state}：用 gh pr view {num} --comments 查看）' },
 
+  'ag.scopeRead': { en: 'Read outside the working folder: {path}', zh: '读取工作目录之外：{path}' },
+  'ag.scopeWrite': { en: 'Write outside the working folder: {path}', zh: '写入工作目录之外：{path}' },
+  'ag.scopeRun': { en: 'Run {command} (uses {path}, outside the working folder)', zh: '运行 {command}（用到工作目录之外的 {path}）' },
+  'ag.reviewAsk': { en: 'Run {command} (review: {reason})', zh: '运行 {command}（审查：{reason}）' },
   'ag.stepWorktree': { en: 'Creating the git worktree ({branch})', zh: '创建 git worktree（{branch}）' },
   'ag.stepAgent': { en: 'Starting the agent, loading extensions and tools', zh: '启动 Agent，加载扩展与工具' },
   'ag.toolRead': { en: 'Read files', zh: '读取文件' },
