@@ -10,7 +10,11 @@ import type { PrThread } from '@shared/protocol';
 import { fingerprint } from '@/lib/diff';
 import { fileDiffOf } from '@/lib/file-diff';
 import { cn } from '@/lib/utils';
+import { sessionDraftKey } from '@/store/actions';
 import { useApp } from '@/store/app';
+import { useDrafts } from '@/store/drafts';
+import type { ContextReference } from '@shared/context-reference';
+import { PendingCommentCard } from './PendingCommentCard';
 import { PrThreadCard } from './PrThreadCard';
 import { SelectionComposer, type CodeReference } from './SelectionComposer';
 
@@ -33,7 +37,7 @@ export type ReviewItem =
   | { id: string; kind: 'diff'; path: string; before: string | null; after: string | null; /** False until the contents have arrived. */ ready: boolean; collapsed?: boolean }
   | { id: string; kind: 'file'; path: string; text: string };
 
-type Note = { kind: 'thread'; thread: PrThread } | { kind: 'composer' };
+type Note = { kind: 'thread'; thread: PrThread } | { kind: 'composer' } | { kind: 'saved'; reference: ContextReference };
 type Selection = { id: string; range: SelectedLineRange };
 
 export interface ReviewHandle {
@@ -79,6 +83,9 @@ export const ReviewCodeView = forwardRef<ReviewHandle, ReviewProps>(function Rev
   const [composing, setComposing] = useState(false);
   const [commenting, setCommenting] = useState(false);
   const [shown, setShown] = useState(REVEAL_FIRST);
+  // Comments already written for the next message sit under their lines.
+  const references = useDrafts((st) => (sid ? st.drafts[sessionDraftKey(sid)]?.references : undefined));
+  const saved = useMemo(() => (references ?? []).filter((r) => r.kind === 'comment' && r.startLine && r.comment), [references]);
   const byId = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
   const versions = useRef(new Map<string, { signature: string; version: number }>());
   // CodeView compares files by identity while laying them out, so one text keeps one object.
@@ -129,6 +136,7 @@ export const ReviewCodeView = forwardRef<ReviewHandle, ReviewProps>(function Rev
 
   const codeItems = useMemo(() => items.slice(0, shown).filter((item) => item.kind === 'file' || item.ready).map((item): CodeViewItem<Note> => {
     const own = threads.filter((t) => t.path === item.path);
+    const mine = saved.filter((r) => r.path === item.path);
     const annotations: { side?: 'additions' | 'deletions'; lineNumber: number; metadata: Note }[] = [];
     if (item.kind === 'diff') {
       const diff = fileDiffOf(item.path, item.before, item.after);
@@ -138,28 +146,32 @@ export const ReviewCodeView = forwardRef<ReviewHandle, ReviewProps>(function Rev
         // A line that is gone (or never known) hangs above the first line.
         annotations.push({ side, lineNumber: thread.line && thread.line <= lines ? thread.line : 0, metadata: { kind: 'thread', thread } });
       }
+      for (const reference of mine) {
+        annotations.push({ side: reference.side === 'old' ? 'deletions' : 'additions', lineNumber: reference.endLine ?? reference.startLine!, metadata: { kind: 'saved', reference } });
+      }
       if (sid && composing && selection?.id === item.id) {
         annotations.push({ side: selection.range.endSide ?? selection.range.side ?? 'additions', lineNumber: ordered(selection.range)[1], metadata: { kind: 'composer' } });
       }
-      const signature = `${diff.cacheKey ?? ''}|${item.collapsed}|${annotations.map((a) => `${a.side}${a.lineNumber}${a.metadata.kind === 'thread' ? `${a.metadata.thread.id}:${a.metadata.thread.comments.length}:${a.metadata.thread.resolved}` : 'c'}`).join(',')}`;
+      const signature = `${diff.cacheKey ?? ''}|${item.collapsed}|${annotations.map((a) => `${a.side}${a.lineNumber}${a.metadata.kind === 'thread' ? `${a.metadata.thread.id}:${a.metadata.thread.comments.length}:${a.metadata.thread.resolved}` : a.metadata.kind === 'saved' ? a.metadata.reference.id : 'c'}`).join(',')}`;
       return { id: item.id, type: 'diff', fileDiff: diff, collapsed: item.collapsed, annotations: annotations as never, version: versionOf(versions.current, item.id, signature) };
     }
+    for (const reference of mine) annotations.push({ lineNumber: reference.endLine ?? reference.startLine!, metadata: { kind: 'saved', reference } });
     if (sid && composing && selection?.id === item.id) annotations.push({ lineNumber: ordered(selection.range)[1], metadata: { kind: 'composer' } });
-    const signature = `${item.text.length}:${item.path}|${annotations.map((a) => a.lineNumber).join(',')}`;
+    const signature = `${item.text.length}:${item.path}|${annotations.map((a) => `${a.lineNumber}${a.metadata.kind === 'saved' ? a.metadata.reference.id : ''}`).join(',')}`;
     let held = files.current.get(item.id);
     if (held?.text !== item.text || held.file.name !== item.path) {
       held = { text: item.text, file: { name: item.path, contents: item.text, cacheKey: `${item.path}:${fingerprint(item.text)}` } };
       files.current.set(item.id, held);
     }
     return { id: item.id, type: 'file', file: held.file, annotations: annotations as never, version: versionOf(versions.current, item.id, signature) };
-  }), [items, shown, threads, sid, composing, selection]);
+  }), [items, shown, threads, saved, sid, composing, selection]);
 
   const referenceOf = useCallback((id: string, range: SelectedLineRange): CodeReference | null => {
     const item = byId.get(id);
     if (!item) return null;
     const [first, last] = ordered(range);
     if (item.kind === 'file') {
-      return { path: item.path, startLine: first, endLine: last, side: 'new', text: item.text.split('\n').slice(first - 1, last).join('\n') };
+      return { path: item.path, startLine: first, endLine: last, text: item.text.split('\n').slice(first - 1, last).join('\n') };
     }
     // A selection across both sides is read from the side it started on.
     const diff = fileDiffOf(item.path, item.before, item.after);
@@ -266,6 +278,7 @@ export const ReviewCodeView = forwardRef<ReviewHandle, ReviewProps>(function Rev
             const note = annotation.metadata;
             if (!note) return null;
             if (note.kind === 'thread') return <PrThreadCard thread={note.thread} />;
+            if (note.kind === 'saved') return sid ? <PendingCommentCard sid={sid} reference={note.reference} /> : null;
             const reference = sid && selection ? referenceOf(item.id, selection.range) : null;
             if (!sid || !reference) return null;
             return <SelectionComposer sid={sid} reference={reference} commenting={commenting} onCommenting={setCommenting} onDone={dismiss} />;

@@ -98,7 +98,7 @@ export function Workspace({ s }: { s: SessionView }) {
   const all = [...primary, ...secondary];
   const solo = soloCard(s);
   if (solo) {
-    return <div className="h-full p-1">{renderCard(solo, s, { expanded: true, onExpand: () => expandCard(s.meta.id, null) })}</div>;
+    return <div className="h-full p-1">{renderCard(solo, s, { expanded: true, onExpand: (wide) => toggleExpand(solo, wide) })}</div>;
   }
   if (!primary.length || !secondary.length) return <div className="h-full px-1"><Column ids={all} s={s} columns={layout} expanded={expanded} toggleExpand={toggleExpand} /></div>;
   return (

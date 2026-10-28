@@ -25,7 +25,6 @@ export function SelectionComposer({ sid, reference, commenting, onCommenting, on
   const [comment, setComment] = useState('');
   const location = referenceLocation({ ...reference, id: '', kind: 'excerpt' });
   const attach = (kind: 'excerpt' | 'comment') => {
-    console.log('ATTACH', kind, JSON.stringify(comment), JSON.stringify(reference).slice(0, 200));
     if (kind === 'comment' && !comment.trim()) return;
     if (drafts.addReference(sessionDraftKey(sid), { ...reference, id: crypto.randomUUID(), kind, comment: kind === 'comment' ? comment.trim() : undefined })) onDone(true);
   };

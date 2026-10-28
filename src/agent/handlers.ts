@@ -58,6 +58,7 @@ export function sessionHandlers(ready: Promise<SessionHub>, getScheduler: () => 
     'sessions:sideReset': withHub((h, id) => h.sideReset(id)),
     'sessions:workIdeas': withHub((h) => h.workIdeas()),
     'sessions:changes': withHub((h, id) => h.changes(id)),
+    'sessions:setBase': withHub((h, id, ref) => h.setBase(id, ref)),
     'sessions:commits': withHub((h, id) => h.commits(id)),
     'sessions:commitChanges': withHub((h, id, hash) => h.commitChanges(id, hash)),
     'sessions:changeContent': withHub((h, id, file, hash) => h.changeContent(id, file, hash)),

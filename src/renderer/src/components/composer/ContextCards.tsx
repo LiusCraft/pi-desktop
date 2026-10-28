@@ -27,7 +27,7 @@ export function ContextCards({ references, disabled, onRemove, onOpen }: {
             <div className="flex items-center gap-1.5">
               <Icon className="size-3.5 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate font-mono text-xs" title={referenceLocation(reference)}>{referenceLocation(reference)}</span>
-              {onRemove && <Button type="button" variant="ghost" size="icon" className="size-5" disabled={disabled} aria-label={t('ctx.remove', { name: referenceLocation(reference) })} onClick={() => onRemove(reference.id)}><XIcon /></Button>}
+              {onRemove && <Button type="button" variant="ghost" size="icon" className="size-5" disabled={disabled} aria-label={t('ctx.remove', { name: referenceLocation(reference) })} onClick={(e) => { e.stopPropagation(); onRemove(reference.id); }}><XIcon /></Button>}
             </div>
             {reference.text && <pre data-selectable className="max-h-24 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] text-muted-foreground">{reference.text}</pre>}
             {reference.comment && <p data-selectable className="max-h-28 overflow-auto whitespace-pre-wrap break-words text-sm">{reference.comment}</p>}

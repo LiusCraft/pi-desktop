@@ -983,6 +983,8 @@ export interface Api {
   /** Task ideas drawn from the recent Work sessions; null when there is nothing to base them on or no model could answer. */
   'sessions:workIdeas'(): WorkIdea[] | null;
   'sessions:changes'(id: string): ChangeSet;
+  /** Compare the session's changes against another branch. */
+  'sessions:setBase'(id: string, ref: string): void;
   /** Commits made since the session's base, newest first. */
   'sessions:commits'(id: string): CommitInfo[];
   /** What one of those commits changed. */
@@ -1072,7 +1074,7 @@ export const HOST_CHANNELS = [
   'sessions:setMode', 'sessions:setStyle', 'sessions:update', 'sessions:archive', 'sessions:unarchive', 'sessions:inspect', 'sessions:remove', 'sessions:spawn', 'sessions:abort',
   'sessions:clearQueue', 'sessions:newContext', 'sessions:compact', 'sessions:compactedHistory', 'sessions:stats', 'sessions:exportHtml',
   'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:side', 'sessions:sideGet', 'sessions:sideStage', 'sessions:sideAbort', 'sessions:sideReset', 'sessions:workIdeas',
-  'sessions:changes', 'sessions:commits', 'sessions:commitChanges', 'sessions:changeContent', 'sessions:pr', 'sessions:prThreads', 'sessions:prReply', 'sessions:prResolve', 'sessions:files', 'sessions:readFile', 'sessions:search', 'sessions:readImage',
+  'sessions:changes', 'sessions:setBase', 'sessions:commits', 'sessions:commitChanges', 'sessions:changeContent', 'sessions:pr', 'sessions:prThreads', 'sessions:prReply', 'sessions:prResolve', 'sessions:files', 'sessions:readFile', 'sessions:search', 'sessions:readImage',
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
   'sessions:import', 'git:branch', 'git:branches', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove',
   'customize:list', 'customize:readFile', 'customize:skillSetDisabled', 'customize:skillCreate', 'customize:claudeImport', 'customize:claudeDismiss', 'customize:connectorSave',

@@ -1637,6 +1637,17 @@ export class SessionHub {
     const [files, state] = await Promise.all([git.changes(m.cwd, base), git.workState(m.cwd)]);
     return { files, state };
   }
+  /** Measure the session's changes from another branch: the diff, commit list and file contents all follow `baseBranch`. */
+  async setBase(id: string, ref: string) {
+    const m = this.meta(id);
+    if (m.kind !== 'code' || !(await git.resolveRef(m.cwd, ref))) throw new Error(`Unknown branch ${ref}`);
+    const fork = await git.mergeBase(m.cwd, ref);
+    m.baseBranch = ref;
+    // The recorded commit is what the diff falls back to while the session sits on the base branch itself.
+    if (fork) m.baseCommit = fork;
+    this.save();
+    this.emitMeta(m);
+  }
   async commits(id: string) {
     const m = this.meta(id);
     return git.commits(m.cwd, await git.diffBase(m.cwd, m.baseCommit, m.baseBranch));

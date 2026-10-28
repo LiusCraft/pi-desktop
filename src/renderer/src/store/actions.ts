@@ -21,7 +21,7 @@ import { askSide, showSide } from './side';
 import {
   addUiRequest, applyPiEvent, applyTaskUpdate, applyViewMode, emptySession, findByKey, hasThinking, newKey, push, replay, resolveUi, settle, transcriptItems, type Effects,
 } from './transcript';
-import type { Arrangement, CardId, Column, DropPlace, Item, ItemOf, Panels, SessionView } from './types';
+import type { Arrangement, CardId, ChangedFile, Column, DropPlace, Item, ItemOf, Panels, SessionView } from './types';
 
 export const fail = (err: unknown) => toast.error(errText(err));
 
@@ -1141,11 +1141,13 @@ export function requestFind(scope: 'file' | 'all') {
 }
 
 /** Open the Diff panel scrolled to one file, or to the first PR review thread (`thread`). */
-export const diffTarget = { path: null as string | null, thread: false, seq: 0 };
-export function openDiffRef(path: string) {
+export const diffTarget = { path: null as string | null, line: undefined as number | undefined, side: undefined as 'additions' | 'deletions' | undefined, thread: false, seq: 0 };
+export function openDiffRef(path: string, line?: number, side?: 'old' | 'new' | 'mixed') {
   const s = currentSession();
   if (!s) return;
   diffTarget.path = relPath(s.meta.cwd, path);
+  diffTarget.line = positiveLine(line);
+  diffTarget.side = side === 'old' ? 'deletions' : 'additions';
   diffTarget.seq++;
   togglePanel(s.meta.id, 'diff', true);
 }
@@ -1154,7 +1156,7 @@ export function openContextReference(reference: ContextReference, quoted: string
   if (reference.kind === 'quote') {
     if (!quoted || !revealItem(quoted, reference.text)) toast.info(t('act.quoteGone'));
   } else if (reference.directory) toast.info(t('act.folderNoPreview'));
-  else if (reference.side) openDiffRef(reference.path);
+  else if (reference.side) openDiffRef(reference.path, reference.startLine, reference.side);
   else void openFileRef(reference.path, reference.startLine);
 }
 /** The PR bar's size chip: just show the diff. */
@@ -1199,7 +1201,7 @@ export async function loadPrThreads(id: string) {
   }
   try {
     const prThreads = await call('sessions:prThreads', id);
-    updateSession(id, (v) => void (v.prThreads = prThreads));
+    updateSession(id, (v) => { if (JSON.stringify(v.prThreads) !== JSON.stringify(prThreads)) v.prThreads = prThreads; });
     try { localStorage.setItem(threadCacheKey(id), JSON.stringify(prThreads)); } catch { /* storage full or blocked */ }
   } catch {
     // Without gh the diff keeps whatever it last knew.
@@ -1211,6 +1213,7 @@ function scheduleChanges(id: string) {
   clearTimeout(changeTimers.get(id));
   changeTimers.set(id, setTimeout(() => void loadChanges(id), 250));
 }
+const changesKey = (files: ChangedFile[]) => files.map((f) => `${f.path}:${f.status}:${f.add}:${f.del}:${f.binary}:${f.rev}`).join('\n');
 export async function loadChanges(id: string) {
   const s = getApp().sessions[id];
   if (!s || isWork(s)) return;
@@ -1218,11 +1221,22 @@ export async function loadChanges(id: string) {
     const { files, state } = await call('sessions:changes', id);
     updateSession(id, (v) => {
       // Panels are the user's: a new change must not rearrange their workspace.
-      v.changes = files;
-      v.gitState = state;
+      // An unchanged listing keeps its identity, so the diff on screen (open comments, selections) is left alone.
+      if (changesKey(v.changes) !== changesKey(files)) v.changes = files;
+      if (JSON.stringify(v.gitState) !== JSON.stringify(state)) v.gitState = state;
     });
   } catch {
     // The diff panel simply keeps its previous contents when a refresh fails.
+  }
+}
+
+/** Measure the session's diff from another branch, then re-read it. */
+export async function setDiffBase(id: string, ref: string) {
+  try {
+    await call('sessions:setBase', id, ref);
+    await loadChanges(id);
+  } catch (err) {
+    fail(err);
   }
 }
 

@@ -14,7 +14,7 @@ import { desktopCommands } from '@/lib/constants';
 import { fuzzyEntry, fuzzyRank, type FuzzyEntry } from '@/lib/fuzzy';
 import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import { cycleMode, loadFiles, send } from '@/store/actions';
+import { cycleMode, loadFiles, openContextReference, send } from '@/store/actions';
 import { currentSession, getApp, useApp } from '@/store/app';
 import { drafts, getDraft, useDrafts } from '@/store/drafts';
 import type { SessionView } from '@/store/types';
@@ -417,7 +417,7 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
         )}
         {!!rack && (
           <div className="mb-2 space-y-2">
-            <ContextCards references={cards} disabled={draft.sending} onRemove={(id) => drafts.removeReference(key, id)} />
+            <ContextCards references={cards} disabled={draft.sending} onRemove={(id) => drafts.removeReference(key, id)} onOpen={(reference) => reference.kind !== 'quote' && openContextReference(reference, null)} />
             <AttachmentTiles attachments={draft.attachments} disabled={draft.sending} onRemove={(i) => drafts.removeAttachment(key, i)} />
             {draft.preparing > 0 && <div className="text-xs text-muted-foreground" role="status">{t('composer.preparing')}</div>}
             {draft.errors.length > 0 && (

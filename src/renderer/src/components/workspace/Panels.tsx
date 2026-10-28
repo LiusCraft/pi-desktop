@@ -16,6 +16,7 @@ import { OpenInMenu } from '@/components/common/OpenInMenu';
 import { Markdown } from '@/components/common/Markdown';
 import { TodoList, PlanActions } from '@/components/thread/Items';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { call, isMac } from '@/lib/api';
@@ -28,7 +29,7 @@ import { fdir, fmtDur, fmtTok, fname } from '@/lib/format';
 import type { ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
 import {
-  closeDetail, closeFiles, closeFileTab, diffTarget, fail, FIND_EVENT, findTarget, loadChanges, loadFiles, openAgent, openDiffRef, openFileRef, pinFileTab, stopTask, togglePanel,
+  closeDetail, closeFiles, closeFileTab, diffTarget, fail, FIND_EVENT, findTarget, loadChanges, loadFiles, openAgent, openDiffRef, openFileRef, pinFileTab, setDiffBase, stopTask, togglePanel,
 } from '@/store/actions';
 import { modelName, setPref, updateSession, useApp } from '@/store/app';
 import { findByKey, findTool } from '@/store/transcript';
@@ -213,7 +214,17 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const byPath = useMemo(() => new Map(files.map((f) => [f.path, f])), [files]);
   useEffect(() => {
     call('sessions:commits', id).then(setCommits).catch(() => setCommits([]));
-  }, [id, s.changes]);
+  }, [id, s.changes, s.meta.baseBranch]);
+  // Branches a diff can be measured from, read when the picker opens.
+  const [branches, setBranches] = useState<string[]>([]);
+  const loadBranches = (open: boolean) => {
+    if (open) call('git:branches', s.meta.cwd).then(setBranches).catch(() => setBranches([]));
+  };
+  const pickBase = (ref: string) => {
+    setCommit(null);
+    setFlipped(new Set());
+    void setDiffBase(id, ref);
+  };
   const pickCommit = async (next: CommitInfo | null) => {
     setFlipped(new Set());
     if (!next || next.hash === commit?.hash) return void setCommit(null);
@@ -287,12 +298,12 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
     if (hits.length) showHit(0);
   }, [finding, query, caseSensitive]); // eslint-disable-line react-hooks/exhaustive-deps
   // "View diff" on a tool row is an explicit request: show the file, then land on it.
-  const open = (p: string) => {
+  const open = (p: string, line?: number, side?: 'additions' | 'deletions') => {
     const f = [...byPath.values()].find((x) => x.path === p || p.endsWith('/' + x.path) || x.path.endsWith(p));
     if (!f) return false;
     setFlipped((c) => { const n = new Set(c); if (isGeneratedFile(f.path)) n.add(f.path); else n.delete(f.path); return n; });
     setActive(f.path);
-    requestAnimationFrame(() => review.current?.scrollToItem(f.path));
+    requestAnimationFrame(() => (line ? review.current?.scrollToLine(f.path, line, side) : review.current?.scrollToItem(f.path)));
     return true;
   };
   // "View diff" on a tool row, and the PR bar's chips, jump here.
@@ -308,9 +319,10 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
       return;
     }
     if (!diffTarget.path) return;
-    const target = diffTarget.path;
-    if (!open(target)) void loadChanges(id).then(() => requestAnimationFrame(() => open(target)));
+    const { path: target, line, side } = diffTarget;
+    if (!open(target, line, side)) void loadChanges(id).then(() => requestAnimationFrame(() => open(target, line, side)));
     diffTarget.path = null;
+    diffTarget.line = undefined;
   }, [diffTarget.seq, s.changes.length, s.prThreads]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const items = useMemo<ReviewItem[]>(() => files.filter((f) => !isBinary(f)).map((f) => {
@@ -331,7 +343,22 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
 
   const title = (
     <span className="flex min-w-0 items-center gap-1.5 text-sm font-normal">
-      <span className="truncate">{s.meta.baseBranch || t('panel.base')}</span>
+      <DropdownMenu onOpenChange={loadBranches}>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="xs" className="min-w-0 gap-0.5 px-1 font-normal" title={t('panel.changeBase')}>
+            <span className="truncate">{s.meta.baseBranch || t('panel.base')}</span>
+            <ChevronDownIcon className="text-muted-foreground" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="max-h-80 w-64 overflow-y-auto">
+          {branches.filter((b) => b !== s.meta.branch).map((b) => (
+            <DropdownMenuItem key={b} onSelect={() => pickBase(b)} className={cn(b === s.meta.baseBranch && 'font-medium')}>
+              <span className="truncate">{b}</span>
+              {b === s.meta.baseBranch && <CheckIcon className="ml-auto size-3.5" />}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
       <span className="text-muted-foreground">→</span>
       <span className="truncate">{s.meta.branch || fname(s.meta.cwd)}</span>
     </span>
@@ -397,23 +424,25 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
                 <ResizablePanel id="commits" defaultSize={COMMITS_START} minSize={COMMITS_MIN_PX} maxSize={COMMITS_MAX}>
               <nav className="h-full overflow-y-auto p-1.5" aria-label={t('panel.commits')}>
                 <div className="px-2 py-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{t('panel.commits')} · {commits.length}</div>
-                <button
-                  className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] hover:bg-accent', !commit && 'bg-accent')}
+                <Button
+                  variant="ghost"
+                  className={cn('h-auto w-full justify-start gap-2 px-2 py-1 text-[13px] font-normal', !commit && 'bg-accent')}
                   onClick={() => void pickCommit(null)}
                 >
                   <span className="truncate">{t('panel.allChanges')}</span>
-                </button>
+                </Button>
                 {commits.map((c) => (
-                  <button
+                  <Button
                     key={c.hash}
+                    variant="ghost"
                     title={`${c.short} · ${c.author} · ${new Date(c.date).toLocaleString()}
 ${c.subject}`}
                     onClick={() => void pickCommit(c)}
-                    className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] hover:bg-accent', commit?.hash === c.hash && 'bg-accent')}
+                    className={cn('h-auto w-full justify-start gap-2 px-2 py-1 text-[13px] font-normal', commit?.hash === c.hash && 'bg-accent')}
                   >
                     <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{c.short}</span>
-                    <span className="min-w-0 flex-1 truncate">{c.subject}</span>
-                  </button>
+                    <span className="min-w-0 flex-1 truncate text-left">{c.subject}</span>
+                  </Button>
                 ))}
               </nav>
                 </ResizablePanel>
