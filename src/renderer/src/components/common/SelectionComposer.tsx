@@ -33,7 +33,7 @@ export function SelectionComposer({ sid, reference, commenting, onCommenting, on
       <div className="flex flex-wrap items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={location}>{location}</span>
         <Button type="button" variant="outline" size="sm" onMouseDown={(event) => event.preventDefault()} onClick={() => attach('excerpt')}><PaperclipIcon data-icon="inline-start" />{t('selcomp.attach')}</Button>
-        {!commenting && <Button type="button" variant="outline" size="sm" onClick={() => onCommenting(true)}><MessageSquarePlusIcon data-icon="inline-start" />{t('selcomp.addComment')}</Button>}
+        {!commenting && <Button type="button" variant="outline" size="sm" onMouseDown={(event) => event.preventDefault()} onClick={() => onCommenting(true)}><MessageSquarePlusIcon data-icon="inline-start" />{t('selcomp.addComment')}</Button>}
         <Button type="button" variant="ghost" size="icon" className="size-7" aria-label={t('selcomp.cancel')} onClick={() => onDone(false)}><XIcon /></Button>
       </div>
       {commenting && (

@@ -93,6 +93,8 @@ export interface KitHost {
     read(id: string, limit: number): { role: string; text: string }[];
     send(id: string, text: string): Promise<'delivered' | 'queued'>;
   };
+  /** Work only: lists result files in the session's Files panel; omit it (subagents) to leave out the present-files tool. */
+  present?(files: string[]): void;
   /** Renames this session; omit it (subagents) to leave out the rename tool. */
   rename?(title: string): void;
   /** The subagent identities to offer (built-in plus the user's); the built-ins when omitted. */
@@ -141,6 +143,8 @@ const READ_ONLY_TOOLS = new Set([
   'read', 'grep', 'find', 'ls', 'pidesk_todo_write', 'pidesk_exit_plan_mode', 'pidesk_ask_question', 'pidesk_task', 'pidesk_bg_output', 'pidesk_bg_kill', 'tool_search', 'codemode',
   // Nothing here changes anything: a suggestion is only shown to the user, and the session tools below only look.
   'pidesk_suggest_task', 'pidesk_list_sessions', 'pidesk_read_session',
+  // Only adds names to the Files panel.
+  'pidesk_present_files',
   // Only changes the label shown in the session list.
   'pidesk_rename_session',
   // Only writes the project's notes, which the user sees and edits on the Projects page.
@@ -529,6 +533,38 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         };
       },
     });
+
+    // ---------------------------------------------------------------- pidesk_present_files
+    // Work only: a shell command's output is not tracked, so the model lists the files it made for the Files panel.
+    const present = host.scope && host.present;
+    if (present) {
+      pi.registerTool({
+        name: 'pidesk_present_files',
+        label: 'Present files',
+        description:
+          'List the files you created or changed as results for the user. They appear in the Files panel of this session. ' +
+          'Call it once the files exist, especially for files made by a shell command (audio, video, images, exports), which are not tracked otherwise. ' +
+          'Files written with the write or edit tools are listed already.',
+        promptSnippet: 'List result files in the Files panel',
+        promptGuidelines: ['After a command produces a deliverable file, call pidesk_present_files with its path.'],
+        parameters: Type.Object({
+          paths: Type.Array(Type.String({ description: 'File path, relative to the working folder or absolute' }), { minItems: 1, maxItems: 20 }),
+        }),
+        annotations: { readOnlyHint: true },
+        // Declared to the model and never callable from a codemode script, so the call is a visible step of its own.
+        exposure: 'model-only',
+        async execute(_id, params, _signal, _onUpdate, ctx) {
+          const base = host.cwd ?? ctx.cwd;
+          const files = params.paths.map((p) => {
+            const abs = resolve(base, p);
+            if (!statSync(abs, { throwIfNoEntry: false })?.isFile()) throw new Error(`${p} is not an existing file.`);
+            return abs;
+          });
+          present(files);
+          return { content: [{ type: 'text', text: `Listed ${files.length} file${files.length > 1 ? 's' : ''} in the Files panel.` }], details: { files } };
+        },
+      });
+    }
 
     // ---------------------------------------------------------------- pidesk_rename_session
     const rename = host.rename;

@@ -2,7 +2,7 @@
 // MCP servers and packages, plus the subagent identities Pi Desktop adds. It replaces the
 // conversation area while open; project-level entries follow the project picked in the sidebar.
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { BotIcon, PackageIcon, PlugZapIcon, PlusIcon, ScrollTextIcon, SparklesIcon } from 'lucide-react';
+import { BotIcon, PackageIcon, PlugZapIcon, PlusIcon, ScrollTextIcon, SparklesIcon, StarIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import type { CustomizeCatalog, PromptDraft, PromptInfo } from '@shared/protocol';
 import { call, errText } from '@/lib/api';
@@ -17,10 +17,11 @@ import { useApp } from '@/store/app';
 import { AgentsSection } from './AgentsSection';
 import { ConnectorsSection } from './ConnectorsSection';
 import { PluginsSection } from './PluginsSection';
+import { RecommendedSection } from './RecommendedSection';
 import { SkillsSection } from './SkillsSection';
 import { BackButton, Empty, Field, Heading, Panel, Segmented, stripFrontmatter } from './ui';
 
-type Tab = 'skills' | 'connectors' | 'plugins' | 'prompts' | 'agents';
+type Tab = 'recommended' | 'skills' | 'connectors' | 'plugins' | 'prompts' | 'agents';
 
 function PromptForm({ project, initial, onDone, onCatalog }: { project: string | null; initial?: PromptInfo; onDone: () => void; onCatalog: (c: CustomizeCatalog) => void }) {
   const t = useT();
@@ -129,6 +130,7 @@ export function CustomizePage() {
   useEffect(load, [load, view]);
 
   const tabs: { id: Tab; label: string; icon: ReactNode; count?: number }[] = [
+    { id: 'recommended', label: t('customize.tab.recommended'), icon: <StarIcon className="size-4" /> },
     { id: 'skills', label: t('customize.tab.skills'), icon: <SparklesIcon className="size-4" />, count: catalog?.skills.length },
     { id: 'connectors', label: t('customize.tab.connectors'), icon: <PlugZapIcon className="size-4" />, count: catalog?.connectors.length },
     { id: 'plugins', label: t('customize.tab.plugins'), icon: <PackageIcon className="size-4" />, count: catalog?.plugins.length },
@@ -164,6 +166,8 @@ export function CustomizePage() {
             <AgentsSection />
           ) : !props ? (
             <div className="text-sm text-muted-foreground">{t('customize.loading')}</div>
+          ) : tab === 'recommended' ? (
+            <RecommendedSection {...props} />
           ) : tab === 'skills' ? (
             <SkillsSection {...props} />
           ) : tab === 'connectors' ? (

@@ -98,6 +98,29 @@ const MAGIC: [string, (b: Buffer) => boolean][] = [
 
 export const isImagePath = (rel: string) => IMAGE_EXTENSIONS.has(path.extname(rel).slice(1).toLowerCase());
 
+export const MAX_MEDIA_BYTES = 50 * 1024 * 1024;
+const MEDIA_TYPES: Record<string, { mimeType: string; kind: 'audio' | 'video' }> = {
+  mp3: { mimeType: 'audio/mpeg', kind: 'audio' },
+  wav: { mimeType: 'audio/wav', kind: 'audio' },
+  m4a: { mimeType: 'audio/mp4', kind: 'audio' },
+  aac: { mimeType: 'audio/aac', kind: 'audio' },
+  ogg: { mimeType: 'audio/ogg', kind: 'audio' },
+  opus: { mimeType: 'audio/ogg', kind: 'audio' },
+  flac: { mimeType: 'audio/flac', kind: 'audio' },
+  mp4: { mimeType: 'video/mp4', kind: 'video' },
+  m4v: { mimeType: 'video/mp4', kind: 'video' },
+  webm: { mimeType: 'video/webm', kind: 'video' },
+  mov: { mimeType: 'video/quicktime', kind: 'video' },
+};
+
+/** An audio or video file inside `root` as a data URL, for the preview player; the extension decides the type. */
+export function readSessionMedia(root: string, rel: string): { kind: 'audio' | 'video'; mimeType: string; src: string } | null {
+  const type = MEDIA_TYPES[path.extname(rel).slice(1).toLowerCase()];
+  if (!type) return null;
+  const content = readSessionBytes(root, rel, MAX_MEDIA_BYTES);
+  return content ? { ...type, src: `data:${type.mimeType};base64,${content.toString('base64')}` } : null;
+}
+
 /** A raster image inside `root` as a data URL; the bytes, not the extension, decide the type. SVG is never served. */
 export function readSessionImage(root: string, rel: string): { mimeType: string; src: string } | null {
   if (!isImagePath(rel)) return null;

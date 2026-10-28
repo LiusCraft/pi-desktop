@@ -23,7 +23,7 @@ import { primeSuggestion, resumeSuggestion } from './predict';
 import { forgetScroll } from './scroll';
 import { askSide, showSide } from './side';
 import {
-  addUiRequest, applyPiEvent, applyTaskUpdate, applyViewMode, emptySession, findByKey, hasThinking, newKey, push, replay, resolveUi, settle, transcriptItems, type Effects,
+  addOutputs, addUiRequest, applyPiEvent, applyTaskUpdate, applyViewMode, emptySession, findByKey, hasThinking, newKey, push, replay, resolveUi, settle, transcriptItems, type Effects,
 } from './transcript';
 import type { Arrangement, CardId, ChangedFile, Column, DropPlace, Item, ItemOf, Panels, SessionView } from './types';
 
@@ -163,6 +163,9 @@ function flushEvents() {
           } else if (ev.level === 'warning') toast.warning(ev.message);
           else push(s, { kind: 'note', key: newKey(), text: ev.message }, view);
           break;
+        case 'session_outputs':
+          addOutputs(s, ev.files);
+          break;
         case 'editor_text':
           effects.push([s.meta.id, { editorText: ev.text }]);
           break;
@@ -183,6 +186,7 @@ function runEffects(id: string, fx: Effects) {
   const isCur = getApp().current === id;
   if (fx.scheduleChanges) scheduleChanges(id);
   if (fx.refreshStats) void refreshStats(id);
+  if (fx.pruneOutputs && isWork(s)) void pruneOutputs(id);
   if (fx.prCreated) call('sessions:update', id, { pr: fx.prCreated }).catch(() => {});
   if (fx.editorText !== undefined) drafts.setText(sessionDraftKey(id), fx.editorText);
   if (fx.settled && !fx.settled.aborted) {
@@ -1107,6 +1111,7 @@ export async function stopTask(id: string, toolCallId: string) {
 }
 
 const IMAGE_FILE = /\.(png|jpe?g|gif|webp|bmp)$/i;
+const MEDIA_FILE = /\.(mp3|wav|m4a|aac|ogg|opus|flac|mp4|m4v|webm|mov)$/i;
 
 let fileRequest = 0;
 /**
@@ -1142,6 +1147,11 @@ export async function openFileRef(path: string, line?: number, fallbackImage?: s
     if (IMAGE_FILE.test(rel) || fallbackImage) {
       const image = (await call('sessions:readImage', id, rel).catch(() => null))?.src ?? fallbackImage ?? null;
       if (stillShowing()) updateSession(id, (v) => void (v.detail = { type: 'file', path: rel, line: target, loading: false, image }));
+      return;
+    }
+    if (MEDIA_FILE.test(rel)) {
+      const media = (await call('sessions:readMedia', id, rel).catch(() => null)) ?? null;
+      if (stillShowing()) updateSession(id, (v) => void (v.detail = { type: 'file', path: rel, line: target, loading: false, media: media && { kind: media.kind, src: media.src } }));
       return;
     }
     const text = await call('sessions:readFile', id, rel);
@@ -1262,6 +1272,20 @@ export async function loadPrThreads(id: string) {
     try { localStorage.setItem(threadCacheKey(id), JSON.stringify(prThreads)); } catch { /* storage full or blocked */ }
   } catch {
     // Without gh the diff keeps whatever it last knew.
+  }
+}
+
+/** Files the model listed or wrote and then deleted leave the Files list. */
+async function pruneOutputs(id: string) {
+  const paths = getApp().sessions[id]?.outputs.map((o) => o.path) ?? [];
+  if (!paths.length) return;
+  try {
+    const alive = new Set(await call('sessions:existing', id, paths));
+    updateSession(id, (v) => {
+      v.outputs = v.outputs.filter((o) => alive.has(o.path));
+    });
+  } catch {
+    // Keep the list as it is when the check fails.
   }
 }
 

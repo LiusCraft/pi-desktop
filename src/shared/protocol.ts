@@ -657,6 +657,8 @@ export type HostEvent =
   /** Accounts, keys or endpoints changed: reload model lists. */
   | { type: 'models_changed' }
   | { type: 'editor_text'; sessionId: string; text: string }
+  /** The model listed result files (absolute paths) for the Files panel. */
+  | { type: 'session_outputs'; sessionId: string; files: string[] }
   | { type: 'extension_error'; sessionId: string; error: string }
   /** The link to the remote host the windows are showing changed (only while one is active). */
   | { type: 'remote_link'; state: RemoteLinkState }
@@ -1064,10 +1066,14 @@ export interface Api {
   'sessions:prReply'(id: string, threadId: string, body: string): void;
   'sessions:prResolve'(id: string, threadId: string, resolved: boolean): void;
   'sessions:files'(id: string): string[];
+  /** Which of `paths` (relative to the session folder, or absolute) still exist as files. */
+  'sessions:existing'(id: string, paths: string[]): string[];
   'sessions:readFile'(id: string, rel: string): string | null;
   /** Which lines of the project's text files contain `query`. */
   'sessions:search'(id: string, query: string, caseSensitive: boolean): SearchResult;
   'sessions:readImage'(id: string, rel: string): { mimeType: string; src: string } | null;
+  /** An audio or video file as a data URL; null when it is not one, is outside the session, or is too large. */
+  'sessions:readMedia'(id: string, rel: string): { kind: 'audio' | 'video'; mimeType: string; src: string } | null;
   'sessions:context'(id: string): ContextBreakdown | null;
   'sessions:stopTask'(id: string, toolCallId: string): boolean;
   'sessions:importable'(projectPath: string): ImportableSession[];
@@ -1147,7 +1153,7 @@ export const HOST_CHANNELS = [
   'sessions:setMode', 'sessions:setStyle', 'sessions:update', 'sessions:archive', 'sessions:unarchive', 'sessions:inspect', 'sessions:remove', 'sessions:spawn', 'sessions:abort',
   'sessions:clearQueue', 'sessions:newContext', 'sessions:compact', 'sessions:compactedHistory', 'sessions:stats', 'sessions:exportHtml',
   'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:side', 'sessions:sideGet', 'sessions:sideStage', 'sessions:sideAbort', 'sessions:sideReset', 'sessions:workIdeas',
-  'sessions:changes', 'sessions:setBase', 'sessions:commits', 'sessions:commitChanges', 'sessions:changeContent', 'sessions:pr', 'sessions:prThreads', 'sessions:prReply', 'sessions:prResolve', 'sessions:files', 'sessions:readFile', 'sessions:search', 'sessions:readImage',
+  'sessions:changes', 'sessions:setBase', 'sessions:commits', 'sessions:commitChanges', 'sessions:changeContent', 'sessions:pr', 'sessions:prThreads', 'sessions:prReply', 'sessions:prResolve', 'sessions:files', 'sessions:existing', 'sessions:readFile', 'sessions:search', 'sessions:readImage', 'sessions:readMedia',
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
   'sessions:import', 'git:branch', 'git:branches', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove',
   'customize:list', 'customize:readFile', 'customize:skillSetDisabled', 'customize:skillCreate', 'customize:promptCreate', 'customize:promptDelete', 'customize:claudeImport', 'customize:claudeDismiss', 'customize:connectorSave',

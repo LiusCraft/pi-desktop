@@ -11,10 +11,13 @@ import { cn } from '@/lib/utils';
 import { openFileRef } from '@/store/actions';
 import { MermaidBlock } from './MermaidBlock';
 
-// Paths may contain non-ASCII names (e.g. 收件箱整理.md:1).
-const FILE_REF = /((?:[\p{L}\p{N}_.-]+\/)*[\p{L}\p{N}_.-]+\.(?:[a-z]{1,5})):(\d+)/gu;
+// Paths may contain non-ASCII names (e.g. 收件箱整理.md:1) and extensions with digits (mp3, m4a).
+const FILE_REF = /((?:[\p{L}\p{N}_.-]+\/)*[\p{L}\p{N}_.-]+\.[a-z][a-z0-9]{0,4}):(\d+)/gu;
+// The same path with no `:line`, for inline code whose `:line` follows outside the backticks.
+const FILE_NAME = /^(?:[\p{L}\p{N}_.-]+\/)*[\p{L}\p{N}_.-]+\.[a-z][a-z0-9]{0,4}$/u;
+const LINE_SUFFIX = /^:(\d+)/;
 // A bare relative path in inline code needs a directory part: `package.json` or `console.log` alone are too ambiguous to link.
-const BARE_PATH = /^(?:[\p{L}\p{N}_.-]+\/)+[\p{L}\p{N}_.-]+\.[a-z]{1,5}$/u;
+const BARE_PATH = /^(?:[\p{L}\p{N}_.-]+\/)+[\p{L}\p{N}_.-]+\.[a-z][a-z0-9]{0,4}$/u;
 const FILE_SCHEME = 'pi-file:';
 
 /** remark plugin: `path/to/file.ts:12` becomes a link that opens the file at that line. */
@@ -22,8 +25,17 @@ function remarkFileRefs() {
   const visit = (node: any) => {
     if (!node.children || node.type === 'link' || node.type === 'code') return;
     const out: any[] = [];
-    for (const child of node.children) {
+    for (let i = 0; i < node.children.length; i++) {
+      const child = node.children[i];
       if (child.type === 'inlineCode') {
+        // `name.mp3`:1 — the line number sits outside the backticks.
+        const next = node.children[i + 1];
+        const line = next?.type === 'text' ? LINE_SUFFIX.exec(next.value) : null;
+        if (line && FILE_NAME.test(child.value)) {
+          out.push({ type: 'link', url: `${FILE_SCHEME}${child.value}:${line[1]}`, children: [child] });
+          next.value = next.value.slice(line[0].length);
+          continue;
+        }
         FILE_REF.lastIndex = 0;
         const m = FILE_REF.exec(child.value);
         if (m && m[0] === child.value) out.push({ type: 'link', url: `${FILE_SCHEME}${m[1]}:${m[2]}`, children: [child] });
@@ -92,7 +104,9 @@ export function CodeBlock({ lang, code, extra, flush, collapsible }: { lang: str
 const components: Components = {
   a({ href, children }) {
     if (href?.startsWith(FILE_SCHEME)) {
-      const ref = href.slice(FILE_SCHEME.length);
+      // Markdown percent-encodes non-ASCII characters in a link target (下午好 → %E4%B8%8B…).
+      let ref = href.slice(FILE_SCHEME.length);
+      try { ref = decodeURIComponent(ref); } catch { /* not encoded after all */ }
       const at = ref.lastIndexOf(':');
       return (
         <button type="button" className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary" onClick={() => void openFileRef(ref.slice(0, at), Number(ref.slice(at + 1)))}>

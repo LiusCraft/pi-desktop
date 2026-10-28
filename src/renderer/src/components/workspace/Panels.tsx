@@ -13,7 +13,9 @@ import { ReviewCodeView, type ReviewHandle, type ReviewItem } from '@/components
 import type { FileTreeRowDecoration } from '@pierre/trees';
 import { CopyGlyph, useCopy } from '@/components/common/Copy';
 import { OpenInMenu } from '@/components/common/OpenInMenu';
+import { HtmlPreview } from '@/components/common/HtmlPreview';
 import { Markdown } from '@/components/common/Markdown';
+import { SelectableContent } from '@/components/common/SelectableContent';
 import { TodoList, PlanActions } from '@/components/thread/Items';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -596,7 +598,7 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // In the open file: the lines with the text, stepped through with Enter.
-  const rendered = !!d && HTML_FILE.test(d.path) && !source;
+  const rendered = !!d && hasRenderedView(d.path) && !source;
   const fileHits = useMemo(() => (find === 'file' && d?.text != null && !rendered ? findInText(d.text, query, caseSensitive) : []), [find, d?.text, rendered, query, caseSensitive]);
   const showHit = (at: number) => {
     if (!d || !fileHits[at]) return;
@@ -899,10 +901,13 @@ export function DetailPanel({ s, ...card }: CardProps & { s: SessionView }) {
 }
 
 const HTML_FILE = /\.html?$/i;
+const MARKDOWN_FILE = /\.(md|markdown|mdx)$/i;
+/** Files that open rendered, with a toggle for the source. */
+const hasRenderedView = (path: string) => HTML_FILE.test(path) || MARKDOWN_FILE.test(path);
 /** A file opens at its top; only a line past the first is a place to jump to. */
 const FIRST_LINE = 1;
 
-/** An HTML file opens rendered; the toggle brings the source back. A new file starts rendered again. */
+/** An HTML or Markdown file opens rendered; the toggle brings the source back. A new file starts rendered again. */
 function useSourceToggle(path: string) {
   const [source, setSource] = useState(false);
   useEffect(() => setSource(false), [path]);
@@ -914,7 +919,7 @@ function FileTools({ s, d, source, onSource }: { s: SessionView; d: FileDetail; 
   const hasDiff = s.changes.some((f) => f.path === d.path);
   return (
     <>
-      {HTML_FILE.test(d.path) && d.text != null && (
+      {hasRenderedView(d.path) && d.text != null && (
         <IconBtn title={t(source ? 'file.viewRendered' : 'file.viewSource')} onClick={() => onSource(!source)}>{source ? <EyeIcon className="size-3.5" /> : <CodeIcon className="size-3.5" />}</IconBtn>
       )}
       {hasDiff && <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => openDiffRef(d.path)}>{t('file.diff')}</Button>}
@@ -935,9 +940,22 @@ function FileBody({ s, d, source, viewRef }: { s: SessionView; d: FileDetail; so
       </div>
     ) : <Empty>{t('file.noImage')}</Empty>;
   }
+  if (d.media !== undefined) {
+    if (!d.media) return <Empty>{t('file.noMedia')}</Empty>;
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
+        {d.media.kind === 'video'
+          ? <video key={d.path} src={d.media.src} controls className="max-h-full max-w-full" />
+          : <audio key={d.path} src={d.media.src} controls className="w-full max-w-md" />}
+      </div>
+    );
+  }
   if (d.text == null) return <Empty>{t('file.noPreview')}</Empty>;
+  if (MARKDOWN_FILE.test(d.path) && !source) {
+    return <SelectableContent key={d.path} sid={s.meta.id} path={d.path} className="flex-1"><div className="p-4"><Markdown text={d.text} className="text-sm" /></div></SelectableContent>;
+  }
   if (HTML_FILE.test(d.path) && !source) {
-    return <iframe key={d.path} srcDoc={d.text} title={fname(d.path)} className="min-h-0 flex-1 border-0 bg-white" sandbox="allow-scripts" />;
+    return <HtmlPreview key={d.path} sid={s.meta.id} path={d.path} html={d.text} title={fname(d.path)} />;
   }
   return <ReviewCodeView key={d.path} ref={viewRef} sid={s.meta.id} className="flex-1" items={items} target={target} hideHeader />;
 }

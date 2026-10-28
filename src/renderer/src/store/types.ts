@@ -63,7 +63,7 @@ export type ItemOf<K extends Item['kind']> = Extract<Item, { kind: K }>;
 export type Detail =
   | { type: 'plan'; key: string }
   | { type: 'agent'; toolCallId: string }
-  | { type: 'file'; path: string; line: number; start?: number; loading: boolean; text?: string | null; error?: string; image?: string | null };
+  | { type: 'file'; path: string; line: number; start?: number; loading: boolean; text?: string | null; error?: string; image?: string | null; media?: { kind: 'audio' | 'video'; src: string } | null };
 
 /** A file open in the Files card. A tab nobody double-clicked is a preview: the next single click replaces it. */
 export interface FileTab {

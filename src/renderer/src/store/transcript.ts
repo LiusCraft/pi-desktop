@@ -16,6 +16,8 @@ import type { Item, ItemOf, SessionView, ThinkStep, Todo } from './types';
 export interface Effects {
   scheduleChanges?: boolean;
   refreshStats?: boolean;
+  /** The turn ended: drop listed files the model has since deleted. */
+  pruneOutputs?: boolean;
   prCreated?: PrSummary;
   settled?: { aborted: boolean };
   waiting?: boolean;
@@ -79,6 +81,17 @@ function finishThought(step: ThinkStep, view: ViewMode) {
 }
 
 // ------------------------------------------------------------ tools
+
+/** Result files the model listed join the session's outputs, as write and edit calls do. */
+export function addOutputs(s: SessionView, files: string[]) {
+  for (const file of files) {
+    if (typeof file !== 'string') continue;
+    const rel = relPath(s.meta.cwd, file);
+    const prev = s.outputs.find((o) => o.path === rel);
+    if (prev) prev.t = Date.now();
+    else s.outputs.push({ path: rel, kind: 'write', t: Date.now() });
+  }
+}
 
 export function toolStart(s: SessionView, ev: { toolCallId: string; toolName: string; args?: any }, view: ViewMode, replay = false) {
   if (bareName(ev.toolName) === 'todo_write') return;
@@ -155,6 +168,14 @@ export function toolEnd(
   }
   if (t.kind === 'websearch' && !ev.isError) t.count = ev.result?.details?.hits?.length;
   if (bareName(ev.toolName) === CODEMODE_TOOL) t.calls = nestedCalls(ev.result?.details?.calls);
+  // Live, the host pushes these as they happen (also from inside a script); this rebuilds them when a transcript is replayed.
+  if (replay && bareName(ev.toolName) === 'present_files' && !ev.isError) addOutputs(s, ev.result?.details?.files ?? []);
+  if (replay && bareName(ev.toolName) === CODEMODE_TOOL) {
+    for (const call of nestedCalls(ev.result?.details?.calls)) {
+      if (bareName(call.name) !== 'present_files' || call.status !== 'ok') continue;
+      try { addOutputs(s, JSON.parse(call.args).paths ?? []); } catch { /* the host shortened the arguments */ }
+    }
+  }
   if (t.kind === 'bash') t.output = text;
   else if (t.kind === 'edit' || t.kind === 'write') {
     if (!ev.isError && t.path) {
@@ -408,7 +429,7 @@ export function settle(s: SessionView, aborted: boolean, view: ViewMode): Effect
   }
   push(s, { kind: 'foot', key: newKey(), t: Date.now(), usage: t('status.tokens', { dur: fmtDur(Date.now() - s.t0), tokens: fmtTok(s.tokens) }) }, view);
   s.meta.updatedAt = Date.now();
-  return { settled: { aborted }, refreshStats: true, scheduleChanges: true };
+  return { settled: { aborted }, refreshStats: true, pruneOutputs: true, scheduleChanges: true };
 }
 
 // ------------------------------------------------------------ questions

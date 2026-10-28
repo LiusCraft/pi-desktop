@@ -41,7 +41,7 @@ import { ObjectStorage } from './storage';
 import { WebSearch } from './web-search';
 import { createDesktopKit, type KitHost, type KitState, type SubagentRun } from './desktop-kit';
 import { toWireEvent } from './events';
-import { locateSessionFile, readSessionFile, readSessionImage, resolveInside, searchSessionFiles } from './files';
+import { locateSessionFile, readSessionFile, readSessionImage, readSessionMedia, resolveInside, searchSessionFiles } from './files';
 import * as git from './git';
 import { ModelAdmin } from './model-admin';
 import { PrWatcher, type PrPending } from './pr-watch';
@@ -518,6 +518,7 @@ export class SessionHub {
       ask: (request, signal) => this.ask(live, request, signal),
       setMode: (mode) => this.applyMode(live.id, mode),
       runSubagent: (run) => this.runSubagent(live, run),
+      present: (files) => this.emit({ type: 'session_outputs', sessionId: live.id, files }),
       rename: (title) => void this.update(live.id, { title }),
       peers: {
         list: () => this.peerList(live.id),
@@ -1766,6 +1767,12 @@ export class SessionHub {
   prResolve(id: string, threadId: string, resolved: boolean) {
     return git.setThreadResolved(this.meta(id).cwd, threadId, resolved);
   }
+  existing(id: string, paths: string[]) {
+    const cwd = this.meta(id).cwd;
+    return paths.filter((p) => {
+      try { return fs.statSync(path.resolve(cwd, p)).isFile(); } catch { return false; }
+    });
+  }
   files(id: string) {
     return git.listFiles(this.meta(id).cwd);
   }
@@ -1776,6 +1783,10 @@ export class SessionHub {
   async search(id: string, query: string, caseSensitive: boolean) {
     const cwd = this.meta(id).cwd;
     return searchSessionFiles(cwd, await git.listFiles(cwd), query, caseSensitive);
+  }
+  async readMedia(id: string, rel: string) {
+    const cwd = this.meta(id).cwd;
+    return readSessionMedia(cwd, await locateSessionFile(cwd, rel, () => git.listFiles(cwd)));
   }
   async readImage(id: string, rel: string) {
     const cwd = this.meta(id).cwd;

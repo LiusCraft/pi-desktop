@@ -196,4 +196,278 @@ export const customize = defineMessages({
   'plugins.kind.prompts': { en: 'Prompts', zh: '提示词' },
   'plugins.kind.themes': { en: 'Themes', zh: '主题' },
   'plugins.empty': { en: 'No plugins yet. Enter a package name above, e.g. npm:pi-web-access.', zh: '还没有插件。在上面输入包名，如 npm:pi-web-access。' },
+
+  'customize.tab.recommended': { en: 'Recommended', zh: '推荐' },
+  'rec.sub': { en: 'One-click setups for common work', zh: '常见工作的一键配置' },
+  'rec.tip': { en: 'Skills are written to your personal skills folder and can be edited there. Plugins and connectors are installed for every project. New sessions pick them up.', zh: '技能会写入个人技能文件夹，可随意修改。插件和连接器对所有项目生效。新会话生效。' },
+  'rec.group.create': { en: 'Slides, video, audio', zh: 'PPT、视频、音频' },
+  'rec.group.roles': { en: 'Roles', zh: '角色' },
+  'rec.install': { en: 'Install', zh: '安装' },
+  'rec.installed': { en: 'Installed', zh: '已安装' },
+  'rec.done': { en: 'Installed; new sessions will use it', zh: '已安装，新会话生效' },
+  'rec.kind.skill': { en: 'Skill', zh: '技能' },
+  'rec.kind.plugin': { en: 'Plugin', zh: '插件' },
+  'rec.kind.connector': { en: 'Connector', zh: '连接器' },
+
+  'rec.slides.title': { en: 'Slides', zh: 'PPT 制作' },
+  'rec.slides.desc': { en: 'Build .pptx decks with code, with a layout checklist', zh: '用代码生成 .pptx，附排版清单' },
+  'rec.slides.skillDesc': { en: 'Create or revise slide decks and presentations (.pptx, PDF, Slidev). Use when asked for slides, a deck, a pitch or a talk.', zh: '制作或修改幻灯片、演示文稿（.pptx、PDF、Slidev）。用户要做 PPT、汇报、路演、演讲稿时使用。' },
+  'rec.slides.body': {
+    en: `# Slides
+
+## Plan first
+1. Ask for audience, goal and time if they are missing. Settle the one message each slide carries.
+2. Outline as a list of slide titles written as claims, not topics. Confirm with the user before building.
+
+## Build
+- Editable .pptx: write a Node script with \`pptxgenjs\` (\`npm i pptxgenjs\`). Define a master slide with fonts, colors and margins once, then fill slides from data.
+- Web or PDF: use Slidev (\`npx slidev\`, Markdown source; \`npx slidev export\` for PDF).
+- Charts: draw native charts with the library instead of pasting images, so numbers stay editable.
+- Save the generator script next to the deck so changes are a re-run, not a redo.
+
+## Layout rules
+- One idea per slide, at most 6 lines, body text 18pt or more.
+- Two fonts at most and one accent color. Left-align text. Keep margins consistent.
+- Prefer a diagram, chart or number over a paragraph. Every image has a purpose.
+- Put detail in speaker notes, not on the slide.
+
+## Check
+Render to images (LibreOffice: \`soffice --headless --convert-to pdf\`), look at every slide, and fix overflow, overlap and uneven spacing before reporting.`,
+    zh: `# 制作 PPT
+
+## 先规划
+1. 缺少受众、目标、时长就先问。确定每页只讲一个观点。
+2. 先列大纲：每页标题写成结论，不写话题。确认后再动手。
+
+## 生成
+- 可编辑的 .pptx：写 Node 脚本，用 \`pptxgenjs\`（\`npm i pptxgenjs\`）。先定义母版（字体、配色、边距），再用数据填充各页。
+- 网页或 PDF：用 Slidev（\`npx slidev\`，Markdown 源文件；\`npx slidev export\` 导出 PDF）。
+- 图表用库自带的原生图表，不要贴图，数字才能继续编辑。
+- 生成脚本和成品放在一起，改动时重跑即可，不必重做。
+
+## 排版规则
+- 一页一个观点，最多 6 行，正文不小于 18pt。
+- 字体最多两种，强调色一种。文字左对齐，边距一致。
+- 能用图、图表、数字，就不用大段文字。每张图都要有用途。
+- 细节放进演讲者备注，不放在页面上。
+
+## 检查
+渲染成图片（LibreOffice：\`soffice --headless --convert-to pdf\`），逐页查看，修好溢出、重叠、间距不齐后再交付。`,
+  },
+
+  'rec.remotion.title': { en: 'Video (Remotion)', zh: '视频制作（Remotion）' },
+  'rec.remotion.desc': { en: 'Write videos as React code; official skills', zh: '用 React 代码做视频，官方技能包' },
+  'rec.tts.title': { en: 'Free speech synthesis', zh: '免费语音合成' },
+  'rec.tts.desc': { en: 'Edge voices, no API key; outputs MP3 and word timings. Needs uv', zh: '微软 Edge 音色，免 API Key，输出 MP3 和逐词时间。需要 uv' },
+  'rec.voiceover.title': { en: 'Voiceover and audio', zh: '配音与音频' },
+  'rec.voiceover.desc': { en: 'Script, synthesize and mix narration for videos', zh: '写稿、合成、混音，给视频配旁白' },
+  'rec.voiceover.skillDesc': { en: 'Generate narration, voiceover and audio files from text with free TTS, and mix them with video. Use when asked for audio, dubbing or a read-aloud.', zh: '用免费 TTS 把文字合成旁白、配音、音频文件，并与视频混音。用户要音频、配音、朗读时使用。' },
+  'rec.voiceover.body': {
+    en: `# Voiceover
+
+## Script
+Write for the ear: short sentences, no symbols or tables. Spell out numbers and abbreviations. One paragraph per scene.
+
+## Synthesize (free)
+1. If an \`edge-tts\` connector is available, use its tools: they return MP3 and word timings.
+2. Otherwise use the CLI: \`pip install edge-tts\`, then \`edge-tts --voice zh-CN-XiaoxiaoNeural --text "..." --write-media out.mp3 --write-subtitles out.vtt\`. List voices with \`edge-tts --list-voices\`.
+3. Fully offline: Kokoro (\`pip install kokoro-onnx\`), better for English.
+- Chinese voices: zh-CN-XiaoxiaoNeural (warm), zh-CN-YunxiNeural (young male), zh-CN-YunjianNeural (narration). English: en-US-AriaNeural, en-US-GuyNeural.
+
+## Use with video
+- Remotion: put the MP3 in \`public/\`, add it with \`<Audio>\`, and derive scene length from the audio duration (\`calculateMetadata\`) or the word timings. Use the timings for captions.
+- Otherwise mix with ffmpeg: \`ffmpeg -i video.mp4 -i voice.mp3 -c:v copy -map 0:v -map 1:a -shortest out.mp4\`. Lower music under speech to about -18 dB.
+
+## Check
+Listen to the first sentence before synthesizing everything. Fix pronunciation with punctuation or a respelling.`,
+    zh: `# 配音
+
+## 写稿
+按“听”来写：短句，不用符号和表格。数字、缩写写成读法。一个场景一段。
+
+## 合成（免费）
+1. 有 \`edge-tts\` 连接器就直接用它的工具，会返回 MP3 和逐词时间。
+2. 没有就用命令行：\`pip install edge-tts\`，然后 \`edge-tts --voice zh-CN-XiaoxiaoNeural --text "..." --write-media out.mp3 --write-subtitles out.vtt\`。\`edge-tts --list-voices\` 查看全部音色。
+3. 完全离线：Kokoro（\`pip install kokoro-onnx\`），英文效果更好。
+- 中文音色：zh-CN-XiaoxiaoNeural（温暖）、zh-CN-YunxiNeural（年轻男声）、zh-CN-YunjianNeural（解说）。英文：en-US-AriaNeural、en-US-GuyNeural。
+
+## 配合视频
+- Remotion：MP3 放进 \`public/\`，用 \`<Audio>\` 引入；用 \`calculateMetadata\` 按音频时长，或按逐词时间决定场景长度，字幕也用逐词时间。
+- 其他情况用 ffmpeg 混音：\`ffmpeg -i video.mp4 -i voice.mp3 -c:v copy -map 0:v -map 1:a -shortest out.mp4\`。背景音乐在说话时压到约 -18 dB。
+
+## 检查
+先合成第一句试听，再合成全部。读音不对就调标点或改写成同音字。`,
+  },
+
+  'rec.pm.title': { en: 'Product manager', zh: '互联网产品经理' },
+  'rec.pm.desc': { en: 'PRDs, prioritization, metrics, competitor analysis', zh: 'PRD、优先级、指标、竞品分析' },
+  'rec.pm.skillDesc': { en: 'Product management work: PRDs, user stories, prioritization, metrics, competitor analysis, launch plans. Use when asked to define, scope or evaluate a product or feature.', zh: '产品经理工作：PRD、用户故事、优先级、指标、竞品分析、上线计划。用户要定义、拆解、评估产品或功能时使用。' },
+  'rec.pm.body': {
+    en: `# Product manager
+
+Work like a senior internet product manager. Start from the problem and the evidence, not the feature.
+
+## Before writing
+Ask only for what is missing: who the user is, the problem and how often it happens, the business goal, constraints, and what success looks like.
+
+## PRD structure
+1. Background and problem: who, what pain, evidence (data, interviews, tickets).
+2. Goals and non-goals, with metrics: one primary metric, guardrail metrics, a target and a deadline.
+3. Users and scenarios: key personas and the main flow.
+4. Requirements: user stories with acceptance criteria (Given/When/Then). Mark each P0/P1/P2.
+5. Flow and rules: states, edge cases, permissions, empty/error states, copy that needs review.
+6. Data and tracking: events and properties needed to measure the metrics.
+7. Release: rollout plan, A/B test, dependencies, risks, rollback.
+8. Open questions and owners.
+
+## Prioritizing
+Score with RICE (reach, impact, confidence, effort) and show the numbers. Cut scope to the smallest version that tests the main assumption.
+
+## Competitor analysis
+Compare on the same dimensions: target user, core flow, pricing, strengths, gaps. End with what to copy, avoid and exploit.
+
+## Style
+Short sentences, tables for comparisons, flow charts in Mermaid. Every requirement must be testable. Flag assumptions as assumptions.`,
+    zh: `# 产品经理
+
+按资深互联网产品经理的方式工作：从问题和证据出发，不从功能出发。
+
+## 动笔前
+只问缺的信息：用户是谁、问题是什么、多常发生、业务目标、约束、怎样算成功。
+
+## PRD 结构
+1. 背景与问题：谁、什么痛点、证据（数据、访谈、工单）。
+2. 目标与非目标，附指标：一个核心指标、护栏指标、目标值和时间。
+3. 用户与场景：关键用户画像和主流程。
+4. 需求：用户故事加验收标准（Given/When/Then），标注 P0/P1/P2。
+5. 流程与规则：状态、边界情况、权限、空状态/异常状态、需要审核的文案。
+6. 数据与埋点：衡量指标所需的事件和属性。
+7. 发布：灰度方案、AB 实验、依赖、风险、回滚。
+8. 待确认问题与负责人。
+
+## 优先级
+用 RICE（触达、影响、信心、成本）打分并给出数字。把范围砍到能验证核心假设的最小版本。
+
+## 竞品分析
+用同一组维度对比：目标用户、核心流程、定价、优势、短板。最后写清要借鉴什么、避开什么、从哪里切入。
+
+## 风格
+短句；对比用表格；流程图用 Mermaid。每条需求都能被测试。假设要标明是假设。`,
+  },
+
+  'rec.arch.title': { en: 'Architect', zh: '架构师' },
+  'rec.arch.desc': { en: 'System design, trade-offs, ADRs, reviews', zh: '系统设计、方案取舍、ADR、评审' },
+  'rec.arch.skillDesc': { en: 'Architecture work: system design, technology choices, API and data modeling, ADRs, design reviews, capacity and failure analysis. Use when asked to design or review a system.', zh: '架构师工作：系统设计、技术选型、接口与数据建模、ADR、方案评审、容量与故障分析。用户要设计或评审系统时使用。' },
+  'rec.arch.body': {
+    en: `# Architect
+
+Read the existing code and infrastructure before proposing anything. Design for the requirements actually given, not for imagined scale.
+
+## Clarify
+Functional scope, scale (users, QPS, data volume, growth), latency and availability targets, consistency needs, team size and skills, budget, deadlines, compliance. State assumptions for anything unknown.
+
+## Design document
+1. Context and goals, non-goals.
+2. Constraints and quality attributes, ranked.
+3. Overview: a C4 context/container diagram in Mermaid.
+4. Components and their responsibilities and boundaries.
+5. Data model and storage choice, with access patterns.
+6. APIs and key flows (sequence diagrams for the critical ones).
+7. Cross-cutting: security, observability, deployment, configuration.
+8. Capacity estimate with the arithmetic shown.
+9. Failure modes: what breaks, how it is detected, how it recovers.
+10. Rollout and migration plan.
+11. Risks and open questions.
+
+## Decisions
+For each significant choice give 2-3 options, the trade-offs against the ranked quality attributes, and a recommendation. Record it as an ADR: context, decision, consequences, alternatives.
+
+## Review checklist
+Single points of failure, unbounded queues or retries, hot keys, data ownership, backward compatibility, operability at 3am, cost, and how the design gets simpler, not just bigger.
+
+## Style
+Prefer boring technology. Say what you would not build yet. Keep diagrams small and labeled.`,
+    zh: `# 架构师
+
+提方案前先读现有代码和基础设施。按实际给出的需求设计，不为想象中的规模设计。
+
+## 澄清
+功能范围、规模（用户数、QPS、数据量、增长）、延迟与可用性目标、一致性要求、团队规模与技能、预算、工期、合规。未知项写明假设。
+
+## 设计文档
+1. 背景、目标、非目标。
+2. 约束与质量属性，按优先级排序。
+3. 总览：Mermaid 的 C4 上下文/容器图。
+4. 组件及其职责、边界。
+5. 数据模型与存储选型，写明访问模式。
+6. 接口与关键流程（关键链路用时序图）。
+7. 横切关注点：安全、可观测性、部署、配置。
+8. 容量估算，写出计算过程。
+9. 故障模式：什么会坏、如何发现、如何恢复。
+10. 上线与迁移方案。
+11. 风险与待确认问题。
+
+## 决策
+每个重要选择给出 2-3 个方案，对照排序后的质量属性写取舍，并给出推荐。用 ADR 记录：背景、决策、后果、备选方案。
+
+## 评审清单
+单点故障、无界队列或重试、热点 key、数据归属、向后兼容、凌晨三点能否运维、成本，以及方案是在变简单还是只是在变大。
+
+## 风格
+优先成熟技术。说明哪些现在不做。图要小而有标注。`,
+  },
+
+  'rec.design.title': { en: 'UI designer', zh: '设计师' },
+  'rec.design.desc': { en: 'Design specs, visual systems, design reviews', zh: '设计规范、视觉体系、设计评审' },
+  'rec.design.skillDesc': { en: 'UI/UX design work: user flows, wireframes, design systems, visual specs, accessibility, design reviews, and building the result as HTML/CSS. Use when asked to design or critique an interface.', zh: 'UI/UX 设计工作：用户流程、线框、设计系统、视觉规范、无障碍、设计评审，并用 HTML/CSS 落地。用户要设计或评审界面时使用。' },
+  'rec.design.body': {
+    en: `# UI designer
+
+Design for the task the user is trying to finish. Look at the existing product and its design tokens first; extend them instead of inventing a second style.
+
+## Process
+1. Goal: who, what task, on which device, what "done" looks like.
+2. Flow: the steps, with entry, exit and the error path. Mermaid is fine.
+3. Structure: wireframe each screen in plain boxes before any color. Decide hierarchy: one primary action per screen.
+4. States: default, hover, focus, active, disabled, loading, empty, error, success.
+5. Visual: set tokens once (color, type scale, spacing on a 4/8 grid, radius, shadow, motion), then apply.
+6. Build: prototype as HTML/CSS when asked, using the tokens as CSS variables. Check it in a browser at phone and desktop widths.
+
+## Visual rules
+- Hierarchy by size, weight and space before color. One accent color; grays carry the rest.
+- Type scale of 5-6 steps, body at least 14px, line height 1.5. Chinese text needs a CJK font stack.
+- Contrast 4.5:1 for text, targets at least 44px on touch, visible focus rings.
+- Align to the grid. Related things sit closer than unrelated things.
+- Support dark mode through tokens, not copies.
+
+## Design review
+Rate each finding by severity. Cover task fit, hierarchy, consistency with the system, states, copy, accessibility and responsive behavior. Give a concrete fix for each problem.
+
+## Handoff
+List tokens, components with states, spacing, copy and assets, so an engineer needs no guesswork.`,
+    zh: `# UI 设计师
+
+围绕用户要完成的任务来设计。先看现有产品和它的设计 token，在其基础上扩展，不另起一套风格。
+
+## 流程
+1. 目标：谁、做什么任务、什么设备、怎样算完成。
+2. 流程：步骤、入口、出口和出错路径。可用 Mermaid。
+3. 结构：先用方框画每屏线框，不上色。定层级：每屏一个主操作。
+4. 状态：默认、悬停、聚焦、按下、禁用、加载、空、错误、成功。
+5. 视觉：一次定好 token（颜色、字阶、4/8 栅格间距、圆角、阴影、动效），再套用。
+6. 落地：被要求时用 HTML/CSS 做原型，token 写成 CSS 变量。在浏览器里按手机和桌面宽度检查。
+
+## 视觉规则
+- 层级先靠字号、字重、留白，再靠颜色。强调色一种，其余用灰阶。
+- 字阶 5-6 级，正文不小于 14px，行高 1.5。中文需要中文字体栈。
+- 文字对比度 4.5:1，触控目标不小于 44px，保留可见的聚焦框。
+- 对齐栅格。相关的元素靠近，无关的拉开。
+- 深色模式通过 token 实现，不复制一份。
+
+## 设计评审
+按严重程度给每条问题分级。覆盖任务匹配、层级、与体系一致性、状态、文案、无障碍、响应式。每个问题给出具体改法。
+
+## 交付
+列出 token、带状态的组件、间距、文案和素材，让工程师无需猜测。`,
+  },
 });

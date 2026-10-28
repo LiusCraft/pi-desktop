@@ -80,6 +80,7 @@ export const workspace = defineMessages({
   'file.diff': { en: 'Diff', zh: 'Diff' },
   'file.loading': { en: 'Loading current file…', zh: '正在加载当前文件…' },
   'file.unable': { en: 'Unable to open current file.', zh: '无法打开当前文件。' },
+  'file.noMedia': { en: 'Playback unavailable\nNot a supported audio or video file, outside the session folder, or larger than 50 MiB', zh: '无法播放\n不是支持的音频或视频、不在会话文件夹内，或超过 50 MiB' },
   'file.noImage': { en: 'Image preview unavailable\nNot a supported image, outside the session folder, or larger than 20 MiB', zh: '无法预览图片\n不是支持的图片、不在会话文件夹内，或超过 20 MiB' },
   'file.noPreview': { en: 'File preview unavailable\nBinary, non-text, or larger than 1 MiB', zh: '无法预览文件\n二进制、非文本，或超过 1 MiB' },
 
