@@ -93,10 +93,14 @@ export function Workspace({ s }: { s: SessionView }) {
   const expanded = s.expanded;
   const columns = useDefaultLayout({ id: `${s.meta.id}:columns` });
   // Leaving a card expanded again restores it; the same card asked for in the other scope switches scope instead.
-  const toggleExpand = (card: CardId, wide: boolean) => expandCard(s.meta.id, expanded === card && (!wide || s.expandedWide) ? null : card, wide);
   const layout = openCards(s);
   const { primary, secondary } = layout;
   const all = [...primary, ...secondary];
+  // A lone card has nothing to share the workspace with, so expanding it takes the whole session.
+  const toggleExpand = (card: CardId, wide: boolean) => {
+    const whole = wide || all.length === 1;
+    expandCard(s.meta.id, expanded === card && (!whole || s.expandedWide) ? null : card, whole);
+  };
   const solo = soloCard(s);
   if (solo) {
     return <div className="h-full p-1">{renderCard(solo, s, { expanded: true, onExpand: (wide) => toggleExpand(solo, wide) })}</div>;
