@@ -16,6 +16,7 @@ import { activeDraft, drafts } from '@/store/drafts';
 import { useDialogs } from '@/store/dialogs';
 import { watchSideWindows } from '@/store/side';
 import { watchCodeSession } from '@/store/refresh';
+import { watchUpdates } from '@/store/update';
 
 function useShortcuts() {
   useEffect(() => {
@@ -94,9 +95,11 @@ export function App() {
     const offFocus = bridge.on('session:focus', (id) => void openSession(id));
     const offSide = watchSideWindows();
     const offRefresh = watchCodeSession();
+    const offUpdates = watchUpdates();
     bootstrap().catch(fail);
     return () => {
       offRefresh();
+      offUpdates();
       offSide();
       offFocus();
       offHost();

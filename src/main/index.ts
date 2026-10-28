@@ -1,12 +1,12 @@
 // Main process: windows, settings, projects and the IPC surface. Every pi
 // session lives in the agent host (a utilityProcess); session calls are
 // forwarded to it unchanged and its events are relayed to the windows.
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, Notification, screen, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, Notification, screen, shell } from 'electron';
 import {
   HOST_CHANNELS, MAIN_CHANNELS,
   type ApiArgs, type ApiResult, type BootPayload, type HostEvent, type Project, type PushChannel, type PushEvents,
@@ -40,6 +40,8 @@ import { migrateLegacyKeys } from './agent-auth';
 import { clipboardAttachments, type ClipboardItemLike } from './clipboard';
 import { openIn, openTargets } from './open-in';
 import { Terminals, terminalShells } from './terminal';
+import { checkForUpdate, downloadInstaller } from './updater';
+import { UPDATE_CHECK_INTERVAL_MS, UPDATE_FIRST_CHECK_MS } from '@shared/update';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PRELOAD = path.join(here, '../preload/index.js');
@@ -660,6 +662,47 @@ function showMainWindow() {
   win.focus();
 }
 
+/** Quietly look for a newer release and offer it unless the user turned this off or dismissed that very version. */
+async function autoCheckUpdate() {
+  const { autoUpdateCheck, ignoredUpdate } = settingsValue();
+  if (!autoUpdateCheck) return;
+  try {
+    const { available } = await checkForUpdate(app.getVersion(), net.fetch);
+    if (available && available.version !== ignoredUpdate) broadcast('update:found', available);
+  } catch (err) {
+    // Offline or rate-limited: try again at the next round.
+    console.error('[main] update check failed:', err);
+  }
+}
+function scheduleUpdateChecks() {
+  if (!app.isPackaged) return;
+  setTimeout(() => void autoCheckUpdate(), UPDATE_FIRST_CHECK_MS).unref();
+  setInterval(() => void autoCheckUpdate(), UPDATE_CHECK_INTERVAL_MS).unref();
+}
+
+let installing = false;
+/** Fetch the newest installer and hand over to it: Windows runs the setup and quits, macOS opens the dmg. */
+async function installUpdate() {
+  if (installing) return;
+  installing = true;
+  try {
+    const { available } = await checkForUpdate(app.getVersion(), net.fetch);
+    if (!available) throw new Error(tr('update.upToDate'));
+    if (!available.asset) throw new Error(tr('update.noInstaller'));
+    const file = await downloadInstaller(available.asset, path.join(app.getPath('temp'), 'pi-desktop-update'), net.fetch, (p) => broadcast('update:progress', p));
+    broadcast('update:progress', { stage: 'launching', received: 0, total: 0 });
+    if (process.platform === 'win32') {
+      spawn(file, [], { detached: true, stdio: 'ignore' }).unref();
+      app.quit();
+    } else {
+      const error = await shell.openPath(file);
+      if (error) throw new Error(error);
+    }
+  } finally {
+    installing = false;
+  }
+}
+
 const handlers: MainHandlers = {
   'app:info': () => ({
     platform: process.platform,
@@ -683,6 +726,8 @@ const handlers: MainHandlers = {
     });
     n.show();
   },
+  'update:check': () => checkForUpdate(app.getVersion(), net.fetch),
+  'update:install': () => installUpdate(),
   'app:openExternal': (url) => {
     if (/^https?:/.test(url)) void shell.openExternal(url);
   },
@@ -810,7 +855,7 @@ const handlers: MainHandlers = {
 /** Main-handled calls a remote host answers itself. */
 const REMOTE_ROUTED = new Set<string>(REMOTE_WORKSPACE_METHODS);
 /** Calls that act on this machine's own files and windows, and so have no remote counterpart. */
-const LOCAL_ONLY = new Set<string>(['projects:add', 'projects:adoptWorktree', 'work:addFolder', 'terminal:create', 'sessions:openIn', 'sessions:openPath']);
+const LOCAL_ONLY = new Set<string>(['projects:add', 'projects:adoptWorktree', 'work:addFolder', 'terminal:create', 'sessions:openIn', 'sessions:openPath', 'update:install']);
 
 function registerIpc() {
   // Read synchronously by the preload: every window boots with the right theme,
@@ -885,6 +930,7 @@ void app.whenReady().then(async () => {
     broadcast('settings:changed', settingsPayload());
   });
   createWindow();
+  scheduleUpdateChecks();
   app.on('activate', () => BrowserWindow.getAllWindows().length === 0 && createWindow());
 });
 

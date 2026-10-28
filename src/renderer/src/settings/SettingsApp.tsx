@@ -27,6 +27,7 @@ import { ModelPicker } from './ModelPicker';
 import { ModelsSection } from './ModelsSection';
 import { RemoteSection } from './RemoteSection';
 import { StorageSection } from './StorageSection';
+import { UpdateSection } from './UpdateSection';
 import { WebSearchSection } from './WebSearchSection';
 import { Group, Heading, Panel, Row, groupDomId } from './ui';
 
@@ -578,6 +579,7 @@ export function SettingsApp() {
             <Button size="sm" variant="outline" onClick={() => copy(info?.agentDir ?? '')}>{copied ? t('settings.copied') : t('settings.copyPath')}</Button>
           </Row>
         </Panel>
+        <div className="mt-6"><UpdateSection version={info?.version ?? ''} settings={settings} onPatch={(v) => void patch(v)} /></div>
       </>
     );
   }

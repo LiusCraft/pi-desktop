@@ -17,6 +17,7 @@ import type { RemoteActive, RemoteConnectionDraft, RemoteConnectionInfo, RemoteL
 import type { ScheduledTask, TaskDraft } from './schedule';
 import type { SearchResult } from './text-search';
 import type { PromptTokens } from './usage';
+import type { ReleaseNote, UpdateCheck, UpdateProgress } from './update';
 
 export type SessionKind = 'code' | 'work';
 export type PermissionMode = 'auto' | 'default' | 'acceptEdits' | 'plan' | 'bypass';
@@ -789,6 +790,10 @@ export interface Settings {
   petSkin: string;
   /** Executable the terminal panel starts (a `TerminalShell.file`); null picks the system default. */
   terminalShell: string | null;
+  /** Look for a newer release at startup and every few hours, and offer it in the main window. */
+  autoUpdateCheck: boolean;
+  /** The release version the user dismissed; it is not offered again, a newer one is. */
+  ignoredUpdate: string | null;
   /** How many lines of a terminal tab an @ mention captures. */
   terminalContextLines: number;
   /** Shared shell for the model's commands, or one process per command (see `SHELL_SESSION_MODES`). */
@@ -856,6 +861,10 @@ export interface Api {
   'app:info'(): AppInfo;
   'app:notify'(n: { title: string; body: string; sessionId?: string }): void;
   'app:openExternal'(url: string): void;
+  /** Ask GitHub for the releases; `available` is set when one is newer than this app. */
+  'update:check'(): UpdateCheck;
+  /** Download the newest installer and start it (Windows quits the app for it); progress arrives as `update:progress`. */
+  'update:install'(): void;
   'app:revealPath'(target: string, reveal?: boolean): void;
   /** Native folder picker (the only way the renderer can name an arbitrary folder). */
   'app:pickFolder'(): string | null;
@@ -1077,7 +1086,7 @@ export const HOST_CHANNELS = [
 ] as const satisfies readonly ApiChannel[];
 
 export const MAIN_CHANNELS = [
-  'app:info', 'app:notify', 'app:openExternal', 'app:revealPath', 'app:pickFolder',
+  'app:info', 'app:notify', 'app:openExternal', 'update:check', 'update:install', 'app:revealPath', 'app:pickFolder',
   'settings:open', 'settings:get', 'settings:set', 'pets:save', 'pets:remove', 'settings:close', 'diagram:open', 'diagram:get', 'artifacts:preview', 'artifacts:thumbnail',
   'projects:list', 'projects:add', 'projects:adoptWorktree', 'projects:remove', 'projects:addPath',
   'work:folders', 'work:addFolder', 'work:useFolder', 'work:removeFolder', 'work:addPath', 'work:update', 'remote:browse',
@@ -1099,9 +1108,12 @@ export interface PushEvents {
   'side:window': SideWindow & { open: boolean; docked?: boolean };
   'terminal:data': { id: string; data: string };
   'terminal:exit': { id: string; code: number };
+  'update:progress': UpdateProgress;
+  /** The automatic check found a release newer than this app. */
+  'update:found': ReleaseNote;
 }
 export type PushChannel = keyof PushEvents;
-export const PUSH_CHANNELS: readonly PushChannel[] = ['host:event', 'settings:changed', 'settings:section', 'session:focus', 'side:window', 'terminal:data', 'terminal:exit'];
+export const PUSH_CHANNELS: readonly PushChannel[] = ['host:event', 'settings:changed', 'settings:section', 'session:focus', 'side:window', 'terminal:data', 'terminal:exit', 'update:progress', 'update:found'];
 
 // ------------------------------------------------------------ main ⇄ host messages
 
