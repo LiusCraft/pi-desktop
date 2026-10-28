@@ -67,7 +67,7 @@ function applyPatch(project: WorkProject, patch: WorkProjectPatch): WorkProject 
   if (patch.memory !== undefined) next.memory = clip(patch.memory, PROJECT_LIMITS.memory);
   if (patch.links !== undefined) {
     next.links = (Array.isArray(patch.links) ? patch.links : [])
-      .map((l) => ({ title: clip(l?.title, PROJECT_LIMITS.name).trim(), url: clip(l?.url, 2000).trim() }))
+      .map((l) => ({ title: clip(l?.title, PROJECT_LIMITS.name).trim(), url: clip(l?.url, PROJECT_LIMITS.url).trim() }))
       .filter((l) => /^https?:\/\//i.test(l.url))
       .slice(0, PROJECT_LIMITS.links);
   }
@@ -98,8 +98,11 @@ export function browse(dir: unknown): RemoteListing {
   return { path: abs, parent: parent === abs ? null : parent, dirs };
 }
 
+/** What one workspace call answers: a list of projects, one project, or the folder browser's listing. */
+export type WorkspaceResult = Project[] | Project | WorkProject[] | WorkProject | RemoteListing | null;
+
 /** Answer the workspace calls of a remote client from one project book. */
-export function workspaceCall(book: ProjectBook, method: RemoteWorkspaceMethod, args: unknown[]): unknown {
+export function workspaceCall(book: ProjectBook, method: RemoteWorkspaceMethod, args: unknown[]): WorkspaceResult {
   switch (method) {
     case 'projects:list': return book.projects();
     case 'projects:addPath': return book.addProject(existingFolder(args[0]));

@@ -351,6 +351,9 @@ export function SettingsApp() {
               <Row title={t('settings.aiSettings')} hint={t('settings.aiSettings.hint')} tip={t('settings.aiSettings.tip')}>
                 <Switch checked={settings.aiSettings !== false} onCheckedChange={(v) => void patch({ aiSettings: v })} />
               </Row>
+              <Row title={t('settings.aiProject')} hint={t('settings.aiProject.hint')} tip={t('settings.aiProject.tip')}>
+                <Switch checked={settings.aiProject !== false} onCheckedChange={(v) => void patch({ aiProject: v })} />
+              </Row>
             </Panel>
           </Group>
 

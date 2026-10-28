@@ -48,7 +48,7 @@ import { pickSideModel } from './side-model';
 import { ActivityRecorder } from './activity';
 import { Store } from './store';
 import { ProjectBook } from './remote/workspace';
-import { projectContext, remember } from './work-project';
+import { editProject, projectContext, remember } from './work-project';
 import * as prediction from './suggest';
 import * as sideChat from './side-chat';
 import * as workIdeas from './work-ideas';
@@ -532,10 +532,23 @@ export class SessionHub {
         const m = hub.meta(live.id);
         if (m.kind !== 'work' || m.scratch) return undefined;
         const dir = m.projectPath;
-        return {
-          context: () => projectContext(hub.projects.workFolders().find((p) => p.path === dir)),
+        const find = () => hub.projects.workFolders().find((p) => p.path === dir);
+        const project: NonNullable<KitHost['project']> = {
+          context: () => projectContext(find()),
           remember: (input) => remember(hub.projects, dir, input),
         };
+        // What the Projects page edits, behind its switch under Settings → AI 工具.
+        if (hub.storedSettings().aiProject) {
+          project.manage = {
+            get: () => {
+              const found = find();
+              if (!found) throw new Error('This folder is no longer a Work project, so there is nothing to show.');
+              return found;
+            },
+            update: (patch) => editProject(hub.projects, dir, patch),
+          };
+        }
+        return project;
       },
       taskUpdate: (update) => {
         if (!live.disposed) this.emit({ type: 'task', sessionId: live.id, update });

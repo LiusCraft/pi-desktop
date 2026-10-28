@@ -1,20 +1,21 @@
 /**
- * Tools that let the model manage what the Scheduled and Customize pages manage, so "run this
- * every morning" or "add the GitHub connector" can be said in the chat. They call the same
- * backends as the pages (`Scheduler`, `customize.ts`), so the UI and the model always agree.
+ * Tools that let the model manage what the app's pages manage, so "run this
+ * every morning", "add the GitHub connector" or "shorten this project's instructions" can be said in the chat.
+ * They call the same backends as the pages (`Scheduler`, `customize.ts`, `ProjectBook`), so the UI and the model always agree.
  * Each group is on by default and can be switched off under Settings → 通用 → AI 工具; it is read when a session starts.
- * The `*_manage` tools change things and are not read-only: plan mode blocks them and auto mode asks.
+ * The tools that change things are not read-only: plan mode blocks them and auto mode asks.
  */
 import { StringEnum } from '@earendil-works/pi-ai';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { Type, type Static } from 'typebox';
-import type { CustomizeCatalog, SessionKind, Settings } from '@shared/protocol';
+import type { CustomizeCatalog, SessionKind, Settings, WorkProject } from '@shared/protocol';
 import { AI_SETTING_FIELDS, AI_SETTING_KEYS, checkAiSettingsPatch } from '@shared/ai-settings';
 import { describeSchedule, validateSchedule, type ScheduledTask, type TaskDraft, type TaskSchedule } from '@shared/schedule';
-import { PERMISSION_MODES } from '@shared/protocol';
+import { PERMISSION_MODES, PROJECT_LIMITS } from '@shared/protocol';
 import { publishState, type ArtifactMeta } from '@shared/artifacts';
 import { STORAGE_NOT_CONFIGURED } from '@shared/storage';
 import { BUILTIN_PETS, PET_GRID, PET_LIMITS, PET_PARTS, type PetDef } from '@shared/pets';
+import type { ProjectEdit } from './work-project';
 
 export interface ScheduleHost {
   list(): ScheduledTask[];
@@ -63,6 +64,13 @@ export interface ArtifactHost {
   remove(id: string, unpublish?: boolean): Promise<void>;
   /** Whether the user's bucket is set up, i.e. whether publishing can work at all. */
   storageReady(): boolean;
+}
+
+export interface ProjectHost {
+  /** The Work project this session runs in; throws a readable message when the folder is no longer one. */
+  get(): WorkProject;
+  /** Saves the fields given (an empty string clears the description or instructions) and returns the project as saved. */
+  update(patch: ProjectEdit): WorkProject;
 }
 
 const text = (t: string, details: unknown = {}) => ({ content: [{ type: 'text' as const, text: t }], details });
@@ -465,10 +473,63 @@ function registerArtifacts(pi: ExtensionAPI, host: ArtifactHost) {
   });
 }
 
-export function registerManageTools(pi: ExtensionAPI, host: { schedule?: ScheduleHost; customize?: CustomizeHost; pets?: PetHost; settings?: SettingsHost; artifacts?: ArtifactHost }) {
+// ------------------------------------------------------------ work project
+
+const size = (value: string | undefined, max: number) => `${value?.length ?? 0}/${max} characters`;
+
+function describeProject(p: WorkProject) {
+  const links = p.links ?? [];
+  return [
+    `Project "${p.name}" — ${p.path}`,
+    `Description (${size(p.description, PROJECT_LIMITS.description)}): ${p.description?.trim() || '(empty)'}`,
+    `Instructions (${size(p.instructions, PROJECT_LIMITS.instructions)}):\n${p.instructions?.trim() || '(empty)'}`,
+    `Links (${links.length}/${PROJECT_LIMITS.links}):\n${links.length ? links.map((l) => `- ${l.title ? `${l.title}: ` : ''}${l.url}`).join('\n') : '(none)'}`,
+    `Memory (${size(p.memory, PROJECT_LIMITS.memory)}; use pidesk_remember to change it):\n${p.memory?.trim() || '(empty)'}`,
+  ].join('\n\n');
+}
+
+function registerProject(pi: ExtensionAPI, host: ProjectHost) {
+  pi.registerTool({
+    name: 'pidesk_project_manage',
+    label: 'Work project',
+    description:
+      'Read or change the Work project this session runs in: the name, description, instructions (standing context every task in the project starts with) and reference links ' +
+      'that the Projects page edits. show returns all of them; update changes only the fields you pass, "" clears the description or instructions, and links replaces the whole list ([] clears it). ' +
+      `Limits: name ${PROJECT_LIMITS.name}, description ${PROJECT_LIMITS.description}, instructions ${PROJECT_LIMITS.instructions} characters, at most ${PROJECT_LIMITS.links} http(s) links. ` +
+      'The memory is the model\'s own notes and is changed with pidesk_remember, not here. This cannot add, move or remove projects.',
+    promptSnippet: 'Read or edit the current Work project (name, description, instructions, links)',
+    parameters: Type.Object({
+      action: StringEnum(['show', 'update'] as const),
+      name: Type.Optional(Type.String({ description: `update: the name (up to ${PROJECT_LIMITS.name} characters, not empty)` })),
+      description: Type.Optional(Type.String({ description: `update: what the project is for (up to ${PROJECT_LIMITS.description} characters); "" clears it` })),
+      instructions: Type.Optional(Type.String({ description: `update: how tasks in the project should be done (up to ${PROJECT_LIMITS.instructions} characters); "" clears it` })),
+      links: Type.Optional(Type.Array(
+        Type.Object({ title: Type.Optional(Type.String({ description: 'Shown name' })), url: Type.String({ description: 'An http:// or https:// address' }) }),
+        { description: `update: the complete list of reference links (at most ${PROJECT_LIMITS.links}); [] clears it` },
+      )),
+    }),
+    async execute(_id, p) {
+      if (p.action === 'show') {
+        const project = host.get();
+        return text(describeProject(project), { project });
+      }
+      const patch: ProjectEdit = {};
+      if (p.name !== undefined) patch.name = p.name;
+      if (p.description !== undefined) patch.description = p.description;
+      if (p.instructions !== undefined) patch.instructions = p.instructions;
+      if (p.links !== undefined) patch.links = p.links.map((l) => ({ title: l.title ?? '', url: l.url }));
+      const project = host.update(patch);
+      const changed = Object.keys(patch);
+      return text(`Updated ${changed.join(', ')} of project "${project.name}".\n\n${describeProject(project)}`, { project, changed });
+    },
+  });
+}
+
+export function registerManageTools(pi: ExtensionAPI, host: { schedule?: ScheduleHost; customize?: CustomizeHost; pets?: PetHost; settings?: SettingsHost; artifacts?: ArtifactHost; project?: ProjectHost }) {
   if (host.schedule) registerSchedule(pi, host.schedule);
   if (host.customize) registerCustomize(pi, host.customize);
   if (host.pets) registerPets(pi, host.pets);
   if (host.settings) registerSettings(pi, host.settings);
   if (host.artifacts) registerArtifacts(pi, host.artifacts);
+  if (host.project) registerProject(pi, host.project);
 }

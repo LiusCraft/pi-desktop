@@ -514,7 +514,7 @@ export interface WorkProject extends Project {
 /** What the Projects page edits; absent fields stay as they are. */
 export type WorkProjectPatch = Partial<Pick<WorkProject, 'name' | 'description' | 'instructions' | 'links' | 'memory'>>;
 
-export const PROJECT_LIMITS = { name: 80, description: 500, instructions: 16_000, memory: 16_000, links: 20 } as const;
+export const PROJECT_LIMITS = { name: 80, description: 500, instructions: 16_000, memory: 16_000, links: 20, url: 2000 } as const;
 
 export type AttachmentSource = { path: string } | { name: string; mimeType: string; data: string };
 export interface AttachmentImportResult {
@@ -762,10 +762,11 @@ export interface Settings {
   petSkin: string;
   /** Executable the terminal panel starts (a `TerminalShell.file`); null picks the system default. */
   terminalShell: string | null;
-  /** Which management tools the model gets (`pidesk_schedule_*`, `pidesk_customize_*`, `pidesk_settings_*`); read when a session starts. */
+  /** Which management tools the model gets (`pidesk_schedule_*`, `pidesk_customize_*`, `pidesk_settings_*`, `pidesk_project_manage`); read when a session starts. */
   aiSchedule: boolean;
   aiCustomize: boolean;
   aiSettings: boolean;
+  aiProject: boolean;
 }
 export interface SettingsPayload extends Settings {
   resolvedTheme: 'light' | 'dark';

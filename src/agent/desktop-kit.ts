@@ -21,7 +21,7 @@ import {
 import { StringEnum } from '@earendil-works/pi-ai';
 import { Type } from 'typebox';
 import { AGENT_TYPES, DEFAULT_AGENT, type AgentType } from './agents';
-import { registerManageTools, type ArtifactHost, type CustomizeHost, type PetHost, type ScheduleHost, type SettingsHost } from './manage-tools';
+import { registerManageTools, type ArtifactHost, type CustomizeHost, type PetHost, type ProjectHost, type ScheduleHost, type SettingsHost } from './manage-tools';
 import type { WebSearch } from './web-search';
 import { ENGINE_INFO, SEARCH_FRESHNESS, WEB_LIMITS } from '@shared/web-search';
 import {
@@ -104,6 +104,8 @@ export interface KitHost {
   project?: {
     context(): string | null;
     remember(input: { note?: string; rewrite?: string }): number;
+    /** Read and edit the project's page fields; present only when the user switched that on. */
+    manage?: ProjectHost;
   };
 }
 
@@ -201,7 +203,7 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       const mode = state.mode;
       if (mode === 'bypass') return undefined;
       const name = event.toolName;
-      const input = event.input as Record<string, any>;
+      const input = event.input as Record<string, unknown>;
 
       if (READ_ONLY_TOOLS.has(name)) return undefined;
 
@@ -480,8 +482,15 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       });
     }
 
-    // ---------------------------------------------------------------- scheduled tasks and customize
-    registerManageTools(pi, host);
+    // ---------------------------------------------------------------- scheduled tasks, customize, settings, artifacts and the project
+    registerManageTools(pi, {
+      schedule: host.schedule,
+      customize: host.customize,
+      pets: host.pets,
+      settings: host.settings,
+      artifacts: host.artifacts,
+      project: host.project?.manage,
+    });
 
     // ---------------------------------------------------------------- other sessions of the project
     const peers = host.peers;

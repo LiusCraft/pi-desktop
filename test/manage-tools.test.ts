@@ -4,8 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { catalog, createSkill, removeConnector, saveConnector, setConnectorEnabled, setSkillDisabled, type CustomizeEnv } from '../src/agent/customize';
-import { registerManageTools, type CustomizeHost, type ScheduleHost } from '../src/agent/manage-tools';
+import { registerManageTools, type CustomizeHost, type ProjectHost, type ScheduleHost } from '../src/agent/manage-tools';
 import type { ScheduledTask, TaskDraft } from '../src/shared/schedule';
+import type { WorkProject } from '../src/shared/protocol';
 
 function setup() {
   const tools = new Map<string, any>();
@@ -122,5 +123,44 @@ describe('pidesk_customize_*', () => {
   it('marks the changing tool destructive and the listing read-only', () => {
     expect(tools.get('pidesk_customize_manage').annotations).toEqual({ destructiveHint: true });
     expect(tools.get('pidesk_customize_list').annotations).toEqual({ readOnlyHint: true });
+  });
+});
+
+describe('pidesk_project_manage', () => {
+  function setup(project?: ProjectHost) {
+    const tools = new Map<string, any>();
+    registerManageTools({ registerTool: (t: any) => tools.set(t.name, t) } as any, { project });
+    return tools;
+  }
+  const makeProject = (): WorkProject => ({
+    path: '/work/acme', name: 'Acme', addedAt: 0, description: 'Quarterly reports',
+    instructions: 'Answer in Chinese', links: [{ title: 'Board', url: 'https://example.com/board' }], memory: '- uses CSV',
+  });
+
+  it('is left out when the session has no project to manage', () => {
+    expect(setup().has('pidesk_project_manage')).toBe(false);
+  });
+
+  it('shows every field with its size and the links', async () => {
+    const project = makeProject();
+    const tools = setup({ get: () => project, update: () => project });
+    const out = await tools.get('pidesk_project_manage').execute('c', { action: 'show' });
+    const shown = out.content[0].text as string;
+    expect(shown).toContain('Project "Acme" — /work/acme');
+    expect(shown).toContain('Quarterly reports');
+    expect(shown).toContain('Answer in Chinese');
+    expect(shown).toContain('- Board: https://example.com/board');
+    expect(shown).toContain('uses CSV');
+    expect(shown).toContain('pidesk_remember');
+  });
+
+  it('passes only the fields given, so the rest stays as it is', async () => {
+    let project = makeProject();
+    const patches: unknown[] = [];
+    const tools = setup({ get: () => project, update: (patch) => (patches.push(patch), (project = { ...project, ...patch })) });
+    const out = await tools.get('pidesk_project_manage').execute('c', { action: 'update', description: '', links: [] });
+    expect(patches).toEqual([{ description: '', links: [] }]);
+    expect(project).toMatchObject({ name: 'Acme', instructions: 'Answer in Chinese', description: '', links: [] });
+    expect(out.content[0].text).toContain('Updated description, links of project "Acme"');
   });
 });

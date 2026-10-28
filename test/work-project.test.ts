@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ProjectBook } from '../src/agent/remote/workspace';
 import { Store } from '../src/agent/store';
-import { projectContext, remember } from '../src/agent/work-project';
+import { editProject, projectContext, remember } from '../src/agent/work-project';
 import { PROJECT_LIMITS } from '../src/shared/protocol';
 
 let root: string;
@@ -71,8 +71,36 @@ describe('project context', () => {
   });
 });
 
-describe('remember', () => {
-  it('appends notes one per line', () => {
+describe('editProject', () => {
+  it('saves the fields given and leaves the others as they were', () => {
+    book.updateWorkFolder(dir, { description: 'Quarterly reports' });
+    const saved = editProject(book, dir, { instructions: 'Answer in Chinese', links: [{ title: 'Board', url: 'https://example.com/board' }] });
+    expect(saved).toMatchObject({
+      name: 'reports', description: 'Quarterly reports', instructions: 'Answer in Chinese', links: [{ title: 'Board', url: 'https://example.com/board' }],
+    });
+  });
+
+  it('clears a field with an empty string and the links with an empty list', () => {
+    book.updateWorkFolder(dir, { description: 'Old', links: [{ title: 'Board', url: 'https://example.com/board' }] });
+    const saved = editProject(book, dir, { description: '', links: [] });
+    expect(saved.description).toBe('');
+    expect(saved.links).toEqual([]);
+  });
+
+  it('names the limit instead of clipping what the model wrote', () => {
+    expect(() => editProject(book, dir, { instructions: 'x'.repeat(PROJECT_LIMITS.instructions + 1) })).toThrow(/limit/);
+    expect(() => editProject(book, dir, { name: '   ' })).toThrow(/empty/);
+    expect(() => editProject(book, dir, { links: [{ title: '', url: 'javascript:alert(1)' }] })).toThrow(/http/);
+    const tooMany = Array.from({ length: PROJECT_LIMITS.links + 1 }, (_, i) => ({ title: '', url: `https://example.com/${i}` }));
+    expect(() => editProject(book, dir, { links: tooMany })).toThrow(/at most/);
+  });
+
+  it('needs at least one field', () => {
+    expect(() => editProject(book, dir, {})).toThrow(/at least one field/);
+  });
+});
+
+describe('remember', () => {  it('appends notes one per line', () => {
     remember(book, dir, { note: 'prefers tables' });
     remember(book, dir, { note: 'deadline\nis Friday' });
     expect(book.workFolders()[0].memory).toBe('- prefers tables\n- deadline is Friday');
