@@ -13,6 +13,8 @@ import { MermaidBlock } from './MermaidBlock';
 
 // Paths may contain non-ASCII names (e.g. 收件箱整理.md:1).
 const FILE_REF = /((?:[\p{L}\p{N}_.-]+\/)*[\p{L}\p{N}_.-]+\.(?:[a-z]{1,5})):(\d+)/gu;
+// A bare relative path in inline code needs a directory part: `package.json` or `console.log` alone are too ambiguous to link.
+const BARE_PATH = /^(?:[\p{L}\p{N}_.-]+\/)+[\p{L}\p{N}_.-]+\.[a-z]{1,5}$/u;
 const FILE_SCHEME = 'pi-file:';
 
 /** remark plugin: `path/to/file.ts:12` becomes a link that opens the file at that line. */
@@ -25,6 +27,7 @@ function remarkFileRefs() {
         FILE_REF.lastIndex = 0;
         const m = FILE_REF.exec(child.value);
         if (m && m[0] === child.value) out.push({ type: 'link', url: `${FILE_SCHEME}${m[1]}:${m[2]}`, children: [child] });
+        else if (BARE_PATH.test(child.value)) out.push({ type: 'link', url: `${FILE_SCHEME}${child.value}:0`, children: [child] });
         else out.push(child);
         continue;
       }
