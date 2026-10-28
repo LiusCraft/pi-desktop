@@ -12,9 +12,12 @@ import spawn from 'cross-spawn';
 import {
   DefaultPackageManager, DefaultResourceLoader, parseFrontmatter, SettingsManager,
 } from '@earendil-works/pi-coding-agent';
+import { PLUGIN_RESOURCE_KINDS } from '@shared/protocol';
 import type {
-  ConnectorDraft, ConnectorInfo, CustomizeCatalog, CustomizeScope, PluginInfo, PromptInfo, SkillDraft, SkillInfo,
+  ConnectorDraft, ConnectorInfo, CustomizeCatalog, CustomizeScope, PluginInfo, PluginResource, PluginResourceKind, PromptInfo, SkillDraft, SkillInfo,
 } from '@shared/protocol';
+
+type PackageEntry = { source: string } & Partial<Record<PluginResourceKind, string[]>> & { autoload?: boolean };
 
 export interface CustomizeEnv {
   agentDir: string;
@@ -331,6 +334,45 @@ export async function removePlugin(env: CustomizeEnv, source: string, scope: 'us
 
 export async function updatePlugins(env: CustomizeEnv, source: string | null) {
   await packageManager(env).update(source ?? undefined);
+  return catalog(env);
+}
+
+/** Every file a package brings, with whether the entry's filters leave it on. */
+export async function pluginResources(env: CustomizeEnv, source: string, scope: 'user' | 'project'): Promise<PluginResource[]> {
+  const resolved = await packageManager(env).resolve(async () => 'skip');
+  const out: PluginResource[] = [];
+  for (const kind of PLUGIN_RESOURCE_KINDS) {
+    for (const r of resolved[kind]) {
+      const m = r.metadata;
+      if (m.origin !== 'package' || m.source !== source || m.scope !== scope) continue;
+      out.push({ kind, path: r.path, name: packageRelative(m.packageRoot ?? m.baseDir, r.path), enabled: r.enabled });
+    }
+  }
+  return out;
+}
+
+const posix = (p: string) => p.split(path.sep).join('/');
+const packageRelative = (root: string | undefined, file: string) => posix(root ? path.relative(root, file) : file);
+
+/** Writes `-<file>` (force exclude) or removes it on the package entry; empty filter lists are dropped since `[]` means "none". */
+export async function setPluginResource(env: CustomizeEnv, source: string, scope: 'user' | 'project', resource: PluginResource, enabled: boolean) {
+  const sm = SettingsManager.create(env.project ?? env.agentDir, env.agentDir, { projectTrusted: env.projectTrusted });
+  const project = scope === 'project';
+  const list = [...((project ? sm.getProjectSettings() : sm.getGlobalSettings()).packages ?? [])];
+  const at = list.findIndex((p) => (typeof p === 'string' ? p : p.source) === source);
+  if (at < 0) throw new Error(tr('ag.pluginNotFound', { source }));
+  const root = packageManager(env).getInstalledPath(source, scope);
+  const rel = packageRelative(root, resource.path);
+  const entry = typeof list[at] === 'string' ? { source } : { ...(list[at] as object) } as PackageEntry;
+  const patterns = (entry[resource.kind] ?? []).filter((p) => p !== `-${rel}` && p !== `+${rel}`);
+  if (!enabled) patterns.push(`-${rel}`);
+  if (patterns.length) entry[resource.kind] = patterns;
+  else delete entry[resource.kind];
+  const plain = Object.keys(entry).every((k) => k === 'source');
+  list[at] = plain ? source : entry;
+  if (project) sm.setProjectPackages(list);
+  else sm.setPackages(list);
+  await sm.flush();
   return catalog(env);
 }
 

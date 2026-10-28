@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { catalog, createSkill, importClaudeSkills, removeConnector, saveConnector, setConnectorEnabled, setSkillDisabled, type CustomizeEnv } from '../src/agent/customize';
+import { catalog, createSkill, importClaudeSkills, pluginResources, removeConnector, saveConnector, setConnectorEnabled, setPluginResource, setSkillDisabled, type CustomizeEnv } from '../src/agent/customize';
 import { setActiveLocale } from '../src/shared/i18n/runtime';
 
 // These assertions read the host's Chinese messages.
@@ -98,5 +98,30 @@ describe('customize connectors', () => {
   it('rejects bad input', () => {
     expect(() => saveConnector(env, { name: 'bad name', scope: 'user', transport: 'stdio', command: 'x' })).toThrow();
     expect(() => saveConnector(env, { name: 'ok', scope: 'user', transport: 'http', url: 'ftp://x' })).toThrow('http');
+  });
+});
+
+describe('customize plugin resources', () => {
+  it('switches one file of a package off and on through filters on its settings entry', async () => {
+    const pkg = path.join(root, 'pkg');
+    fs.mkdirSync(path.join(pkg, 'extensions'), { recursive: true });
+    fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: 'pkg', pi: { extensions: ['./extensions'] } }));
+    fs.writeFileSync(path.join(pkg, 'extensions', 'a.js'), 'export default () => {};\n');
+    fs.writeFileSync(path.join(pkg, 'extensions', 'b.js'), 'export default () => {};\n');
+    const settings = path.join(env.agentDir, 'settings.json');
+    const saved = fs.existsSync(settings) ? JSON.parse(fs.readFileSync(settings, 'utf8')) : {};
+    fs.writeFileSync(settings, JSON.stringify({ ...saved, packages: [pkg] }));
+
+    const state = async () => (await pluginResources(env, pkg, 'user')).map((r) => [r.name, r.enabled]);
+    expect(await state()).toEqual([['extensions/a.js', true], ['extensions/b.js', true]]);
+    const [a] = await pluginResources(env, pkg, 'user');
+
+    await setPluginResource(env, pkg, 'user', a, false);
+    expect(await state()).toEqual([['extensions/a.js', false], ['extensions/b.js', true]]);
+    expect(JSON.parse(fs.readFileSync(settings, 'utf8')).packages).toEqual([{ source: pkg, extensions: ['-extensions/a.js'] }]);
+
+    await setPluginResource(env, pkg, 'user', a, true);
+    expect(await state()).toEqual([['extensions/a.js', true], ['extensions/b.js', true]]);
+    expect(JSON.parse(fs.readFileSync(settings, 'utf8')).packages).toEqual([pkg]);
   });
 });

@@ -19,6 +19,7 @@ export const agent = defineMessages({
   'ag.needHttpUrl': { en: 'Enter an address starting with http:// or https://', zh: '请填写以 http:// 或 https:// 开头的地址' },
   'ag.needCommand': { en: 'Enter the command to run', zh: '请填写要运行的命令' },
   'ag.connectorMissing': { en: 'Connector {name} not found', zh: '找不到连接器 {name}' },
+  'ag.pluginNotFound': { en: 'Plugin not found: {source}', zh: '找不到插件：{source}' },
   'ag.needPackage': { en: 'Enter a package name or address, such as npm:pi-web-access or git:github.com/user/repo', zh: '请填写包名或地址，例如 npm:pi-web-access 或 git:github.com/user/repo' },
   'ag.pluginNotIn': { en: '{source} is not in the {scope} settings', zh: '{source} 不在{scope}配置里' },
   'ag.scopeProject': { en: 'project', zh: '项目' },

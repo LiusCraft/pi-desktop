@@ -157,5 +157,12 @@ export const customize = defineMessages({
   'plugins.updated': { en: 'Updated {source}', zh: '已更新 {source}' },
   'plugins.recommended': { en: 'Recommended', zh: '推荐' },
   'plugins.lensDesc': { en: 'Code intelligence: LSP diagnostics, syntax trees, linters, type checks.', zh: '代码智能：LSP 诊断、语法树、lint、类型检查。' },
+  'plugins.items': { en: 'Contents', zh: '内容' },
+  'plugins.itemsEmpty': { en: 'Nothing to configure.', zh: '没有可配置的内容。' },
+  'plugins.itemsTip': { en: 'Turn off parts of a package, such as extensions that duplicate desktop features. Takes effect in new sessions.', zh: '可单独关闭包里的部分内容，比如与桌面端功能重复的扩展。新会话生效。' },
+  'plugins.kind.extensions': { en: 'Extensions', zh: '扩展' },
+  'plugins.kind.skills': { en: 'Skills', zh: '技能' },
+  'plugins.kind.prompts': { en: 'Prompts', zh: '提示词' },
+  'plugins.kind.themes': { en: 'Themes', zh: '主题' },
   'plugins.empty': { en: 'No plugins yet. Enter a package name above to install one, such as npm:pi-web-access.', zh: '还没有安装插件。上面输入一个包名就能装，比如 npm:pi-web-access。' },
 });

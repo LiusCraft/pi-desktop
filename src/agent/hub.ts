@@ -15,7 +15,7 @@ import {
 import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import { buildMessage, decodeUserContent } from '@shared/attachments';
 import type {
-  AgentDraft, AgentMessage, ConnectorDraft, SkillDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
+  AgentDraft, AgentMessage, ConnectorDraft, PluginResource, SkillDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
   PrStatus, PrSummary, SessionCleanup, SessionMeta, SessionRemoval, SessionStats, SetupStep, Settings, SideChat, SpawnTask, SubagentProgress, WorkIdea, WorkIdeasModelMode, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
 } from '@shared/protocol';
 import { AUTO_REVIEW_DEFAULT_TIMEOUT, AUTO_REVIEW_MAX_TIMEOUT, AUTO_REVIEW_MIN_TIMEOUT, MAX_SESSION_TITLE, SHELL_SESSION_MODES } from '@shared/protocol';
@@ -789,6 +789,9 @@ export class SessionHub {
     installPlugin: (source: string, scope: 'user' | 'project', project: string | null) => customize.installPlugin(this.customizeEnv(project), source, scope),
     removePlugin: (source: string, scope: 'user' | 'project', project: string | null) => customize.removePlugin(this.customizeEnv(project), source, scope),
     updatePlugins: (source: string | null, project: string | null) => customize.updatePlugins(this.customizeEnv(project), source),
+    pluginResources: (source: string, scope: 'user' | 'project', project: string | null) => customize.pluginResources(this.customizeEnv(project), source, scope),
+    setPluginResource: (source: string, scope: 'user' | 'project', resource: PluginResource, enabled: boolean, project: string | null) =>
+      customize.setPluginResource(this.customizeEnv(project), source, scope, resource, enabled),
   };
 
   /** A read-only, in-memory session with a fresh context (desktop-kit's `task` tool). */

@@ -1,12 +1,14 @@
 // Customize → Plugins: pi packages (npm, git or local folders) listed in settings.json. A
 // package can bring skills, prompt templates, extensions and MCP servers in one install.
-import { useState } from 'react';
-import { DownloadIcon, PackageIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ChevronRightIcon, DownloadIcon, PackageIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
-import type { CustomizeCatalog, PluginInfo } from '@shared/protocol';
+import { PLUGIN_RESOURCE_KINDS } from '@shared/protocol';
+import type { CustomizeCatalog, PluginInfo, PluginResource } from '@shared/protocol';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { call, errText } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { fname } from '@/lib/format';
@@ -22,11 +24,50 @@ interface Props {
   onCatalog: (c: CustomizeCatalog) => void;
 }
 
+/** The files a package brings, each with its own switch (written as filters on the settings entry). */
+function PluginItems({ plugin, project, onCatalog }: { plugin: PluginInfo; project: string | null; onCatalog: (c: CustomizeCatalog) => void }) {
+  const t = useT();
+  const [items, setItems] = useState<PluginResource[] | null>(null);
+  const load = () => call('customize:pluginResources', plugin.source, plugin.scope, project).then(setItems, (err) => toast.error(errText(err)));
+  useEffect(() => { void load(); }, [plugin.source, plugin.scope]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toggle = async (r: PluginResource, on: boolean) => {
+    setItems((cur) => cur && cur.map((x) => (x.path === r.path ? { ...x, enabled: on } : x)));
+    try {
+      onCatalog(await call('customize:pluginSetResource', plugin.source, plugin.scope, r, on, project));
+    } catch (err) {
+      toast.error(errText(err));
+    }
+    void load();
+  };
+  if (!items) return <div className="px-4 pb-3 pl-15 text-xs text-muted-foreground">…</div>;
+  if (!items.length) return <div className="px-4 pb-3 pl-15 text-xs text-muted-foreground">{t('plugins.itemsEmpty')}</div>;
+  return (
+    <div className="space-y-2 px-4 pb-3 pl-15">
+      {PLUGIN_RESOURCE_KINDS.map((kind) => {
+        const rows = items.filter((r) => r.kind === kind);
+        if (!rows.length) return null;
+        return (
+          <div key={kind}>
+            <div className="mb-1 text-xs font-medium text-muted-foreground">{t(`plugins.kind.${kind}`)}</div>
+            {rows.map((r) => (
+              <div key={r.path} className="flex items-center gap-2 py-0.5">
+                <span className="min-w-0 flex-1 truncate font-mono text-xs" title={r.path}>{r.name}</span>
+                <Switch checked={r.enabled} onCheckedChange={(on) => void toggle(r, on)} aria-label={r.name} />
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function PluginsSection({ catalog, project, onCatalog }: Props) {
   const t = useT();
   const [source, setSource] = useState('');
   const [scope, setScope] = useState<'user' | 'project'>('user');
   /** What is running: installing/updating can take a while, so the whole page says so. */
+  const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState<'installing' | 'updating' | 'removing' | null>(null);
 
   const run = async (label: 'installing' | 'updating' | 'removing', fn: () => Promise<CustomizeCatalog>, done?: string) => {
@@ -93,7 +134,11 @@ export function PluginsSection({ catalog, project, onCatalog }: Props) {
       ))}
       <Panel>
         {catalog.plugins.map((p) => (
-          <div key={`${p.scope}:${p.source}`} className="flex items-center gap-3 px-4 py-3">
+          <div key={`${p.scope}:${p.source}`}>
+          <div className="flex items-center gap-3 px-4 py-3">
+            <Button size="icon" variant="ghost" className="size-6 shrink-0" title={t('plugins.items')} disabled={!p.installedPath} onClick={() => setOpen(open === `${p.scope}:${p.source}` ? null : `${p.scope}:${p.source}`)}>
+              <ChevronRightIcon className={`size-4 transition-transform ${open === `${p.scope}:${p.source}` ? 'rotate-90' : ''}`} />
+            </Button>
             <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/40"><PackageIcon className="size-4 text-muted-foreground" /></span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1.5">
@@ -106,6 +151,8 @@ export function PluginsSection({ catalog, project, onCatalog }: Props) {
             </div>
             <Button size="icon" variant="ghost" className="size-8" title={t('plugins.update')} disabled={!!busy} onClick={() => void run('updating', () => call('customize:pluginUpdate', p.source, project), t('plugins.updated', { source: p.source }))}><RefreshCwIcon className="size-4" /></Button>
             <Button size="icon" variant="ghost" className="size-8 text-destructive" title={t('plugins.remove')} disabled={!!busy} onClick={() => void remove(p)}><Trash2Icon className="size-4" /></Button>
+          </div>
+          {open === `${p.scope}:${p.source}` && <PluginItems plugin={p} project={project} onCatalog={onCatalog} />}
           </div>
         ))}
         {!catalog.plugins.length && <Empty>{t('plugins.empty')}</Empty>}

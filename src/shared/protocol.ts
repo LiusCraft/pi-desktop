@@ -389,6 +389,17 @@ export interface PluginInfo {
   /** Resource filters are set on the entry, so some of it may not load. */
   filtered: boolean;
 }
+/** What a package can bring; each kind is a filter list on the settings entry. */
+export const PLUGIN_RESOURCE_KINDS = ['extensions', 'skills', 'prompts', 'themes'] as const;
+export type PluginResourceKind = (typeof PLUGIN_RESOURCE_KINDS)[number];
+export interface PluginResource {
+  kind: PluginResourceKind;
+  /** Absolute path of the file. */
+  path: string;
+  /** Path inside the package, shown to the user. */
+  name: string;
+  enabled: boolean;
+}
 export interface PromptInfo {
   name: string;
   description: string;
@@ -1056,6 +1067,8 @@ export interface Api {
   'customize:pluginInstall'(source: string, scope: 'user' | 'project', project: string | null): CustomizeCatalog;
   'customize:pluginRemove'(source: string, scope: 'user' | 'project', project: string | null): CustomizeCatalog;
   'customize:pluginUpdate'(source: string | null, project: string | null): CustomizeCatalog;
+  'customize:pluginResources'(source: string, scope: 'user' | 'project', project: string | null): PluginResource[];
+  'customize:pluginSetResource'(source: string, scope: 'user' | 'project', resource: PluginResource, enabled: boolean, project: string | null): CustomizeCatalog;
   'activity:get'(): ActivityLog;
   'tasks:list'(): ScheduledTask[];
   'tasks:save'(draft: TaskDraft): ScheduledTask[];
@@ -1110,7 +1123,7 @@ export const HOST_CHANNELS = [
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
   'sessions:import', 'git:branch', 'git:branches', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove',
   'customize:list', 'customize:readFile', 'customize:skillSetDisabled', 'customize:skillCreate', 'customize:claudeImport', 'customize:claudeDismiss', 'customize:connectorSave',
-  'customize:connectorSetEnabled', 'customize:connectorRemove', 'customize:pluginInstall', 'customize:pluginRemove', 'customize:pluginUpdate',
+  'customize:connectorSetEnabled', 'customize:connectorRemove', 'customize:pluginInstall', 'customize:pluginRemove', 'customize:pluginUpdate', 'customize:pluginResources', 'customize:pluginSetResource',
   'activity:get', 'tasks:list', 'tasks:save', 'tasks:setEnabled', 'tasks:remove', 'tasks:run',
   'artifacts:list', 'artifacts:remove', 'artifacts:publish', 'artifacts:unpublish', 'storage:get', 'storage:save', 'storage:test',
   'web:get', 'web:save', 'web:test',
