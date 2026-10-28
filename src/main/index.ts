@@ -184,9 +184,9 @@ function watchSettings() {
 // ------------------------------------------------------------ windows
 
 const BG = { light: '#faf9f5', dark: '#262624' };
-const SIDEBAR_BG = { light: '#f5f4ed', dark: '#1f1e1d' };
+/** The caption buttons sit over the page header, so they take the page background, not the sidebar's. */
 function overlay(dark: boolean) {
-  return dark ? { color: SIDEBAR_BG.dark, symbolColor: '#c3c1bb', height: 44 } : { color: SIDEBAR_BG.light, symbolColor: '#55534d', height: 44 };
+  return dark ? { color: BG.dark, symbolColor: '#c3c1bb', height: 44 } : { color: BG.light, symbolColor: '#55534d', height: 44 };
 }
 const isDark = () => settingsPayload().resolvedTheme === 'dark';
 
