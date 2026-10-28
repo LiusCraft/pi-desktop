@@ -9,6 +9,7 @@ import { revealItem } from '@/lib/quote-links';
 import { positiveLine } from '@shared/tool-previews';
 import { call, errText, modKey } from '@/lib/api';
 import { t } from '@/lib/i18n';
+import { cuePet } from '@/lib/pet-cue';
 import { playSound } from '@/lib/sounds';
 import { desktopCommands, MODES, VIEW_MODES, type ViewMode } from '@/lib/constants';
 import { fname, relPath } from '@/lib/format';
@@ -153,6 +154,7 @@ function flushEvents() {
           if (ev.level === 'error') {
             toast.error(ev.message);
             playSound('error');
+            cuePet('error');
           } else if (ev.level === 'warning') toast.warning(ev.message);
           else push(s, { kind: 'note', key: newKey(), text: ev.message }, view);
           break;
@@ -178,7 +180,10 @@ function runEffects(id: string, fx: Effects) {
   if (fx.refreshStats) void refreshStats(id);
   if (fx.prCreated) call('sessions:update', id, { pr: fx.prCreated }).catch(() => {});
   if (fx.editorText !== undefined) drafts.setText(sessionDraftKey(id), fx.editorText);
-  if (fx.settled && !fx.settled.aborted) playSound('done');
+  if (fx.settled && !fx.settled.aborted) {
+    playSound('done');
+    cuePet('done');
+  }
   if (fx.waiting) playSound('ask');
   // Away = another session is open, or the window is hidden / not in front.
   const away = !isCur || document.hidden || !document.hasFocus();

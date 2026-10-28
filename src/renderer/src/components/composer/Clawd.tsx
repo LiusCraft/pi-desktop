@@ -4,12 +4,13 @@ import { useEffect, useRef, useState } from 'react';
 import { BUILTIN_PETS, DEFAULT_PET_ID, type PetDef } from '@shared/pets';
 import type { MessageKey } from '@shared/i18n';
 import { t as tr } from '@/lib/i18n';
+import { onPetCue, type PetCue } from '@/lib/pet-cue';
 import { playSound } from '@/lib/sounds';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/store/app';
 import type { SessionView } from '@/store/types';
 
-export type Mood = 'idle' | 'thinking' | 'typing' | 'running' | 'reading' | 'talking' | 'waiting';
+export type Mood = 'idle' | 'thinking' | 'typing' | 'running' | 'reading' | 'talking' | 'waiting' | PetCue;
 
 /** What the pet should be doing for this session right now. */
 export function moodOf(s: SessionView | undefined): Mood {
@@ -47,6 +48,7 @@ const NEAR = 4; // px: closer than this to its goal counts as already there
 const BLOCK_POLL_MS = 250;
 const DRAG_THRESHOLD = 3; // px of pointer travel before a press becomes a drag
 const JOY_MS = 1400; // how long a double-click reaction lasts
+const CUE_MS = 1800; // how long the pet reacts to a finished turn or an error
 const HELD_LIFT = 8; // px the pet is lifted while the user holds it
 const GRAVITY = 1400; // px per second squared
 const JUMP_ARC = 12; // px it clears a ledge by at the top of a hop
@@ -416,6 +418,19 @@ export function Clawd({ mood }: { mood: Mood }) {
   const [joy, setJoy] = useState(false);
   const joyTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(joyTimer.current), []);
+  const [cue, setCue] = useState<PetCue | null>(null);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const off = onPetCue((c) => {
+      clearTimeout(timer);
+      setCue(c);
+      timer = setTimeout(() => setCue(null), CUE_MS);
+    });
+    return () => {
+      off();
+      clearTimeout(timer);
+    };
+  }, []);
   // How far above the input box the docked card's top edge is (0 when nothing is docked).
   // Written straight to the style: while the card animates this runs every frame, and a React render per frame makes the pet stutter.
   useEffect(() => {
@@ -492,7 +507,7 @@ export function Clawd({ mood }: { mood: Mood }) {
             {greeting}
           </div>
         )}
-        <PetSprite pet={pet} mood={walking || !arrived ? 'idle' : mood} walking={walking} held={held} joy={joy} facing={facing} />
+        <PetSprite pet={pet} mood={walking || !arrived ? 'idle' : cue ?? mood} walking={walking} held={held} joy={joy} facing={facing} />
       </div>
     </div>
   );
