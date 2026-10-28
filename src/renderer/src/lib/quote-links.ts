@@ -74,14 +74,31 @@ export function findRange(root: HTMLElement, quote: string): Range | null {
   return range;
 }
 
-const highlights = () => (typeof Highlight === 'undefined' ? null : CSS.highlights);
+const QUOTE_REF = 'quote-ref';
+const QUOTE_FLASH = 'quote-flash';
+
+// Injected at runtime: the CSS pipeline (lightningcss) doesn't know `::highlight()` and warns.
+let styled = false;
+function highlights() {
+  if (typeof Highlight === 'undefined') return null;
+  if (!styled) {
+    styled = true;
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(
+      `::highlight(${QUOTE_REF}) { background: color-mix(in srgb, var(--info) 14%, transparent); }
+::highlight(${QUOTE_FLASH}) { background: color-mix(in srgb, var(--warning) 45%, transparent); }`,
+    );
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+  }
+  return CSS.highlights;
+}
 
 /** Marks every passage that has been replied to, until the returned cleanup runs. */
 export function markQuoted(ranges: Range[]): () => void {
   const registry = highlights();
   if (!registry || !ranges.length) return () => {};
-  registry.set('quote-ref', new Highlight(...ranges));
-  return () => void registry.delete('quote-ref');
+  registry.set(QUOTE_REF, new Highlight(...ranges));
+  return () => void registry.delete(QUOTE_REF);
 }
 
 /** Scroll to a transcript item, or to the exact `quote` inside it, and flash it once. */
@@ -92,8 +109,8 @@ export function revealItem(key: string, quote?: string): boolean {
   const registry = highlights();
   if (range && registry) {
     range.startContainer.parentElement?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    registry.set('quote-flash', new Highlight(range));
-    window.setTimeout(() => registry.delete('quote-flash'), 1800);
+    registry.set(QUOTE_FLASH, new Highlight(range));
+    window.setTimeout(() => registry.delete(QUOTE_FLASH), 1800);
     return true;
   }
   el.scrollIntoView({ block: 'center', behavior: 'smooth' });

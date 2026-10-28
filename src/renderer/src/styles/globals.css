@@ -366,9 +366,6 @@
 }
 /* A transcript item the user jumped to (a quoted passage, or the reply that quoted it). */
 .transcript-item[data-flash] { animation: transcript-flash 1.6s ease-out 1; border-radius: 0.75rem; }
-/* The exact text a reply quoted: always faintly marked, strongly while jumped to. */
-::highlight(quote-ref) { background: color-mix(in srgb, var(--info) 14%, transparent); }
-::highlight(quote-flash) { background: color-mix(in srgb, var(--warning) 45%, transparent); }
 @keyframes transcript-flash {
   0%, 30% { background: color-mix(in srgb, var(--info) 18%, transparent); }
   100% { background: transparent; }
