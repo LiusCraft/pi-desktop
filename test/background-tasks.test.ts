@@ -54,7 +54,9 @@ describe('background tasks', () => {
     const { tools } = load({ taskUpdate: (u) => updates.push(u) });
     await tools.get('pidesk_bg_shell').execute('call-1', { command: 'node -e "console.log(process.cwd())"', workdir: dir }, undefined, undefined, ctx);
     await until(() => updates.at(-1)?.state === 'done');
-    expect(updates.at(-1)?.shell?.output).toContain(fs.realpathSync(dir));
+    // The child's cwd may carry the long name where os.tmpdir() keeps the 8.3 one: compare folders, not text.
+    const printed = updates.at(-1)?.shell?.output.trim() ?? '';
+    expect(fs.realpathSync.native(printed)).toBe(fs.realpathSync.native(dir));
   });
 
   it('pidesk_bg_kill stops a running command without waking the model', async () => {

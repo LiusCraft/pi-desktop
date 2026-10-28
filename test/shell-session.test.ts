@@ -24,6 +24,12 @@ async function run(shell: SharedShell, command: string, cwd = folder, extra: { t
   return { exitCode, out };
 }
 
+/** Git Bash spells a folder `C:/…` where node says `C:\…`, and may keep its 8.3 name: compare folders, not text. */
+const canonical = (folder: string) => {
+  const full = fs.realpathSync.native(folder.trim());
+  return process.platform === 'win32' ? full.toLowerCase() : full;
+};
+
 afterEach(() => {
   for (const shell of shells.splice(0)) shell.dispose();
 });
@@ -31,8 +37,11 @@ afterEach(() => {
 describe.skipIf(!bash)('SharedShell', () => {
   it('starts in the folder it was given and reports where it is', async () => {
     const shell = open();
-    expect(await run(shell, 'pwd')).toMatchObject({ exitCode: 0, out: `${fs.realpathSync(folder)}\n` });
-    expect(fs.realpathSync(shell.cwd!)).toBe(fs.realpathSync(folder));
+    const { exitCode, out } = await run(shell, 'pwd');
+    expect(exitCode).toBe(0);
+    // The shell prints its own spelling of the folder; the marker carries it back in the same one.
+    expect(canonical(out)).toBe(canonical(folder));
+    expect(canonical(shell.cwd!)).toBe(canonical(folder));
   });
 
   it('keeps the folder a cd moved to', async () => {

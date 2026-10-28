@@ -17,9 +17,9 @@ jobs:
   pack-mac:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -57,9 +57,9 @@ jobs:
   pack-win:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -78,7 +78,8 @@ jobs:
         shell: bash
         run: |
           app="dist/win-unpacked/resources/app"
-          test -f "$app/node_modules/@earendil-works/pi-coding-agent/package.json"
+          pi=node_modules/@earendil-works/pi-coding-agent/package.json
+          test -f "$app/$pi"
           test -f "$app/out/main/index.mjs"
           test -f "$app/out/main/agent.mjs"
           test -f "$app/out/preload/index.js"

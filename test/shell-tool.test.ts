@@ -32,6 +32,12 @@ function load(mode: ShellSessionMode) {
 /** What the model would read: the text blocks of a tool result. */
 const text = (result: any) => result.content.map((block: any) => block.text).join('');
 
+/** Git Bash spells a folder `C:/…` where node says `C:\…`, and may keep its 8.3 name: compare folders, not text. */
+const canonical = (folder: string) => {
+  const full = fs.realpathSync.native(folder.trim());
+  return process.platform === 'win32' ? full.toLowerCase() : full;
+};
+
 const context = () => ({
   cwd: folder,
   model: undefined,
@@ -73,8 +79,11 @@ describe('bash tool', () => {
     const tool = load('session');
     await tool.execute('call-1', { command: 'cd sub' }, undefined, undefined, context());
     const result = await tool.execute('call-2', { command: 'pwd' }, undefined, undefined, context());
-    expect(text(result)).toContain(path.join(fs.realpathSync(folder), 'sub'));
-    expect(text(result)).toMatch(/\[shell folder: .*\/sub\]/);
+    const moved = path.join(folder, 'sub');
+    const [printed] = text(result).split('\n');
+    expect(canonical(printed)).toBe(canonical(moved));
+    const noted = /\[shell folder: ([^\]]+)\]/.exec(text(result))?.[1];
+    expect(noted && canonical(noted)).toBe(canonical(moved));
   });
 
   it('runs a workdir command without moving the shared shell', async () => {

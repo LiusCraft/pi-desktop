@@ -1,7 +1,8 @@
 name: release
 
 # Tag push builds both architectures, signs + notarizes when the signing
-# secrets are set (see README), and attaches the dmgs and the Windows installer to the GitHub Release.
+# secrets are set (see README), and attaches the dmgs and the Windows installer
+# to the GitHub Release.
 # `make release` creates the tag for you, bumping the latest tag (patch);
 # `make release VERSION=0.2.0` tags an explicit version.
 on:
@@ -20,9 +21,9 @@ jobs:
   mac:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -43,7 +44,8 @@ jobs:
       # resolves to the cwd ("... not a file"), so unset the empty ones first.
       - name: Build dmgs
         run: |
-          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID \
+            APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
             [ -n "${!v}" ] || unset "$v"
           done
           npm run dist:mac -- --arm64 --x64
@@ -85,9 +87,9 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -119,11 +121,14 @@ jobs:
         run: |
           repo="$GITHUB_REPOSITORY"
           for i in 1 2 3 4 5; do
-            gh release view "$GITHUB_REF_NAME" --repo "$repo" >/dev/null 2>&1 && break
-            gh release create "$GITHUB_REF_NAME" --repo "$repo" --generate-notes 2>/dev/null && break
+            gh release view "$GITHUB_REF_NAME" --repo "$repo" \
+              >/dev/null 2>&1 && break
+            gh release create "$GITHUB_REF_NAME" --repo "$repo" \
+              --generate-notes 2>/dev/null && break
             sleep 10
           done
-          gh release upload "$GITHUB_REF_NAME" --repo "$repo"             dist/Pi-Desktop-*-setup.exe --clobber
+          gh release upload "$GITHUB_REF_NAME" --repo "$repo" \
+            dist/Pi-Desktop-*-setup.exe --clobber
 
       - name: Keep the installer as a workflow artifact too
         uses: actions/upload-artifact@v4
