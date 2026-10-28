@@ -114,7 +114,8 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 | `src/shared/protocol.ts` | 三个进程之间的契约：渲染进程能调用的每个通道（`Api`）、哪些转发给 agent host（`HOST_CHANNELS`）、host 推回的事件流（`HostEvent`）、交互请求（`UiRequest`） |
 | `src/agent/app-paths.ts` | 应用自己的数据目录（`~/.pi-desktop`、`PI_DESKTOP_HOME`）、worktree 根目录、扩展目录；pi 的配置目录只读解析，不搬家 |
 | `src/agent/hub.ts` | 会话元数据、worktree、`createAgentSessionRuntime` 创建 / 恢复会话、事件转发、交互请求（权限 / 计划 / 扩展对话框）、子 agent、会话命名、CLI 会话导入 |
-| `src/agent/desktop-kit.ts` | 每个会话一个实例的 pi 扩展：权限模式、output style、`pidesk_todo_write`、`pidesk_exit_plan_mode`、`pidesk_task`（子 agent）、`pidesk_bg_*`（后台 shell）、`pidesk_suggest_task`、会话间通信；`src/agent/manage-tools.ts` 里的 `pidesk_schedule_*`（定时任务）和 `pidesk_customize_*`（技能 / 连接器 / 插件），让 AI 在对话里代你管理 Scheduled 和 Customize 页 |
+| `src/agent/desktop-kit.ts` | 每个会话一个实例的 pi 扩展：权限模式、output style、`bash`（含 `workdir`，见下）、`pidesk_todo_write`、`pidesk_exit_plan_mode`、`pidesk_task`（子 agent）、`pidesk_bg_*`（后台 shell）、`pidesk_suggest_task`、会话间通信；`src/agent/manage-tools.ts` 里的 `pidesk_schedule_*`（定时任务）和 `pidesk_customize_*`（技能 / 连接器 / 插件），让 AI 在对话里代你管理 Scheduled 和 Customize 页 |
+| `src/agent/shell-session.ts` | 模型的 shell：一个会话共用的常驻 bash（命令经临时脚本 + 结束标记驱动），以及“每条命令一个进程”的回退 |
 | `src/agent/model-admin.ts` | 模型管理：provider / 登录方式枚举、OAuth 与 API key 登录事件桥接、登出、自定义端点保存与热加载 |
 | `src/agent/endpoints.ts` | `models.json` 读写（保留手写字段）、`/models` 发现、本地端点占位密钥 |
 | `src/agent/models-dev.ts` | models.dev 目录（按天缓存）：按模型 ID / canonical ID 匹配上下文、输出上限和价格 |
@@ -250,6 +251,17 @@ Code 会话输入框上方的 PR 条报告当前分支的 PR：状态颜色、`+
 | Subagents | 子 agent 身份，见下 |
 
 项目级条目只对已信任的项目生效。
+
+### 模型的 shell
+
+pi 默认每条命令起一个进程，一条命令里的 `cd` 到下一条就没了。Pi Desktop 用自己的 `bash`（`src/agent/shell-session.ts`）替换了它：
+
+- **共用一个 shell（默认）**：每个会话一个常驻 shell，`cd` 和 `export` 的变量带到下一条命令，和 Claude Code 一样。命令先写进临时脚本再 `source`，所以模型写错引号或 heredoc 只会让那条命令失败，不会卡住 shell；超时或停止会杀掉整个进程组，下一条命令自动换一个新的。
+- **每条命令独立**：每条命令单独一个进程，从会话目录开始。
+- 两种模式都可以给 `bash`（以及 `pidesk_bg_shell`）传 `workdir`，在子目录里跑一条命令而不用 `cd`；共用 shell 下用子 shell 包住，不改变 shell 当前所在目录。
+- 命令把 shell 留在会话目录之外时，结果末尾会多一行 `[shell folder: …]`，模型据此知道自己站在哪（`read` / `edit` 的相对路径仍按会话目录算）。
+- 切换在 设置 → 通用 → 基础 → 命令使用的 shell（Work 和 Code 都会生效），立即生效；只作用于 `bash`。Windows 上如果改用 pi 的 `powershell` 工具，仍然是每条命令一个进程。
+- 共用 shell 起不来时（例如 Windows 没装 Git Bash）自动退回每条命令一个进程，并在结果里说明一次。
 
 ### 后台任务与子 agent
 

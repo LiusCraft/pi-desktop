@@ -1,7 +1,8 @@
 /**
  * The app settings the model may change through `pidesk_settings_manage`, and how each value is checked.
  * Left out on purpose: the `ai*` switches (the model must not widen its own access), `terminalShell`
- * (an executable the app launches) and `worktreeDir` (a folder the app creates and writes into).
+ * (an executable the app launches), `shellSession` (how its own commands run) and `worktreeDir`
+ * (a folder the app creates and writes into).
  */
 import { SUGGESTION_MAX_CONTEXT, type Settings, type SuggestionModelMode, type ThemeSetting, type WorkIdeasModelMode } from './protocol';
 

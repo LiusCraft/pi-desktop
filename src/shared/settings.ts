@@ -7,5 +7,6 @@ export const DEFAULT_SETTINGS: Settings = {
   suggestionModel: 'session', suggestionModelId: null, suggestionContext: SUGGESTION_DEFAULT_CONTEXT, suggestionFullContext: false,
   workIdeas: true, workIdeasModel: 'session', workIdeasModelId: null,
   defaultMode: 'code', sidebarCollapsed: false, worktreeDir: null, pet: true, petSkin: DEFAULT_PET_ID, terminalShell: null,
+  shellSession: 'session',
   aiSchedule: true, aiCustomize: true, aiSettings: true, aiProject: true,
 };

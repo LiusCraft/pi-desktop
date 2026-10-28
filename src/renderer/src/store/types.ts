@@ -101,6 +101,10 @@ export interface SessionView {
   tokens: number;
   statusText: string;
   ctxPct: number | null;
+  /** Cache hit rate of the session's prompt tokens, 0-1; null when the provider reported none. */
+  cacheRate: number | null;
+  /** Session spend in dollars so far; null until the session has reported stats. */
+  cost: number | null;
   model: string | null;
   thinking: ThinkingLevel | null;
   levels: ThinkingLevel[];

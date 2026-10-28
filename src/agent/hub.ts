@@ -18,6 +18,7 @@ import type {
   AgentDraft, ConnectorDraft, SkillDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
   PrStatus, PrSummary, SessionCleanup, SessionMeta, SessionRemoval, SessionStats, SetupStep, Settings, SideChat, SpawnTask, SubagentProgress, WorkIdea, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
 } from '@shared/protocol';
+import { SHELL_SESSION_MODES } from '@shared/protocol';
 import { decodeCommandMessage, isCommandMessage } from '@shared/command-message';
 import { decodePeerMessage,encodePeerMessage, isPeerMessage } from '@shared/peer-message';
 import { decodePrEvent, encodePrEvent, isPrEvent } from '@shared/pr-event';
@@ -467,6 +468,12 @@ export class SessionHub {
     const hub = this;
     return {
       state: live.kit,
+      cwd: this.meta(live.id).cwd,
+      // Read for every command, so switching it on the Settings page applies without a new session.
+      shellSession: () => {
+        const mode = hub.storedSettings().shellSession;
+        return SHELL_SESSION_MODES.includes(mode) ? mode : DEFAULT_SETTINGS.shellSession;
+      },
       ask: (request, signal) => this.ask(live, request, signal),
       setMode: (mode) => this.applyMode(live.id, mode),
       runSubagent: (run) => this.runSubagent(live, run),
@@ -1511,12 +1518,15 @@ export class SessionHub {
     const fixed = prompt + sum('mcp') + sum('extension') + sum('system') + sum('skills') + sum('memory');
     const measured = usage?.tokens ?? null;
     const used = measured != null ? Math.max(measured, fixed) : fixed + session.messages.reduce((n, m) => n + estimateTokens(m), 0);
+    const stats = session.getSessionStats();
     const compaction = session.settingsManager.getCompactionSettings(session.model ?? undefined);
     const buffer = compaction.enabled ? Math.min(compaction.reserveTokens, Math.max(0, contextWindow - used)) : 0;
     return {
       contextWindow,
       used,
       estimated: measured == null,
+      cache: { input: stats.tokens.input, cacheRead: stats.tokens.cacheRead, cacheWrite: stats.tokens.cacheWrite },
+      cost: stats.cost,
       categories: [
         { key: 'messages', label: 'Messages', tokens: used - fixed },
         { key: 'mcp', label: 'MCP tools', tokens: sum('mcp') },

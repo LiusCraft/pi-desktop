@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { buildMessage, decodeUserContent, type Attachment } from '@shared/attachments';
 import type { HostEvent, OutputStyle, PermissionMode, PrThread, SessionKind, SessionMeta, SpawnTask, ThinkingLevel, UiResponse, WorkProjectPatch } from '@shared/protocol';
 import { referencePrompt, type ContextReference } from '@shared/context-reference';
+import { cacheHitRate } from '@shared/usage';
 import { revealItem } from '@/lib/quote-links';
 import { positiveLine } from '@shared/tool-previews';
 import { call, errText, modKey } from '@/lib/api';
@@ -426,6 +427,8 @@ export async function openSession(id: string, fresh = false) {
       x.thinking = r.thinking;
       x.levels = r.levels;
       x.ctxPct = r.stats?.contextUsage?.percent ?? null;
+      x.cacheRate = r.stats ? cacheHitRate(r.stats.tokens) : null;
+      x.cost = r.stats?.cost ?? null;
       for (const req of r.pending) addUiRequest(x, req, st.prefs.viewMode);
     });
     call('sessions:commands', id).then((commands) => updateSession(id, (x) => void (x.commands = commands.filter((c) => !['desktop-mode', 'desktop-output-style'].includes(c.name))))).catch(() => {});
@@ -523,6 +526,8 @@ async function slashCommand(s: SessionView | undefined, head: string, text: stri
         x.items = [];
         x.todosKey = null;
         x.ctxPct = 0;
+        x.cacheRate = null;
+        x.cost = 0;
       });
     } else if (head === '/compact') {
       await compactSession(id, text.slice(head.length).trim() || undefined);
@@ -902,6 +907,8 @@ export async function userMessageAction(id: string, entryId: string, action: 're
       target.thinking = session.thinking;
       target.levels = session.levels;
       target.ctxPct = session.stats?.contextUsage?.percent ?? null;
+      target.cacheRate = session.stats ? cacheHitRate(session.stats.tokens) : null;
+      target.cost = session.stats?.cost ?? null;
     });
     const attachments = draft.attachments.filter((attachment): attachment is Attachment => attachment.kind === 'file' || typeof attachment.data === 'string');
     drafts.recover(sessionDraftKey(session.meta.id), { text: draft.text, attachments, label: t(action === 'rewind' ? 'act.rewoundMessage' : 'act.branchStart') });
@@ -1173,9 +1180,15 @@ export async function loadFiles(id: string, force = false) {
 export async function refreshStats(id: string) {
   try {
     const st = await call('sessions:stats', id);
-    if (st?.contextUsage?.percent != null) updateSession(id, (v) => void (v.ctxPct = st.contextUsage!.percent));
+    const pct = st?.contextUsage?.percent;
+    const rate = st ? cacheHitRate(st.tokens) : null;
+    updateSession(id, (v) => {
+      if (pct != null) v.ctxPct = pct;
+      if (rate != null) v.cacheRate = rate;
+      if (st) v.cost = st.cost;
+    });
   } catch {
-    // Context usage is cosmetic; keep the last known percentage.
+    // Context usage is cosmetic; keep the last known figures.
   }
 }
 

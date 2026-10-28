@@ -337,6 +337,13 @@ export function SettingsApp() {
                   onChange={(m) => void patch({ defaultMode: m })}
                 />
               </Row>
+              <Row title={t('settings.shellSession')} hint={t('settings.shellSession.hint')} tip={t('settings.shellSession.tip')}>
+                <Segmented
+                  value={settings.shellSession ?? 'session'}
+                  options={[{ id: 'session', label: t('settings.shellSession.shared') }, { id: 'command', label: t('settings.shellSession.each') }]}
+                  onChange={(m) => void patch({ shellSession: m })}
+                />
+              </Row>
             </Panel>
           </Group>
 

@@ -27,7 +27,7 @@ export const newKey = () => `i${++seq}`;
 
 export function emptySession(meta: SessionMeta): SessionView {
   return {
-    meta, items: [], loaded: false, running: false, t0: 0, tokens: 0, statusText: '', ctxPct: null,
+    meta, items: [], loaded: false, running: false, t0: 0, tokens: 0, statusText: '', ctxPct: null, cacheRate: null, cost: null,
     model: meta.model ?? null, thinking: meta.thinking ?? null, levels: [], commands: [], waiting: null, unread: false,
     todosKey: null, lastTodos: [], outputs: [], changes: [], gitState: null, pr: meta.pr, prThreads: [], prHidden: false, files: null, fileTabs: [],
     panels: readPanels(meta.id), arrangement: readArrangement(meta.id), expanded: null, expandedWide: false, detail: null, previewUrl: null,

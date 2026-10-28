@@ -16,6 +16,7 @@ import type { SearchEngine, WebSearchDraft, WebSearchInfo } from './web-search';
 import type { RemoteActive, RemoteConnectionDraft, RemoteConnectionInfo, RemoteLinkState, RemoteListing, RemoteServeSettings, RemoteServeState } from './remote';
 import type { ScheduledTask, TaskDraft } from './schedule';
 import type { SearchResult } from './text-search';
+import type { PromptTokens } from './usage';
 
 export type SessionKind = 'code' | 'work';
 export type PermissionMode = 'auto' | 'default' | 'acceptEdits' | 'plan' | 'bypass';
@@ -413,6 +414,10 @@ export interface ContextBreakdown {
   used: number;
   /** False when the total comes from the last model response, true when it is all estimated. */
   estimated: boolean;
+  /** Prompt tokens of the session's model calls so far; the cache hit rate comes from them. */
+  cache: PromptTokens;
+  /** Session spend in dollars so far: each call's tokens at its model's prices. */
+  cost: number;
   categories: { key: 'messages' | 'mcp' | 'extension' | 'system' | 'skills' | 'memory' | 'prompt' | 'buffer' | 'free'; label: string; tokens: number }[];
   /** Per-item detail for the expandable sections. */
   items: { group: 'mcp' | 'extension' | 'system' | 'skills' | 'memory'; name: string; tokens: number }[];
@@ -723,6 +728,14 @@ export type AuthEvent =
   | { type: 'progress'; message: string };
 
 export type ThemeSetting = 'light' | 'dark' | 'system';
+/**
+ * How the model's shell commands keep their folder. `session` runs them in one shell that stays
+ * alive, so a `cd` or an `export` carries over to the next command (the way Claude Code behaves);
+ * `command` gives each command its own process, started in the session folder or in the
+ * `workdir` it asked for.
+ */
+export const SHELL_SESSION_MODES = ['session', 'command'] as const;
+export type ShellSessionMode = (typeof SHELL_SESSION_MODES)[number];
 /** How the next-message prediction picks its model. */
 export type SuggestionModelMode = 'auto' | 'session' | 'fixed';
 /** Default and maximum conversation depth of a prediction (number of messages). */
@@ -762,6 +775,8 @@ export interface Settings {
   petSkin: string;
   /** Executable the terminal panel starts (a `TerminalShell.file`); null picks the system default. */
   terminalShell: string | null;
+  /** Shared shell for the model's commands, or one process per command (see `SHELL_SESSION_MODES`). */
+  shellSession: ShellSessionMode;
   /** Which management tools the model gets (`pidesk_schedule_*`, `pidesk_customize_*`, `pidesk_settings_*`, `pidesk_project_manage`); read when a session starts. */
   aiSchedule: boolean;
   aiCustomize: boolean;

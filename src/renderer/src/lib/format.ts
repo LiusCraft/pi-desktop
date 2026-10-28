@@ -28,8 +28,11 @@ export const fmtTok = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : 
 /** A nested tool call's duration: "84ms" / "1.2s". */
 export const fmtMs = (ms: number) => (ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`);
 
-/** A model call's cost: cents for normal amounts, two significant digits below one cent. */
-export const fmtCost = (cost: number) => `$${cost >= 0.01 ? cost.toFixed(2) : cost.toPrecision(2)}`;
+/** A model call's or a session's cost: cents for normal amounts, two significant digits below one cent. */
+export function fmtCost(cost: number) {
+  if (cost >= 0.01) return `$${cost.toFixed(2)}`;
+  return `$${cost > 0 ? cost.toPrecision(2) : '0.00'}`;
+}
 
 export const sizeLabel = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 

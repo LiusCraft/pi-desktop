@@ -97,6 +97,14 @@ export const settings = defineMessages({
   'settings.terminal': { en: 'Terminal', zh: '终端' },
   'settings.terminal.default': { en: 'Default terminal', zh: '默认终端' },
   'settings.terminal.default.hint': { en: 'For new terminal tabs', zh: '新建终端标签页时使用' },
+  'settings.shellSession': { en: 'Shell for commands', zh: '命令使用的 shell' },
+  'settings.shellSession.hint': { en: "For the model's commands, in Code and Work", zh: '模型执行的命令，Code 和 Work 都适用' },
+  'settings.shellSession.shared': { en: 'One shell', zh: '共用一个' },
+  'settings.shellSession.each': { en: 'Each command', zh: '每条命令' },
+  'settings.shellSession.tip': {
+    en: 'One shell: a single shell per session, so `cd` and exported variables carry over to the next command. Each command: its own process, started in the session folder or in the `workdir` it asks for. Bash only; applies at once.',
+    zh: '共用一个：每个会话只用一个 shell，`cd` 和 export 的变量会留到下一条命令。每条命令：单独一个进程，从会话目录或它指定的 `workdir` 开始。只作用于 bash，立即生效。',
+  },
   'settings.systemDefault': { en: 'System default', zh: '系统默认' },
   'settings.notFound': { en: '{name} (not found)', zh: '{name}（未找到）' },
 

@@ -173,7 +173,7 @@ export function CodeComposer() {
         <span className="flex-1" />
         <ModelMenu model={s ? s.model : prefs.model} trigger={<FootButton><ModelLabel id={s ? s.model : prefs.model} /></FootButton>} />
         <EffortMenu levels={s ? s.levels : levels} effort={s ? s.thinking : prefs.effort} />
-        <ContextRing pct={s?.ctxPct ?? null} busy={s?.running} sid={s?.meta.id} />
+        <ContextRing pct={s?.ctxPct ?? null} cacheRate={s?.cacheRate ?? null} cost={s?.cost ?? null} busy={s?.running} sid={s?.meta.id} />
       </div>
     </div>
   );

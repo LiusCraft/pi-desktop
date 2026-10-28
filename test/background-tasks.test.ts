@@ -48,6 +48,15 @@ describe('background tasks', () => {
     expect(text(out)).toMatch(/finished.*\n.*hello-bg/s);
   });
 
+  it('pidesk_bg_shell runs in the workdir it was given', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-bg-workdir-'));
+    const updates: TaskUpdate[] = [];
+    const { tools } = load({ taskUpdate: (u) => updates.push(u) });
+    await tools.get('pidesk_bg_shell').execute('call-1', { command: 'node -e "console.log(process.cwd())"', workdir: dir }, undefined, undefined, ctx);
+    await until(() => updates.at(-1)?.state === 'done');
+    expect(updates.at(-1)?.shell?.output).toContain(fs.realpathSync(dir));
+  });
+
   it('pidesk_bg_kill stops a running command without waking the model', async () => {
     const stops = new Map<string, AbortController>();
     const updates: TaskUpdate[] = [];

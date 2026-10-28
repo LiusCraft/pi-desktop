@@ -1,15 +1,17 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon } from 'lucide-react';
 import type { ContextBreakdown, ModelInfo, PermissionMode, ThinkingLevel } from '@shared/protocol';
+import { cacheHitRate } from '@shared/usage';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tip } from '@/components/common/Tip';
 import { call } from '@/lib/api';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { levelLabel, MODES } from '@/lib/constants';
 import { useT } from '@/lib/i18n';
-import { fmtTok, fname } from '@/lib/format';
+import { fmtCost, fmtTok, fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { chooseEffort, chooseModel, compactSession, fail, setPermMode } from '@/store/actions';
 import { setApp, useApp } from '@/store/app';
@@ -133,21 +135,29 @@ const GROUPS: Group[] = ['mcp', 'extension', 'system', 'skills', 'memory'];
 const pctOf = (n: number, of: number) => `${of ? ((n / of) * 100).toFixed(1) : '0.0'}%`;
 
 /** The context ring; click it for where the window goes (messages, tools, skills, system prompt, buffer). */
-export function ContextRing({ pct, busy, sid }: { pct: number | null; busy?: boolean; sid?: string }) {
+export function ContextRing({ pct, cacheRate, cost, busy, sid }: { pct: number | null; cacheRate?: number | null; cost?: number | null; busy?: boolean; sid?: string }) {
   const t = useT();
   const p = Math.max(0, Math.min(100, pct ?? 0));
+  const cachePct = cacheRate == null ? null : Math.round(cacheRate * 100);
+  const spent = cost != null && cost > 0 ? fmtCost(cost) : null;
   const menu = useMenu('context');
   const open = !!sid && menu.open;
   const [data, setData] = useState<ContextBreakdown | null | undefined>(undefined);
   const [expanded, setExpanded] = useState<Group | null>(null);
+  const cache = data ? cacheHitRate(data.cache) : null;
   useEffect(() => {
     if (!open || !sid) return;
     let live = true;
     call('sessions:context', sid).then((d) => live && setData(d), () => live && setData(null));
     return () => void (live = false);
   }, [open, sid, pct]);
+  const ringTitle = [
+    pct == null ? t('menu.context') : t('menu.contextUsed', { pct: Math.round(p) }),
+    cachePct == null ? '' : t('menu.cacheRatePct', { pct: cachePct }),
+    spent == null ? '' : t('menu.spendLine', { cost: spent }),
+  ].filter(Boolean).join('\n');
   const ring = (
-    <span className={cn('flex size-7 items-center justify-center rounded-md text-muted-foreground', sid && 'hover:bg-accent', busy && 'animate-pulse')} title={pct == null ? t('menu.context') : t('menu.contextUsed', { pct: Math.round(p) })}>
+    <span className={cn('flex size-7 items-center justify-center rounded-md text-muted-foreground', sid && 'hover:bg-accent', busy && 'animate-pulse')} title={ringTitle}>
       <svg viewBox="0 0 20 20" className="size-[17px]">
         <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeOpacity=".35" strokeWidth="1.6" />
         <circle cx="10" cy="10" r="7" fill="none" stroke="var(--info)" strokeWidth="2" strokeDasharray={`${((p / 100) * 44).toFixed(1)} 44`} strokeLinecap="round" transform="rotate(-90 10 10)" />
@@ -169,6 +179,22 @@ export function ContextRing({ pct, busy, sid }: { pct: number | null; busy?: boo
               <span className="font-mono text-xs text-muted-foreground tabular-nums">
                 {fmtTok(data.used)} / {fmtTok(data.contextWindow)} ({Math.round((data.used / data.contextWindow) * 100)}%)
               </span>
+            </div>
+            {cache != null && (
+              <div className="flex items-center justify-between px-4 pb-2 text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  {t('menu.cacheRate')}
+                  <Tip>{t('menu.cacheRateTip', { cached: fmtTok(data.cache.cacheRead), total: fmtTok(data.cache.input + data.cache.cacheRead + data.cache.cacheWrite) })}</Tip>
+                </span>
+                <span className="font-mono text-xs tabular-nums">{(cache * 100).toFixed(1)}%</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between px-4 pb-2 text-muted-foreground">
+              <span className="flex items-center gap-1">
+                {t('menu.spend')}
+                <Tip>{t('menu.spendTip')}</Tip>
+              </span>
+              <span className="font-mono text-xs tabular-nums">{fmtCost(data.cost)}</span>
             </div>
             <div className="mx-4 flex h-1.5 gap-px overflow-hidden rounded-full bg-muted">
               {shown.filter((c) => c.key !== 'free' && c.tokens > 0).map((c) => (

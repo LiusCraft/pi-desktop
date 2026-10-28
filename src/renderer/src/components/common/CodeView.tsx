@@ -220,14 +220,15 @@ function DiskImage({ sid, path, onOpen }: { sid?: string; path: string; onOpen?:
   return <ImageThumb src={src} path={path} onOpen={onOpen} />;
 }
 
-/** Terminal output with success/failure lines tinted. */
-export function TermOutput({ cmd, out }: { cmd?: string; out: string }) {
+/** Terminal output with success/failure lines tinted; `dir` is the folder a `workdir` command ran in. */
+export function TermOutput({ cmd, dir, out }: { cmd?: string; dir?: string; out: string }) {
   const tone = (l: string) =>
     /✓|✔|passed|built in|\[new branch\]/.test(l) && !/failed|✖/.test(l) ? 'ok'
       : /✗|✖|FAIL|failed|Error|exited with code [1-9]/.test(l) ? 'err'
         : /^>|RUN|Duration|^ℹ/.test(l) ? 'dim' : '';
   return (
     <pre className="term-out max-h-80 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-xs leading-relaxed">
+      {dir && <span className="dim">{dir}{'\n'}</span>}
       {cmd && <span className="cmd">{cmd}{'\n'}</span>}
       {out.split('\n').map((l, i) => (
         <span key={i} className={tone(l)}>{l}{'\n'}</span>

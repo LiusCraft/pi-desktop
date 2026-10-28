@@ -50,6 +50,8 @@ export interface ToolState {
   open: boolean;
   path?: string;
   cmd: string;
+  /** Folder a shell command was told to run in (`workdir`), when it is not the session folder. */
+  dir?: string;
   q: string;
   desc: string;
   prompt?: string;
@@ -85,6 +87,7 @@ export function toolFromArgs(id: string, toolName: string, args: Record<string, 
   return {
     id, name: toolName, kind: KIND[name] ?? 'other', args: args ?? {}, status: 'running', open: false,
     path: args?.path || args?.file_path, cmd: args?.command || '', q: args?.pattern || args?.path || args?.query || '',
+    ...(args?.workdir ? { dir: String(args.workdir) } : {}),
     desc: args?.description || (name === 'bg_shell' ? args?.command : '') || t('toolLabel.subagent'), prompt: args?.prompt ?? (name === 'bg_shell' ? args?.command : undefined),
     ...(name === 'bg_shell' ? { sh: { command: args?.command ?? '', output: '' } } : {}),
   };

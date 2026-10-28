@@ -373,7 +373,7 @@ function ArtifactPreviewButton({ tool }: { tool: ToolState }) {
 
 function ToolDetail({ sid, tool }: { sid: string; tool: ToolState }) {
   if (tool.preview) return <ToolPreviewView preview={tool.preview} path={tool.path ?? ''} sid={sid} onOpenImage={(src) => void openFileRef(tool.path!, undefined, src)} />;
-  if (tool.kind === 'bash') return <TermOutput cmd={tool.cmd} out={tool.output ?? ''} />;
+  if (tool.kind === 'bash') return <TermOutput cmd={tool.cmd} dir={tool.dir} out={tool.output ?? ''} />;
   if (bareName(tool.name) === CODEMODE_TOOL) return <CodemodeDetail tool={tool} />;
   if (tool.output) return <ToolOutput text={tool.output} />;
   return <div className="px-3 py-2 text-xs text-muted-foreground">{tr(tool.status === 'running' ? 'tool.running' : 'tool.noOutput')}</div>;
@@ -573,7 +573,7 @@ export const PermItem = memo(function PermItem({ sid, item }: { sid: string; ite
   const prefix = tool?.kind === 'bash' ? tool.cmd.split(/\s+/).slice(0, 2).join(' ') : '';
   const always = tool?.kind === 'bash' ? <>{t('perm.alwaysAllow')} <span className="font-mono">{prefix}</span></> : tool?.kind === 'edit' || tool?.kind === 'write' ? t('perm.allowAllEdits') : t('perm.alwaysAllow');
   let preview: React.ReactNode = null;
-  if (tool?.kind === 'bash') preview = <TermOutput cmd={tool.cmd} out="" />;
+  if (tool?.kind === 'bash') preview = <TermOutput cmd={tool.cmd} dir={tool.dir} out="" />;
   else if (tool?.kind === 'edit') preview = (tool.args?.edits ?? []).slice(0, 6).map((e: any, i: number) => <DiffRows key={i} before={e.oldText} after={e.newText} path={tool.path ?? ''} context={2} />);
   else if (tool?.kind === 'write') preview = <ToolPreviewView preview={{ ...(previews.write(tool.args) as any), note: t('perm.writeNote') }} path={tool.path ?? ''} />;
   else if (tool?.args) preview = <pre className="max-h-60 overflow-auto px-3 py-2 font-mono text-xs">{JSON.stringify(tool.args, null, 2).slice(0, 2000)}</pre>;

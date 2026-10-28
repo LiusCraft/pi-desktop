@@ -14,19 +14,21 @@
  * `ask()` into a permission or plan card in the transcript.
  */
 import { isAbsolute, relative, resolve } from 'node:path';
+import { statSync } from 'node:fs';
 import {
-  createLocalBashOperations, createLocalPowerShellOperations,
-  type ExtensionAPI, type ExtensionContext, type ExtensionFactory,
+  createBashToolDefinition, createLocalBashOperations, createLocalPowerShellOperations,
+  type ExtensionAPI, type ExtensionContext, type ExtensionFactory, type ExtensionToolContext, type ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
 import { StringEnum } from '@earendil-works/pi-ai';
 import { Type } from 'typebox';
 import { AGENT_TYPES, DEFAULT_AGENT, type AgentType } from './agents';
+import { ShellCommands, commandInFolder } from './shell-session';
 import { registerManageTools, type ArtifactHost, type CustomizeHost, type PetHost, type ProjectHost, type ScheduleHost, type SettingsHost } from './manage-tools';
 import type { WebSearch } from './web-search';
 import { ENGINE_INFO, SEARCH_FRESHNESS, WEB_LIMITS } from '@shared/web-search';
 import {
   PLAN_CHOICES, QUESTION_LIMITS,
-  type OutputStyle, type PermissionMode, type Question, type QuestionAnswer, type SessionKind, type SubagentProgress, type TaskUpdate, type UiRequestInput, type UiResponse,
+  type OutputStyle, type PermissionMode, type Question, type QuestionAnswer, type SessionKind, type ShellSessionMode, type SubagentProgress, type TaskUpdate, type UiRequestInput, type UiResponse,
 } from '@shared/protocol';
 
 /** First words of the hidden message injected in plan mode (the demo model looks for it). */
@@ -68,6 +70,10 @@ export interface SubagentRun {
 
 export interface KitHost {
   state: KitState;
+  /** The folder this session runs in (a worktree folder for worktree sessions); the shell's default. */
+  cwd?: string;
+  /** How the model's shell commands keep their folder; read for every command (see `SHELL_SESSION_MODES`). */
+  shellSession?: () => ShellSessionMode;
   /** Ask the user. Resolves `{ cancelled: true }` when nobody can answer. */
   ask(request: KitRequest, signal?: AbortSignal): Promise<UiResponse>;
   /** Called when the kit itself changes the mode (plan approval, "Always allow" on an edit). */
@@ -174,6 +180,109 @@ export const isRiskyCommand = (command: string, profile: SessionKind = 'code') =
 export const commandKey = (command: string) => command.trim().split(/\s+/).slice(0, 2).join(' ');
 
 const DENIED = 'The user denied this tool call. Ask how they want to proceed.';
+
+/** A `workdir` the model asked for: resolved against the session folder, and refused when it is not a folder. */
+function workdirOf(base: string, workdir: string | undefined): string | undefined {
+  const wanted = typeof workdir === 'string' ? workdir.trim() : '';
+  // A model that leaves the optional argument out can still send `null`, which reaches us as the
+  // string "null" (the harness stringifies optional parameters). Neither of those names a folder.
+  if (!wanted || wanted === 'null' || wanted === 'undefined') return undefined;
+  const folder = resolve(base, wanted);
+  let ok = false;
+  try { ok = statSync(folder).isDirectory(); } catch { /* missing: reported below */ }
+  if (!ok) throw new Error(`workdir is not a folder: ${folder}`);
+  return folder;
+}
+
+/** The same tool context with another folder, without freezing the guarded getters a spread would read. */
+const inFolder = (ctx: ExtensionToolContext, cwd: string): ExtensionToolContext =>
+  Object.create(ctx, { cwd: { value: cwd, enumerable: true, configurable: true } }) as ExtensionToolContext;
+
+/** Whether two paths are the same folder (a shell reports `$PWD`, which may be the symlinked spelling). */
+function sameFolder(a: string, b: string): boolean {
+  if (a === b) return true;
+  try { return statSync(a).ino === statSync(b).ino && statSync(a).dev === statSync(b).dev; } catch { return false; }
+}
+
+/**
+ * `cd <folder> && …` where the shell is already in that folder: models write the prefix out of habit
+ * and nothing tells them it was a no-op. Detecting it lets the result say so, which is the only
+ * signal that reaches the next turn without rewriting what the user sees.
+ */
+function redundantCd(command: string, at: string, base: string): boolean {
+  const found = /^\s*cd\s+(?:--\s+)?('[^']*'|"[^"]*"|[^\s&;|<>]+)\s*&&/.exec(command);
+  if (!found) return false;
+  const folder = found[1].replace(/^(['"])(.*)\1$/, '$2');
+  try { return sameFolder(resolve(base, folder), at); } catch { return false; }
+}
+
+/**
+ * pi's description opens with "in the current working directory", which invites a `cd <folder> && …`
+ * prefix on every command — the noise a shell that keeps its folder does not need. Lead with where
+ * the shell is instead, and keep pi's own truncation and timeout notes after it.
+ */
+function shellDescription(definition: ToolDefinition<any, any, any>): string {
+  const rest = definition.description.replace(/^Execute a \S+ command in the current working directory\.\s*/, '');
+  return `Execute a bash command in the shell's folder. The shell keeps that folder between commands: \`cd\` once instead of prefixing every command, and pass \`workdir\` to run one command elsewhere. ${rest}`;
+}
+
+/**
+ * pi's `bash` definition plus a `workdir` argument, running through the shell backend the caller
+ * supplies. Truncation, renderers and the output schema come from pi's own definition, so the tool
+ * keeps behaving like the built-in one.
+ */
+function shellToolDefinition(
+  definition: ToolDefinition<any, any, any>,
+  shells: ShellCommands,
+  mode: () => ShellSessionMode,
+  sessionCwd: string,
+): ToolDefinition {
+  return {
+    ...definition,
+    // bash is on pi's default list; staying off registration keeps a session that dropped it without it.
+    defaultActive: false,
+    description: shellDescription(definition),
+    promptGuidelines: [
+      ...(definition.promptGuidelines ?? []),
+      'Do not prefix a command with `cd <the session folder> &&`: the shell already starts there, and the prefix only hides what runs.',
+      'The shell keeps its folder between commands, so `cd` once into a subfolder instead of repeating it. A result that ends with `[shell folder: …]` means the shell is somewhere other than the session folder — check that line before relying on relative paths.',
+      'Pass `workdir` (relative to the session folder, or absolute) to run one command in a subfolder without moving the shell.',
+    ],
+    parameters: Type.Object({
+      command: Type.String({ description: 'Shell command to execute' }),
+      timeout: Type.Optional(Type.Number({ description: 'Timeout in seconds (optional, no default timeout)' })),
+      workdir: Type.Optional(Type.String({ description: 'Folder to run in: relative to the session folder, or absolute. Defaults to where the shell is.' })),
+    }),
+    async execute(id, params, signal, onUpdate, ctx) {
+      const input = params as { command: string; timeout?: number; workdir?: string };
+      const root = ctx.cwd || sessionCwd;
+      const folder = workdirOf(root, input.workdir);
+      const keeps = mode() === 'session';
+      // Where the command starts: the shared shell's folder, or the one a process of its own gets.
+      const before = keeps ? shells.cwd ?? root : folder ?? root;
+      // The shared shell cannot move for one command, so a subshell takes the `cd` instead;
+      // a shell of its own can simply start in the folder.
+      const command = folder && keeps ? commandInFolder(input.command, folder) : input.command;
+      const result = await definition.execute(
+        id,
+        { command, timeout: input.timeout },
+        signal,
+        onUpdate,
+        folder && !keeps ? inFolder(ctx, folder) : ctx,
+      );
+
+      const notes: string[] = [];
+      const failure = shells.takeStartFailure();
+      if (failure) notes.push(`[The shared shell did not start (${failure}); each command now runs in its own process.]`);
+      const at = keeps ? shells.cwd : folder;
+      if (at && !sameFolder(at, root)) notes.push(`[shell folder: ${at}]`);
+      // Said after the result, not instead of it: the command ran as written, the prefix just did nothing.
+      if (keeps && before && redundantCd(input.command, before, root)) notes.push('[The shell was already in that folder, so the `cd` did nothing — a bare command is enough.]');
+      if (!notes.length) return result;
+      return { ...result, content: [...result.content, ...notes.map((text) => ({ type: 'text' as const, text: `\n${text}` }))] };
+    },
+  } as ToolDefinition;
+}
 
 function describeAnswer(a: QuestionAnswer | undefined): string {
   if (!a || (!a.selected.length && !a.other)) return '(no answer)';
@@ -644,6 +753,29 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       });
     }
 
+    // ---------------------------------------------------------------- bash
+    //
+    // pi's own `bash` with a `workdir` argument, running through a shell that stays alive between
+    // commands (Settings → Code → Shell for commands) unless the user turned that off.
+    //
+    // Registered when the session starts rather than while this extension loads: pi's settings —
+    // the shell path and the command prefix — are not readable before that.
+    let shellPath: string | undefined;
+    const shellMode = () => host.shellSession?.() ?? 'session';
+    const sessionCwd = host.cwd ?? process.cwd();
+    const shellBackend = new ShellCommands({ shellPath: () => shellPath, mode: shellMode });
+    pi.on('session_shutdown', () => shellBackend.dispose());
+    pi.on('session_start', () => {
+      const settings = (pi.getSettings() ?? {}) as { shellPath?: string; shellCommandPrefix?: string };
+      shellPath = settings.shellPath;
+      pi.registerTool(shellToolDefinition(
+        createBashToolDefinition(sessionCwd, { operations: shellBackend.operations, commandPrefix: settings.shellCommandPrefix }),
+        shellBackend,
+        shellMode,
+        sessionCwd,
+      ));
+    });
+
     // ---------------------------------------------------------------- pidesk_bg_shell
     interface ShellTask { command: string; output: string; state: TaskUpdate['state']; exitCode?: number | null; startedAt: number; stop: AbortController }
     const shells = new Map<string, ShellTask>();
@@ -674,8 +806,10 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       parameters: Type.Object({
         command: Type.String({ description: 'The command to run' }),
         description: Type.Optional(Type.String({ description: '3-6 word summary shown to the user' })),
+        workdir: Type.Optional(Type.String({ description: 'Folder to run in: relative to the session folder, or absolute' })),
       }),
       async execute(id, params, _signal, _onUpdate, ctx) {
+        const folder = workdirOf(ctx.cwd, params.workdir);
         const task: ShellTask = { command: params.command, output: '', state: 'running', startedAt: Date.now(), stop: new AbortController() };
         shells.set(id, task);
         const untrack = host.trackTask?.(id, task.stop);
@@ -686,7 +820,7 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         };
         const title = params.description || params.command;
         shellOps
-          .exec(params.command, ctx.cwd, {
+          .exec(params.command, folder ?? ctx.cwd, {
             signal: task.stop.signal,
             onData: (chunk) => {
               task.output = (task.output + chunk.toString('utf8').replace(ANSI, '')).slice(-OUTPUT_CAP);
