@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode, type Ref } from 'react';
 import {
   ArrowLeftIcon, BotIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, ChevronsDownUpIcon, ChevronsUpDownIcon, CodeIcon, ExternalLinkIcon, FileIcon, FolderIcon,
-  EyeIcon, ListIcon, Maximize2Icon, MessageSquareIcon, Minimize2Icon, RefreshCwIcon, SearchIcon, SquareIcon, SquareTerminalIcon,
+  AlignJustifyIcon, EyeIcon, ListIcon, ListTreeIcon, Maximize2Icon, MessageSquareIcon, Minimize2Icon, RefreshCwIcon, SearchIcon, SquareIcon, SquareTerminalIcon,
   Trash2Icon, XIcon,
 } from 'lucide-react';
 import { useDefaultLayout } from 'react-resizable-panels';
@@ -191,6 +191,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   // Generated files start collapsed; `flipped` holds the user's per-file overrides.
   const [flipped, setFlipped] = useState<Set<string>>(new Set());
   const [showTree, setShowTree] = useState(true);
+  const [flat, setFlat] = useState(false);
   const [active, setActive] = useState<string | null>(null);
   // The commit list under the tree; picking one swaps the panel from "all changes" to just that commit.
   const [commits, setCommits] = useState<CommitInfo[]>([]);
@@ -220,7 +221,22 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const loadBranches = (open: boolean) => {
     if (open) call('git:branches', s.meta.cwd).then(setBranches).catch(() => setBranches([]));
   };
+  // A file that changed under the reader opens again, so its new lines are not hidden in a fold.
+  const seenRevs = useRef<Map<string, string> | null>(null);
+  useEffect(() => {
+    const prev = seenRevs.current;
+    seenRevs.current = new Map(s.changes.map((f) => [f.path, f.rev]));
+    if (!prev) return;
+    const changed = s.changes.filter((f) => prev.get(f.path) !== f.rev).map((f) => f.path);
+    if (!changed.length) return;
+    setFlipped((c) => {
+      const n = new Set(c);
+      for (const path of changed) if (isGeneratedFile(path)) n.add(path); else n.delete(path);
+      return n;
+    });
+  }, [s.changes]);
   const pickBase = (ref: string) => {
+    seenRevs.current = null;
     setCommit(null);
     setFlipped(new Set());
     void setDiffBase(id, ref);
@@ -369,6 +385,9 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
       <IconBtn title={t(allCollapsed ? 'panel.expandAll' : 'panel.collapseAll')} onClick={() => setAllCollapsed(!allCollapsed)}>
         {allCollapsed ? <ChevronsUpDownIcon className="size-3.5" /> : <ChevronsDownUpIcon className="size-3.5" />}
       </IconBtn>
+      <IconBtn title={t(flat ? 'panel.treeView' : 'panel.flatView')} aria-pressed={flat} onClick={() => setFlat((v) => !v)}>
+        {flat ? <ListTreeIcon className="size-3.5" /> : <AlignJustifyIcon className="size-3.5" />}
+      </IconBtn>
       <IconBtn title={t('panel.refresh')} onClick={() => { setFlipped(new Set()); void loadChanges(id); }}><RefreshCwIcon className="size-3.5" /></IconBtn>
       <OpenInMenu id={id}><IconBtn title={t('panel.openIn')}><ExternalLinkIcon className="size-3.5" /></IconBtn></OpenInMenu>
     </>
@@ -405,6 +424,8 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
             <ResizablePanel id="files" minSize={FILES_MIN_PX}>
               <div className="flex h-full min-h-0 flex-col">
             <PathTree
+              key={String(flat)}
+              flat={flat}
               className="min-h-0 flex-1"
               label="Changed files"
               meta={s.meta}
@@ -604,6 +625,7 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
     return () => { live = false; clearTimeout(timer); };
   }, [find, query, caseSensitive, id]);
 
+  const [flat, setFlat] = useState(false);
   const treeToggle = (
     <IconBtn title={t(showTree ? 'panel.hideTree' : 'panel.showTree')} aria-pressed={showTree} className={cn(showTree && 'bg-info/15 text-info hover:bg-info/20 hover:text-info')} onClick={() => setShowTree((v) => !v)}>
       <ListIcon className="size-4" />
@@ -613,6 +635,8 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
     ? <SearchResults result={result} busy={searching} onOpen={(path, line) => void openFileRef(path, line)} />
     : !s.files ? <Empty>{t('panel.loadingFiles')}</Empty> : !paths.length ? <Empty>{t('panel.noFiles')}</Empty> : (
       <PathTree
+        key={String(flat)}
+        flat={flat}
         className="min-h-0 flex-1"
         label="Project files"
         meta={s.meta}
@@ -632,6 +656,9 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
       tools={(
         <>
           <IconBtn title={`${t('panel.findInFiles')}  ${findHint} · ${isMac ? '⇧⌘' : 'Ctrl+Shift+'}F`} onClick={() => openFind(d ? 'file' : 'all')}><SearchIcon className="size-3.5" /></IconBtn>
+          <IconBtn title={t(flat ? 'panel.treeView' : 'panel.flatView')} aria-pressed={flat} onClick={() => setFlat((v) => !v)}>
+            {flat ? <ListTreeIcon className="size-3.5" /> : <AlignJustifyIcon className="size-3.5" />}
+          </IconBtn>
           <IconBtn title={t('panel.refresh')} onClick={() => void loadFiles(id, true)}><RefreshCwIcon className="size-3.5" /></IconBtn>
         </>
       )}

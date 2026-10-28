@@ -8,6 +8,8 @@ export const workspace = defineMessages({
   'panel.openIn': { en: 'Open in…', zh: '打开方式…' },
   'panel.binary': { en: 'binary', zh: '二进制' },
   'panel.base': { en: 'base', zh: '基线' },
+  'panel.flatView': { en: 'Flat list', zh: '平铺显示' },
+  'panel.treeView': { en: 'Tree view', zh: '树形显示' },
   'panel.changeBase': { en: 'Compare against…', zh: '切换对比分支' },
   'panel.findInDiff': { en: 'Find in the diff', zh: '在改动中查找' },
   'panel.expandAll': { en: 'Expand all', zh: '全部展开' },

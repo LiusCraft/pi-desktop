@@ -18,16 +18,32 @@ interface RowTarget {
   directory: boolean;
 }
 
+/** Wide names scroll sideways instead of being cut off: rows grow to their content and the list follows the widest one. */
+const SCROLL_X_CSS = `
+  [data-file-tree-virtualized-scroll='true'] { overflow-x: auto; }
+  [data-file-tree-virtualized-list='true'] { width: max-content; min-width: 100%; }
+  button[data-type='item'] { width: max-content; min-width: calc(100% - 2 * var(--trees-item-margin-x)); }
+  [data-item-section='content'] { max-width: none; overflow: visible; text-overflow: clip; white-space: nowrap; }
+  [data-item-section='decoration'] { flex: 0 0 auto; margin-left: auto; padding-left: 12px; }
+`;
+/**
+ * A flat list is the same tree with every path turned into one name: the slashes become a look-alike
+ * character, so nothing nests and each row shows its whole path.
+ */
+const FLAT_SLASH = '∕';
+const toRow = (path: string, flat: boolean) => (flat ? path.replaceAll('/', FLAT_SLASH) : path);
+const fromRow = (path: string, flat: boolean) => (flat ? path.replaceAll(FLAT_SLASH, '/') : path);
+
 /** The row a DOM event came from, read off the row's own attributes (the rows live in a shadow root). */
-function rowOf(event: Event): RowTarget | null {
+function rowOf(event: Event, flat: boolean): RowTarget | null {
   for (const node of event.composedPath()) {
     if (!(node instanceof HTMLElement) || !node.dataset.itemPath) continue;
-    return { path: node.dataset.itemPath.replace(/\/$/, ''), directory: node.dataset.itemType === 'folder' };
+    return { path: fromRow(node.dataset.itemPath.replace(/\/$/, ''), flat), directory: node.dataset.itemType === 'folder' };
   }
   return null;
 }
 
-export function PathTree({ meta, label, paths, statuses, decorate, selected, expandAll = false, snapshotOf, onOpen, onPin, className }: {
+export function PathTree({ meta, label, paths, statuses, decorate, selected, expandAll = false, flat = false, snapshotOf, onOpen, onPin, className }: {
   meta: SessionMeta;
   /** What the list is called for assistive tech. */
   label: string;
@@ -38,6 +54,8 @@ export function PathTree({ meta, label, paths, statuses, decorate, selected, exp
   /** The file to mark as current. */
   selected?: string | null;
   expandAll?: boolean;
+  /** Every file on its own row with its full path, no folders. Changing it needs a new tree (give the component a new key). */
+  flat?: boolean;
   /** A deleted file can still be quoted from its diff snapshot. */
   snapshotOf?: (path: string) => string | undefined;
   /** A click on a file: show it (as a preview). */
@@ -51,36 +69,38 @@ export function PathTree({ meta, label, paths, statuses, decorate, selected, exp
   const lastClick = useRef(0);
   const programmatic = useRef(false);
   const [menu, setMenu] = useState<RowTarget>({ path: '', directory: false });
-  const gitStatus = useMemo(() => [...(statuses ?? [])].map(([path, status]) => ({ path, status })), [statuses]);
+  const gitStatus = useMemo(() => [...(statuses ?? [])].map(([path, status]) => ({ path: toRow(path, flat), status })), [statuses, flat]);
+  const rows = useMemo(() => paths.map((p) => toRow(p, flat)), [paths, flat]);
 
   const { model } = useFileTree({
-    paths,
+    paths: rows,
     initialExpansion: expandAll ? 'open' : 'closed',
     flattenEmptyDirectories: true,
     search: true,
     fileTreeSearchMode: 'hide-non-matches',
     gitStatus,
-    renderRowDecoration: ({ item }) => (item.kind === 'file' ? latest.current.decorate?.(item.path) ?? null : null),
+    unsafeCSS: SCROLL_X_CSS,
+    renderRowDecoration: ({ item }) => (item.kind === 'file' ? latest.current.decorate?.(fromRow(item.path, flat)) ?? null : null),
     onSelectionChange: (picked) => {
       const path = picked.at(-1);
       if (!path || programmatic.current || Date.now() - lastClick.current < CLICK_SETTLE_MS) return;
-      if (!model.getItem(path)?.isDirectory()) latest.current.onOpen(path);
+      if (!model.getItem(path)?.isDirectory()) latest.current.onOpen(fromRow(path, flat));
     },
   });
 
-  const pathKey = paths.join('\n');
+  const pathKey = rows.join('\n');
   const first = useRef(true);
   useEffect(() => {
     if (first.current) return void (first.current = false);
-    model.resetPaths(paths);
+    model.resetPaths(rows);
   }, [pathKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => model.setGitStatus(gitStatus), [model, gitStatus]);
   useEffect(() => {
     if (!selected) return;
     programmatic.current = true;
-    model.getItem(selected)?.select();
+    model.getItem(toRow(selected, flat))?.select();
     queueMicrotask(() => void (programmatic.current = false));
-  }, [model, selected]);
+  }, [model, selected, flat]);
 
   return (
     <ContextMenu>
@@ -89,15 +109,15 @@ export function PathTree({ meta, label, paths, statuses, decorate, selected, exp
           role="navigation"
           aria-label={label}
           className={cn('path-tree min-h-0', className)}
-          onContextMenuCapture={(event) => setMenu(rowOf(event.nativeEvent) ?? { path: '', directory: false })}
+          onContextMenuCapture={(event) => setMenu(rowOf(event.nativeEvent, flat) ?? { path: '', directory: false })}
           onClickCapture={(event) => {
-            const row = rowOf(event.nativeEvent);
+            const row = rowOf(event.nativeEvent, flat);
             if (!row || row.directory) return;
             lastClick.current = Date.now();
             latest.current.onOpen(row.path);
           }}
           onDoubleClickCapture={(event) => {
-            const row = rowOf(event.nativeEvent);
+            const row = rowOf(event.nativeEvent, flat);
             if (row && !row.directory) latest.current.onPin?.(row.path);
           }}
         >
