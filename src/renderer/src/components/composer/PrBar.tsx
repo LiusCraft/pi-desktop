@@ -50,6 +50,8 @@ export function PrBar({ s }: { s: SessionView }) {
   const st = s.gitState;
   const pr = s.pr;
   const { actions, primary } = gitActions({ branch: s.meta.branch, baseBranch: s.meta.baseBranch, st, pr, forge: pr?.forge ?? st?.forge });
+  // Nothing to commit, push or open: the bar would only restate the branch name.
+  if (st && !pr && !actions.some((a) => a.enabled)) return null;
   const current = actions.find((a) => a.act === primary);
   const ask = (command: BuiltinCommand, text: string) => {
     drafts.setText(sessionDraftKey(id), encodeCommandMessage(command, text));
