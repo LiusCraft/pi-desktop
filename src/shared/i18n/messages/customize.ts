@@ -155,5 +155,7 @@ export const customize = defineMessages({
   'plugins.notInstalledHint': { en: 'Not on this machine yet; a new session will try to install it when it starts', zh: '还没有安装到本机，新会话启动时会尝试安装' },
   'plugins.update': { en: 'Update', zh: '更新' },
   'plugins.updated': { en: 'Updated {source}', zh: '已更新 {source}' },
+  'plugins.recommended': { en: 'Recommended', zh: '推荐' },
+  'plugins.lensDesc': { en: 'Code intelligence: LSP diagnostics, syntax trees, linters, type checks.', zh: '代码智能：LSP 诊断、语法树、lint、类型检查。' },
   'plugins.empty': { en: 'No plugins yet. Enter a package name above to install one, such as npm:pi-web-access.', zh: '还没有安装插件。上面输入一个包名就能装，比如 npm:pi-web-access。' },
 });

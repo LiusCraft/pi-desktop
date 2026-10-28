@@ -13,6 +13,9 @@ import { fname } from '@/lib/format';
 import { dialogs } from '@/store/dialogs';
 import { Empty, Heading, Panel, Segmented } from './ui';
 
+/** Packages worth suggesting; offered until a configured plugin matches. */
+const RECOMMENDED = [{ source: 'npm:pi-lens', descKey: 'plugins.lensDesc' }] as const;
+
 interface Props {
   catalog: CustomizeCatalog;
   project: string | null;
@@ -76,6 +79,18 @@ export function PluginsSection({ catalog, project, onCatalog }: Props) {
           {busy ? t('plugins.firstInstall', { busy: t(`plugins.${busy}`) }) : scope === 'project' && project ? t('plugins.projectScope', { name: fname(project) }) : t('plugins.userScope')}
         </p>
       </div>
+      {RECOMMENDED.filter((r) => !catalog.plugins.some((p) => p.source.replace(/@[^@/]*$/, '') === r.source)).map((r) => (
+        <div key={r.source} className="mb-5 flex items-center gap-3 rounded-xl border bg-card px-4 py-3">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/40"><PackageIcon className="size-4 text-muted-foreground" /></span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5"><span className="font-mono text-sm font-medium">{r.source}</span><Badge variant="secondary">{t('plugins.recommended')}</Badge></div>
+            <div className="mt-0.5 text-xs text-muted-foreground">{t(r.descKey)}</div>
+          </div>
+          <Button size="sm" disabled={!!busy} onClick={() => void run('installing', () => call('customize:pluginInstall', r.source, 'user', project), t('plugins.installed'))}>
+            <DownloadIcon className="size-4" />{t('plugins.installBtn')}
+          </Button>
+        </div>
+      ))}
       <Panel>
         {catalog.plugins.map((p) => (
           <div key={`${p.scope}:${p.source}`} className="flex items-center gap-3 px-4 py-3">
