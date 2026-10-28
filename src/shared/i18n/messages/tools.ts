@@ -17,6 +17,8 @@ export const tools = defineMessages({
   'find.truncated': { en: 'Showing only the first {n}; narrow the search.', zh: '只显示前 {n} 条，请缩小搜索范围。' },
 
   'fileMenu.attach': { en: 'Attach as context', zh: '作为上下文附加' },
+  'fileMenu.makeArtifact': { en: 'Save as artifact', zh: '做成制品' },
+  'fileMenu.artifactSaved': { en: 'Saved to Artifacts', zh: '已保存到制品' },
   'fileMenu.copy': { en: 'Copy', zh: '复制' },
   'fileMenu.absolute': { en: 'Absolute path', zh: '绝对路径' },
   'fileMenu.relative': { en: 'Relative path', zh: '相对路径' },

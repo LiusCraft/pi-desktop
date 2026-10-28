@@ -101,6 +101,7 @@ export function sessionHandlers(ready: Promise<SessionHub>, getScheduler: () => 
     'tasks:remove': withHub((_h, id) => scheduler().remove(id)),
     'tasks:run': withHub((_h, id) => scheduler().runNow(id)),
     'artifacts:list': withHub((h) => h.artifacts.list()),
+    'artifacts:fromFile': withHub((h, sessionId, rel) => h.artifacts.save({ source: h.resolvePath(sessionId, rel) })),
     'artifacts:remove': withHub(async (h, id, unpublish) => {
       await h.artifacts.remove(id, unpublish);
       return h.artifacts.list();

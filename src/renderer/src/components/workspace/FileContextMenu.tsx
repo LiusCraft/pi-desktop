@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
-import { CopyIcon, ExternalLinkIcon, FolderOpenIcon, PaperclipIcon } from 'lucide-react';
+import { CopyIcon, ExternalLinkIcon, FolderOpenIcon, PackageIcon, PaperclipIcon } from 'lucide-react';
+import { toast } from 'sonner';
 import type { ApiArgs, OpenTarget, SessionMeta } from '@shared/protocol';
 import { copyText } from '@/components/common/Copy';
 import {
@@ -13,6 +14,8 @@ import { OpenTargetIcon } from '@/components/common/OpenTargetIcon';
 import { OPEN_TARGET_INFO, useOpenTargets } from '@/lib/open-targets';
 import { fail, sessionDraftKey } from '@/store/actions';
 import { drafts, useDrafts } from '@/store/drafts';
+
+const HTML_FILE = /\.html?$/i;
 
 interface MenuTarget {
   meta: SessionMeta;
@@ -47,6 +50,9 @@ export function FileMenuContent({ meta, path, directory = false, snapshot }: Men
     const args: ApiArgs<'sessions:openIn'> = [meta.id, target, path];
     void call('sessions:openIn', ...args).catch(fail);
   };
+  const makeArtifact = () => {
+    call('artifacts:fromFile', meta.id, path).then(() => toast.success(t('fileMenu.artifactSaved')), fail);
+  };
   return (
       <ContextMenuContent className="min-w-52">
         <ContextMenuGroup>
@@ -59,6 +65,9 @@ export function FileMenuContent({ meta, path, directory = false, snapshot }: Men
               <ContextMenuItem onSelect={() => void copyText(fname(path))}>{t(directory ? 'fileMenu.folderName' : 'fileMenu.fileName')}</ContextMenuItem>
             </ContextMenuGroup></ContextMenuSubContent>
           </ContextMenuSub>
+          {HTML_FILE.test(path) && !directory && snapshot === undefined && (
+            <ContextMenuItem onSelect={makeArtifact}><PackageIcon />{t('fileMenu.makeArtifact')}</ContextMenuItem>
+          )}
         </ContextMenuGroup>
         <ContextMenuSeparator />
         <ContextMenuGroup>

@@ -1078,6 +1078,8 @@ export interface Api {
   'tasks:run'(id: string): SessionMeta;
   // ---- artifacts
   'artifacts:list'(): ArtifactMeta[];
+  /** Saves an HTML file (or a folder with an index.html) of the session as a new artifact. */
+  'artifacts:fromFile'(sessionId: string, rel: string): ArtifactMeta;
   /** Deletes the artifact; the uploaded copy is taken down first when `unpublish` is set. */
   'artifacts:remove'(id: string, unpublish: boolean): ArtifactMeta[];
   /** Uploads the current version to the user's bucket; fails with a readable message while none is set up. */
@@ -1125,7 +1127,7 @@ export const HOST_CHANNELS = [
   'customize:list', 'customize:readFile', 'customize:skillSetDisabled', 'customize:skillCreate', 'customize:claudeImport', 'customize:claudeDismiss', 'customize:connectorSave',
   'customize:connectorSetEnabled', 'customize:connectorRemove', 'customize:pluginInstall', 'customize:pluginRemove', 'customize:pluginUpdate', 'customize:pluginResources', 'customize:pluginSetResource',
   'activity:get', 'tasks:list', 'tasks:save', 'tasks:setEnabled', 'tasks:remove', 'tasks:run',
-  'artifacts:list', 'artifacts:remove', 'artifacts:publish', 'artifacts:unpublish', 'storage:get', 'storage:save', 'storage:test',
+  'artifacts:list', 'artifacts:fromFile', 'artifacts:remove', 'artifacts:publish', 'artifacts:unpublish', 'storage:get', 'storage:save', 'storage:test',
   'web:get', 'web:save', 'web:test',
   'models:list', 'models:levels',
   'models:catalog', 'models:login', 'models:loginRespond', 'models:loginCancel', 'models:logout',
