@@ -175,6 +175,7 @@ export function ConnectorsSection({ catalog, project, onCatalog }: Props) {
       <Heading
         title={t('connectors.title')}
         sub={t('connectors.sub')}
+        tip={t('connectors.tip')}
         action={<Button size="sm" className="shrink-0" onClick={() => setForm({ ...blank })}><PlusIcon className="size-4" />{t('connectors.add')}</Button>}
       />
       <Panel>

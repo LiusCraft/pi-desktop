@@ -15,11 +15,12 @@ import {
 import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import { buildMessage, decodeUserContent } from '@shared/attachments';
 import type {
-  AgentDraft, AgentMessage, ConnectorDraft, PluginResource, SkillDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
+  AgentDraft, AgentMessage, ConnectorDraft, PluginResource, PromptDraft, SkillDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
   PrStatus, PrSummary, SessionCleanup, SessionMeta, SessionRemoval, SessionStats, SetupStep, Settings, SideChat, SpawnTask, SubagentProgress, WorkIdea, WorkIdeasModelMode, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
 } from '@shared/protocol';
 import { AUTO_REVIEW_DEFAULT_TIMEOUT, AUTO_REVIEW_MAX_TIMEOUT, AUTO_REVIEW_MIN_TIMEOUT, MAX_SESSION_TITLE, SHELL_SESSION_MODES } from '@shared/protocol';
-import { decodeCommandMessage, isCommandMessage } from '@shared/command-message';
+import { decodeCommandMessage, encodeUserCommandMessage, isCommandMessage } from '@shared/command-message';
+import { expandUserCommand } from './prompt-template';
 import { decodePeerMessage,encodePeerMessage, isPeerMessage } from '@shared/peer-message';
 import { decodePrEvent, encodePrEvent, isPrEvent } from '@shared/pr-event';
 import { decodeTaskMessage, encodeTaskMessage, isTaskMessage } from '@shared/task-message';
@@ -783,6 +784,8 @@ export class SessionHub {
     },
     setSkillDisabled: (file: string, disabled: boolean, project: string | null) => customize.setSkillDisabled(this.customizeEnv(project), file, disabled),
     createSkill: (draft: SkillDraft, project: string | null) => customize.createSkill(this.customizeEnv(project), draft),
+    createPrompt: (draft: PromptDraft, project: string | null) => customize.createPrompt(this.customizeEnv(project), draft),
+    deletePrompt: (file: string, project: string | null) => customize.deletePrompt(this.customizeEnv(project), file),
     saveConnector: (draft: ConnectorDraft, project: string | null) => customize.saveConnector(this.customizeEnv(project), draft),
     setConnectorEnabled: (name: string, scope: 'user' | 'project', enabled: boolean, project: string | null) => customize.setConnectorEnabled(this.customizeEnv(project), name, scope, enabled),
     removeConnector: (name: string, scope: 'user' | 'project', project: string | null) => customize.removeConnector(this.customizeEnv(project), name, scope),
@@ -985,7 +988,11 @@ export class SessionHub {
     if (live.historyBusy) throw new Error(tr('ag.historyBusy'));
     const generation = live.generation;
     const normalized = await validatePromptPayload(payload);
-    const { message, images } = buildMessage(normalized);
+    const built = buildMessage(normalized);
+    const { images } = built;
+    const slash = built.message.startsWith('/');
+    const expanded = expandUserCommand(built.message, live.runtime.session.promptTemplates);
+    const message = expanded ? encodeUserCommandMessage(expanded.name, expanded.args, expanded.prompt) : built.message;
     // Image checks yield; never submit an old, in-flight message to a session that has since ended.
     if (live.disposed || live.generation !== generation) throw new Error('The session closed while preparing this message. The draft has been retained; check history before retrying.');
     const session = live.runtime.session;
@@ -1005,7 +1012,7 @@ export class SessionHub {
       session
         .prompt(message, {
           images,
-          streamingBehavior: busy && !message.startsWith('/') ? behavior || 'steer' : undefined,
+          streamingBehavior: busy && !slash ? behavior || 'steer' : undefined,
           source: 'rpc',
           preflightResult: (disposition) => {
             accepted = true;

@@ -15,7 +15,7 @@ import {
 import { DEFAULT_MCP_EXPOSURE, MCP_EXPOSURES } from '@shared/protocol';
 import { PLUGIN_RESOURCE_KINDS } from '@shared/protocol';
 import type {
-  ConnectorDraft, ConnectorInfo, CustomizeCatalog, CustomizeScope, PluginInfo, PluginResource, PluginResourceKind, PromptInfo, SkillDraft, SkillInfo,
+  ConnectorDraft, ConnectorInfo, CustomizeCatalog, CustomizeScope, PluginInfo, PluginResource, PluginResourceKind, PromptDraft, PromptInfo, SkillDraft, SkillInfo,
 } from '@shared/protocol';
 
 type PackageEntry = { source: string } & Partial<Record<PluginResourceKind, string[]>> & { autoload?: boolean };
@@ -160,6 +160,41 @@ export async function createSkill(env: CustomizeEnv, draft: SkillDraft) {
   if (fs.existsSync(dir)) throw new Error(tr('ag.skillExists', { name }));
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${JSON.stringify(name)}\ndescription: ${JSON.stringify(description)}\n---\n\n${body}\n`, 'utf8');
+  return catalog(env);
+}
+
+/** Prompt files the user may change: the ones directly in pi's prompts folder or the project's `.pi/prompts`. */
+function promptDirs(env: CustomizeEnv) {
+  return { user: path.join(env.agentDir, 'prompts'), project: env.project ? path.join(env.project, '.pi', 'prompts') : null };
+}
+function ownPromptFile(env: CustomizeEnv, file: string) {
+  const dirs = promptDirs(env);
+  const here = norm(path.dirname(file));
+  if (!/\.md$/i.test(file) || ![dirs.user, dirs.project].some((d) => d && norm(d) === here)) throw new Error(tr('ag.promptNotOwn'));
+}
+
+/** Creates a command, or with `draft.file` rewrites that one (renaming the file when the name changed). */
+export async function createPrompt(env: CustomizeEnv, draft: PromptDraft) {
+  const name = draft.name.trim();
+  const description = draft.description.trim().replace(/\s+/g, ' ');
+  const body = draft.body.trim();
+  if (!NAME.test(name)) throw new Error(tr('ag.nameRule'));
+  if (!body) throw new Error(tr('ag.promptNeedBody'));
+  if (draft.file) ownPromptFile(env, draft.file);
+  else if (draft.scope === 'project' && !env.project) throw new Error(tr('ag.needProjectShort'));
+  const dir = draft.file ? path.dirname(draft.file) : promptDirs(env)[draft.scope]!;
+  const file = path.join(dir, `${name}.md`);
+  if (norm(file) !== norm(draft.file ?? '') && fs.existsSync(file)) throw new Error(tr('ag.promptExists', { name }));
+  fs.mkdirSync(dir, { recursive: true });
+  const front = description ? `---\ndescription: ${JSON.stringify(description)}\n---\n\n` : '';
+  fs.writeFileSync(file, `${front}${body}\n`, 'utf8');
+  if (draft.file && norm(file) !== norm(draft.file)) fs.rmSync(draft.file, { force: true });
+  return catalog(env);
+}
+
+export async function deletePrompt(env: CustomizeEnv, file: string) {
+  ownPromptFile(env, file);
+  fs.rmSync(file, { force: true });
   return catalog(env);
 }
 

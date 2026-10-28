@@ -3,13 +3,14 @@ import type { ReactNode } from 'react';
 import { ArrowLeftIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Tip } from '@/components/common/Tip';
 import { cn } from '@/lib/utils';
 
-export const Heading = ({ title, sub, action }: { title: string; sub: string; action?: ReactNode }) => (
+export const Heading = ({ title, sub, tip, action }: { title: string; sub: string; tip?: string; action?: ReactNode }) => (
   <div className="mb-5 flex items-start gap-3">
     <div className="min-w-0 flex-1">
       <h2 className="text-xl font-semibold">{title}</h2>
-      <p className="mt-1 text-sm text-muted-foreground">{sub}</p>
+      <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">{sub}{tip && <Tip>{tip}</Tip>}</p>
     </div>
     {action}
   </div>
@@ -19,9 +20,9 @@ export const Panel = ({ children, className }: { children: ReactNode; className?
   <div className={cn('divide-y rounded-xl border bg-card', className)}>{children}</div>
 );
 
-export const Field = ({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) => (
+export const Field = ({ label, hint, tip, children }: { label: string; hint?: string; tip?: string; children: ReactNode }) => (
   <Label className="flex-col items-stretch gap-1.5 leading-normal">
-    <span>{label}</span>
+    <span className="flex items-center gap-1.5">{label}{tip && <Tip>{tip}</Tip>}</span>
     {children}
     {hint && <span className="block text-xs font-normal text-muted-foreground">{hint}</span>}
   </Label>

@@ -70,7 +70,7 @@ export function AgentsSection() {
     const existing = catalog?.agents.find((a) => a.name === form.originalName);
     return (
       <>
-        <Heading title={form.originalName ? t('agents.edit', { name: form.originalName }) : t('agents.new')} sub={t('agents.form.sub')} />
+        <Heading title={form.originalName ? t('agents.edit', { name: form.originalName }) : t('agents.new')} sub={t('agents.form.sub')} tip={t('agents.form.tip')} />
         <div className="space-y-4 rounded-xl border bg-card p-4">
           <Field label={t('skills.name')} hint={t('agents.name.hint')}>
             <Input value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="reviewer" disabled={form.builtin} spellCheck={false} />
@@ -81,7 +81,7 @@ export function AgentsSection() {
           <Field label={t('agents.model')}>
             <ModelPicker value={form.model || null} onChange={(model) => set({ model: model ?? '' })} emptyLabel={t('agents.followMain')} label={t('agents.modelLabel')} />
           </Field>
-          <Field label={t('agents.tools')} hint={t('agents.tools.hint')}>
+          <Field label={t('agents.tools')} hint={t('agents.tools.hint')} tip={t('agents.tools.tip')}>
             <ToolsInput value={form.tools} onChange={(tools) => set({ tools })} placeholder={t('agents.toolsPh')} />
           </Field>
           <Field label={t('agents.prompt')}>
@@ -104,7 +104,7 @@ export function AgentsSection() {
 
   return (
     <>
-      <Heading title={t('agents.title')} sub={t('agents.sub')} />
+      <Heading title={t('agents.title')} sub={t('agents.sub')} tip={t('agents.tip')} />
       <div className="mb-3 flex items-center gap-2">
         <Button size="sm" onClick={() => setForm({ ...blank })}><PlusIcon className="size-4" />{t('agents.new')}</Button>
         {!isRemote && (

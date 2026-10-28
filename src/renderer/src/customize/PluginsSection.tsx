@@ -93,6 +93,7 @@ export function PluginsSection({ catalog, project, onCatalog }: Props) {
       <Heading
         title={t('plugins.title')}
         sub={t('plugins.sub')}
+        tip={t('plugins.tip')}
         action={
           <Button size="sm" variant="outline" className="shrink-0" disabled={!!busy || !catalog.plugins.length} onClick={() => void run('updating', () => call('customize:pluginUpdate', null, project), t('plugins.updatedAll'))}>
             <RefreshCwIcon className={`size-4 ${busy === 'updating' ? 'animate-spin' : ''}`} />{t('plugins.updateAll')}

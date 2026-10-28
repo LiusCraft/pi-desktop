@@ -1,3 +1,5 @@
+import { decodeCommandMessage } from './command-message';
+
 export interface SkillMessage {
   name: string;
   /** The skill's instructions, as expanded by the agent. */
@@ -14,6 +16,8 @@ export function decodeSkillMessage(text: string): SkillMessage | null {
 
 /** What the user typed for a message: `/skill:name args` for an expanded skill, the text itself otherwise. */
 export function typedText(text: string): string {
+  const command = decodeCommandMessage(text);
+  if (command?.user) return `/${command.name}${command.args ? ` ${command.args}` : ''}`;
   const skill = decodeSkillMessage(text);
   return skill ? `/skill:${skill.name}${skill.args ? ` ${skill.args}` : ''}` : text;
 }

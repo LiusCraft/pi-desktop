@@ -19,17 +19,30 @@ export const BUILTIN_COMMAND_INFO: Record<BuiltinCommand, MessageKey> = {
 };
 
 export interface CommandMessage {
-  name: BuiltinCommand;
+  name: string;
   /** The instruction the agent received. */
   prompt: string;
+  /** A prompt template the user wrote, typed as `/name args`; false for one of Pi Desktop's own buttons. */
+  user: boolean;
+  /** What was typed after `/name` (user commands only). */
+  args: string;
 }
 
 export const encodeCommandMessage = (name: BuiltinCommand, prompt: string) => `<pi-command name="${name}">\n${prompt}\n</pi-command>`;
 
+/** A prompt template the user typed as `/name args`, already expanded: it shows as a chip like the built-in ones. */
+export const encodeUserCommandMessage = (name: string, args: string, prompt: string) => `<pi-command name="${name}" source="user" args=${JSON.stringify(args)}>\n${prompt}\n</pi-command>`;
+
 export function decodeCommandMessage(wire: string): CommandMessage | null {
-  const m = /^<pi-command name="([a-z-]+)">\n([\s\S]*)\n<\/pi-command>$/.exec(wire.trim());
-  if (!m || !(m[1] in BUILTIN_COMMAND_INFO)) return null;
-  return { name: m[1] as BuiltinCommand, prompt: m[2] };
+  const m = /^<pi-command name="([^"\s]+)"(?: source="(user)" args=("(?:[^"\\]|\\.)*"))?>\n([\s\S]*)\n<\/pi-command>$/.exec(wire.trim());
+  if (!m) return null;
+  if (m[2]) {
+    let args = '';
+    try { args = JSON.parse(m[3]); } catch { /* keep empty */ }
+    return { name: m[1], prompt: m[4], user: true, args };
+  }
+  if (!(m[1] in BUILTIN_COMMAND_INFO)) return null;
+  return { name: m[1] as BuiltinCommand, prompt: m[4], user: false, args: '' };
 }
 
 /** Prefix that tells a built-in command apart from a user's command or skill of the same name. */

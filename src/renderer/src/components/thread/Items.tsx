@@ -2,9 +2,9 @@ import { memo, useState } from 'react';
 import { ArrowUpRightIcon, BookmarkIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CircleAlertIcon, CodeIcon, GitForkIcon, GitMergeIcon, LayersIcon, LightbulbIcon, LoaderCircleIcon, MessageCircleQuestionIcon, MessagesSquareIcon, MinusCircleIcon, RotateCcwIcon, TerminalIcon, XIcon, type LucideIcon } from 'lucide-react';
 import { PLAN_CHOICES } from '@shared/protocol';
 import type { MessageKey } from '@shared/i18n';
-import { BUILTIN_COMMAND_INFO, commandLabel, decodeCommandMessage, type CommandMessage } from '@shared/command-message';
+import { BUILTIN_COMMAND_INFO, commandLabel, decodeCommandMessage, type BuiltinCommand, type CommandMessage } from '@shared/command-message';
 import { decodePeerMessage, type PeerMessage } from '@shared/peer-message';
-import { decodeSkillMessage, type SkillMessage } from '@shared/skill-message';
+import { decodeSkillMessage, typedText, type SkillMessage } from '@shared/skill-message';
 import { decodeTaskMessage, type TaskMessage } from '@shared/task-message';
 import * as previews from '@shared/tool-previews';
 import { CodeBlock, Markdown } from '@/components/common/Markdown';
@@ -42,14 +42,12 @@ import type { Item, ItemOf } from '@/store/types';
 /** `quoted`: for each reference of the message, the transcript item it replies to (see lib/quote-links). */
 export const UserItem = memo(function UserItem({ sid, item, quoted }: { sid: string; item: ItemOf<'user'>; quoted?: (string | null)[] }) {
   const t = useT();
-  const { copied, copy } = useCopy();
-  const busy = useApp((state) => !!(state.sessions[sid]?.running || state.sessions[sid]?.historyBusy || state.sessions[sid]?.pendingUser.length));
   const peer = decodePeerMessage(item.text);
   if (peer) return <PeerMessageCard peer={peer} />;
   const task = decodeTaskMessage(item.text);
   if (task) return <TaskMessageCard task={task} queued={item.queued} />;
   const command = decodeCommandMessage(item.text);
-  if (command) return <CommandMessageChip sid={sid} command={command}queued={item.queued} />;
+  if (command) return <CommandMessageChip sid={sid} item={item} command={command} />;
   // Context the user attached is shown as cards, like in the composer; only what they typed stays text.
   const attached = decodeReferencePrompt(item.text);
   const body = attached ? attached.text : item.text;
@@ -69,26 +67,7 @@ export const UserItem = memo(function UserItem({ sid, item, quoted }: { sid: str
           <InlineMessage text={typed} references={attached?.references ?? []} />
         </div>
       )}
-      {item.delivered && !item.queued && (
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          {item.timestamp && <span className="mr-1" title={new Date(item.timestamp).toLocaleString()}>{ago(item.timestamp, true)}</span>}
-          <Button type="button" variant="ghost" size="icon" className="size-7" aria-label={t(copied ? 'thread.copiedMessage' : 'thread.copyMessage')} title={t(copied ? 'thread.copied' : 'thread.copyMessage')} onClick={() => copy(item.text)}>
-            <CopyGlyph copied={copied} />
-          </Button>
-          {item.entryId && <>
-            <Tooltip><TooltipTrigger asChild>
-              <Button type="button" variant="ghost" size="icon" className="size-7" disabled={busy} aria-label={t('thread.rewind')} onClick={() => void userMessageAction(sid, item.entryId!, 'rewind')}>
-                <RotateCcwIcon data-icon="inline-start" />
-              </Button>
-            </TooltipTrigger><TooltipContent>{t('thread.rewind.tip')}</TooltipContent></Tooltip>
-            <Tooltip><TooltipTrigger asChild>
-              <Button type="button" variant="ghost" size="icon" className="size-7" disabled={busy} aria-label={t('thread.fork')} onClick={() => void userMessageAction(sid, item.entryId!, 'fork')}>
-                <GitForkIcon data-icon="inline-start" />
-              </Button>
-            </TooltipTrigger><TooltipContent>{t('thread.fork.tip')}</TooltipContent></Tooltip>
-          </>}
-        </div>
-      )}
+      <MessageActions sid={sid} item={item} text={item.text} />
       {item.notice && <div className="text-xs text-muted-foreground">{item.notice}</div>}
       {item.failed && (
         <div className="flex items-center gap-2 text-xs text-destructive">
@@ -101,6 +80,34 @@ export const UserItem = memo(function UserItem({ sid, item, quoted }: { sid: str
     </div>
   );
 });
+
+/** Copy, rewind and fork under a delivered user message. `text` is what Copy puts on the clipboard. */
+function MessageActions({ sid, item, text }: { sid: string; item: ItemOf<'user'>; text: string }) {
+  const t = useT();
+  const { copied, copy } = useCopy();
+  const busy = useApp((state) => !!(state.sessions[sid]?.running || state.sessions[sid]?.historyBusy || state.sessions[sid]?.pendingUser.length));
+  if (!item.delivered || item.queued) return null;
+  return (
+    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+      {item.timestamp && <span className="mr-1" title={new Date(item.timestamp).toLocaleString()}>{ago(item.timestamp, true)}</span>}
+      <Button type="button" variant="ghost" size="icon" className="size-7" aria-label={t(copied ? 'thread.copiedMessage' : 'thread.copyMessage')} title={t(copied ? 'thread.copied' : 'thread.copyMessage')} onClick={() => copy(text)}>
+        <CopyGlyph copied={copied} />
+      </Button>
+      {item.entryId && <>
+        <Tooltip><TooltipTrigger asChild>
+          <Button type="button" variant="ghost" size="icon" className="size-7" disabled={busy} aria-label={t('thread.rewind')} onClick={() => void userMessageAction(sid, item.entryId!, 'rewind')}>
+            <RotateCcwIcon data-icon="inline-start" />
+          </Button>
+        </TooltipTrigger><TooltipContent>{t('thread.rewind.tip')}</TooltipContent></Tooltip>
+        <Tooltip><TooltipTrigger asChild>
+          <Button type="button" variant="ghost" size="icon" className="size-7" disabled={busy} aria-label={t('thread.fork')} onClick={() => void userMessageAction(sid, item.entryId!, 'fork')}>
+            <GitForkIcon data-icon="inline-start" />
+          </Button>
+        </TooltipTrigger><TooltipContent>{t('thread.fork.tip')}</TooltipContent></Tooltip>
+      </>}
+    </div>
+  );
+}
 
 /** The task a session was started with, as a card instead of a wall of instructions. */
 function TaskMessageCard({ task, queued }: { task: TaskMessage; queued?: boolean }) {
@@ -139,26 +146,27 @@ function SkillChip({ skill }: { skill: SkillMessage }) {
 }
 
 /** A button of Pi Desktop's own (Commit, Create PR, ...) shown as the command it ran; click to read the instruction it expanded to. */
-function CommandMessageChip({ sid, command, queued }: { sid: string; command: CommandMessage; queued?: boolean }) {
+function CommandMessageChip({ sid, item, command }: { sid: string; item: ItemOf<'user'>; command: CommandMessage }) {
   const t = useT();
   const userCommands = useApp((st) => st.sessions[sid]?.commands);
-  const label = commandLabel(command.name, (userCommands ?? []).map((c) => c.name));
+  const label = command.user ? command.name : commandLabel(command.name as BuiltinCommand, (userCommands ?? []).map((c) => c.name));
   return (
-    <div className={cn('flex justify-end', queued && 'opacity-60')}>
+    <div className={cn('flex flex-col items-end gap-1.5', item.queued && 'opacity-60')}>
       <Popover>
         <PopoverTrigger asChild>
           <button className="flex items-center gap-1.5 rounded-2xl bg-user-bubble px-3.5 py-2 font-mono text-sm transition-colors hover:bg-accent data-[state=open]:bg-accent" title={t('thread.commandTip')}>
-            <TerminalIcon className="size-3.5 text-muted-foreground" />/{label}
+            <TerminalIcon className="size-3.5 text-muted-foreground" />/{label}{command.args && <span className="max-w-64 truncate font-sans text-muted-foreground">{command.args}</span>}
           </button>
         </PopoverTrigger>
         <PopoverContent align="end" className="w-96 p-0">
           <div className="border-b px-3 py-2">
             <div className="font-mono text-xs font-medium">/{label}</div>
-            <div className="text-xs text-muted-foreground">{t(BUILTIN_COMMAND_INFO[command.name])}</div>
+            {!command.user && <div className="text-xs text-muted-foreground">{t(BUILTIN_COMMAND_INFO[command.name as BuiltinCommand])}</div>}
           </div>
           <div data-selectable className="max-h-72 overflow-y-auto px-3 py-2 text-xs whitespace-pre-wrap break-words">{command.prompt}</div>
         </PopoverContent>
       </Popover>
+      <MessageActions sid={sid} item={item} text={typedText(item.text)} />
     </div>
   );
 }

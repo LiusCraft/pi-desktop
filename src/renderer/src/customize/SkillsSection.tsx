@@ -92,7 +92,7 @@ function SkillForm({ project, onDone, onCatalog }: Omit<Props, 'catalog'> & { on
   return (
     <>
       <BackButton onClick={onDone}>{t('skills.back')}</BackButton>
-      <Heading title={t('skills.new')} sub={t('skills.new.sub')} />
+      <Heading title={t('skills.new')} sub={t('skills.new.sub')} tip={t('skills.new.tip')} />
       <div className="space-y-4 rounded-xl border bg-card p-4">
         <Field label={t('skills.saveTo')} hint={draft.scope === 'user' ? t('skills.allProjects') : t('skills.onlyIn', { name: project ? fname(project) : t('skills.thisProject') })}>
           <Segmented value={draft.scope} onChange={(scope) => set({ scope })} options={[{ id: 'user', label: t('skills.personal') }, { id: 'project', label: t('skills.projectOpt'), disabled: !project }]} />
@@ -157,6 +157,7 @@ export function SkillsSection({ catalog, project, onCatalog }: Props) {
       <Heading
         title={t('customize.tab.skills')}
         sub={t('skills.sub')}
+        tip={t('skills.tip')}
         action={
           <div className="flex shrink-0 gap-2">
             {!isRemote && (

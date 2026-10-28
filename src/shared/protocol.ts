@@ -435,6 +435,16 @@ export interface SkillDraft {
   home?: SkillHome;
 }
 
+/** A prompt template: `/name` in the input box expands to `body`. */
+export interface PromptDraft {
+  name: string;
+  description: string;
+  body: string;
+  scope: 'user' | 'project';
+  /** Editing: the file this command was loaded from; saving replaces it (and renames it if the name changed). */
+  file?: string;
+}
+
 /** Estimated split of the context window (like Claude Code's /context). */
 export interface ContextBreakdown {
   contextWindow: number;
@@ -1073,6 +1083,8 @@ export interface Api {
   'customize:readFile'(file: string): string;
   'customize:skillSetDisabled'(file: string, disabled: boolean, project: string | null): CustomizeCatalog;
   'customize:skillCreate'(draft: SkillDraft, project: string | null): CustomizeCatalog;
+  'customize:promptCreate'(draft: PromptDraft, project: string | null): CustomizeCatalog;
+  'customize:promptDelete'(file: string, project: string | null): CustomizeCatalog;
   'customize:claudeImport'(project: string | null): CustomizeCatalog;
   'customize:claudeDismiss'(project: string | null): CustomizeCatalog;
   'customize:connectorSave'(draft: ConnectorDraft, project: string | null): CustomizeCatalog;
@@ -1138,7 +1150,7 @@ export const HOST_CHANNELS = [
   'sessions:changes', 'sessions:setBase', 'sessions:commits', 'sessions:commitChanges', 'sessions:changeContent', 'sessions:pr', 'sessions:prThreads', 'sessions:prReply', 'sessions:prResolve', 'sessions:files', 'sessions:readFile', 'sessions:search', 'sessions:readImage',
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
   'sessions:import', 'git:branch', 'git:branches', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove',
-  'customize:list', 'customize:readFile', 'customize:skillSetDisabled', 'customize:skillCreate', 'customize:claudeImport', 'customize:claudeDismiss', 'customize:connectorSave',
+  'customize:list', 'customize:readFile', 'customize:skillSetDisabled', 'customize:skillCreate', 'customize:promptCreate', 'customize:promptDelete', 'customize:claudeImport', 'customize:claudeDismiss', 'customize:connectorSave',
   'customize:connectorSetEnabled', 'customize:connectorRemove', 'customize:pluginInstall', 'customize:pluginRemove', 'customize:pluginUpdate', 'customize:pluginResources', 'customize:pluginSetResource',
   'activity:get', 'tasks:list', 'tasks:save', 'tasks:setEnabled', 'tasks:remove', 'tasks:run',
   'artifacts:list', 'artifacts:fromFile', 'artifacts:remove', 'artifacts:publish', 'artifacts:unpublish', 'storage:get', 'storage:save', 'storage:test',
