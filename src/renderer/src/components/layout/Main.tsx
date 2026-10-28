@@ -1,6 +1,6 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import {
-  BotIcon, ChevronDownIcon, ExternalLinkIcon, FileTextIcon, FolderIcon, GlobeIcon, LaptopIcon, PencilIcon, PanelRightIcon,
+  BotIcon, ChevronDownIcon, ExternalLinkIcon, FileTextIcon, FolderIcon, GitBranchIcon, GitForkIcon, GlobeIcon, LaptopIcon, PanelRightIcon,
   SquareTerminalIcon,
 } from 'lucide-react';
 import { PET_BLOCK_ATTR } from '@/components/composer/Clawd';
@@ -97,6 +97,40 @@ function SessionMenu({ s, onRename, children }: { s: SessionView; onRename: () =
   );
 }
 
+/** The icon in front of the title says where a Code session runs: a worktree or the project folder itself. */
+function SessionIcon({ s }: { s: SessionView }) {
+  const t = useT();
+  const cls = 'size-4 shrink-0 text-muted-foreground';
+  if (s.meta.kind === 'work') return <span className="flex shrink-0 items-center p-1.5"><FolderIcon className={cls} /></span>;
+  const isWorktree = s.meta.worktree || !!s.meta.external;
+  const Icon = isWorktree ? GitForkIcon : LaptopIcon;
+  return (
+    <span className="no-drag flex shrink-0 cursor-default select-none items-center p-1.5" title={t('main.envTip', { env: t(isWorktree ? 'main.envWorktree' : 'main.envLocal'), path: s.meta.cwd })}>
+      <Icon className={cls} />
+    </span>
+  );
+}
+
+/** Project and branch of a Code session; the tooltip has the base branch. */
+function SessionBranch({ s }: { s: SessionView }) {
+  const t = useT();
+  const { meta } = s;
+  return (
+    <span
+      className="flex min-w-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
+      title={t('main.branchTip', { branch: meta.branch ?? '-', base: meta.baseBranch ?? '-' })}
+    >
+      <span className="shrink-0">{fname(meta.projectPath)}</span>
+      {meta.branch && (
+        <>
+          <GitBranchIcon className="size-3 shrink-0" />
+          <span className="truncate">{meta.branch}</span>
+        </>
+      )}
+    </span>
+  );
+}
+
 function Header({ s, title }: { s?: SessionView; title?: string }) {
   const t = useT();
   const collapsed = useApp((st) => st.sidebarCollapsed);
@@ -111,7 +145,7 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
         <>
           {renamingId === s.meta.id ? (
             <span className="flex min-w-0 items-center gap-1.5 px-2 py-1 text-sm font-medium">
-              {work ? <FolderIcon className="size-4 shrink-0 text-muted-foreground" /> : <LaptopIcon className="size-4 shrink-0 text-muted-foreground" />}
+              <SessionIcon s={s} />
               <InlineEdit
                 value={s.meta.title}
                 ariaLabel={t('main.rename')}
@@ -122,29 +156,31 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
               />
             </span>
           ) : (
-            <SessionMenu s={s} onRename={() => setRenamingId(s.meta.id)}>
-              {(trigger) => (
-                <span className="group/title flex min-w-0 items-center rounded-md text-sm font-medium hover:bg-accent">
-                  <button {...trigger} className="flex min-w-0 items-center gap-1.5 py-1 pl-2 pr-1 text-left">
-                    {work ? <FolderIcon className="size-4 shrink-0 text-muted-foreground" /> : <LaptopIcon className="size-4 shrink-0 text-muted-foreground" />}
-                    <span className="truncate">{s.meta.title}</span>
-                    <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="flex min-w-0 items-center text-sm font-medium">
+              <SessionIcon s={s} />
+              <span
+                className="no-drag flex min-w-0 cursor-text items-center rounded-md px-1.5 py-1 hover:bg-accent"
+                title={t('main.rename')}
+                onDoubleClick={() => setRenamingId(s.meta.id)}
+              >
+                <span className="truncate">{s.meta.title}</span>
+              </span>
+              <SessionMenu s={s} onRename={() => setRenamingId(s.meta.id)}>
+                {(trigger) => (
+                  <button {...trigger} aria-label={t('main.sessionMenu')} className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground">
+                    <ChevronDownIcon className="size-3.5" />
                   </button>
-                  <button
-                    onClick={() => setRenamingId(s.meta.id)}
-                    title={t('main.rename')}
-                    aria-label={t('main.rename')}
-                    className="mr-1 flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/title:opacity-100"
-                  >
-                    <PencilIcon className="size-3.5" />
-                  </button>
-                </span>
-              )}
-            </SessionMenu>
+                )}
+              </SessionMenu>
+            </span>
           )}
-          <span className="truncate rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-            {work ? (s.meta.scratch ? t('main.tempWorkspace') : fname(s.meta.projectPath)) : `${fname(s.meta.projectPath)}${s.meta.branch ? ` · ${s.meta.branch}` : ''}`}
-          </span>
+          {work ? (
+            <span className="truncate rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+              {s.meta.scratch ? t('main.tempWorkspace') : fname(s.meta.projectPath)}
+            </span>
+          ) : (
+            <SessionBranch s={s} />
+          )}
           <span className="flex-1" />
           {hasTasks && <HeaderButton on={p!.tasks} title={t('main.backgroundTasks')} onClick={() => togglePanel(s.meta.id, 'tasks')}><BotIcon className="size-4" /></HeaderButton>}
           {work ? (
