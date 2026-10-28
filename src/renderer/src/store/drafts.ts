@@ -100,12 +100,16 @@ export const drafts = {
     let added = false;
     edit(key, (d) => {
       if (d.sending) return;
-      const size = [...d.references, reference].reduce((total, item) => total + (item.text?.length ?? 0) + (item.comment?.length ?? 0) + item.path.length, 0);
-      if (d.references.length >= MAX_CONTEXT_ITEMS || size > MAX_CONTEXT_CHARS) {
+      // A reference whose badge is gone has nothing left to send; picking an @ item again
+      // refreshes it instead of sending its context twice.
+      const live = d.references.filter((item) => !item.token || d.text.includes(item.token));
+      const kept = reference.token ? live.filter((item) => item.token !== reference.token) : live;
+      const size = [...kept, reference].reduce((total, item) => total + (item.text?.length ?? 0) + (item.comment?.length ?? 0) + item.path.length, 0);
+      if (kept.length >= MAX_CONTEXT_ITEMS || size > MAX_CONTEXT_CHARS) {
         d.errors.push(t('draft.contextLimit', { n: MAX_CONTEXT_ITEMS, chars: MAX_CONTEXT_CHARS.toLocaleString() }));
         return;
       }
-      d.references.push(reference);
+      d.references = [...kept, reference];
       d.revision++;
       added = true;
     });

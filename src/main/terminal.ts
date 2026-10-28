@@ -8,8 +8,9 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import * as pty from 'node-pty';
-import type { TerminalAttach, TerminalInfo, TerminalShell } from '@shared/protocol';
+import { TERMINAL_DEFAULT_LINES, TERMINAL_MAX_LINES, type TerminalAttach, type TerminalInfo, type TerminalShell } from '@shared/protocol';
 import { childEnv, realBashDir } from '../agent/env';
+import { plainText } from './terminal-text';
 
 const isWin = process.platform === 'win32';
 
@@ -95,6 +96,7 @@ function ensureSpawnHelper() {
 /** Login shell on unix so a GUI launch gets the profile's PATH, as in Terminal.app. */
 const shellArgs = (file: string) => (isWin || !/(^|\/)(bash|zsh|fish|sh)$/.test(file) ? [] : ['-l']);
 
+
 // ------------------------------------------------------------ terminals
 
 interface Term {
@@ -149,6 +151,12 @@ export class Terminals {
   attach(id: string): TerminalAttach {
     const t = this.get(id);
     return { backlog: t.backlog, exited: t.exited };
+  }
+
+  /** The tab's readable output, clamped to the range the setting allows. */
+  text(id: string, lines: number): string {
+    const wanted = Math.floor(lines) || TERMINAL_DEFAULT_LINES;
+    return plainText(this.get(id).backlog, Math.max(1, Math.min(TERMINAL_MAX_LINES, wanted)));
   }
 
   write(id: string, data: string) {

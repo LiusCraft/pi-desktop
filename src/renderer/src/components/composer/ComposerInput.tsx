@@ -1,18 +1,23 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
-import { XIcon } from 'lucide-react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { FileIcon, GitCompareIcon, MessageSquareIcon, SquareTerminalIcon, TerminalIcon, XIcon } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { ContextCards } from './ContextCards';
+import { cachedSources, diffMention, fileMention, loadSources, mentionReference, sessionMentions, terminalMentions, type Mention } from './mentions';
 import { LIMITS } from '@shared/attachments';
+import { badgeDeletion, messageSpans, referenceToken, type ContextReference } from '@shared/context-reference';
 import type { AttachmentSource } from '@shared/protocol';
 import { AttachmentTiles } from '@/components/common/Attachments';
+import { ReferencePreview } from '@/components/common/InlineRefs';
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { bridge, call } from '@/lib/api';
 import { desktopCommands } from '@/lib/constants';
+import { fuzzyEntry, fuzzyRank, type FuzzyEntry } from '@/lib/fuzzy';
 import { useT } from '@/lib/i18n';
-import { fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { cycleMode, loadFiles, send } from '@/store/actions';
 import { currentSession, getApp, useApp } from '@/store/app';
 import { drafts, getDraft, useDrafts } from '@/store/drafts';
+import type { SessionView } from '@/store/types';
 
 /** Extract clipboard text from a sanitized, detached fragment. */
 export function plainHTML(html: string) {
@@ -76,11 +81,53 @@ export const pickAttachments = () => {
   if (key) void drafts.prepare(key, async () => drafts.accept(key, await call('attachments:pick')));
 };
 
+/** One row of the / or @ menu. */
 interface Suggestion {
+  key: string;
+  kind: Mention['kind'] | 'command';
   label: string;
   hint: string;
   insert: string;
-  from: number;
+  /** The @ sources carry what is needed to capture the content when picked. */
+  mention?: Mention;
+}
+
+const KIND_ICON: Record<Suggestion['kind'], ReactNode> = {
+  command: <TerminalIcon className="size-3.5 shrink-0 text-muted-foreground" />,
+  file: <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />,
+  session: <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />,
+  terminal: <SquareTerminalIcon className="size-3.5 shrink-0 text-muted-foreground" />,
+  diff: <GitCompareIcon className="size-3.5 shrink-0 text-muted-foreground" />,
+};
+
+/** The file list is lowercased once per list, not once per keystroke. */
+let fileIndex: { files: string[]; entries: FuzzyEntry<Mention>[] } | null = null;
+const fileEntries = (files: string[]) => {
+  if (fileIndex?.files === files) return fileIndex.entries;
+  const entries = files.map((path) => fuzzyEntry(fileMention(path), path));
+  fileIndex = { files, entries };
+  return entries;
+};
+
+function commandSuggestions(query: string, s: SessionView | null): Suggestion[] {
+  const commands = [...desktopCommands(), ...(s?.commands ?? []).map((c) => [`/${c.name}`, c.description || c.source] as [string, string])];
+  const entries = commands.map(([name, description]) => fuzzyEntry({ name, description }, name.slice(1)));
+  return fuzzyRank(entries, query, 12).map(({ item }) => ({ key: `command:${item.name}`, kind: 'command', label: item.name, hint: item.description, insert: `${item.name} ` }));
+}
+
+/** Files, terminal tabs, the working tree and the project's other sessions, ranked together. A new session has only sessions to offer. */
+function mentionSuggestions(query: string, s: SessionView | null, projectPath: string | null, kind: SessionView['meta']['kind']): Suggestion[] {
+  const sources = s ? cachedSources(s.meta.id) : { terminals: [], changes: [] };
+  const files = s ? getApp().sessions[s.meta.id]?.files ?? [] : [];
+  const diff = diffMention(sources.changes);
+  const sessions = sessionMentions(projectPath, kind, s?.meta.id ?? '');
+  const ranked = [
+    ...(s ? fuzzyRank([fuzzyEntry(diff, diff.search)], query, 1) : []),
+    ...fuzzyRank(terminalMentions(sources.terminals).map((m) => fuzzyEntry(m, m.search)), query, 10),
+    ...fuzzyRank(sessions.map((m) => fuzzyEntry(m, m.search)), query, 10),
+    ...fuzzyRank(fileEntries(files), query, 20),
+  ].sort((a, b) => b.score - a.score);
+  return ranked.slice(0, 40).map(({ item }) => ({ key: `${item.kind}:${item.sessionId ?? item.terminalId ?? item.insert.trim()}`, kind: item.kind, label: item.label, hint: item.hint, insert: item.insert, mention: item }));
 }
 
 export interface ComposerHandle {
@@ -107,16 +154,29 @@ function SuggestionGhost({ text, ghostRef }: { text: string; ghostRef: React.Ref
 const acceptsGhost = (e: KeyboardEvent<HTMLTextAreaElement>) =>
   (e.key === 'ArrowRight' || e.key === 'Tab') && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey;
 
+/** A menu item's span in the message: the /command being typed, or the @ prefix being searched. */
+const MENTION_PREFIX = /(?:^|\s)@([^\s@]*)$/;
+const COMMAND_PREFIX = /^\/[^\s]*$/;
+
 export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; className?: string; minRows?: number; maxHeight?: number; onDragState?: (over: boolean) => void }>(
   function ComposerInput({ placeholder, className, minRows = 1, maxHeight = 260, onDragState }, ref) {
     const t = useT();
     const key = useDrafts((s) => s.active);
     const draft = useDrafts((s) => (s.active ? s.drafts[s.active] : undefined));
     const running = useApp((s) => (s.current ? s.sessions[s.current]?.running : false));
+    const files = useApp((s) => (s.current ? s.sessions[s.current]?.files : null));
+    /** A typed @path is only a badge when it names a file the project actually has. */
+    const knownPath = useMemo(() => {
+      if (!files) return () => false;
+      const paths = new Set(files);
+      return (path: string) => paths.has(path);
+    }, [files]);
     const input = useRef<HTMLTextAreaElement>(null);
+    const mirror = useRef<HTMLDivElement>(null);
     const ghost = useRef<HTMLDivElement>(null);
     const [items, setItems] = useState<Suggestion[]>([]);
     const [sel, setSel] = useState(0);
+    const [preview, setPreview] = useState<{ reference: ContextReference; x: number; y: number } | null>(null);
     const menu = useRef<HTMLDivElement>(null);
     const request = useRef(0);
     useImperativeHandle(ref, () => ({ focus: () => input.current?.focus() }));
@@ -124,6 +184,9 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
     // The guess only makes sense while the session is idle and the draft is empty:
     // typing or a new turn replaces it.
     const suggestion = draft && !draft.text && !draft.sending && !running ? draft.suggestion : null;
+
+    /** The badges and where they sit, so a click inside one can open its preview. */
+    const spans = useMemo(() => messageSpans(draft?.text ?? '', draft?.references ?? [], { isKnownPath: knownPath }), [draft?.text, draft?.references, knownPath]);
 
     // Grow with the text, up to a limit. A wrapped guess grows the box too, so the
     // whole prediction is visible before it is accepted.
@@ -133,6 +196,8 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
       el.style.height = 'auto';
       const height = Math.max(el.scrollHeight, ghost.current?.scrollHeight ?? 0);
       el.style.height = `${Math.min(height, maxHeight)}px`;
+      // Resizing can reset the textarea's scroll; the badges follow it exactly.
+      if (mirror.current) mirror.current.scrollTop = el.scrollTop;
     }, [draft?.text, suggestion, maxHeight]);
     useEffect(() => {
       input.current?.focus();
@@ -149,31 +214,78 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
       const current = ++request.current;
       const pos = el.selectionStart, before = el.value.slice(0, pos);
       const s = currentSession();
-      let m: RegExpMatchArray | null;
+      const command = COMMAND_PREFIX.exec(before);
+      const at = command ? null : MENTION_PREFIX.exec(before);
       let next: Suggestion[] = [];
-      if ((m = before.match(/^\/(\S*)$/))) {
-        const all = [...desktopCommands(), ...(s?.commands ?? []).map((c) => [`/${c.name}`, c.description || c.source] as [string, string])];
-        next = all.filter(([k]) => k.slice(1).startsWith(m![1])).slice(0, 12).map(([k, d]) => ({ label: k, hint: d, insert: `${k} `, from: 0 }));
-      } else if ((m = before.match(/(?:^|\s)@([^\s@]*)$/)) && s) {
-        if (!s.files) await loadFiles(s.meta.id);
-        const files = getApp().sessions[s.meta.id]?.files ?? [];
-        const q = m[1].toLowerCase();
-        next = files.filter((p) => p.toLowerCase().includes(q)).slice(0, 50).map((p) => ({ label: `@${fname(p)}`, hint: p, insert: `@${p} `, from: pos - m![1].length - 1 }));
+      if (command) next = commandSuggestions(command[0].slice(1), s ?? null);
+      else if (at) {
+        const st = getApp();
+        const projectPath = s?.meta.projectPath ?? (st.view === 'work' ? st.prefs.workFolder : st.prefs.project);
+        const kind = s?.meta.kind ?? (st.view === 'work' ? 'work' : 'code');
+        if (s) {
+          if (!s.files) void loadFiles(s.meta.id).then(() => suggestRef.current());
+          loadSources(s.meta.id, () => suggestRef.current());
+        }
+        next = mentionSuggestions(at[1], s ?? null, projectPath ?? null, kind);
       }
       // A slower, older lookup (e.g. loading the file list) must not replace a newer one.
       if (current !== request.current) return;
       setItems(next);
       setSel((i) => Math.min(i, Math.max(0, next.length - 1)));
     };
+    /** The latest `suggest`, for the background loads that finish later. */
+    const suggestRef = useRef(suggest);
+    suggestRef.current = suggest;
+
+    /** Put the picked token where the @ (or /) prefix is; the caret ends after it. */
+    const insertToken = (snippet: string) => {
+      const el = input.current;
+      const k = key;
+      if (!el || !k) return;
+      const value = el.value;
+      const pos = el.selectionStart;
+      const before = value.slice(0, pos);
+      const match = MENTION_PREFIX.exec(before) ?? COMMAND_PREFIX.exec(before);
+      const start = match ? match.index + (match[0].startsWith('@') || match[0].startsWith('/') ? 0 : 1) : pos;
+      drafts.setText(k, value.slice(0, start) + snippet + value.slice(pos));
+      const caret = start + snippet.length;
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(caret, caret);
+      });
+    };
 
     const pick = (i: number) => {
-      const it = items[i], el = input.current;
-      if (!it || !el || !key) return;
-      const pos = el.selectionStart, v = el.value;
-      drafts.setText(key, v.slice(0, it.from) + it.insert + v.slice(pos));
-      const caret = it.from + it.insert.length;
-      requestAnimationFrame(() => el.setSelectionRange(caret, caret));
+      const suggestionItem = items[i];
       setItems([]);
+      const k = key;
+      if (!suggestionItem || !k) return;
+      if (suggestionItem.kind === 'command' || suggestionItem.kind === 'file') return insertToken(suggestionItem.insert);
+      const view = currentSession();
+      const mention = suggestionItem.mention;
+      if (!mention) return;
+      // A new session has no sources of its own, but a session pointer needs none.
+      if (mention.kind !== 'session' && !view) return;
+      // The terminal snapshot and the diff summary are captured now, so the badge and
+      // the prompt carry the same bytes even if the terminal keeps printing.
+      void drafts.prepare(k, async () => {
+        if (useDrafts.getState().active !== k) return;
+        const reference = await mentionReference(mention, view ? cachedSources(view.meta.id) : undefined);
+        if (!reference) return void drafts.error(k, t('mention.empty'));
+        if (drafts.addReference(k, reference)) insertToken(suggestionItem.insert);
+      });
+    };
+
+    /** Clicking inside a badge shows what was attached; a plain click still places the caret. */
+    const previewOnClick = (e: MouseEvent<HTMLTextAreaElement>) => {
+      const el = e.currentTarget;
+      if (el.selectionStart !== el.selectionEnd) return false;
+      const caret = el.selectionStart;
+      const hit = spans.find((span) => span.segment.kind === 'reference' && span.segment.reference && caret > span.start && caret < span.end);
+      if (!hit || hit.segment.kind !== 'reference' || !hit.segment.reference) return false;
+      setItems([]);
+      setPreview({ reference: hit.segment.reference, x: e.clientX, y: e.clientY });
+      return true;
     };
 
     /** Promote the ghost text into a real draft, ready to edit or send. */
@@ -189,6 +301,13 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
     };
 
     const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      // A badge is one unit while editing: Backspace/Delete take the whole token, never a letter of it.
+      if (draft && !draft.sending && !e.nativeEvent.isComposing && (e.key === 'Backspace' || e.key === 'Delete')) {
+        const el = e.currentTarget;
+        const hit = badgeDeletion(el.value, draft.references, [el.selectionStart, el.selectionEnd], e.key === 'Delete', { isKnownPath: knownPath });
+        // Widen the selection and let the browser delete it: the edit stays undoable.
+        if (hit) el.setSelectionRange(hit.start, hit.end);
+      }
       if (items.length) {
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
           e.preventDefault();
@@ -263,7 +382,9 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
     };
 
     if (!key || !draft) return null;
-    const rack = draft.references.length || draft.attachments.length || draft.preparing || draft.errors.length || draft.recoveries.length;
+    // @ references live inline as badges; everything else (excerpts, comments, replies) stays a card.
+    const cards = draft.references.filter((reference) => !referenceToken(reference));
+    const rack = cards.length || draft.attachments.length || draft.preparing || draft.errors.length || draft.recoveries.length;
     return (
       <div className={cn('relative', className)}>
         {items.length > 0 && (
@@ -277,7 +398,7 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
           >
             {items.map((it, i) => (
               <button
-                key={it.insert}
+                key={it.key}
                 type="button"
                 role="option"
                 aria-selected={i === sel}
@@ -285,17 +406,18 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
                 tabIndex={-1}
                 onMouseMove={() => i !== sel && setSel(i)}
                 onClick={() => pick(i)}
-                className={cn('flex w-full cursor-pointer items-baseline gap-3 rounded-md px-2.5 py-1.5 text-left text-sm', i === sel ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60')}
+                className={cn('flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm', i === sel ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60')}
               >
-                <span className="shrink-0 font-mono">{it.label}</span>
-                <span className="truncate text-xs text-muted-foreground">{it.hint}</span>
+                {KIND_ICON[it.kind]}
+                <span className="min-w-0 flex-1 truncate">{it.label}</span>
+                <span className="max-w-[50%] shrink-0 truncate text-xs text-muted-foreground">{it.hint}</span>
               </button>
             ))}
           </div>
         )}
         {!!rack && (
           <div className="mb-2 space-y-2">
-            <ContextCards references={draft.references} disabled={draft.sending} onRemove={(id) => drafts.removeReference(key, id)} />
+            <ContextCards references={cards} disabled={draft.sending} onRemove={(id) => drafts.removeReference(key, id)} />
             <AttachmentTiles attachments={draft.attachments} disabled={draft.sending} onRemove={(i) => drafts.removeAttachment(key, i)} />
             {draft.preparing > 0 && <div className="text-xs text-muted-foreground" role="status">{t('composer.preparing')}</div>}
             {draft.errors.length > 0 && (
@@ -315,6 +437,13 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
         )}
         <div className="relative">
           {suggestion && <SuggestionGhost text={suggestion} ghostRef={ghost} />}
+          {/* The badges of @ tokens and paths, drawn behind the textarea's own text: no
+              padding, so the caret and the selection stay exactly where the text is. */}
+          <div ref={mirror} aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words leading-relaxed text-transparent">
+            {spans.map(({ segment }, i) =>
+              segment.kind === 'text' ? <span key={i}>{segment.text}</span> : <span key={i} className="chip-inline">{segment.token}</span>,
+            )}
+          </div>
           <textarea
             ref={input}
             data-composer-input
@@ -327,7 +456,14 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
               drafts.setText(key, e.target.value);
               void suggest();
             }}
-            onClick={() => void suggest()}
+            onClick={(e) => {
+              if (previewOnClick(e)) return;
+              void suggest();
+            }}
+            onScroll={(e) => {
+              const m = mirror.current;
+              if (m) m.scrollTop = e.currentTarget.scrollTop;
+            }}
             onBlur={() => setTimeout(() => setItems([]), 120)}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
@@ -348,6 +484,27 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
             className="relative block w-full resize-none bg-transparent leading-relaxed outline-none placeholder:text-muted-foreground"
           />
         </div>
+        {preview && (
+          <Popover open onOpenChange={(open) => !open && setPreview(null)}>
+            <PopoverAnchor asChild>
+              {/* A zero-size anchor at the click, so the card opens where the badge is. */}
+              <span style={{ position: 'fixed', left: preview.x, top: preview.y, width: 1, height: 1 }} />
+            </PopoverAnchor>
+            <PopoverContent
+              side="top"
+              align="start"
+              className="w-auto p-0"
+              // Keep the caret in the composer: the card is something to read, not to type into.
+              onOpenAutoFocus={(e) => e.preventDefault()}
+              onCloseAutoFocus={(e) => {
+                e.preventDefault();
+                input.current?.focus();
+              }}
+            >
+              <ReferencePreview reference={preview.reference} />
+            </PopoverContent>
+          </Popover>
+        )}
       </div>
     );
   },

@@ -5,7 +5,7 @@ import { BrainIcon, ChevronRightIcon, BriefcaseIcon, CodeIcon, DatabaseIcon, Fol
 import { toast } from 'sonner';
 import type { AppInfo, Project, Settings, SettingsPayload, SuggestionModelMode, TerminalShell, WorkIdeasModelMode } from '@shared/protocol';
 import { LOCALES, LOCALE_NAMES, type LanguageSetting, type MessageKey } from '@shared/i18n';
-import { SUGGESTION_DEFAULT_CONTEXT, SUGGESTION_MAX_CONTEXT } from '@shared/protocol';
+import { SUGGESTION_DEFAULT_CONTEXT, SUGGESTION_MAX_CONTEXT, TERMINAL_DEFAULT_LINES, TERMINAL_MAX_LINES } from '@shared/protocol';
 import { BUILTIN_PETS, BUILTIN_PET_IDS, DEFAULT_PET_ID } from '@shared/pets';
 import { useCopy } from '@/components/common/Copy';
 import { Segmented } from '@/components/common/Segmented';
@@ -110,23 +110,23 @@ const THEMES: readonly { id: 'light' | 'dark' | 'system'; label: MessageKey; til
 ];
 
 /** Number input that commits on blur or Enter, so a half-typed count is never saved. */
-function CountInput({ value, disabled, onCommit }: { value: number; disabled?: boolean; onCommit: (value: number) => void }) {
+function CountInput({ value, disabled, max = SUGGESTION_MAX_CONTEXT, label, onCommit }: { value: number; disabled?: boolean; max?: number; label?: string; onCommit: (value: number) => void }) {
   const t = useT();
   const [text, setText] = useState(String(value));
   useEffect(() => setText(String(value)), [value]);
   const commit = () => {
     const next = Math.round(Number(text));
     if (!Number.isFinite(next) || next < 1) return setText(String(value));
-    onCommit(Math.min(SUGGESTION_MAX_CONTEXT, next));
+    onCommit(Math.min(max, next));
   };
   return (
     <Input
       type="number"
       min={1}
-      max={SUGGESTION_MAX_CONTEXT}
+      max={max}
       value={text}
       disabled={disabled}
-      aria-label={t('settings.predictCountLabel')}
+      aria-label={label ?? t('settings.predictCountLabel')}
       onChange={(e) => setText(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
@@ -456,6 +456,17 @@ export function SettingsApp() {
                     )}
                   </SelectGroup></SelectContent>
                 </Select>
+              </Row>
+              <Row title={t('settings.terminal.lines')} hint={t('settings.terminal.lines.hint')}>
+                <div className="flex shrink-0 items-center gap-2">
+                  <CountInput
+                    value={settings.terminalContextLines ?? TERMINAL_DEFAULT_LINES}
+                    max={TERMINAL_MAX_LINES}
+                    label={t('settings.terminal.lines')}
+                    onCommit={(n) => void patch({ terminalContextLines: n })}
+                  />
+                  <span className="text-sm text-muted-foreground">{t('settings.linesUnit')}</span>
+                </div>
               </Row>
             </Panel>
           </Group>

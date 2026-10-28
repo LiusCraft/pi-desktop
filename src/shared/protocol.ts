@@ -754,6 +754,9 @@ export type SuggestionModelMode = 'auto' | 'session' | 'fixed';
 export type WorkIdeasModelMode = 'session' | 'auto' | 'fixed';
 export const SUGGESTION_DEFAULT_CONTEXT = 6;
 export const SUGGESTION_MAX_CONTEXT = 50;
+/** Terminal lines captured when a terminal tab is attached to a message with @; the most the setting allows. */
+export const TERMINAL_DEFAULT_LINES = 50;
+export const TERMINAL_MAX_LINES = 500;
 export interface Settings {
   theme: ThemeSetting | null;
   /** UI language; "system" follows the OS and falls back to English. */
@@ -786,6 +789,8 @@ export interface Settings {
   petSkin: string;
   /** Executable the terminal panel starts (a `TerminalShell.file`); null picks the system default. */
   terminalShell: string | null;
+  /** How many lines of a terminal tab an @ mention captures. */
+  terminalContextLines: number;
   /** Shared shell for the model's commands, or one process per command (see `SHELL_SESSION_MODES`). */
   shellSession: ShellSessionMode;
   /** Which management tools the model gets (`pidesk_schedule_*`, `pidesk_customize_*`, `pidesk_settings_*`, `pidesk_project_manage`); read when a session starts. */
@@ -920,6 +925,8 @@ export interface Api {
   /** Start a shell in the session folder. */
   'terminal:create'(sessionId: string): TerminalInfo;
   'terminal:attach'(id: string): TerminalAttach;
+  /** The tab's output as plain text: its last `lines` lines. */
+  'terminal:text'(id: string, lines: number): string;
   'terminal:write'(id: string, data: string): void;
   'terminal:resize'(id: string, cols: number, rows: number): void;
   'terminal:close'(id: string): void;
@@ -1076,7 +1083,7 @@ export const MAIN_CHANNELS = [
   'work:folders', 'work:addFolder', 'work:useFolder', 'work:removeFolder', 'work:addPath', 'work:update', 'remote:browse',
   'remote:list', 'remote:save', 'remote:remove', 'remote:connect', 'remote:disconnect', 'remote:serveGet', 'remote:serveSet', 'remote:serveRotate',
   'attachments:import', 'attachments:pick', 'attachments:clipboard',
-  'app:openTargets', 'terminal:shells', 'terminal:list', 'terminal:create', 'terminal:attach', 'terminal:write', 'terminal:resize', 'terminal:close', 'sessions:openIn', 'sessions:openPath', 'side:pop', 'side:pin', 'side:dock', 'side:windows',
+  'app:openTargets', 'terminal:shells', 'terminal:list', 'terminal:create', 'terminal:attach', 'terminal:text', 'terminal:write', 'terminal:resize', 'terminal:close', 'sessions:openIn', 'sessions:openPath', 'side:pop', 'side:pin', 'side:dock', 'side:windows',
 ] as const satisfies readonly ApiChannel[];
 
 export const API_CHANNELS: readonly ApiChannel[] = [...MAIN_CHANNELS, ...HOST_CHANNELS];

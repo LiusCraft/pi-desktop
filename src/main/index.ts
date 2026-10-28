@@ -786,6 +786,7 @@ const handlers: MainHandlers = {
   'terminal:list': (sessionId) => terminals.list(sessionId),
   'terminal:create': async (sessionId) => terminals.create(sessionId, await sessionCwd(sessionId), settingsValue().terminalShell),
   'terminal:attach': (id) => terminals.attach(id),
+  'terminal:text': (id, lines) => terminals.text(id, lines),
   'terminal:write': (id, data) => terminals.write(id, data),
   'terminal:resize': (id, cols, rows) => terminals.resize(id, cols, rows),
   'terminal:close': (id) => terminals.close(id),

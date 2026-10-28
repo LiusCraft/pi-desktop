@@ -11,7 +11,8 @@ import { splitScriptHeader } from '@/lib/tool-output';
 import { CopyGlyph, useCopy } from '@/components/common/Copy';
 import { AttachmentTiles } from '@/components/common/Attachments';
 import { ContextCards } from '@/components/composer/ContextCards';
-import { decodeReferencePrompt } from '@shared/context-reference';
+import { InlineMessage } from '@/components/common/InlineRefs';
+import { decodeReferencePrompt, messageSegments, referenceToken } from '@shared/context-reference';
 import { DiffRows, TermOutput, ToolPreviewView } from '@/components/common/CodeView';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -48,13 +49,17 @@ export const UserItem = memo(function UserItem({ sid, item, quoted }: { sid: str
   // Context the user attached is shown as cards, like in the composer; only what they typed stays text.
   const attached = decodeReferencePrompt(item.text);
   const typed = attached ? attached.text : item.text;
+  // @ references live inline as badges; only the refs whose badge was deleted fall back to cards.
+  const inline = attached ? messageSegments(typed, attached.references).filter((segment) => segment.kind === 'reference') : [];
+  const shown = new Set(inline.map((segment) => (segment.kind === 'reference' ? segment.reference : null)));
+  const cards = attached?.references.filter((reference) => !referenceToken(reference) || !shown.has(reference)) ?? [];
   return (
     <div className={cn('flex flex-col items-end gap-1.5', item.queued && 'opacity-60')} title={item.queued ? t('thread.queued') : undefined}>
       <AttachmentTiles attachments={item.attachments} />
-      {attached && <div className="flex max-w-[85%] justify-end"><ContextCards references={attached.references} onOpen={(reference) => openContextReference(reference, quoted?.[attached.references.indexOf(reference)] ?? null)} /></div>}
+      {!!cards.length && <div className="flex max-w-[85%] justify-end"><ContextCards references={cards} onOpen={(reference) => openContextReference(reference, quoted?.[attached?.references.indexOf(reference) ?? 0] ?? null)} /></div>}
       {typed && (
         <div data-selectable className="max-w-[85%] rounded-2xl bg-user-bubble px-4 py-2.5 whitespace-pre-wrap break-words">
-          {typed.split(/(@[\w./-]+)/g).map((part, i) => (part.startsWith('@') ? <span key={i} className="text-primary">{part}</span> : part))}
+          <InlineMessage text={typed} references={attached?.references ?? []} />
         </div>
       )}
       {item.delivered && !item.queued && (

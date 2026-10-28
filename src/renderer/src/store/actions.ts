@@ -668,7 +668,8 @@ export async function send(queueOnly = false) {
   if (draft.preparing) return void toast.warning(t('act.waitAttachments'));
   const text = draft.text;
   const files = draft.attachments.slice();
-  const references = draft.references.slice();
+  // An @ reference is only sent while its badge is still in the message: deleting the token removes the context.
+  const references = draft.references.filter((reference) => !reference.token || text.includes(reference.token));
   let s = currentSession();
   if (s?.stopping || s?.historyBusy) return;
   if (!text.trim() && !files.length && !references.length) {
@@ -677,7 +678,8 @@ export async function send(queueOnly = false) {
   }
   if (s?.compacting) return void toast.warning(t('act.waitCompaction'));
   const head = text.trim().split(/\s+/)[0];
-  if ((files.length || references.length) && head.startsWith('/')) return void toast.warning(t('act.slashNoAttach'));
+  // Commands the app handles itself (and pi's /skill) take no attachments; a skill may still carry @ context.
+  if ((files.length || references.length) && desktopCommands().some(([name]) => name === head)) return void toast.warning(t('act.slashNoAttach'));
   if (await slashCommand(s, head, text)) return;
 
   const st = getApp();

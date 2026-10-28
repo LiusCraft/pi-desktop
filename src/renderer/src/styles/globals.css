@@ -391,6 +391,22 @@
 /* The composer's PR card borrows the tooltip for positioning, but it is a card: no pointer arrow (a span beside the card). */
 .pr-card[data-slot="tooltip-content"] > span { display: none; }
 
+/* An @ token inside a message: a badge drawn behind the token's own text. Padding comes from
+   the box-shadow spread, so the composer's mirror layer keeps the textarea's exact metrics. */
+.chip-inline {
+  font: inherit;
+  color: inherit;
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  border-radius: 5px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 16%, transparent);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+button.chip-inline:hover {
+  background: color-mix(in srgb, var(--primary) 24%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 24%, transparent);
+}
+
 /* Pixel mascot in the code composer. */
 /* ---------------------------------------------------------------- Clawd, the composer pet
    Transforms are in SVG user units (1px = one pixel of the sprite). */
