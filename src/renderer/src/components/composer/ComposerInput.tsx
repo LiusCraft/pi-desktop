@@ -199,8 +199,12 @@ export const ComposerInput = forwardRef<ComposerHandle, { placeholder: string; c
       // Resizing can reset the textarea's scroll; the badges follow it exactly.
       if (mirror.current) mirror.current.scrollTop = el.scrollTop;
     }, [draft?.text, suggestion, maxHeight]);
+    // Opening a draft (a fork or rewind fills it in) puts the caret after the text.
     useEffect(() => {
-      input.current?.focus();
+      const el = input.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
     }, [key]);
 
     // Keep the highlighted suggestion visible while moving through a long list.

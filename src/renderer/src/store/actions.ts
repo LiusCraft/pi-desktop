@@ -8,6 +8,7 @@ import { cacheHitRate } from '@shared/usage';
 import { revealItem } from '@/lib/quote-links';
 import { positiveLine } from '@shared/tool-previews';
 import { encodeTaskMessage } from '@shared/task-message';
+import { typedText } from '@shared/skill-message';
 import { call, errText, modKey } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { cuePet } from '@/lib/pet-cue';
@@ -793,7 +794,7 @@ export async function stop(id: string) {
       const decoded = decodeUserContent(wire);
       const v = getApp().sessions[id];
       const p = v?.pendingUser.map((k) => findByKey(v, k)).find((i): i is Item & { kind: 'user' } => i?.kind === 'user' && (decoded.clientId ? i.clientId === decoded.clientId : i.wire === wire));
-      const snapshot = p?.submission ?? { text: decoded.text, attachments: decoded.attachments.filter((a): a is any => a.kind === 'file' || !!(a as any).data) };
+      const snapshot = p?.submission ?? { text: typedText(decoded.text), attachments: decoded.attachments.filter((a): a is any => a.kind === 'file' || !!(a as any).data) };
       if (p) updateSession(id, (x) => {
         x.pendingUser = x.pendingUser.filter((k) => k !== p.key);
         x.items = x.items.filter((i) => i.key !== p.key);
@@ -985,7 +986,7 @@ export async function userMessageAction(id: string, entryId: string, action: 're
       target.cost = session.stats?.cost ?? null;
     });
     const attachments = draft.attachments.filter((attachment): attachment is Attachment => attachment.kind === 'file' || typeof attachment.data === 'string');
-    drafts.recover(sessionDraftKey(session.meta.id), { text: draft.text, attachments, label: t(action === 'rewind' ? 'act.rewoundMessage' : 'act.branchStart') });
+    drafts.recover(sessionDraftKey(session.meta.id), { text: typedText(draft.text), attachments, label: t(action === 'rewind' ? 'act.rewoundMessage' : 'act.branchStart') });
     if (draft.notice) drafts.error(sessionDraftKey(session.meta.id), draft.notice);
     // Navigate only if the user has stayed on the source session during the request.
     if (getApp().current === id) await openSession(session.meta.id);

@@ -11,3 +11,9 @@ export function decodeSkillMessage(text: string): SkillMessage | null {
   const m = /^<skill name="([^"]+)" location="[^"]+">\n([\s\S]*?)\n<\/skill>(?:\n\n([\s\S]+))?$/.exec(text);
   return m ? { name: m[1], content: m[2], args: m[3] ?? '' } : null;
 }
+
+/** What the user typed for a message: `/skill:name args` for an expanded skill, the text itself otherwise. */
+export function typedText(text: string): string {
+  const skill = decodeSkillMessage(text);
+  return skill ? `/skill:${skill.name}${skill.args ? ` ${skill.args}` : ''}` : text;
+}

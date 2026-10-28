@@ -4,7 +4,7 @@ import { decodeUserContent } from '@shared/attachments';
 import { forgeOfUrl } from '@shared/forge';
 import type { AgentMessage, PiEvent, PrSummary, Question, SessionMeta, TaskUpdate, UiRequest } from '@shared/protocol';
 import { decodePrEvent } from '@shared/pr-event';
-import { decodeSkillMessage } from '@shared/skill-message';
+import { typedText } from '@shared/skill-message';
 import * as previews from '@shared/tool-previews';
 import { fmtDur, fmtTok, relPath } from '@/lib/format';
 import { t } from '@/lib/i18n';
@@ -281,8 +281,7 @@ function userFromMessage(s: SessionView, m: AgentMessage, view: ViewMode) {
     .map((key) => findByKey(s, key))
     .filter((i): i is ItemOf<'user'> => i?.kind === 'user');
   // pi expands `/skill:name args` into a <skill> block, so compare against what the user typed.
-  const skill = decodeSkillMessage(user.text);
-  const typed = skill ? `/skill:${skill.name}${skill.args ? ` ${skill.args}` : ''}` : user.text;
+  const typed = typedText(user.text);
   const match = user.clientId
     ? pending.find((p) => p.clientId === user.clientId)
     : pending.find((p) => !p.attachments.length && p.text.trim() === typed);
