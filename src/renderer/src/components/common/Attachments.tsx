@@ -3,6 +3,7 @@ import { FileIcon, XIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { imageSource, type Attachment, type DecodedAttachment } from '@shared/attachments';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { ZoomImage } from '@/components/common/ZoomImage';
 import { sizeLabel } from '@/lib/format';
 import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -62,7 +63,7 @@ export function AttachmentTiles({ attachments, onRemove, disabled }: {
       <Dialog open={!!preview} onOpenChange={(o) => !o && setPreview(null)}>
         <DialogContent className="max-w-[min(90vw,1100px)] p-3">
           <DialogTitle className="truncate pr-8 text-sm">{preview?.name}</DialogTitle>
-          {preview && <img src={imageSource(preview)} alt={preview.name} className="max-h-[78vh] w-full rounded object-contain" />}
+          {preview && <ZoomImage src={imageSource(preview)!} alt={preview.name} className="h-[78vh] w-full rounded" />}
         </DialogContent>
       </Dialog>
     </>

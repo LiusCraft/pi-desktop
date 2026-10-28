@@ -13,6 +13,7 @@ import { HEADER_TOGGLE_ATTR, ReviewCodeView, type ReviewHandle, type ReviewItem 
 import type { FileTreeRowDecoration } from '@pierre/trees';
 import { CopyGlyph, useCopy } from '@/components/common/Copy';
 import { OpenInMenu } from '@/components/common/OpenInMenu';
+import { ZoomImage } from '@/components/common/ZoomImage';
 import { HtmlPreview } from '@/components/common/HtmlPreview';
 import { Markdown } from '@/components/common/Markdown';
 import { SelectableContent } from '@/components/common/SelectableContent';
@@ -935,9 +936,7 @@ function FileBody({ s, d, source, viewRef }: { s: SessionView; d: FileDetail; so
   if (d.error) return <div className="p-4 text-sm text-destructive">{t('file.unable')}<pre className="mt-2 text-xs whitespace-pre-wrap">{d.error}</pre></div>;
   if (d.image !== undefined) {
     return d.image ? (
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-[repeating-conic-gradient(var(--muted)_0_25%,transparent_0_50%)] bg-[length:20px_20px] p-4">
-        <img src={d.image} alt={fname(d.path)} className="max-h-full max-w-full object-contain shadow-sm" />
-      </div>
+      <ZoomImage src={d.image} alt={fname(d.path)} className="min-h-0 flex-1 bg-[repeating-conic-gradient(var(--muted)_0_25%,transparent_0_50%)] bg-[length:20px_20px] p-4" />
     ) : <Empty>{t('file.noImage')}</Empty>;
   }
   if (d.media !== undefined) {
