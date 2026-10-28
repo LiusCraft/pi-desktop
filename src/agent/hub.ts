@@ -836,6 +836,9 @@ export class SessionHub {
         if (!stop.signal.aborted) await session.prompt(run.prompt);
       } finally {
         stop.signal.removeEventListener('abort', abortSession);
+        // `dispose()` alone skips the shutdown handlers, so the subagent's shell and MCP servers
+        // would outlive it — on Windows that shell's folder cannot be deleted (EBUSY).
+        await session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' }).catch(() => {});
         session.dispose();
       }
     } finally {
