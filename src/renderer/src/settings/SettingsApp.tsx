@@ -1,12 +1,13 @@
 // Settings window. Every value comes from the main process (single source of
 // truth), so the main window and this one can never disagree.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { BrainIcon, ChevronRightIcon, BriefcaseIcon, CodeIcon, DatabaseIcon, FolderIcon, InfoIcon, MonitorSmartphoneIcon, MoonIcon, PlusIcon, SettingsIcon, Trash2Icon } from 'lucide-react';
+import { BrainIcon, ChevronRightIcon, BriefcaseIcon, CodeIcon, DatabaseIcon, FolderIcon, InfoIcon, MonitorSmartphoneIcon, MoonIcon, PlusIcon, SettingsIcon, Trash2Icon, Volume2Icon } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AppInfo, Project, Settings, SettingsPayload, SuggestionModelMode, TerminalShell, WorkIdeasModelMode } from '@shared/protocol';
 import { LOCALES, LOCALE_NAMES, type LanguageSetting, type MessageKey } from '@shared/i18n';
 import { AUTO_REVIEW_DEFAULT_TIMEOUT, AUTO_REVIEW_MAX_TIMEOUT, AUTO_REVIEW_MIN_TIMEOUT, SUGGESTION_DEFAULT_CONTEXT, SUGGESTION_MAX_CONTEXT, TERMINAL_DEFAULT_LINES, TERMINAL_MAX_LINES } from '@shared/protocol';
 import { BUILTIN_PETS, BUILTIN_PET_IDS, DEFAULT_PET_ID } from '@shared/pets';
+import { PET_SOUND_EVENTS, SOUND_EVENTS } from '@shared/sounds';
 import { useCopy } from '@/components/common/Copy';
 import { Segmented } from '@/components/common/Segmented';
 import { Button } from '@/components/ui/button';
@@ -20,6 +21,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Toaster } from 'sonner';
 import { bridge, call, errText, isMac } from '@/lib/api';
 import { useLocale, useT } from '@/lib/i18n';
+import { petVoices, previewSound } from '@/lib/sounds';
 import { applyTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import { allPets, PetSprite } from '@/components/composer/Clawd';
@@ -94,7 +96,7 @@ interface Swatch<T extends string> {
 /** Pick one of a few previews, each a labelled tile (theme, pet skin). */
 function SwatchGroup<T extends string>({ value, onChange, options }: { value: T; onChange: (id: T) => void; options: readonly Swatch<T>[] }) {
   return (
-    <ToggleGroup type="single" value={value} onValueChange={(id) => id && onChange(id as T)} spacing={1} className="gap-4">
+    <ToggleGroup type="single" value={value} onValueChange={(id) => onChange((id || value) as T)} spacing={1} className="gap-4">
       {options.map((o) => (
         <ToggleGroupItem key={o.id} value={o.id} className="group/swatch h-auto flex-col gap-2 p-0 font-normal focus-visible:border-transparent focus-visible:ring-0 hover:bg-transparent data-[state=on]:bg-transparent">
           <span className={cn('flex h-16 w-24 items-center justify-center rounded-lg border-2 border-border group-data-[state=on]/swatch:border-primary', o.tile)}>{o.preview}</span>
@@ -277,6 +279,7 @@ export function SettingsApp() {
 
   const modeOptions = MODEL_MODE_LABELS.map((o) => ({ id: o.id, label: t(o.label) }));
   const unspecified = t('settings.unspecified');
+  const off = settings.soundOff ?? [];
   const theme = settings.theme === 'light' || settings.theme === 'dark' ? settings.theme : 'system';
   let body: ReactNode;
   if (section === 'appearance') {
@@ -302,6 +305,20 @@ export function SettingsApp() {
           <Row title={t('settings.pet')} hint={t('settings.pet.hint')}>
             <Switch checked={settings.pet !== false} onCheckedChange={(v) => void patch({ pet: v })} />
           </Row>
+          {settings.pet !== false && (
+            <Row title={t('settings.petSound')} hint={t('settings.petSound.hint')}>
+              <Button variant="ghost" size="icon" aria-label={t('settings.sound.preview')} onClick={() => previewSound('speak', petVoices(settings.petSkin, settings.pets))}>
+                <Volume2Icon className="size-4" />
+              </Button>
+              <Switch
+                checked={settings.sound !== false && PET_SOUND_EVENTS.some((e) => !off.includes(e))}
+                onCheckedChange={(v) => {
+                  const rest = off.filter((e) => !PET_SOUND_EVENTS.includes(e));
+                  void patch(v ? { sound: true, soundOff: rest } : { soundOff: [...rest, ...PET_SOUND_EVENTS] });
+                }}
+              />
+            </Row>
+          )}
           {settings.pet !== false && (
             <Row title={t('settings.petSkin')} col>
               <SwatchGroup
@@ -332,6 +349,23 @@ export function SettingsApp() {
               <Row title={t('settings.notify')} hint={t('settings.notify.hint')}>
                 <Switch checked={settings.notify !== false} onCheckedChange={(v) => void patch({ notify: v })} />
               </Row>
+              <Row title={t('settings.sound')} hint={t('settings.sound.hint')}>
+                <Switch checked={settings.sound !== false} onCheckedChange={(v) => void patch({ sound: v })} />
+              </Row>
+              {settings.sound !== false &&
+                SOUND_EVENTS.filter((e) => !PET_SOUND_EVENTS.includes(e)).map((e) => {
+                  return (
+                    <Row key={e} title={t(`settings.sound.${e}`)}>
+                      <Button variant="ghost" size="icon" aria-label={t('settings.sound.preview')} onClick={() => previewSound(e, petVoices(settings.petSkin, settings.pets))}>
+                        <Volume2Icon className="size-4" />
+                      </Button>
+                      <Switch
+                        checked={!off.includes(e)}
+                        onCheckedChange={(v) => void patch({ soundOff: v ? off.filter((x) => x !== e) : [...off, e] })}
+                      />
+                    </Row>
+                  );
+                })}
               <Row title={t('settings.defaultMode')} tip={t('settings.defaultMode.tip')}>
                 <Segmented
                   value={settings.defaultMode ?? 'code'}

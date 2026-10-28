@@ -3,7 +3,7 @@ import { AUTO_REVIEW_DEFAULT_TIMEOUT, SUGGESTION_DEFAULT_CONTEXT, TERMINAL_DEFAU
 
 /** What a setting is until the user changes it; `theme: null` means "not chosen yet": follow the system. */
 export const DEFAULT_SETTINGS: Settings = {
-  theme: null, language: 'system', notify: true, renderMermaid: true, suggestions: true,
+  theme: null, language: 'system', notify: true, sound: true, soundOff: [], renderMermaid: true, suggestions: true,
   suggestionModel: 'session', suggestionModelId: null, suggestionContext: SUGGESTION_DEFAULT_CONTEXT, suggestionFullContext: false,
   workIdeas: true, workIdeasModel: 'session', workIdeasModelId: null,
   autoReview: true, autoReviewModel: 'session', autoReviewModelId: null, autoReviewTimeout: AUTO_REVIEW_DEFAULT_TIMEOUT,

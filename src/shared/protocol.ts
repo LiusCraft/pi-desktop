@@ -9,6 +9,7 @@ import type { ActivityLog } from './activity';
 import type { Attachment, DecodedUserContent, PromptSubmission } from './attachments';
 import type { Forge } from './forge';
 import type { PetDef } from './pets';
+import type { SoundEvent } from './sounds';
 import type { ArtifactMeta } from './artifacts';
 import type { ObjectStorageDraft, ObjectStorageInfo } from './storage';
 import type { LanguageSetting, Locale } from './i18n';
@@ -770,6 +771,9 @@ export interface Settings {
   /** UI language; "system" follows the OS and falls back to English. */
   language: LanguageSetting;
   notify: boolean;
+  /** Play short synthesized sounds, except for the moments listed in `soundOff` (so a new moment is on by default). */
+  sound: boolean;
+  soundOff: SoundEvent[];
   /** Draw ```mermaid blocks in replies as diagrams; off shows them as plain code. */
   renderMermaid: boolean;
   /** After a turn settles, predict the user's next message as ghost text in the composer. */

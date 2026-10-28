@@ -15,6 +15,7 @@ import { PERMISSION_MODES, PROJECT_LIMITS } from '@shared/protocol';
 import { publishState, type ArtifactMeta } from '@shared/artifacts';
 import { STORAGE_NOT_CONFIGURED } from '@shared/storage';
 import { BUILTIN_PETS, PET_GRID, PET_LIMITS, PET_PARTS, type PetDef } from '@shared/pets';
+import { SOUND_EVENTS, SOUND_LIMITS, SOUND_WAVES } from '@shared/sounds';
 import type { ProjectEdit } from './work-project';
 
 export interface ScheduleHost {
@@ -343,6 +344,7 @@ function registerPets(pi: ExtensionAPI, host: PetHost) {
       'save needs id (lowercase letters, digits, -), label (the name shown, up to ' + PET_LIMITS.label + ' characters) and shapes, a list of {fill, part?, rects:[{x,y,w,h,part?}]} painted first to last. ' +
       'Build it like the built-in pets (see pidesk_pet_list): a body block, four legs (parts "leg a" / "leg b" alternating), arms (parts "arm l" / "arm r"), ' +
       'eyes as a shape with part "eyes", a one-pixel-high rectangle with part "mouth", an optional "tail". Keep feet at y 14 and the head near y 0. ' +
+      `Optionally sounds: its own synthesized voices, an object keyed by event (${SOUND_EVENTS.join(', ')}); each is {wave, gain, notes:[{freq,at,len}]}. Events left out play the default. ` +
       'delete needs id. Saving an existing id replaces it. Tell the user to pick the skin in Settings → Appearance.',
     promptSnippet: 'Create custom desktop pet skins in the built-in pets’ pixel format',
     parameters: Type.Object({
@@ -350,6 +352,7 @@ function registerPets(pi: ExtensionAPI, host: PetHost) {
       id: Type.String({ description: 'Skin id' }),
       label: Type.Optional(Type.String({ description: 'save: the name shown in Settings' })),
       shapes: Type.Optional(Type.Array(PetShapeField, { description: `save: the drawing (at most ${PET_LIMITS.shapes} shapes, ${PET_LIMITS.rects} rectangles in all)` })),
+      sounds: Type.Optional(Type.Any({ description: `save: the pet's voices; wave ${SOUND_WAVES.join('/')}, gain 0..${SOUND_LIMITS.gain}, at most ${SOUND_LIMITS.notes} notes (freq ${SOUND_LIMITS.freq.min}-${SOUND_LIMITS.freq.max} Hz, at 0-${SOUND_LIMITS.at.max} s, len ${SOUND_LIMITS.len.min}-${SOUND_LIMITS.len.max} s)` })),
     }),
     annotations: { destructiveHint: true },
     async execute(_id, p) {
@@ -357,7 +360,7 @@ function registerPets(pi: ExtensionAPI, host: PetHost) {
         host.remove(p.id);
         return text(`Deleted pet ${p.id}.`);
       }
-      const pet = host.save({ id: p.id, label: p.label, shapes: p.shapes });
+      const pet = host.save({ id: p.id, label: p.label, shapes: p.shapes, sounds: p.sounds });
       return text(`Saved pet "${pet.label}" (${pet.id}). It is listed under Settings → Appearance → Pet skin.`, { pet });
     },
   });

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { BUILTIN_PETS, DEFAULT_PET_ID, type PetDef } from '@shared/pets';
 import type { MessageKey } from '@shared/i18n';
 import { t as tr } from '@/lib/i18n';
+import { playSound } from '@/lib/sounds';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/store/app';
 import type { SessionView } from '@/store/types';
@@ -370,9 +371,18 @@ function greetingFor(date: Date) {
   return tr(`greet.${period}.${1 + Math.floor(Math.random() * GREETING_COUNT)}` as MessageKey);
 }
 
-/** The pet's first words of the day: returns a greeting once per calendar day, then null until tomorrow. */
-function useDailyGreeting(enabled: boolean) {
-  const [text, setText] = useState<string | null>(null);
+/** The pet's words: a greeting once per calendar day, and again whenever the skin is switched; null while it is quiet. */
+function useDailyGreeting(enabled: boolean, skin: string | undefined) {
+  // An object, so the same sentence twice in a row is still a new greeting and restarts the timer.
+  const [said, setSaid] = useState<{ text: string } | null>(null);
+  const shownSkin = useRef(skin);
+  useEffect(() => {
+    if (shownSkin.current === skin) return;
+    shownSkin.current = skin;
+    if (!enabled) return;
+    setSaid({ text: greetingFor(new Date()) });
+    playSound('speak');
+  }, [enabled, skin]);
   useEffect(() => {
     if (!enabled) return;
     const now = new Date();
@@ -381,22 +391,23 @@ function useDailyGreeting(enabled: boolean) {
       if (localStorage.getItem(GREETED_KEY) === today) return;
       localStorage.setItem(GREETED_KEY, today);
     } catch { /* storage unavailable: greet this session only */ }
-    setText(greetingFor(now));
+    setSaid({ text: greetingFor(now) });
+    playSound('speak');
   }, [enabled]);
   useEffect(() => {
-    if (!text) return;
-    const timer = setTimeout(() => setText(null), GREETING_MS);
+    if (!said) return;
+    const timer = setTimeout(() => setSaid(null), GREETING_MS);
     return () => clearTimeout(timer);
-  }, [text]);
-  return text;
+  }, [said]);
+  return said?.text ?? null;
 }
 
 /** Lives on the top edge of the input box; mark neighbours above it with `PET_GROUND` to give it something to climb. */
 export function Clawd({ mood }: { mood: Mood }) {
   const track = useRef<HTMLDivElement>(null);
   const enabled = useApp((s) => s.settings.pet) !== false;
-  const greeting = useDailyGreeting(enabled);
   const skin = useApp((s) => s.settings.petSkin);
+  const greeting = useDailyGreeting(enabled, skin);
   const custom = useApp((s) => s.settings.pets);
   const pet = allPets(custom).find((p) => p.id === skin) ?? BUILTIN_PETS.find((p) => p.id === DEFAULT_PET_ID)!;
   const pos = useRef<HTMLDivElement>(null);
@@ -471,6 +482,7 @@ export function Clawd({ mood }: { mood: Mood }) {
         }}
         onDoubleClick={() => {
           clearTimeout(joyTimer.current);
+          playSound('pet');
           setJoy(true);
           joyTimer.current = setTimeout(() => setJoy(false), JOY_MS);
         }}

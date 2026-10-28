@@ -3,6 +3,8 @@
 // the stylesheet animates parts by name (legs step, arms tap, eyes blink / scan, the mouth talks,
 // the tail swings), so a custom skin gets the same moods as the built-in ones for free.
 
+import { parseVoices, type Voices } from './sounds';
+
 /** Parts the stylesheet knows how to animate. */
 export const PET_PARTS = ['leg a', 'leg b', 'arm l', 'arm r', 'tail', 'eyes', 'mouth'] as const;
 export type PetPart = (typeof PET_PARTS)[number];
@@ -25,6 +27,8 @@ export interface PetDef {
   label: string;
   /** Painted first to last. */
   shapes: PetShape[];
+  /** This pet's own sounds; events left out play the app's default. */
+  sounds?: Voices;
 }
 
 /** The drawing area in sprite units; the sprite's viewBox is wider only to make room for props. */
@@ -37,6 +41,13 @@ export const BUILTIN_PETS: readonly PetDef[] = [
   {
     id: 'clawd',
     label: 'Clawd',
+    sounds: {
+      done: { wave: 'triangle', gain: 0.2, notes: [{ freq: 523, at: 0, len: 0.1 }, { freq: 784, at: 0.09, len: 0.1 }, { freq: 1047, at: 0.18, len: 0.2 }] },
+      error: { wave: 'triangle', gain: 0.2, notes: [{ freq: 392, at: 0, len: 0.12 }, { freq: 294, at: 0.12, len: 0.12 }, { freq: 220, at: 0.24, len: 0.22 }] },
+      ask: { wave: 'triangle', gain: 0.2, notes: [{ freq: 698, at: 0, len: 0.09 }, { freq: 698, at: 0.15, len: 0.09 }, { freq: 880, at: 0.3, len: 0.14 }] },
+      pet: { wave: 'triangle', gain: 0.14, notes: [{ freq: 784, at: 0, len: 0.06 }, { freq: 1047, at: 0.06, len: 0.1 }] },
+      speak: { wave: 'triangle', gain: 0.16, notes: [{ freq: 392, at: 0, len: 0.07 }, { freq: 587, at: 0.08, len: 0.07 }, { freq: 494, at: 0.16, len: 0.07 }, { freq: 740, at: 0.24, len: 0.14 }] },
+    },
     shapes: [
       {
         fill: '#d97757',
@@ -57,6 +68,13 @@ export const BUILTIN_PETS: readonly PetDef[] = [
   {
     id: 'cat',
     label: '像素猫',
+    sounds: {
+      done: { wave: 'sine', gain: 0.2, notes: [{ freq: 880, at: 0, len: 0.1 }, { freq: 1175, at: 0.1, len: 0.18 }] },
+      error: { wave: 'sawtooth', gain: 0.08, notes: [{ freq: 300, at: 0, len: 0.2 }, { freq: 200, at: 0.2, len: 0.3 }] },
+      ask: { wave: 'sine', gain: 0.2, notes: [{ freq: 700, at: 0, len: 0.1 }, { freq: 950, at: 0.08, len: 0.14 }, { freq: 700, at: 0.3, len: 0.1 }, { freq: 950, at: 0.38, len: 0.14 }] },
+      pet: { wave: 'triangle', gain: 0.2, notes: [{ freq: 110, at: 0, len: 0.08 }, { freq: 130, at: 0.07, len: 0.08 }, { freq: 110, at: 0.14, len: 0.08 }, { freq: 130, at: 0.21, len: 0.08 }, { freq: 110, at: 0.28, len: 0.08 }, { freq: 130, at: 0.35, len: 0.1 }] },
+      speak: { wave: 'sine', gain: 0.2, notes: [{ freq: 600, at: 0, len: 0.08 }, { freq: 800, at: 0.07, len: 0.1 }, { freq: 950, at: 0.16, len: 0.1 }, { freq: 750, at: 0.26, len: 0.1 }, { freq: 550, at: 0.35, len: 0.14 }] },
+    },
     shapes: [
       {
         fill: '#e0a458',
@@ -81,6 +99,13 @@ export const BUILTIN_PETS: readonly PetDef[] = [
   {
     id: 'robot',
     label: '机器人',
+    sounds: {
+      done: { wave: 'square', gain: 0.08, notes: [{ freq: 880, at: 0, len: 0.07 }, { freq: 1320, at: 0.08, len: 0.07 }, { freq: 1760, at: 0.16, len: 0.14 }] },
+      error: { wave: 'sawtooth', gain: 0.1, notes: [{ freq: 220, at: 0, len: 0.12 }, { freq: 165, at: 0.14, len: 0.12 }, { freq: 110, at: 0.28, len: 0.2 }] },
+      ask: { wave: 'square', gain: 0.08, notes: [{ freq: 1000, at: 0, len: 0.06 }, { freq: 1000, at: 0.12, len: 0.06 }, { freq: 1000, at: 0.24, len: 0.06 }] },
+      pet: { wave: 'square', gain: 0.07, notes: [{ freq: 1200, at: 0, len: 0.04 }, { freq: 900, at: 0.05, len: 0.04 }, { freq: 1500, at: 0.1, len: 0.06 }] },
+      speak: { wave: 'square', gain: 0.07, notes: [{ freq: 440, at: 0, len: 0.05 }, { freq: 660, at: 0.06, len: 0.05 }, { freq: 550, at: 0.12, len: 0.05 }, { freq: 880, at: 0.18, len: 0.05 }, { freq: 660, at: 0.24, len: 0.1 }] },
+    },
     shapes: [
       {
         fill: '#8aa4bd',
@@ -133,7 +158,7 @@ function parseRect(v: unknown, where: string): PetRect {
 /** Check an untrusted pet definition (file, pasted JSON, model output) and return a clean copy. */
 export function parsePetDef(raw: unknown): PetDef {
   if (!isObj(raw)) return fail('A pet must be a JSON object {id, label, shapes}');
-  const { id, label, shapes } = raw;
+  const { id, label, shapes, sounds } = raw;
   if (typeof id !== 'string' || !PET_ID.test(id)) fail('id must be lowercase letters, digits and - (1-32 chars, not starting with -)');
   if (typeof label !== 'string' || !label.trim() || label.trim().length > PET_LIMITS.label) fail(`label must be 1-${PET_LIMITS.label} characters`);
   if (!Array.isArray(shapes) || !shapes.length || shapes.length > PET_LIMITS.shapes) fail(`shapes must be a list of 1-${PET_LIMITS.shapes} shapes`);
@@ -149,5 +174,7 @@ export function parsePetDef(raw: unknown): PetDef {
     const rects = (s.rects as unknown[]).map((r, j) => parseRect(r, `${where}.rects[${j}]`));
     return part ? { fill: s.fill as string, part, rects } : { fill: s.fill as string, rects };
   });
-  return { id: id as string, label: (label as string).trim(), shapes: clean };
+  const pet: PetDef = { id: id as string, label: (label as string).trim(), shapes: clean };
+  if (sounds !== undefined && sounds !== null) pet.sounds = parseVoices(sounds);
+  return pet;
 }

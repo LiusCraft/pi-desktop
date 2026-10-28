@@ -9,6 +9,7 @@ import { revealItem } from '@/lib/quote-links';
 import { positiveLine } from '@shared/tool-previews';
 import { call, errText, modKey } from '@/lib/api';
 import { t } from '@/lib/i18n';
+import { playSound } from '@/lib/sounds';
 import { desktopCommands, MODES, VIEW_MODES, type ViewMode } from '@/lib/constants';
 import { fname, relPath } from '@/lib/format';
 import { currentSession, getApp, isWork, read, savePref, setApp, setPref, updateSession, type AppState } from './app';
@@ -149,8 +150,10 @@ function flushEvents() {
           break;
         case 'notify':
           // Problems interrupt; info-level notices join the transcript instead.
-          if (ev.level === 'error') toast.error(ev.message);
-          else if (ev.level === 'warning') toast.warning(ev.message);
+          if (ev.level === 'error') {
+            toast.error(ev.message);
+            playSound('error');
+          } else if (ev.level === 'warning') toast.warning(ev.message);
           else push(s, { kind: 'note', key: newKey(), text: ev.message }, view);
           break;
         case 'editor_text':
@@ -175,6 +178,8 @@ function runEffects(id: string, fx: Effects) {
   if (fx.refreshStats) void refreshStats(id);
   if (fx.prCreated) call('sessions:update', id, { pr: fx.prCreated }).catch(() => {});
   if (fx.editorText !== undefined) drafts.setText(sessionDraftKey(id), fx.editorText);
+  if (fx.settled && !fx.settled.aborted) playSound('done');
+  if (fx.waiting) playSound('ask');
   // Away = another session is open, or the window is hidden / not in front.
   const away = !isCur || document.hidden || !document.hasFocus();
   if (fx.settled && away) {
