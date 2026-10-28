@@ -39,11 +39,11 @@ export function SidebarToggle({ className }: { className?: string }) {
   );
 }
 
-/** Session state, in priority order: needs you > working > unread > PR state > idle (empty circle). */
+/** Session state, in priority order: needs you > working or compacting > unread > PR state > idle (empty circle). */
 function StatusIcon({ s }: { s: SessionView }) {
   const icon = (() => {
     if (s.waiting) return <TriangleAlertIcon className="size-3.5 text-warning" />;
-    if (s.running) return <span className="size-3 animate-spin rounded-full border-[1.5px] border-primary border-t-transparent" />;
+    if (s.running || s.compacting) return <span className="size-3 animate-spin rounded-full border-[1.5px] border-primary border-t-transparent" />;
     if (s.unread) return <span className="size-2 rounded-full bg-primary" />;
     if (s.pr) {
       if (s.pr.state === 'merged') return <GitMergeIcon className="size-3.5 text-[#8957e5]" />;
@@ -102,7 +102,7 @@ const PR_STATE_KEY = { open: 'sidebar.prOpen', merged: 'sidebar.prMerged', close
 function SessionRow({ s, active, child }: { s: SessionView; active: boolean; child?: boolean }) {
   const t = useT();
   const prNote = s.pr ? ` · PR #${s.pr.num} ${s.pr.state === 'open' && s.pr.draft ? t('sidebar.prDraft') : PR_STATE_KEY[s.pr.state as keyof typeof PR_STATE_KEY] ? t(PR_STATE_KEY[s.pr.state as keyof typeof PR_STATE_KEY]) : s.pr.state}` : '';
-  const title = s.waiting ? t('sidebar.waiting') : s.running ? t('sidebar.working') : `${s.meta.title} · ${ago(s.meta.updatedAt || Date.now(), true)}${prNote}`;
+  const title = s.waiting ? t('sidebar.waiting') : s.compacting ? t('status.compacting') : s.running ? t('sidebar.working') : `${s.meta.title} · ${ago(s.meta.updatedAt || Date.now(), true)}${prNote}`;
   return (
     <ContextMenu>
     <ContextMenuTrigger asChild>

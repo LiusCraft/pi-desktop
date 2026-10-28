@@ -97,6 +97,8 @@ export interface SessionView {
   items: Item[];
   loaded: boolean;
   running: boolean;
+  /** A manual or automatic compaction is running: the session is busy, but not in a turn. */
+  compacting: boolean;
   t0: number;
   tokens: number;
   statusText: string;

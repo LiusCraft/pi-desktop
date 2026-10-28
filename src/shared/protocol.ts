@@ -433,6 +433,8 @@ export interface OpenSessionResult {
   thinking: ThinkingLevel | null;
   levels: ThinkingLevel[];
   isStreaming: boolean;
+  /** A compaction is running: the session is busy, but not in a turn. */
+  isCompacting: boolean;
   stats: SessionStats | null;
   /** Interactive requests still waiting for an answer (e.g. after a window reload). */
   pending: UiRequest[];

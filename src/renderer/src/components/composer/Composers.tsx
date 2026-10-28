@@ -20,7 +20,10 @@ function useSendState() {
   const s = useCurrent();
   const draft = useDrafts((st) => (st.active ? st.drafts[st.active] : undefined));
   const ready = !!(draft?.text.trim() || draft?.attachments.length || draft?.references.length);
-  return { s, ready, busy: !!(draft?.sending || draft?.preparing || s?.stopping || s?.historyBusy), stopMode: !!s?.running && !ready };
+  const stopMode = !!(s?.running || s?.compacting) && !ready;
+  // While compacting only Stop stays available: pi rejects a prompt until the compaction ends.
+  const busy = !!(draft?.sending || draft?.preparing || s?.stopping || s?.historyBusy || (s?.compacting && !stopMode));
+  return { s, ready, busy, stopMode };
 }
 
 function Chip({ children, className, ...props }: React.ComponentProps<'button'>) {
@@ -173,7 +176,7 @@ export function CodeComposer() {
         <span className="flex-1" />
         <ModelMenu model={s ? s.model : prefs.model} trigger={<FootButton><ModelLabel id={s ? s.model : prefs.model} /></FootButton>} />
         <EffortMenu levels={s ? s.levels : levels} effort={s ? s.thinking : prefs.effort} />
-        <ContextRing pct={s?.ctxPct ?? null} cacheRate={s?.cacheRate ?? null} cost={s?.cost ?? null} busy={s?.running} sid={s?.meta.id} />
+        <ContextRing pct={s?.ctxPct ?? null} cacheRate={s?.cacheRate ?? null} cost={s?.cost ?? null} busy={!!(s?.running || s?.compacting)} sid={s?.meta.id} />
       </div>
     </div>
   );

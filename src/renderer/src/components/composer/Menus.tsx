@@ -150,7 +150,7 @@ export function ContextRing({ pct, cacheRate, cost, busy, sid }: { pct: number |
     let live = true;
     call('sessions:context', sid).then((d) => live && setData(d), () => live && setData(null));
     return () => void (live = false);
-  }, [open, sid, pct]);
+  }, [open, sid, pct, busy]);
   const ringTitle = [
     pct == null ? t('menu.context') : t('menu.contextUsed', { pct: Math.round(p) }),
     cachePct == null ? '' : t('menu.cacheRatePct', { pct: cachePct }),

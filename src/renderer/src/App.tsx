@@ -44,7 +44,7 @@ function useShortcuts() {
       }
       const s = currentSession();
       if (!s) return;
-      if (e.key === 'Escape' && s.running && !document.querySelector('[role=menu],[role=dialog]')) {
+      if (e.key === 'Escape' && (s.running || s.compacting) && !document.querySelector('[role=menu],[role=dialog]')) {
         e.preventDefault();
         return void stop(s.meta.id);
       }

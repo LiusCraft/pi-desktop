@@ -196,6 +196,8 @@ export const thread = defineMessages({
   'status.responding': { en: 'Responding…', zh: '回复中…' },
   'status.preparing': { en: 'Preparing {name}…', zh: '正在准备 {name}…' },
   'status.compacting': { en: 'Compacting context…', zh: '正在压缩上下文…' },
+  'status.compacted': { en: 'Context compacted', zh: '上下文已压缩' },
+  'status.compactionFailed': { en: 'Compaction failed: {error}', zh: '压缩失败：{error}' },
   'status.interrupted': { en: 'Interrupted · tell Pi Desktop what to do next', zh: '已中断 · 告诉 Pi Desktop 接下来该怎么做' },
   'status.retrying': { en: 'Retrying ({attempt}/{max}) — {error}', zh: '重试中（{attempt}/{max}）— {error}' },
   'status.tokens': { en: '{dur} · {tokens} tokens', zh: '{dur} · {tokens} tokens' },

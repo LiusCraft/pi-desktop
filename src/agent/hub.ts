@@ -854,6 +854,7 @@ export class SessionHub {
       thinking: session.thinkingLevel as ThinkingLevel,
       levels: session.getAvailableThinkingLevels() as ThinkingLevel[],
       isStreaming: session.isStreaming,
+      isCompacting: session.isCompacting,
       stats: this.statsOf(session),
       pending: [...live.pending.values()].map((p) => p.request),
     };
@@ -1480,7 +1481,11 @@ export class SessionHub {
   private statsOf(session: AgentSession): SessionStats | null {
     try {
       const s = session.getSessionStats();
-      return { userMessages: s.userMessages, assistantMessages: s.assistantMessages, toolCalls: s.toolCalls, tokens: s.tokens, cost: s.cost, contextUsage: s.contextUsage as SessionStats['contextUsage'] };
+      const usage = s.contextUsage as SessionStats['contextUsage'];
+      const contextWindow = usage?.contextWindow || session.model?.contextWindow || 0;
+      // pi reports no usage right after a compaction (the last response predates it); estimate it so the ring is not stale.
+      const contextUsage = usage?.percent == null && contextWindow > 0 ? this.estimatedContextUsage(session, contextWindow) : usage;
+      return { userMessages: s.userMessages, assistantMessages: s.assistantMessages, toolCalls: s.toolCalls, tokens: s.tokens, cost: s.cost, contextUsage };
     } catch {
       return null;
     }
@@ -1498,24 +1503,7 @@ export class SessionHub {
     const usage = session.getContextUsage();
     const contextWindow = usage?.contextWindow || session.model?.contextWindow || 0;
     if (!contextWindow) return null;
-    const items: ContextBreakdown['items'] = [];
-    const active = new Set(session.getActiveToolNames());
-    for (const tool of session.getAllTools()) {
-      if (!active.has(tool.name)) continue;
-      const where = tool.sourceInfo?.path ?? '';
-      const group = /\bmcp\b/i.test(`${where} ${tool.sourceInfo?.source ?? ''}`) ? 'mcp' : where.startsWith('builtin:') ? 'system' : 'extension';
-      const text = tool.name + (tool.description ?? '') + JSON.stringify(tool.parameters ?? {}) + (tool.promptGuidelines ?? []).join('\n');
-      items.push({ group, name: tool.name, tokens: approxTokens(text) });
-    }
-    const loader = session.resourceLoader;
-    for (const skill of loader.getSkills().skills) {
-      if (!skill.disableModelInvocation) items.push({ group: 'skills', name: skill.name, tokens: approxTokens(formatSkillsForPrompt([skill])) });
-    }
-    for (const file of loader.getAgentsFiles().agentsFiles) items.push({ group: 'memory', name: file.path, tokens: approxTokens(file.content) });
-    const sum = (group: string) => items.filter((i) => i.group === group).reduce((n, i) => n + i.tokens, 0);
-    // Skills and memory files are part of the system prompt text; count them once.
-    const prompt = Math.max(0, approxTokens(session.systemPrompt) - sum('skills') - sum('memory'));
-    const fixed = prompt + sum('mcp') + sum('extension') + sum('system') + sum('skills') + sum('memory');
+    const { items, sum, prompt, fixed } = this.contextFixed(session);
     const measured = usage?.tokens ?? null;
     const used = measured != null ? Math.max(measured, fixed) : fixed + session.messages.reduce((n, m) => n + estimateTokens(m), 0);
     const stats = session.getSessionStats();
@@ -1541,6 +1529,37 @@ export class SessionHub {
       items: items.sort((a, b) => b.tokens - a.tokens),
     };
   }
+
+  /** The fixed part of the context window: the system prompt, the tools, skills and memory files in it. */
+  private contextFixed(session: AgentSession) {
+    const items: ContextBreakdown['items'] = [];
+    const active = new Set(session.getActiveToolNames());
+    for (const tool of session.getAllTools()) {
+      if (!active.has(tool.name)) continue;
+      const where = tool.sourceInfo?.path ?? '';
+      const group = /\bmcp\b/i.test(`${where} ${tool.sourceInfo?.source ?? ''}`) ? 'mcp' : where.startsWith('builtin:') ? 'system' : 'extension';
+      const text = tool.name + (tool.description ?? '') + JSON.stringify(tool.parameters ?? {}) + (tool.promptGuidelines ?? []).join('\n');
+      items.push({ group, name: tool.name, tokens: approxTokens(text) });
+    }
+    const loader = session.resourceLoader;
+    for (const skill of loader.getSkills().skills) {
+      if (!skill.disableModelInvocation) items.push({ group: 'skills', name: skill.name, tokens: approxTokens(formatSkillsForPrompt([skill])) });
+    }
+    for (const file of loader.getAgentsFiles().agentsFiles) items.push({ group: 'memory', name: file.path, tokens: approxTokens(file.content) });
+    const sum = (group: string) => items.filter((i) => i.group === group).reduce((n, i) => n + i.tokens, 0);
+    // Skills and memory files are part of the system prompt text; count them once.
+    const prompt = Math.max(0, approxTokens(session.systemPrompt) - sum('skills') - sum('memory'));
+    const fixed = prompt + sum('mcp') + sum('extension') + sum('system') + sum('skills') + sum('memory');
+    return { items, sum, prompt, fixed };
+  }
+
+  /** Post-compaction usage, estimated from the projected messages until the next response measures it. */
+  private estimatedContextUsage(session: AgentSession, contextWindow: number): NonNullable<SessionStats['contextUsage']> {
+    const { fixed } = this.contextFixed(session);
+    const tokens = fixed + session.messages.reduce((n, m) => n + estimateTokens(m), 0);
+    return { tokens, contextWindow, percent: (tokens / contextWindow) * 100 };
+  }
+
   async exportHtml(id: string) {
     const live = await this.ensure(id);
     return { path: await live.runtime.session.exportToHtml() };

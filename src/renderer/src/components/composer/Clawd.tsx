@@ -12,6 +12,7 @@ export type Mood = 'idle' | 'thinking' | 'typing' | 'running' | 'reading' | 'tal
 
 /** What the pet should be doing for this session right now. */
 export function moodOf(s: SessionView | undefined): Mood {
+  if (s?.compacting) return 'thinking';
   if (!s?.running) return 'idle';
   if (s.waiting) return 'waiting';
   for (let i = s.items.length - 1; i >= 0; i--) {

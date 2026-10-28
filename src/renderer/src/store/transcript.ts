@@ -27,7 +27,7 @@ export const newKey = () => `i${++seq}`;
 
 export function emptySession(meta: SessionMeta): SessionView {
   return {
-    meta, items: [], loaded: false, running: false, t0: 0, tokens: 0, statusText: '', ctxPct: null, cacheRate: null, cost: null,
+    meta, items: [], loaded: false, running: false, compacting: false, t0: 0, tokens: 0, statusText: '', ctxPct: null, cacheRate: null, cost: null,
     model: meta.model ?? null, thinking: meta.thinking ?? null, levels: [], commands: [], waiting: null, unread: false,
     todosKey: null, lastTodos: [], outputs: [], changes: [], gitState: null, pr: meta.pr, prThreads: [], prHidden: false, files: null, fileTabs: [],
     panels: readPanels(meta.id), arrangement: readArrangement(meta.id), expanded: null, expandedWide: false, detail: null, previewUrl: null,
@@ -352,11 +352,21 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
       push(s, { kind: 'note', key: newKey(), text: t('status.retrying', { attempt: ev.attempt, max: ev.maxAttempts, error: ev.errorMessage || '' }) }, view);
       return {};
     case 'compaction_start':
+      s.compacting = true;
       s.statusText = t('status.compacting');
       return {};
-    case 'compaction_end':
-      if (!ev.aborted) push(s, { kind: 'note', key: newKey(), text: ev.errorMessage ? `Compaction failed: ${ev.errorMessage}` : 'Context compacted' }, view);
+    case 'compaction_end': {
+      s.compacting = false;
+      if (!ev.aborted) {
+        const r = ev.result;
+        const error = ev.errorMessage ? String(ev.errorMessage).replace(/^Compaction failed:\s*/, '') : '';
+        let text = t('status.compacted');
+        if (error) text = t('status.compactionFailed', { error });
+        else if (r) text = t('act.compacted', { before: fmtTok(r.tokensBefore), after: fmtTok(r.estimatedTokensAfter ?? 0) });
+        push(s, { kind: 'note', key: newKey(), text }, view);
+      }
       return { refreshStats: true };
+    }
     case 'thinking_level_changed':
       s.thinking = ev.level;
       return {};
@@ -449,6 +459,7 @@ export function replay(s: SessionView, messages: AgentMessage[], view: ViewMode)
   s.waiting = null;
   s.detail = null;
   s.pendingUser = [];
+  s.compacting = false;
   let sawAssistant = false;
   for (const m of messages) {
     if (m.role === 'user') {

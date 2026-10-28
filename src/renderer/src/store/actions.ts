@@ -10,7 +10,7 @@ import { positiveLine } from '@shared/tool-previews';
 import { call, errText, modKey } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { desktopCommands, MODES, VIEW_MODES, type ViewMode } from '@/lib/constants';
-import { fmtTok, fname, relPath } from '@/lib/format';
+import { fname, relPath } from '@/lib/format';
 import { currentSession, getApp, isWork, read, savePref, setApp, setPref, updateSession, type AppState } from './app';
 import { dialogs } from './dialogs';
 import { activeDraft, drafts, getDraft, sessionDraftKey, useDrafts } from './drafts';
@@ -82,6 +82,7 @@ function flushEvents() {
           if (s.running) settle(s, true, view);
           s.hostEpoch++;
           s.loaded = false;
+          s.compacting = false;
           s.setup = null;
           s.waiting = null;
           for (const key of [...s.pendingUser]) {
@@ -232,6 +233,7 @@ async function resyncRemote() {
         }
         known.meta = meta;
         known.running = meta.status === 'running';
+        known.compacting = false;
         known.loaded = false;
       }
     });
@@ -416,6 +418,7 @@ export async function openSession(id: string, fresh = false) {
       if (!fresh) replay(x, r.messages, st.prefs.viewMode);
       x.loaded = true;
       x.setup = null;
+      x.compacting = r.isCompacting;
       // A new session is about to run its first message: the answer here predates it.
       if (!fresh) x.running = r.isStreaming;
       // The run began before this window opened the session: count from the message that started it.
@@ -544,10 +547,17 @@ async function slashCommand(s: SessionView | undefined, head: string, text: stri
 
 /** Summarise older messages to free context (/compact, or the context popover). */
 export async function compactSession(id: string, instructions?: string) {
-  updateSession(id, (x) => void (x.statusText = t('act.compacting')));
-  const r = await call('sessions:compact', id, instructions);
-  pushItem(id, { kind: 'note', key: newKey(), text: t('act.compacted', { before: fmtTok(r.tokensBefore), after: fmtTok(r.estimatedTokensAfter ?? 0) }) });
-  void refreshStats(id);
+  updateSession(id, (x) => {
+    x.compacting = true;
+    x.statusText = t('status.compacting');
+  });
+  try {
+    await call('sessions:compact', id, instructions);
+  } finally {
+    // The compaction_end event does this too; this covers a host that never answered.
+    updateSession(id, (x) => void (x.compacting = false));
+    void refreshStats(id);
+  }
 }
 
 function pushItem(id: string, item: Item) {
@@ -614,9 +624,10 @@ export async function send(queueOnly = false) {
   let s = currentSession();
   if (s?.stopping || s?.historyBusy) return;
   if (!text.trim() && !files.length && !references.length) {
-    if (s?.running) void stop(s.meta.id);
+    if (s?.running || s?.compacting) void stop(s.meta.id);
     return;
   }
+  if (s?.compacting) return void toast.warning(t('act.waitCompaction'));
   const head = text.trim().split(/\s+/)[0];
   if ((files.length || references.length) && head.startsWith('/')) return void toast.warning(t('act.slashNoAttach'));
   if (await slashCommand(s, head, text)) return;
@@ -703,10 +714,10 @@ export async function send(queueOnly = false) {
   }
 }
 
-/** Stop the run; queued messages come back to the draft. */
+/** Stop the run (or an in-flight compaction); queued messages come back to the draft. */
 export async function stop(id: string) {
   const s = getApp().sessions[id];
-  if (!s || s.stopping || !s.running) return;
+  if (!s || s.stopping || !(s.running || s.compacting)) return;
   const epoch = s.hostEpoch;
   updateSession(id, (v) => {
     v.stopping = true;
@@ -841,6 +852,7 @@ export async function archiveSession(id: string) {
       v.meta.archived = true;
       v.loaded = false;
       v.running = false;
+      v.compacting = false;
       v.setup = null;
     });
     if (getApp().current === id) showWelcome();

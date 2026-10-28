@@ -98,8 +98,8 @@ function StatusLine({ s }: { s: SessionView }) {
   const tasks = runningTasks(s).length;
   if (s.setup) return null; // the start-up card says what is happening
   // Between turns, background tasks keep going: say so instead of showing a sleeping spark.
-  if (!s.running && !tasks) return s.items.length ? <span className="spark opacity-60" /> : null;
-  if (!s.running) {
+  if (!s.running && !s.compacting && !tasks) return s.items.length ? <span className="spark opacity-60" /> : null;
+  if (!s.running && !s.compacting) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <span className="spark opacity-60" />
@@ -112,7 +112,7 @@ function StatusLine({ s }: { s: SessionView }) {
   return (
     <div className="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap text-sm text-muted-foreground">
       <span className="spark spin shrink-0" />
-      <span className="shrink-0">{t('transcript.tokens', { dur: fmtDur(Date.now() - s.t0), tokens: fmtTok(s.tokens) })}</span>
+      {s.running && <span className="shrink-0">{t('transcript.tokens', { dur: fmtDur(Date.now() - s.t0), tokens: fmtTok(s.tokens) })}</span>}
       {tasks > 0 && (
         <button
           className="shrink-0 rounded-md bg-info/15 px-1.5 py-0.5 text-info hover:bg-info/25"
@@ -122,7 +122,7 @@ function StatusLine({ s }: { s: SessionView }) {
           {t(tasks > 1 ? 'transcript.runningTasks' : 'transcript.runningTask', { n: tasks })}
         </button>
       )}
-      <span className="min-w-0 flex-1 truncate">{s.waiting ? t('transcript.waitingYou') : s.statusText || t('status.thinking')}</span>
+      <span className="min-w-0 flex-1 truncate">{s.waiting ? t('transcript.waitingYou') : s.compacting && !s.stopping ? t('status.compacting') : s.statusText || t('status.thinking')}</span>
     </div>
   );
 }
