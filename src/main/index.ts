@@ -402,7 +402,8 @@ async function openArtifact(id: string) {
     e.preventDefault();
     if (/^https?:/.test(url)) void shell.openExternal(url);
   });
-  w.webContents.session.setPermissionRequestHandler((_wc, _permission, deny) => deny(false));
+  // Only the font list (settings font picker) is ever granted.
+  w.webContents.session.setPermissionRequestHandler((_wc, permission, allow) => allow((permission as string) === 'local-fonts'));
   w.webContents.on('page-title-updated', (_e, title) => {
     if (title.trim()) w.setTitle(title);
   });

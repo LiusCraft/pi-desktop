@@ -7,9 +7,10 @@ import '@xterm/xterm/css/xterm.css';
 import type { TerminalInfo } from '@shared/protocol';
 import { bridge, call } from '@/lib/api';
 import { t as tr, useT } from '@/lib/i18n';
-import { resolvedTheme } from '@/lib/theme';
+import { fontStack, resolvedTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import { fail, togglePanel } from '@/store/actions';
+import { getApp } from '@/store/app';
 import type { SessionView } from '@/store/types';
 import { Card, IconBtn, type CardProps } from './Panels';
 
@@ -30,7 +31,7 @@ function TermView({ id, active }: { id: string; active: boolean }) {
   const fit = useRef<() => void>(() => {});
 
   useEffect(() => {
-    const term = new Terminal({ fontFamily: FONT, fontSize: 12, cursorBlink: true, scrollback: 5000, theme: termTheme() });
+    const term = new Terminal({ fontFamily: fontStack(getApp().settings.codeFont, FONT), fontSize: 12, cursorBlink: true, scrollback: 5000, theme: termTheme() });
     const fitter = new FitAddon();
     term.loadAddon(fitter);
     term.open(host.current!);
@@ -51,7 +52,14 @@ function TermView({ id, active }: { id: string; active: boolean }) {
       else term.write(e.data);
     });
     const offExit = bridge.on('terminal:exit', (e) => e.id === id && term.write(exitNotice()));
-    const offTheme = bridge.on('settings:changed', (s) => void (term.options.theme = termTheme(s.palette, s.resolvedTheme)));
+    const offTheme = bridge.on('settings:changed', (s) => {
+      term.options.theme = termTheme(s.palette, s.resolvedTheme);
+      const family = fontStack(s.codeFont, FONT);
+      if (term.options.fontFamily !== family) {
+        term.options.fontFamily = family;
+        refit();
+      }
+    });
     term.onData((data) => void call('terminal:write', id, data).catch(() => {}));
 
     let disposed = false;

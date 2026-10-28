@@ -822,6 +822,9 @@ export const TERMINAL_MAX_LINES = 500;
 export interface Settings {
   theme: ThemeSetting | null;
   palette: Palette;
+  /** Font family for the interface and for code/terminal (a name or a CSS list); null uses the system fonts. */
+  uiFont: string | null;
+  codeFont: string | null;
   /** UI language; "system" follows the OS and falls back to English. */
   language: LanguageSetting;
   notify: boolean;

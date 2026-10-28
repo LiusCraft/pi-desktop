@@ -6,6 +6,9 @@
 /* ---------------------------------------------------------------- tokens
    shadcn token names, Claude-desktop palette: warm paper in light, warm charcoal in dark. */
 :root {
+  /* Native UI fonts per OS (no web fonts): the app should look like it belongs to the platform. */
+  --system-font-sans: system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
+  --system-font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Cascadia Code", Menlo, Consolas, "Microsoft YaHei UI", monospace;
   --radius: 0.625rem;
   --background: #faf9f5;
   --foreground: #141413;
@@ -115,9 +118,11 @@
 }
 
 @theme inline {
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --font-serif: "Source Serif 4", "Songti SC", "Noto Serif SC", Georgia, serif;
-  --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, Menlo, Consolas, monospace;
+  /* Native UI fonts per OS (no web fonts): the app should look like it belongs to the platform. */
+  /* --app-font-* are set from the font settings (lib/theme.ts) and lead the system stack when present. */
+  --font-sans: var(--app-font-sans, var(--system-font-sans));
+  --font-serif: "Songti SC", "SimSun", "Noto Serif CJK SC", Georgia, serif;
+  --font-mono: var(--app-font-mono, var(--system-font-mono));
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -168,7 +173,8 @@
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
-    font-size: 14.5px;
+    font-size: 14px;
+    text-rendering: optimizeLegibility;
     overflow: hidden;
     /* App chrome is not selectable; only content and inputs opt back in. */
     user-select: none;

@@ -25,6 +25,7 @@ import { petVoices, previewSound } from '@/lib/sounds';
 import { applyTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import { allPets, PetSprite } from '@/components/composer/Clawd';
+import { FontPicker } from './FontPicker';
 import { ModelPicker } from './ModelPicker';
 import { ModelsSection } from './ModelsSection';
 import { RemoteSection } from './RemoteSection';
@@ -307,6 +308,12 @@ export function SettingsApp() {
                 {PALETTES.map((p) => <SelectItem key={p} value={p}>{t(PALETTE_LABELS[p])}</SelectItem>)}
               </SelectGroup></SelectContent>
             </Select>
+          </Row>
+          <Row title={t('settings.uiFont')}>
+            <FontPicker value={settings.uiFont ?? null} label={t('settings.uiFont')} onChange={(v) => void patch({ uiFont: v })} />
+          </Row>
+          <Row title={t('settings.codeFont')}>
+            <FontPicker value={settings.codeFont ?? null} label={t('settings.codeFont')} onChange={(v) => void patch({ codeFont: v })} />
           </Row>
           <Row title={t('settings.sidebar')}>
             <Switch checked={!!settings.sidebarCollapsed} onCheckedChange={(v) => void patch({ sidebarCollapsed: v })} />
