@@ -12,7 +12,7 @@ import { call, errText, modKey } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { cuePet } from '@/lib/pet-cue';
 import { playSound } from '@/lib/sounds';
-import { desktopCommands, MODES, VIEW_MODES, type ViewMode } from '@/lib/constants';
+import { COMPACT_WINDOW_WIDTH, desktopCommands, MODES, VIEW_MODES, type ViewMode } from '@/lib/constants';
 import { fname, relPath } from '@/lib/format';
 import { currentSession, getApp, isWork, read, savePref, setApp, setPref, updateSession, type AppState } from './app';
 import { dialogs } from './dialogs';
@@ -1503,6 +1503,11 @@ export async function addWorkFolder() {
   } catch (err) {
     fail(err);
   }
+}
+
+/** Narrow windows: once the user has picked something in the sidebar, give the space back. */
+export function collapseSidebarIfCompact() {
+  if (window.innerWidth < COMPACT_WINDOW_WIDTH && !getApp().sidebarCollapsed) toggleSidebar(true);
 }
 
 export function toggleSidebar(collapsed?: boolean) {

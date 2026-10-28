@@ -17,7 +17,7 @@ import { ago, fname } from '@/lib/format';
 import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import {
-  archiveSession, deleteSession, openSession, removeProject, selectProject, setSessionTitle, setView, showActivity, showArchived, showArtifacts, showCustomize, showProjects, showScheduled, showWelcome, toggleSidebar,
+  archiveSession, collapseSidebarIfCompact, deleteSession, openSession, removeProject, selectProject, setSessionTitle, setView, showActivity, showArchived, showArtifacts, showCustomize, showProjects, showScheduled, showWelcome, toggleSidebar,
 } from '@/store/actions';
 import { setApp, useApp } from '@/store/app';
 import { InlineEdit } from '@/components/common/InlineEdit';
@@ -90,7 +90,7 @@ function ProjectActions({ path, parts: { Item, Separator } }: { path: string; pa
   const t = useT();
   return (
     <>
-      <Item onSelect={() => { selectProject(path); showWelcome(); }}><PlusIcon />{t('sidebar.newSession')}</Item>
+      <Item onSelect={() => { selectProject(path); showWelcome(); collapseSidebarIfCompact(); }}><PlusIcon />{t('sidebar.newSession')}</Item>
       <Item onSelect={() => void call('app:revealPath', path).catch(() => {})}>{t(isMac ? 'sidebar.revealMac' : 'sidebar.revealOther')}</Item>
       <Separator />
       <Item variant="destructive" onSelect={() => void removeProject(path)}>{t('sidebar.removeProject')}</Item>
@@ -123,7 +123,7 @@ function SessionRow({ s, active, child }: { s: SessionView; active: boolean; chi
           <button
             className="flex min-w-0 flex-1 items-center gap-2 text-left"
             title={title}
-            onClick={() => void openSession(s.meta.id)}
+            onClick={() => { void openSession(s.meta.id); collapseSidebarIfCompact(); }}
             onDoubleClick={() => setRenaming(true)}
           >
             <StatusIcon s={s} />
@@ -151,7 +151,7 @@ function SessionRow({ s, active, child }: { s: SessionView; active: boolean; chi
 function NavItem({ icon, children, onClick, hint, active }: { icon: React.ReactNode; children: React.ReactNode; onClick?: () => void; hint?: string; active?: boolean }) {
   return (
     <button
-      onClick={onClick}
+      onClick={() => { onClick?.(); collapseSidebarIfCompact(); }}
       aria-current={active ? 'page' : undefined}
       title={hint}
       className={cn('flex h-7 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm', active ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent')}
@@ -282,7 +282,7 @@ function CodeNav() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start" className="w-56"><ProjectActions path={path} parts={DROPDOWN_PARTS} /></DropdownMenuContent>
                     </DropdownMenu>
-                    <button className="hidden rounded p-0.5 group-hover:block hover:bg-sidebar-accent hover:text-foreground" title={t('sidebar.newSessionIn', { name: fname(path) })} onClick={() => { selectProject(path); showWelcome(); }}>
+                    <button className="hidden rounded p-0.5 group-hover:block hover:bg-sidebar-accent hover:text-foreground" title={t('sidebar.newSessionIn', { name: fname(path) })} onClick={() => { selectProject(path); showWelcome(); collapseSidebarIfCompact(); }}>
                       <PlusIcon className="size-3.5" />
                     </button>
                   </div>

@@ -11,6 +11,9 @@ function described<Id extends string>(ids: readonly Id[], key: (id: Id) => strin
   }));
 }
 
+/** Below this window width the sidebar would crowd the conversation, so picking something in it folds it away. */
+export const COMPACT_WINDOW_WIDTH = 900;
+
 export const MODES = described<PermissionMode>(['auto', 'default', 'acceptEdits', 'plan', 'bypass'], (id) => `mode.${id}`);
 export const modeName = (id: PermissionMode | undefined) => MODES.find((m) => m.id === id)?.name ?? MODES[0].name;
 
