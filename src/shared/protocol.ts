@@ -115,6 +115,8 @@ export interface SessionMeta {
   /** What that automation already handled: the fixed commit and the merged PR, so a restart cannot repeat it. */
   prAutoDone?: { fix?: string; merge?: number };
   archived?: boolean;
+  /** Pinned by the user: listed above the others in the sidebar. */
+  pinned?: boolean;
   imported?: boolean;
   /** The session this one was spun off from (a suggested task), for the sidebar. */
   parentId?: string;
@@ -1005,7 +1007,7 @@ export interface Api {
   'sessions:respond'(id: string, requestId: string, response: UiResponse): void;
   'sessions:setMode'(id: string, mode: PermissionMode): void;
   'sessions:setStyle'(id: string, style: OutputStyle): void;
-  'sessions:update'(id: string, patch: { title?: string; pr?: PrSummary | null; suggestion?: { key: string; state: 'here' | 'dismissed' }; prAuto?: { fixCi?: boolean; merge?: boolean; fixDone?: string; mergeDone?: number } }): SessionMeta;
+  'sessions:update'(id: string, patch: { title?: string; pinned?: boolean; pr?: PrSummary | null; suggestion?: { key: string; state: 'here' | 'dismissed' }; prAuto?: { fixCi?: boolean; merge?: boolean; fixDone?: string; mergeDone?: number } }): SessionMeta;
   'sessions:archive'(id: string): void;
   'sessions:unarchive'(id: string): SessionMeta;
   'sessions:inspect'(id: string): SessionCleanup;

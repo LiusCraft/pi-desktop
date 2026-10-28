@@ -904,8 +904,17 @@ export async function setSessionTitle(id: string, title: string) {
   }
 }
 
+export async function setSessionPinned(id: string, pinned: boolean) {
+  try {
+    const meta = await call('sessions:update', id, { pinned });
+    updateSession(id, (v) => void (v.meta = meta));
+  } catch (err) {
+    fail(err);
+  }
+}
+
 /** Archive keeps the conversation and any worktree on disk; the sidebar just stops listing it. */
-export async function archiveSession(id: string) {
+export async function archiveSession(id: string, quiet = false) {
   const s = getApp().sessions[id];
   if (!s) return;
   try {
@@ -918,7 +927,7 @@ export async function archiveSession(id: string) {
       v.setup = null;
     });
     if (getApp().current === id) showWelcome();
-    toast(t('act.archived', { title: s.meta.title }), { action: { label: t('act.undo'), onClick: () => void unarchiveSession(id) } });
+    if (!quiet) toast(t('act.archived', { title: s.meta.title }), { action: { label: t('act.undo'), onClick: () => void unarchiveSession(id) } });
   } catch (err) {
     fail(err);
   }
@@ -931,6 +940,18 @@ export async function unarchiveSession(id: string) {
   } catch (err) {
     fail(err);
   }
+}
+
+/** Several at once: one toast, one undo. */
+export async function archiveSessions(ids: string[]) {
+  if (ids.length < 2) return void (ids[0] && archiveSession(ids[0]));
+  const done = ids.filter((id) => getApp().sessions[id] && !getApp().sessions[id].meta.archived);
+  await Promise.all(done.map((id) => archiveSession(id, true)));
+  toast(t('act.archivedMany', { n: done.length }), { action: { label: t('act.undo'), onClick: () => void Promise.all(done.map(unarchiveSession)) } });
+}
+
+export async function pinSessions(ids: string[], pinned: boolean) {
+  await Promise.all(ids.map((id) => setSessionPinned(id, pinned)));
 }
 
 /** Forget a session: the sidebar, its conversation file and the worktree Pi Desktop made for it. */
@@ -959,6 +980,26 @@ export async function deleteSession(id: string) {
     const removed = await call('sessions:remove', id);
     dropSession(id);
     if (removed.branchKept) toast(t('act.branchKept', { branch: removed.branchKept }));
+  } catch (err) {
+    fail(err);
+  }
+}
+
+export async function deleteSessions(ids: string[]) {
+  if (ids.length < 2) return void (ids[0] && deleteSession(ids[0]));
+  try {
+    const lost = await Promise.all(ids.map((id) => call('sessions:inspect', id)));
+    const lines = [t('act.deleteLine')];
+    const trees = lost.filter((l) => l.worktree).length;
+    const dirty = lost.reduce((n, l) => n + (l.dirty || 0), 0);
+    if (trees) lines.push(t('act.deleteWorktrees', { n: trees }));
+    if (dirty) lines.push(t('act.deleteDirty', { n: dirty }));
+    if (!(await dialogs.confirm(t('act.deleteManyTitle', { n: ids.length }), lines.join('\n'), t('act.delete'), true))) return;
+    for (const id of ids) {
+      const removed = await call('sessions:remove', id);
+      dropSession(id);
+      if (removed.branchKept) toast(t('act.branchKept', { branch: removed.branchKept }));
+    }
   } catch (err) {
     fail(err);
   }

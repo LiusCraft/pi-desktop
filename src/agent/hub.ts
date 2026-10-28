@@ -1382,9 +1382,10 @@ export class SessionHub {
     this.emitMeta(m);
   }
 
-  update(id: string, patch: { title?: string; pr?: PrSummary | null; suggestion?: { key: string; state: 'here' | 'dismissed' }; prAuto?: { fixCi?: boolean; merge?: boolean; fixDone?: string; mergeDone?: number } }) {
+  update(id: string, patch: { title?: string; pinned?: boolean; pr?: PrSummary | null; suggestion?: { key: string; state: 'here' | 'dismissed' }; prAuto?: { fixCi?: boolean; merge?: boolean; fixDone?: string; mergeDone?: number } }) {
     const m = this.meta(id);
     if (patch.pr !== undefined) m.pr = patch.pr;
+    if (patch.pinned !== undefined) m.pinned = patch.pinned || undefined;
     if (patch.prAuto) {
       const a = patch.prAuto;
       if (a.fixCi !== undefined) m.autoFixCi = a.fixCi;
