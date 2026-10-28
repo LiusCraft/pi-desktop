@@ -163,6 +163,8 @@ export interface SessionRemoval {
 export interface SpawnTask {
   title: string;
   prompt: string;
+  /** Run it as a Code session in this folder, one of the Work project's linked Code folders; absent: beside the suggesting session. */
+  codeFolder?: string;
 }
 
 /** One stage of getting a session ready, shown while it starts. */
@@ -523,14 +525,16 @@ export interface WorkProject extends Project {
   /** Applied to every session in the folder. */
   instructions?: string;
   links?: ProjectLink[];
+  /** Code projects (folders) that belong to this project: where coding work found in a Work task can be assigned. */
+  codeFolders?: string[];
   /** Notes the model keeps (`pidesk_remember`) and the user can edit; read at the start of every turn. */
   memory?: string;
 }
 
 /** What the Projects page edits; absent fields stay as they are. */
-export type WorkProjectPatch = Partial<Pick<WorkProject, 'name' | 'description' | 'instructions' | 'links' | 'memory'>>;
+export type WorkProjectPatch = Partial<Pick<WorkProject, 'name' | 'description' | 'instructions' | 'links' | 'codeFolders' | 'memory'>>;
 
-export const PROJECT_LIMITS = { name: 80, description: 500, instructions: 16_000, memory: 16_000, links: 20, url: 2000 } as const;
+export const PROJECT_LIMITS = { name: 80, description: 500, instructions: 16_000, memory: 16_000, links: 20, url: 2000, codeFolders: 10 } as const;
 
 export type AttachmentSource = { path: string } | { name: string; mimeType: string; data: string };
 export interface AttachmentImportResult {

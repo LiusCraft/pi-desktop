@@ -13,8 +13,16 @@ export function projectContext(p: WorkProject | undefined): string | null {
   if (p.description?.trim()) parts.push(`## About this project\n${p.description.trim()}`);
   if (p.instructions?.trim()) parts.push(`## Instructions from the user (apply to every task in this project)\n${p.instructions.trim()}`);
   if (p.links?.length) parts.push(`## Reference links\n${p.links.map((l) => `- ${l.title ? `${l.title}: ` : ''}${l.url}`).join('\n')}`);
+  if (p.codeFolders?.length) {
+    parts.push(
+      `## Code folders\nThe code of this project lives in:\n${p.codeFolders.map((f) => `- ${f}`).join('\n')}\n\n` +
+      'Read them directly when the task needs the code. When you find coding work (a bug, a change, a refactor), do not do it here: ' +
+      'offer it with `pidesk_suggest_task` and set `code_folder` to the folder it belongs in, so the user can start it as a Code session there.',
+    );
+  }
   parts.push(
     `## Project memory\n${p.memory?.trim() || '(empty)'}\n\n` +
+    'The instructions, links and memory above are authoritative: use the paths, documents and addresses they name directly, and only search the computer for something they do not cover. ' +
     'Use `pidesk_remember` to save what a later task in this project should know: decisions made, the user\'s preferences, where things live, what is still open. ' +
     'Keep notes short and factual; do not store secrets or things that are obvious from the files.',
   );

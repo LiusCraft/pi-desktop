@@ -109,6 +109,8 @@ export interface KitHost {
   /** The project this session runs in (Work or Code): its standing context each turn, and its memory; omit it for sessions in no project. */
   project?: {
     context(): string | null;
+    /** The Code folders linked to the project, where `pidesk_suggest_task` may assign a task. */
+    codeFolders(): string[];
     remember(input: { note?: string; rewrite?: string }): number;
     /** Read and edit the project's page fields; present only when the user switched that on. */
     manage?: ProjectHost;
@@ -357,9 +359,12 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
                 '(Context, Changes as a numbered list, Verification) and wait for approval.',
             }
           : null;
-      if (!stylePrompt && !planMessage) return undefined;
+      // Read fresh each turn, so an edit on the Projects page or a note just saved applies at once.
+      const projectPrompt = host.project?.context();
+      if (!stylePrompt && !planMessage && !projectPrompt) return undefined;
+      const extras = [projectPrompt, stylePrompt].filter(Boolean);
       return {
-        ...(stylePrompt ? { systemPrompt: `${event.systemPrompt}\n\n${stylePrompt}` } : {}),
+        ...(extras.length ? { systemPrompt: `${event.systemPrompt}\n\n${extras.join('\n\n')}` } : {}),
         ...(planMessage ? { message: planMessage } : {}),
       };
     });
@@ -481,15 +486,23 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
           Type.Object({
             title: Type.String({ description: 'Short title, under 60 characters' }),
             prompt: Type.String({ description: 'Complete, self-contained instructions: the new session knows nothing about this conversation' }),
+            code_folder: Type.Optional(Type.String({ description: 'Coding work only: one of the project\'s Code folders listed in the project context; the task then starts as a Code session there' })),
           }),
           { minItems: 1, maxItems: 5 },
         ),
       }),
       annotations: { readOnlyHint: true },
       async execute(_id, params) {
+        const linked = host.project?.codeFolders() ?? [];
+        const tasks = params.tasks.map(({ code_folder, ...task }) => {
+          if (code_folder && !linked.includes(code_folder)) {
+            throw new Error(`${code_folder} is not a Code folder of this project. ${linked.length ? `Use one of: ${linked.join(', ')}.` : 'This project has no Code folders; leave code_folder out.'}`);
+          }
+          return code_folder ? { ...task, codeFolder: code_folder } : task;
+        });
         return {
-          content: [{ type: 'text', text: `Suggested ${params.tasks.length} task${params.tasks.length > 1 ? 's' : ''} to the user. Carry on with the current task; they decide whether to start it.` }],
-          details: { tasks: params.tasks },
+          content: [{ type: 'text', text: `Suggested ${tasks.length} task${tasks.length > 1 ? 's' : ''} to the user. Carry on with the current task; they decide whether to start it.` }],
+          details: { tasks },
         };
       },
     });

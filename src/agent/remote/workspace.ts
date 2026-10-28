@@ -71,6 +71,10 @@ function applyPatch(project: WorkProject, patch: WorkProjectPatch): WorkProject 
       .filter((l) => /^https?:\/\//i.test(l.url))
       .slice(0, PROJECT_LIMITS.links);
   }
+  if (patch.codeFolders !== undefined) {
+    const folders = (Array.isArray(patch.codeFolders) ? patch.codeFolders : []).map((f) => clip(f, PROJECT_LIMITS.url).trim()).filter(Boolean);
+    next.codeFolders = [...new Set(folders)].slice(0, PROJECT_LIMITS.codeFolders);
+  }
   return next;
 }
 

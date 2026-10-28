@@ -23,7 +23,7 @@ import { QuestionsItem } from './Questions';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { call } from '@/lib/api';
 import { t as tr, useT } from '@/lib/i18n';
-import { ago, fmtCost, fmtMs, fmtTok } from '@/lib/format';
+import { ago, fmtCost, fmtMs, fmtTok, fname } from '@/lib/format';
 import { bareName, CODEMODE_TOOL, groupStats, groupSummary, isFileTool, toolLabel, toolScope, type NestedToolCall, type ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
 import { useApp, updateSession } from '@/store/app';
@@ -235,15 +235,18 @@ export const SuggestItem = memo(function SuggestItem({ sid, item }: { sid: strin
             <div key={index} className="py-2.5 first:pt-0 last:pb-0">
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
-                  <div className="font-medium">{task.title}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{task.title}</span>
+                    {task.codeFolder && <span className="inline-flex min-w-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" title={task.codeFolder}><CodeIcon className="size-3 shrink-0" /><span className="truncate">{fname(task.codeFolder)}</span></span>}
+                  </div>
                   <button className={cn('mt-0.5 text-left text-xs text-muted-foreground hover:text-foreground', open !== index && 'line-clamp-2')} onClick={() => setOpen(open === index ? null : index)} title={t('suggest.toggle')}>
                     {task.prompt}
                   </button>
                 </div>
                 {!state && (
                   <div className="flex shrink-0 items-center gap-1.5">
-                    <Button size="sm" className="h-7" onClick={() => void startSuggested(sid, item, index, task)} title={t('suggest.startTip')}>{t('suggest.start')}</Button>
-                    <Button size="sm" variant="outline" className="h-7" onClick={() => void doSuggestedHere(sid, item, index, task)} title={t('suggest.doHereTip')}>{t('suggest.doHere')}</Button>
+                    <Button size="sm" className="h-7" onClick={() => void startSuggested(sid, item, index, task)} title={t(task.codeFolder ? 'suggest.startCodeTip' : 'suggest.startTip')}>{t('suggest.start')}</Button>
+                    {!task.codeFolder && <Button size="sm" variant="outline" className="h-7" onClick={() => void doSuggestedHere(sid, item, index, task)} title={t('suggest.doHereTip')}>{t('suggest.doHere')}</Button>}
                     <Button size="icon" variant="ghost" className="size-7" aria-label={t('suggest.dismiss')} title={t('suggest.dismiss')} onClick={() => void dismissSuggested(sid, item, index)}><XIcon className="size-3.5" /></Button>
                   </div>
                 )}

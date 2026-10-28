@@ -556,6 +556,7 @@ export class SessionHub {
         const find = () => hub.projects.workFolders().find((p) => p.path === dir);
         const project: NonNullable<KitHost['project']> = {
           context: () => projectContext(find()),
+          codeFolders: () => find()?.codeFolders ?? [],
           remember: (input) => remember(hub.projects, dir, input),
         };
         // What the Projects page edits, behind its switch under Settings → AI 工具.
@@ -1390,10 +1391,16 @@ export class SessionHub {
     const from = this.meta(fromId);
     const prompt = task.prompt.trim();
     if (!prompt) throw new Error('The task has no instructions');
+    // Coding work found in a Work task runs as a Code session in one of the project's linked Code folders.
+    const codeFolder = task.codeFolder;
+    if (codeFolder && !(from.kind === 'work' && this.projects.workFolders().find((p) => p.path === from.projectPath)?.codeFolders?.includes(codeFolder))) {
+      throw new Error(`${codeFolder} is not a Code folder of this project`);
+    }
     const meta = await this.create({
-      kind: from.kind,
-      projectPath: from.kind === 'work' ? from.cwd : from.projectPath,
-      worktree: from.kind === 'code' ? from.worktree : false,
+      kind: codeFolder ? 'code' : from.kind,
+      projectPath: codeFolder ?? (from.kind === 'work' ? from.cwd : from.projectPath),
+      // Coding work assigned from Work gets its own worktree, so it never touches the folder's checkout.
+      worktree: codeFolder ? true : from.kind === 'code' ? from.worktree : false,
       title: task.title.trim().slice(0, 80) || 'New session',
       model: from.model, thinking: from.thinking, outputStyle: from.outputStyle, parentId: from.id,
       // A suggestion the user accepts must not silently inherit "bypass".

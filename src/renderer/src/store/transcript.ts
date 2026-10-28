@@ -96,7 +96,9 @@ export function toolStart(s: SessionView, ev: { toolCallId: string; toolName: st
     return;
   }
   if (bareName(ev.toolName) === 'suggest_task') {
-    const tasks = (Array.isArray(ev.args?.tasks) ? ev.args.tasks : []).filter((t: any) => t?.title && t?.prompt);
+    const tasks = (Array.isArray(ev.args?.tasks) ? ev.args.tasks : [])
+      .filter((t: any) => t?.title && t?.prompt)
+      .map(({ code_folder, ...t }: any) => (typeof code_folder === 'string' && code_folder ? { ...t, codeFolder: code_folder } : t));
     if (tasks.length) push(s, { kind: 'suggest', key: newKey(), toolCallId: ev.toolCallId, tasks }, view);
     return;
   }

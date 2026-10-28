@@ -2,17 +2,18 @@
 // instructions, links, memory), and the tasks and scheduled runs that belong to it. The agent reads the
 // context at the start of every turn of a session in the folder (see src/agent/work-project.ts).
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BoxIcon, BrainIcon, ClockIcon, FolderOpenIcon, LinkIcon, PlusIcon, ScrollTextIcon, Trash2Icon } from 'lucide-react';
+import { BoxIcon, BrainIcon, ClockIcon, CodeIcon, FolderOpenIcon, LinkIcon, PlusIcon, ScrollTextIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
 import { PROJECT_LIMITS, type ProjectLink, type WorkProject } from '@shared/protocol';
 import { describeSchedule } from '@shared/schedule';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { BackButton, Empty, Heading, Panel } from '@/customize/ui';
 import { call, isMac } from '@/lib/api';
 import { useT } from '@/lib/i18n';
-import { ago } from '@/lib/format';
+import { ago, fname } from '@/lib/format';
 import { addWorkFolder, newProjectTask, openSession, showProjects, showScheduled, updateWorkProject } from '@/store/actions';
 import { setApp, useApp } from '@/store/app';
 
@@ -126,6 +127,47 @@ function LinksEditor({ p }: { p: WorkProject }) {
   );
 }
 
+function CodeFoldersEditor({ p }: { p: WorkProject }) {
+  const t = useT();
+  const codeProjects = useApp((s) => s.projects);
+  const linked = p.codeFolders ?? [];
+  const available = codeProjects.filter((c) => !linked.includes(c.path));
+  const save = (next: string[]) => updateWorkProject(p.path, { codeFolders: next });
+  return (
+    <div className={SECTION}>
+      <SectionTitle icon={<CodeIcon className="size-4" />} sub={t('projects.codeFolders.sub')}>{t('projects.codeFolders')}</SectionTitle>
+      {linked.length > 0 && (
+        <Panel>
+          {linked.map((dir) => (
+            <div key={dir} className="flex items-center gap-2 px-4 py-2.5 text-sm">
+              <div className="min-w-0 flex-1">
+                <div className="truncate">{fname(dir)}</div>
+                <div className="truncate font-mono text-xs text-muted-foreground" title={dir}>{dir}</div>
+              </div>
+              <Button size="icon-sm" variant="ghost" className="text-muted-foreground hover:text-destructive" title={t('projects.remove')} onClick={() => void save(linked.filter((d) => d !== dir))}>
+                <Trash2Icon className="size-4" />
+              </Button>
+            </div>
+          ))}
+        </Panel>
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" disabled={!available.length || linked.length >= PROJECT_LIMITS.codeFolders}><PlusIcon className="size-4" />{t('projects.addCodeFolder')}</Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {available.map((c) => (
+            <DropdownMenuItem key={c.path} onSelect={() => void save([...linked, c.path])}>
+              <span className="truncate">{c.name}</span><span className="truncate font-mono text-xs text-muted-foreground">{c.path}</span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {!codeProjects.length && <p className="text-xs text-muted-foreground">{t('projects.noCodeProjects')}</p>}
+    </div>
+  );
+}
+
 function ProjectDetail({ p }: { p: WorkProject }) {
   const t = useT();
   const { sessions, tasks } = useProjectActivity(p.path);
@@ -202,6 +244,8 @@ function ProjectDetail({ p }: { p: WorkProject }) {
         </div>
 
         <LinksEditor p={p} />
+
+        <CodeFoldersEditor p={p} />
 
         <div className={SECTION}>
           <SectionTitle icon={<ClockIcon className="size-4" />} sub={t('projects.scheduled.sub')}>{t('projects.scheduled')}</SectionTitle>
