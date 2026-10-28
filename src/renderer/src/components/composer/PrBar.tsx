@@ -46,8 +46,8 @@ const CHECK_LABEL = { pass: 'prbar.checkPass', fail: 'prbar.checkFail', pending:
 /** Branch / PR status above the Code composer: what the branch still owes, and how to send it. */
 export function PrBar({ s }: { s: SessionView }) {
   const t = useT();
-  if (s.meta.kind === 'work' || s.prHidden || !s.meta.branch) return null;
   const strategy = useApp((a) => a.prefs.syncStrategy);
+  if (s.meta.kind === 'work' || s.prHidden || !s.meta.branch) return null;
   const id = s.meta.id;
   const st = s.gitState;
   const pr = s.pr;
