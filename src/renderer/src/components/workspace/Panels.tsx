@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { findInText, SEARCH_MAX_MATCHES, type SearchResult } from '@shared/text-search';
 import type { CommitInfo } from '@shared/protocol';
 import { generatedKind, isGeneratedFile, type GeneratedKind } from '@shared/generated';
-import { ReviewCodeView, type ReviewHandle, type ReviewItem } from '@/components/common/ReviewCodeView';
+import { HEADER_TOGGLE_ATTR, ReviewCodeView, type ReviewHandle, type ReviewItem } from '@/components/common/ReviewCodeView';
 import type { FileTreeRowDecoration } from '@pierre/trees';
 import { CopyGlyph, useCopy } from '@/components/common/Copy';
 import { OpenInMenu } from '@/components/common/OpenInMenu';
@@ -486,7 +486,7 @@ ${c.subject}`}
             onNeed={need}
             onActiveChange={setActive}
             renderPrefix={(item) => (
-              <button className="flex items-center text-muted-foreground hover:text-foreground" aria-expanded={!isCollapsed(item.path)} title={t(isCollapsed(item.path) ? 'panel.showDiff' : 'panel.hideDiff')} onClick={() => toggle(item.path)}>
+              <button {...{ [HEADER_TOGGLE_ATTR]: '' }} className="flex items-center text-muted-foreground hover:text-foreground" aria-expanded={!isCollapsed(item.path)} title={t(isCollapsed(item.path) ? 'panel.showDiff' : 'panel.hideDiff')} onClick={() => toggle(item.path)}>
                 {isCollapsed(item.path) ? <ChevronRightIcon className="size-3.5" /> : <ChevronDownIcon className="size-3.5" />}
               </button>
             )}

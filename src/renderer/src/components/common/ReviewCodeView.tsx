@@ -1,6 +1,6 @@
 // Changed files (diffs) and single files in one virtualized @pierre/diffs CodeView, with PR review
 // threads and the "attach / comment on these lines" composer drawn as line annotations.
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import {
   CodeView, WorkerPoolContextProvider,
   type CodeViewHandle, type CodeViewItem, type FileContents, type CodeViewReactOptions, type SelectedLineRange,
@@ -34,7 +34,7 @@ const REVEAL_AHEAD = 2;
 /** How long a jump waits for the file it lands on to be read (about 10 s). */
 const CONTENT_WAIT_FRAMES = 600;
 /** The theme paints its own background; inside the shadow root the app's card colour has to be set on the host. */
-const HOST_CSS = ':host { --diffs-light-bg: var(--card) !important; --diffs-dark-bg: var(--card) !important; --diffs-font-family: var(--font-mono); --diffs-font-size: 12.5px; }';
+const HOST_CSS = ':host { --diffs-light-bg: var(--card) !important; --diffs-dark-bg: var(--card) !important; --diffs-font-family: var(--font-mono); --diffs-font-size: 12.5px; } [data-diffs-header] { cursor: pointer; }';
 
 export type ReviewItem =
   | { id: string; kind: 'diff'; path: string; before: string | null; after: string | null; /** False until the contents have arrived. */ ready: boolean; collapsed?: boolean }
@@ -261,7 +261,7 @@ export const ReviewCodeView = forwardRef<ReviewHandle, ReviewProps>(function Rev
   }, [items, onActiveChange, topUp]);
 
   return (
-    <div ref={root} className={cn('review-code relative min-h-0', className)}>
+    <div ref={root} className={cn('review-code relative min-h-0', className)} onClick={clickHeader}>
       {/* The scroller needs a definite box, which a flex item's percentage height is not. */}
       <div className="absolute inset-0">
       <WorkerPoolContextProvider key={themes.dark} poolOptions={{ workerFactory: () => new DiffsWorker(), poolSize: WORKER_POOL_SIZE }} highlighterOptions={{ theme: themes }}>
@@ -293,6 +293,20 @@ export const ReviewCodeView = forwardRef<ReviewHandle, ReviewProps>(function Rev
     </div>
   );
 });
+
+/** Marks the header prefix control that a click anywhere else on the file header should trigger. */
+export const HEADER_TOGGLE_ATTR = 'data-header-toggle';
+
+/** The header lives in a shadow root: find it on the composed path, and forward the click to its toggle. */
+function clickHeader(e: MouseEvent<HTMLElement>) {
+  const path = e.nativeEvent.composedPath();
+  const header = path.find((n): n is HTMLElement => n instanceof HTMLElement && n.hasAttribute('data-diffs-header'));
+  if (!header) return;
+  const inner = path.slice(0, path.indexOf(header));
+  if (inner.some((n) => n instanceof HTMLElement && n.matches('button, a, input, [role="button"]'))) return;
+  const host = (header.getRootNode() as ShadowRoot).host;
+  host?.querySelector<HTMLElement>(`[${HEADER_TOGGLE_ATTR}]`)?.click();
+}
 
 /** CodeView re-reads an item only when its version moves, so each distinct content gets the next number. */
 function versionOf(known: Map<string, { signature: string; version: number }>, id: string, signature: string) {
