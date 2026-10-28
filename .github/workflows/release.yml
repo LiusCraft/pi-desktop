@@ -2,7 +2,8 @@ name: release
 
 # Tag push builds both architectures, signs + notarizes when the signing
 # secrets are set (see README), and attaches the dmgs and the Windows installer to the GitHub Release.
-# `make release VERSION=0.2.0` creates the tag for you.
+# `make release` creates the tag for you, bumping the latest tag (patch);
+# `make release VERSION=0.2.0` tags an explicit version.
 on:
   push:
     tags: ['v*']

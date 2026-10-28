@@ -383,8 +383,13 @@ make clean             # 删 dist/
 ### 发布一个版本
 
 ```bash
-make release VERSION=0.2.0     # 给当前 HEAD 打 v0.2.0 tag 并 push；版本号以 tag 为准，CI 里写进 package.json
+make release                  # 把最新的 v* tag 递增 patch（v0.1.2 → v0.1.3），给 HEAD 打 tag 并 push
+make release BUMP=minor       # 递增 minor（BUMP=patch|minor|major）
+make release VERSION=0.2.0     # 直接指定版本
+make release DRY_RUN=1         # 只打印要打的 tag，不真的打、不 push
 ```
+
+版本号以 tag 为准，CI 里写进 package.json，所以本地不 bump 也不提交。`scripts/release.mjs` 会先挡住几种常见误操作：worktree 脏、版本不比最新 tag 大（`FORCE=1` 可绕过）、tag 已在本地或 origin 存在；push 失败会把本地 tag 删掉，方便改完重试。`make release` 只打 tag + push，不 push 分支，HEAD 没推到上游时会给个 warning。
 
 推上去的 `v0.2.0` tag 触发 `.github/workflows/release.yml`：arm64 和 x64 两个 dmg 在 `macos-14` 上交叉构建（没有按架构编译的原生模块，只有 Electron 的 zip 不同），然后 `gh release create/upload` 挂到同名 Release，附 `SHA256SUMS.txt`。签名靠仓库 secret：`MAC_CERT_P12`、`MAC_CERT_PASSWORD`、`APPLE_ID`、`APPLE_PASSWORD`、`APPLE_TEAM_ID`；不填也能跑通，只是产物未签名。
 

@@ -69,12 +69,8 @@ win-installer: ## Build the Windows NSIS installer (x64)
 	$(NPM) run dist:win
 	@echo Built $(DIST)/Pi-Desktop-$(CURRENT_VERSION)-win-x64-setup.exe
 
-release: ## Tag HEAD as v$(VERSION) and push it (CI takes the version from the tag and publishes)
-	@test -n "$(VERSION)" || { echo "usage: make release VERSION=0.2.0"; exit 1; }
-	@test -z "$$(git status --porcelain)" || { echo "error: worktree is dirty"; exit 1; }
-	git tag v$(VERSION)
-	git push origin v$(VERSION)
-	@echo "v$(VERSION) pushed — GitHub Actions builds and publishes the release"
+release: ## Tag HEAD and push; CI publishes (bumps the latest tag by BUMP=patch, or VERSION=x.y.z)
+	@node scripts/release.mjs --version="$(VERSION)" --bump="$(BUMP)" --force="$(FORCE)" --dry-run="$(DRY_RUN)"
 
 publish: check-darwin ## Build locally and upload to GitHub Releases (GH_TOKEN)
 	@test -n "$$GH_TOKEN" || { echo "error: GH_TOKEN is not set"; exit 1; }
