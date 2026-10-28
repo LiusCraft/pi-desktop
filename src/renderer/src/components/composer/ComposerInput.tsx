@@ -117,12 +117,12 @@ function commandSuggestions(query: string, s: SessionView | null): Suggestion[] 
 
 /** Files, terminal tabs, the working tree and the project's other sessions, ranked together. A new session has only sessions to offer. */
 function mentionSuggestions(query: string, s: SessionView | null, projectPath: string | null, kind: SessionView['meta']['kind']): Suggestion[] {
-  const sources = s ? cachedSources(s.meta.id) : { terminals: [], changes: [] };
+  const sources = s ? cachedSources(s.meta.id) : { terminals: [], changes: [], repo: false };
   const files = s ? getApp().sessions[s.meta.id]?.files ?? [] : [];
   const diff = diffMention(sources.changes);
   const sessions = sessionMentions(projectPath, kind, s?.meta.id ?? '');
   const ranked = [
-    ...(s ? fuzzyRank([fuzzyEntry(diff, diff.search)], query, 1) : []),
+    ...(s && sources.repo ? fuzzyRank([fuzzyEntry(diff, diff.search)], query, 1) : []),
     ...fuzzyRank(terminalMentions(sources.terminals).map((m) => fuzzyEntry(m, m.search)), query, 10),
     ...fuzzyRank(sessions.map((m) => fuzzyEntry(m, m.search)), query, 10),
     ...fuzzyRank(fileEntries(files), query, 20),

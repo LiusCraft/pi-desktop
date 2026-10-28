@@ -1717,8 +1717,8 @@ export class SessionHub {
     // Session-base diff for the Diff panel, plus live working-tree state for the branch bar.
     const base = await git.diffBase(m.cwd, m.baseCommit, m.baseBranch);
     const prBase = this.prBases.get(id);
-    const [files, state] = await Promise.all([git.changes(m.cwd, base), git.workState(m.cwd, prBase ?? m.baseBranch, !!prBase)]);
-    return { files, state };
+    const [files, state, root] = await Promise.all([git.changes(m.cwd, base), git.workState(m.cwd, prBase ?? m.baseBranch, !!prBase), git.repoRoot(m.cwd)]);
+    return { repo: !!root, files, state };
   }
   /** Measure the session's changes from another branch: the diff, commit list and file contents all follow `baseBranch`. */
   async setBase(id: string, ref: string) {

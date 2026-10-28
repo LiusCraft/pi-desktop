@@ -517,6 +517,8 @@ export interface GitState {
 
 /** Everything the Diff panel and branch bar need, in one round trip. */
 export interface ChangeSet {
+  /** Whether the session folder is inside a git repository; without one there is nothing to diff. */
+  repo: boolean;
   /** Files changed since the session's base commit (the Diff panel's view). */
   files: FileChange[];
   state: GitState;

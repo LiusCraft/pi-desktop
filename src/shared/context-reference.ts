@@ -204,11 +204,11 @@ export interface MessageSpan {
 }
 
 const COMMAND_TOKEN = /^\/[A-Za-z][\w:.-]*/;
-const PATH_TOKEN = /^@[\w./-]+/;
+const PATH_TOKEN = /^@[\p{L}\p{N}_./-]+/u;
 /** @ tokens that only mean something with a captured reference; typed by hand they stay text. */
 const RESERVED_TOKEN = /^@(?:diff$|term:|session:)/;
 /** Characters a token continues with: a known token followed by one of them is a longer word, not a match. */
-const TOKEN_CHAR = /[\w./:@-]/;
+const TOKEN_CHAR = /[\p{L}\p{N}_./:@-]/u;
 const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
 
 /**

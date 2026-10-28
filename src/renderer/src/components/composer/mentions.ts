@@ -29,8 +29,10 @@ export interface Mention {
 export interface MentionSources {
   terminals: TerminalInfo[];
   changes: FileChange[];
+  /** False outside a git repository, where `@diff` has nothing to stand for. */
+  repo: boolean;
 }
-const EMPTY_SOURCES: MentionSources = { terminals: [], changes: [] };
+const EMPTY_SOURCES: MentionSources = { terminals: [], changes: [], repo: false };
 
 const SOURCES_TTL_MS = 15_000;
 const sources = new Map<string, { at: number; value: MentionSources }>();
@@ -46,10 +48,10 @@ export function loadSources(id: string, done: () => void) {
   loading.add(id);
   void Promise.all([
     call('terminal:list', id).catch((): TerminalInfo[] => []),
-    call('sessions:changes', id).then((set) => set.files).catch((): FileChange[] => []),
+    call('sessions:changes', id).then((set) => ({ repo: set.repo, changes: set.files })).catch(() => ({ repo: false, changes: [] as FileChange[] })),
   ])
-    .then(([terminals, changes]) => {
-      sources.set(id, { at: Date.now(), value: { terminals, changes } });
+    .then(([terminals, { repo, changes }]) => {
+      sources.set(id, { at: Date.now(), value: { terminals, changes, repo } });
       done();
     })
     .finally(() => loading.delete(id));

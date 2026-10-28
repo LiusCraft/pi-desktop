@@ -258,6 +258,20 @@ export function Transcript({ s }: { s: SessionView }) {
     return () => observer.disconnect();
   }, []);
 
+  // Sending a message returns to the bottom, wherever the view was left.
+  const sentKey = useRef<string | null>(null);
+  const lastItem = s.items[s.items.length - 1];
+  const justSent = lastItem?.kind === 'user' && !lastItem.delivered ? lastItem.key : null;
+  useLayoutEffect(() => {
+    if (!justSent || justSent === sentKey.current) return;
+    sentKey.current = justSent;
+    endRestore();
+    stick.current = true;
+    setAtBottom(true);
+    const el = scroller.current;
+    if (el) rememberScroll(sid, { top: el.scrollHeight, stick: true });
+  }, [justSent]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Follow along while the conversation grows, as long as the user is near the bottom.
   useLayoutEffect(() => {
     const el = scroller.current;
