@@ -6,7 +6,8 @@
 const NOTICE =
   'Pi Desktop\'s own PR watcher started this turn, not the user: it saw a change on the pull request and the user left ' +
   'that automation on. Do the work the instruction asks for — use gh (GitHub) or glab (GitLab) and git for anything it refers to — and keep the ' +
-  'usual permission rules in mind.';
+  'usual permission rules in mind. The watcher keeps polling this pull request on its own: do not run gh pr checks --watch, gh run watch ' +
+  'or any other CI polling loop, and do not wait for CI in this turn. Push the work and end the turn; the next change starts a new turn by itself.';
 
 /** Separates the human-readable situation from what to do about it. */
 const ASK = '## 交给 Pi 的处理';

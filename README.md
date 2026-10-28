@@ -220,12 +220,12 @@ Code 会话输入框上方的 PR 条报告当前分支的 PR：状态颜色、`+
 
 悬停编号会展开一张卡片：`Merge conflicts` / `Draft` / `Checks failing` / `Ready to merge` 这类状态、PR 标题、作者、改动行数和文件数、最近更新时间。数据来自 `gh pr view`（GitLab 仓库用 `glab mr view` 和 `glab api`，Merge Request 在这里同样叫 PR；未解决的讨论按「Changes requested」处理，没有行数统计），token 读不到的字段就不显示，条本身照常工作。
 
-点 **CI** 打开检查面板：逐条列出每个检查的结果（点名字直接打开那一条的日志），一行说明是全部通过、几个在跑还是几个失败，右上角通往 GitHub 的 checks 页。面板底部两个开关保存在会话里，重启后仍然有效：
+点 **CI** 打开检查面板：逐条列出每个检查的结果（点名字直接打开那一条的日志），一行说明是全部通过、几个在跑还是几个失败，右上角通往 GitHub 的 checks 页。同一个检查重跑过几次也只列最新的一次：旧的结果不会再混进来，也不会被误判成失败。面板底部两个开关保存在会话里，重启后仍然有效：
 
 - **Auto-fix CI & address comments**：CI 变红时自动让 agent 读失败日志、修好并推送；同一个提交只触发一次，不会循环。新评论和 `CHANGES_REQUESTED` 也会处理（同一轮的修复会顺带带上它们）。
 - **Auto-merge when ready**：GitHub 说分支可合并、检查既不红也不在跑、也没有待处理的评审意见时，自动让 agent 用 `gh pr merge --auto` 开启自动合并；每个 PR 一次。
 
-**监听发生在 host 里，不是让 agent 去盯着。** 每个打开着的 Code 会话在 agent host 里有一个 PR watcher：`gh pr view` 每 15 秒看一次（CI 已结束就退到 60 秒，`gh` 连续失败则退避到 5 分钟），把状态推给 PR 条，并在 CI 变红、有新的评论/评审、PR 变得可合并时**自己起一个 turn**。这类 turn 的消息不是用户发的，transcript 里渲染成一张事件卡片——`CI 失败 · PR #4`、新评论原文、失败检查列表，下面实时显示「Pi 正在处理…」/「等待你的确认」；展开还能看到交给 Pi 的说明。重开会话后卡片仍在。
+**监听发生在 host 里，不是让 agent 去盯着。** 每个打开着的 Code 会话在 agent host 里有一个 PR watcher：`gh pr view` 每 15 秒看一次（CI 已结束就退到 60 秒，`gh` 连续失败则退避到 5 分钟），把状态推给 PR 条，并在 CI 变红、有新的评论/评审、PR 变得可合并时**自己起一个 turn**。这类 turn 的消息不是用户发的，transcript 里渲染成一张事件卡片——`CI 失败 · PR #4`、新评论原文、失败检查列表，下面实时显示「Pi 正在处理…」/「等待你的确认」；展开还能看到交给 Pi 的说明。重开会话后卡片仍在。修复的 turn 在 `push` 后就结束，不会自己去 `gh pr checks --watch` 或轮询 CI：下一次结果仍由 host 的 watcher 看准了再起新 turn。
 
 会话正在跑的时候事件不会插队，等它空闲后的下一次查看再发，所以既不会打断你，也不会丢。因为那是真正的 turn，`git push` 这类高风险命令仍然会先问你（这就是卡片上「等待你的确认」的由来）。
 

@@ -73,7 +73,7 @@ export const git = defineMessages({
   'prbar.autoFix': { en: 'Auto-fix CI & address comments', zh: '自动修复 CI 并处理评审意见' },
   'prbar.autoMerge': { en: 'Auto-merge when ready', zh: '就绪后自动合并' },
   'prbar.fixOnce': { en: 'Let Pi handle it now, once', zh: '让 Pi 现在处理这一次' },
-  'prbar.fixCiPrompt': { en: "Use {checks} to read why PR #{num} failed, fix the code, then commit and push; handle unresolved review comments too, until the checks stop failing.", zh: '用 {checks} 读出 PR #{num} 的失败原因，修好代码后提交并推送；未解决的评审意见一并处理，直到检查不再失败。' },
+  'prbar.fixCiPrompt': { en: "Use {checks} to read why PR #{num} failed, fix the code, then commit and push; handle unresolved review comments too. Finish after pushing instead of waiting for CI: the PR bar keeps showing the checks' progress.", zh: '用 {checks} 读出 PR #{num} 的失败原因，修好代码后提交并推送；未解决的评审意见一并处理。推送后就结束这一轮，不用自己等 CI：PR 条会继续显示检查进度。' },
   'prbar.watching': { en: 'Watching in the background: changes show up in the conversation as events', zh: '后台监听中：变化会作为事件发到对话里' },
   'prbar.chooseSubmit': { en: 'Choose what to submit', zh: '选择要提交的内容' },
 

@@ -44,6 +44,7 @@ describe('PR event wire message', () => {
   it('tells the model this was not the user, and keeps the instruction out of the footer', () => {
     const wire = encodePrEvent(event());
     assert.match(wire, /not the user/);
+    assert.match(wire, /do not run gh pr checks --watch/);
     assert.match(wire, /^<pr-event kind="ci-fail">/);
     assert.match(wire, /## 交给 Pi 的处理\n读失败日志/);
     assert.equal(decodePrEvent(wire)!.instruction.includes('pi-desktop:'), false);

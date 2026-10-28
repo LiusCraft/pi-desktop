@@ -418,6 +418,54 @@ export async function readPr(cwd: string): Promise<PrSnapshot | null> {
   return null;
 }
 
+/** One context of `statusCheckRollup`: a check run from Actions, or an older-style commit status. */
+interface RollupContext {
+  /** Check run name; absent on a commit status. */
+  name?: string;
+  /** Commit status context; absent on a check run. */
+  context?: string;
+  /** Two workflows may name their checks alike, so the name alone does not identify a run. */
+  workflowName?: string;
+  status?: string;
+  conclusion?: string;
+  state?: string;
+  detailsUrl?: string;
+  targetUrl?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+/**
+ * The checks to show, the way the host's own checks page lists them: re-running a workflow leaves its
+ * earlier attempt in the rollup, but only the newest run per check is current. A commit status has one
+ * row per context, so there is nothing to collapse there.
+ */
+function rollupChecks(rows: RollupContext[]): PrStatus['checks'] {
+  const at = (v?: string) => Date.parse(v ?? '') || 0;
+  const ranked = rows.flatMap((c, i) => {
+    const name = c.name || c.context;
+    if (!name) return [];
+    // An unfinished run is the current attempt even before GitHub has given it a start time.
+    const latest = c.status != null && c.status !== 'COMPLETED' ? Number.MAX_SAFE_INTEGER : Math.max(at(c.startedAt), at(c.completedAt));
+    const key = c.context ? `status:${c.context}` : `run:${name}/${c.workflowName ?? ''}`;
+    return [{ c, i, name, key, latest }];
+  });
+  const newest = new Map<string, (typeof ranked)[number]>();
+  for (const r of ranked) {
+    const seen = newest.get(r.key);
+    if (!seen || r.latest > seen.latest || (r.latest === seen.latest && r.i > seen.i)) newest.set(r.key, r);
+  }
+  return ranked.filter((r) => newest.get(r.key) === r).map(({ c, name }) => {
+    const result = String(c.conclusion || c.state || '').toUpperCase();
+    let st: 'pass' | 'fail' | 'pending' = 'fail';
+    if (!c.conclusion && c.status && c.status !== 'COMPLETED') st = 'pending';
+    else if (['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(result)) st = 'pass';
+    else if (result === 'PENDING' || result === 'EXPECTED') st = 'pending';
+    const url = c.detailsUrl || c.targetUrl;
+    return { n: name, st, ...(url ? { url } : {}) };
+  });
+}
+
 async function readGithubPr(cwd: string): Promise<PrSnapshot | null> {
   const full = 'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author,additions,deletions,changedFiles,mergeable,reviewDecision,headRefOid,updatedAt';
   let out = await run('gh', ['pr', 'view', '--json', full], cwd, { allowFail: true });
@@ -428,15 +476,8 @@ async function readGithubPr(cwd: string): Promise<PrSnapshot | null> {
   if (!out) return null;
   try {
     const pr = JSON.parse(out);
-    const checks = (pr.statusCheckRollup || []).map((c: any) => {
-      const result = String(c.conclusion || c.state || '').toUpperCase();
-      const st: 'pass' | 'fail' | 'pending' = !c.conclusion && c.status && c.status !== 'COMPLETED' ? 'pending'
-        : ['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(result) ? 'pass'
-        : result === 'PENDING' || result === 'EXPECTED' ? 'pending' : 'fail';
-      const url = c.detailsUrl || c.targetUrl;
-      return { n: c.name || c.context, st, ...(url ? { url } : {}) };
-    });
-    const ci = !checks.length ? 'none' : checks.some((c: any) => c.st === 'fail') ? 'fail' : checks.some((c: any) => c.st === 'pending') ? 'pending' : 'pass';
+    const checks = rollupChecks(pr.statusCheckRollup || []);
+    const ci = !checks.length ? 'none' : checks.some((c) => c.st === 'fail') ? 'fail' : checks.some((c) => c.st === 'pending') ? 'pending' : 'pass';
     const mergeable = { MERGEABLE: 'clean', CONFLICTING: 'conflicting' } as const;
     const review = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes', REVIEW_REQUIRED: 'required' } as const;
     const size = (n: unknown) => (typeof n === 'number' ? n : undefined);

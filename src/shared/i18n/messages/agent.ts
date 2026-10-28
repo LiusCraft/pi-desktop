@@ -80,7 +80,7 @@ export const agent = defineMessages({
   'ag.prCiFailed': { en: 'CI failed', zh: 'CI 失败' },
   'ag.prNewComments': { en: '{n} new comments', zh: '{n} 条新评论' },
   'ag.prNamesSep': { en: ', ', zh: '、' },
-  'ag.prFixCi': { en: "Use {checks} to read why it failed, fix the code, then commit and push to the current branch; also handle the unresolved review comments on {noun} #{num}, until the checks stop failing.", zh: '用 {checks} 读出失败原因，修好代码后提交并推送到当前分支；{noun} #{num} 上未解决的评审意见也一并处理，直到检查不再失败。' },
+  'ag.prFixCi': { en: "Use {checks} to read why it failed, fix the code, then commit and push to the current branch; also handle the unresolved review comments on {noun} #{num}. Finish after pushing: the PR watcher keeps watching and starts a new turn if CI still fails.", zh: '用 {checks} 读出失败原因，修好代码后提交并推送到当前分支；{noun} #{num} 上未解决的评审意见也一并处理。推送后就结束这一轮：PR 监听会继续盯着，检查再失败时会自动起新的一轮。' },
   'ag.prNotes': { en: 'Use {comments} to read each comment (inline comments: {inline}), fix them, commit and push to the current branch, reply to each resolved comment, then tell me which ones still need a human.', zh: '用 {comments} 读清每条意见（行内评论用 {inline}），改完提交并推送到当前分支，把已解决的评论逐条回复，再告诉我还剩哪些需要人来确认。' },
   'ag.prReady': { en: 'Checks are all green and there are no conflicts: ready to merge', zh: '检查全绿、没有冲突，可以合并了' },
   'ag.prMerge': { en: 'Use {merge} to turn on auto-merge (merge directly if the repo does not allow auto-merge). Do not delete the branch, and tell me the result afterwards.', zh: '用 {merge} 开启自动合并（仓库不允许自动合并就直接合并），不要删除分支，合并后把结果告诉我。' },

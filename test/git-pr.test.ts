@@ -47,6 +47,43 @@ describe('GitHub PR status', () => {
     assert.equal(calls[0].cwd, 'project');
     assert.equal(pr.forge, 'github');
   });
+  it('keeps only the newest run of a re-run check', async () => {
+    responses = [{
+      number: 5, url: 'https://github.com/example/repo/pull/5', state: 'OPEN', isDraft: false,
+      statusCheckRollup: [
+        { __typename: 'CheckRun', name: 'build', workflowName: 'ci', status: 'COMPLETED', conclusion: 'FAILURE', startedAt: '2026-01-02T03:00:00Z', completedAt: '2026-01-02T03:04:00Z' },
+        { __typename: 'CheckRun', name: 'build', workflowName: 'ci', status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: '2026-01-02T03:10:00Z', completedAt: '2026-01-02T03:12:00Z' },
+        { __typename: 'StatusContext', context: 'lint', state: 'SUCCESS' },
+      ],
+    }];
+    const pr = (await prStatus('project'))!;
+    assert.deepEqual(pr.checks.map((c) => [c.n, c.st]), [['build', 'pass'], ['lint', 'pass']]);
+    assert.equal(pr.ci, 'pass');
+  });
+  it('treats an unfinished re-run as current even before it has a start time', async () => {
+    responses = [{
+      number: 6, url: 'https://github.com/example/repo/pull/6', state: 'OPEN', isDraft: false,
+      statusCheckRollup: [
+        { __typename: 'CheckRun', name: 'build', workflowName: 'ci', status: 'COMPLETED', conclusion: 'FAILURE', startedAt: '2026-01-02T03:00:00Z' },
+        { __typename: 'CheckRun', name: 'build', workflowName: 'ci', status: 'QUEUED', conclusion: '', startedAt: null, completedAt: null },
+      ],
+    }];
+    const pr = (await prStatus('project'))!;
+    assert.deepEqual(pr.checks.map((c) => [c.n, c.st]), [['build', 'pending']]);
+    assert.equal(pr.ci, 'pending');
+  });
+  it('does not collapse checks that only share a name across workflows', async () => {
+    responses = [{
+      number: 7, url: 'u', state: 'OPEN', isDraft: false,
+      statusCheckRollup: [
+        { __typename: 'CheckRun', name: 'test', workflowName: 'ci', status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: '2026-01-02T03:00:00Z' },
+        { __typename: 'CheckRun', name: 'test', workflowName: 'nightly', status: 'COMPLETED', conclusion: 'FAILURE', startedAt: '2026-01-02T03:00:00Z' },
+      ],
+    }];
+    const pr = (await prStatus('project'))!;
+    assert.equal(pr.checks.length, 2);
+    assert.equal(pr.ci, 'fail');
+  });
   it('reports clean and unknown mergeability', async () => {
     responses = [{ number: 3, url: 'u', state: 'OPEN', isDraft: false, mergeable: 'MERGEABLE' }];
     assert.equal((await prStatus('project'))!.mergeable, 'clean');
