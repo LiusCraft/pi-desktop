@@ -363,7 +363,6 @@ export function PetSprite({ pet, mood = 'idle', walking = false, held = false, j
   );
 }
 
-const GREETED_KEY = 'pet-greeted-on';
 const GREETING_MS = 7000;
 const GREETING_COUNT = 3;
 
@@ -373,8 +372,11 @@ function greetingFor(date: Date) {
   return tr(`greet.${period}.${1 + Math.floor(Math.random() * GREETING_COUNT)}` as MessageKey);
 }
 
-/** The pet's words: a greeting once per calendar day, and again whenever the skin is switched; null while it is quiet. */
-function useDailyGreeting(enabled: boolean, skin: string | undefined) {
+/** Set once this window has been greeted, so moving between sessions (a new composer each time) stays quiet. */
+let greeted = false;
+
+/** The pet's words: a greeting each time the window opens, and again whenever the skin is switched; null while it is quiet. */
+function useGreeting(enabled: boolean, skin: string | undefined) {
   // An object, so the same sentence twice in a row is still a new greeting and restarts the timer.
   const [said, setSaid] = useState<{ text: string } | null>(null);
   const shownSkin = useRef(skin);
@@ -386,14 +388,9 @@ function useDailyGreeting(enabled: boolean, skin: string | undefined) {
     playSound('speak');
   }, [enabled, skin]);
   useEffect(() => {
-    if (!enabled) return;
-    const now = new Date();
-    const today = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
-    try {
-      if (localStorage.getItem(GREETED_KEY) === today) return;
-      localStorage.setItem(GREETED_KEY, today);
-    } catch { /* storage unavailable: greet this session only */ }
-    setSaid({ text: greetingFor(now) });
+    if (!enabled || greeted) return;
+    greeted = true;
+    setSaid({ text: greetingFor(new Date()) });
     playSound('speak');
   }, [enabled]);
   useEffect(() => {
@@ -409,7 +406,7 @@ export function Clawd({ mood }: { mood: Mood }) {
   const track = useRef<HTMLDivElement>(null);
   const enabled = useApp((s) => s.settings.pet) !== false;
   const skin = useApp((s) => s.settings.petSkin);
-  const greeting = useDailyGreeting(enabled, skin);
+  const greeting = useGreeting(enabled, skin);
   const custom = useApp((s) => s.settings.pets);
   const pet = allPets(custom).find((p) => p.id === skin) ?? BUILTIN_PETS.find((p) => p.id === DEFAULT_PET_ID)!;
   const pos = useRef<HTMLDivElement>(null);
