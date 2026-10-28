@@ -59,7 +59,6 @@ export const thread = defineMessages({
   'tool.preview': { en: 'Preview', zh: '预览' },
   'tool.running': { en: 'Running…', zh: '运行中…' },
   'tool.noOutput': { en: 'No output', zh: '没有输出' },
-  'tool.scriptDone': { en: 'Script completed', zh: '脚本已完成' },
   'tool.scriptFailed': { en: 'Script failed', zh: '脚本执行失败' },
   'tool.wallTime': { en: '{secs}s', zh: '{secs} 秒' },
   'tool.ranCall': { en: 'Ran 1 tool call', zh: '调用了 1 个工具' },
@@ -100,6 +99,8 @@ export const thread = defineMessages({
   'toolLabel.agent': { en: 'Agent · {desc}', zh: '子代理 · {desc}' },
   'toolLabel.using': { en: 'Using {name}', zh: '正在使用 {name}' },
   'toolLabel.used': { en: 'Used {name}', zh: '使用了 {name}' },
+  'toolLabel.scripting': { en: 'Running script', zh: '正在运行脚本' },
+  'toolLabel.scripted': { en: 'Ran script', zh: '运行了脚本' },
   'toolLabel.subagent': { en: 'Subagent', zh: '子代理' },
   'toolScope.in': { en: 'in {path}', zh: '在 {path}' },
 

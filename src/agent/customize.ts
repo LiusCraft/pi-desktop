@@ -12,6 +12,7 @@ import spawn from 'cross-spawn';
 import {
   DefaultPackageManager, DefaultResourceLoader, parseFrontmatter, SettingsManager,
 } from '@earendil-works/pi-coding-agent';
+import { DEFAULT_MCP_EXPOSURE, MCP_EXPOSURES } from '@shared/protocol';
 import { PLUGIN_RESOURCE_KINDS } from '@shared/protocol';
 import type {
   ConnectorDraft, ConnectorInfo, CustomizeCatalog, CustomizeScope, PluginInfo, PluginResource, PluginResourceKind, PromptInfo, SkillDraft, SkillInfo,
@@ -222,6 +223,7 @@ function collectConnectors(env: CustomizeEnv): ConnectorInfo[] {
         pairs: Object.entries<any>((http ? raw.headers : raw.env) ?? {}).map(([k, v]) => `${k}${http ? ': ' : '='}${v}`),
         description: typeof raw.description === 'string' ? raw.description : undefined,
         enabled: raw.enabled !== false,
+        exposure: MCP_EXPOSURES.includes(raw.exposure) ? raw.exposure : DEFAULT_MCP_EXPOSURE,
         tools: (cache[name]?.tools ?? []).map((t: any) => ({ name: String(t.name), description: String(t.description ?? '') })),
       });
     }
@@ -263,7 +265,10 @@ export function saveConnector(env: CustomizeEnv, draft: ConnectorDraft) {
     if (previous?.cwd) entry.cwd = previous.cwd;
   }
   if (draft.description?.trim()) entry.description = draft.description.trim();
-  for (const k of ['enabled', 'exposure', 'toolExposure', 'timeout']) if (previous?.[k] !== undefined) entry[k] = previous[k];
+  // The default is left out of the file, like pi's own config.
+  if (draft.exposure && draft.exposure !== DEFAULT_MCP_EXPOSURE) entry.exposure = draft.exposure;
+  else if (!draft.exposure && previous?.exposure !== undefined) entry.exposure = previous.exposure;
+  for (const k of ['enabled', 'toolExposure', 'timeout']) if (previous?.[k] !== undefined) entry[k] = previous[k];
   if (draft.originalName && draft.originalName !== name) delete servers[draft.originalName];
   servers[name] = entry;
   writeJson(file, { ...config, mcpServers: servers });

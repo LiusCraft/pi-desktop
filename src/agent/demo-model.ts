@@ -101,6 +101,32 @@ const scenarios: Scenario[] = [
 		],
 	},
 	{
+		// codemode: one script that calls several tools
+		match: (p) => /codemode|脚本/i.test(p),
+		steps: [
+			() => [
+				call("codemode", {
+					code: [
+						"// 统计 src 下 formatDate / isOverdue 的用法",
+						"const hits = await tools.grep({ pattern: 'formatDate|isOverdue', path: 'src' });",
+						"const src = await tools.read({ path: 'src/utils/date.js' });",
+						"return { hits: hits.split('\\n').length, lines: src.split('\\n').length };",
+					].join("\n"),
+				}),
+			],
+			() => [
+				call("codemode", {
+					code: [
+						"const a = await tools.ls({ path: 'src' });",
+						"const b = await tools.ls({ path: 'tests' });",
+						"return a + '\\n' + b;",
+					].join("\n"),
+				}),
+			],
+			() => [text("两段脚本都跑完了：第一段带注释，行标题直接显示用途；第二段没有注释，行标题显示它调用的工具。")],
+		],
+	},
+	{
 		match: (p) => /isOverdue|逾期/.test(p),
 		steps: [
 			() => [think("纯日期 YYYY-MM-DD 会按 UTC 零点解析；应按当天本地时间结束时刻比较。"), call("grep", { pattern: "isOverdue" }), call("read", { path: "src/utils/date.js" })],
@@ -402,6 +428,7 @@ const GREETING = `你好！我是 **离线演示模型**（demo-coder），不�
 - 「添加深色模式」——切到 **Plan** 模式试试计划审批
 - 「解释一下项目结构」——会启动一个子 agent
 - 「提交并创建 PR」——触发需要确认的危险命令
+- 「用 codemode 脚本统计一下」——一段脚本调用多个工具
 
 在右下角切换到真实模型后，就由真正的 LLM 来驱动。`;
 

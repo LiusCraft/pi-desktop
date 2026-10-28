@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { PencilIcon, PlugZapIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
-import type { ConnectorDraft, ConnectorInfo, CustomizeCatalog } from '@shared/protocol';
+import { DEFAULT_MCP_EXPOSURE, MCP_EXPOSURES, type ConnectorDraft, type ConnectorInfo, type CustomizeCatalog } from '@shared/protocol';
+import { Tip } from '@/components/common/Tip';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,7 +22,7 @@ interface Props {
   onCatalog: (c: CustomizeCatalog) => void;
 }
 
-const blank: ConnectorDraft = { name: '', scope: 'user', transport: 'stdio', command: '', args: [], url: '', pairs: [], description: '' };
+const blank: ConnectorDraft = { name: '', scope: 'user', transport: 'stdio', command: '', args: [], url: '', pairs: [], description: '', exposure: DEFAULT_MCP_EXPOSURE };
 
 /** A command line the way a person types it: quoted parts stay together. */
 const splitArgs = (line: string) => [...line.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2] ?? m[3]);
@@ -82,6 +83,12 @@ function ConnectorForm({ project, initial, onDone, onCatalog }: Omit<Props, 'cat
         )}
         <Field label={t('connectors.descOptional')}>
           <Input value={draft.description} onChange={(e) => set({ description: e.target.value })} placeholder="Search and read the product documentation" />
+        </Field>
+        <Field label={t('connectors.exposure')} hint={t('connectors.exposure.hint')}>
+          <div className="flex items-center gap-2">
+            <Segmented value={draft.exposure ?? DEFAULT_MCP_EXPOSURE} onChange={(exposure) => set({ exposure })} options={MCP_EXPOSURES.map((id) => ({ id, label: t(`connectors.exposure.${id}`) }))} />
+            <Tip>{t('connectors.exposure.tip')}</Tip>
+          </div>
         </Field>
         <Field label={t('connectors.saveTo')} hint={draft.scope === 'user' ? t('connectors.saveUser') : t('connectors.saveProject', { name: project ? fname(project) : t('skills.thisProject') })}>
           <Segmented value={draft.scope} onChange={(scope) => set({ scope })} options={[{ id: 'user', label: t('skills.personal') }, { id: 'project', label: t('skills.projectOpt'), disabled: !project || !!initial.originalName }]} />
@@ -146,7 +153,7 @@ export function ConnectorsSection({ catalog, project, onCatalog }: Props) {
   if (current) {
     const edit = (): ConnectorDraft => ({
       originalName: current.name, name: current.name, scope: current.scope, transport: current.transport,
-      command: current.command ?? '', args: current.args ?? [], url: current.url ?? '', pairs: current.pairs, description: current.description ?? '',
+      command: current.command ?? '', args: current.args ?? [], url: current.url ?? '', pairs: current.pairs, description: current.description ?? '', exposure: current.exposure,
     });
     return (
       <ConnectorDetail

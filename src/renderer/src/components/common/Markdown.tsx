@@ -2,7 +2,7 @@ import { t as tr, useT } from '@/lib/i18n';
 import { memo, useState, type ReactNode } from 'react';
 import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { CheckIcon, CopyIcon } from 'lucide-react';
+import { CheckIcon, ChevronRightIcon, CopyIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { call } from '@/lib/api';
 import { highlight, langOfFence } from '@/lib/highlight';
@@ -52,9 +52,11 @@ function remarkFileRefs() {
 }
 
 /** `flush`: for a code block that is already inside a bordered panel (tool output): it draws only the separator above itself. */
-export function CodeBlock({ lang, code, extra, flush }: { lang: string; code: string; extra?: ReactNode; flush?: boolean }) {
+/** `collapsible` starts the block folded to its header; the header toggles it. */
+export function CodeBlock({ lang, code, extra, flush, collapsible }: { lang: string; code: string; extra?: ReactNode; flush?: boolean; collapsible?: boolean }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
+  const [open, setOpen] = useState(!collapsible);
   const copy = () => {
     void navigator.clipboard?.writeText(code).then(() => {
       setCopied(true);
@@ -63,8 +65,13 @@ export function CodeBlock({ lang, code, extra, flush }: { lang: string; code: st
   };
   return (
     <div className={cn('bg-code', flush ? 'border-t first:border-t-0' : 'my-2 overflow-hidden rounded-lg border')}>
-      <div className="flex items-center justify-between border-b px-3 py-1 text-xs text-muted-foreground">
-        <span className="font-mono">{lang || 'text'}</span>
+      <div className={cn('flex items-center justify-between px-3 py-1 text-xs text-muted-foreground', open && 'border-b')}>
+        {collapsible ? (
+          <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex items-center gap-1 font-mono hover:text-foreground">
+            <ChevronRightIcon className={cn('size-3 transition-transform', open && 'rotate-90')} />
+            {lang || 'text'}
+          </button>
+        ) : <span className="font-mono">{lang || 'text'}</span>}
         <div className="flex items-center gap-1">
           {extra}
           <button onClick={copy} className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent hover:text-foreground">
@@ -73,9 +80,11 @@ export function CodeBlock({ lang, code, extra, flush }: { lang: string; code: st
           </button>
         </div>
       </div>
-      <pre className={cn('overflow-x-auto px-3 py-2.5 font-mono text-[12.5px] leading-relaxed', flush && 'max-h-80 overflow-y-auto')}>
-        <code dangerouslySetInnerHTML={{ __html: highlight(code, langOfFence(lang)) }} />
-      </pre>
+      {open && (
+        <pre className={cn('overflow-x-auto px-3 py-2.5 font-mono text-[12.5px] leading-relaxed', flush && 'max-h-80 overflow-y-auto')}>
+          <code dangerouslySetInnerHTML={{ __html: highlight(code, langOfFence(lang)) }} />
+        </pre>
+      )}
     </div>
   );
 }

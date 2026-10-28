@@ -366,6 +366,7 @@ export interface ConnectorInfo {
   pairs: string[];
   description?: string;
   enabled: boolean;
+  exposure: McpExposure;
   /** Tools seen the last time the server connected (pi's mcp-cache). */
   tools: ConnectorTool[];
 }
@@ -381,6 +382,7 @@ export interface ConnectorDraft {
   /** KEY=VALUE for stdio env, or Header: value pairs for http. */
   pairs?: string[];
   description?: string;
+  exposure?: McpExposure;
 }
 export interface PluginInfo {
   source: string;
@@ -782,6 +784,11 @@ export type ThemeSetting = 'light' | 'dark' | 'system';
  */
 export const SHELL_SESSION_MODES = ['session', 'command'] as const;
 export type ShellSessionMode = (typeof SHELL_SESSION_MODES)[number];
+
+/** How a connector's tools reach the model (pi's `exposure`): only through `codemode` scripts, loaded by `tool_search`, declared directly, or not at all. */
+export const MCP_EXPOSURES = ['codemode', 'deferred', 'direct', 'hidden'] as const;
+export type McpExposure = (typeof MCP_EXPOSURES)[number];
+export const DEFAULT_MCP_EXPOSURE: McpExposure = 'codemode';
 /** How the next-message prediction picks its model. */
 export type SuggestionModelMode = 'auto' | 'session' | 'fixed';
 /** Default and maximum conversation depth of a prediction (number of messages). */

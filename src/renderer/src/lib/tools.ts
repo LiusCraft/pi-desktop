@@ -93,9 +93,29 @@ export function toolFromArgs(id: string, toolName: string, args: Record<string, 
   };
 }
 
+const COMMENT_LINE = /^\s*(?:\/\/+|\/\*+|\*)\s*(.+?)\s*(?:\*\/)?\s*$/;
+
+/** What a codemode script does: its first comment line, else the tools it called ("read, grep ×2"). */
+export function codemodeSubject(tool: ToolState): string {
+  const code = typeof tool.args?.code === 'string' ? tool.args.code : '';
+  for (const line of code.split('\n')) {
+    if (!line.trim()) continue;
+    const m = COMMENT_LINE.exec(line);
+    if (m) return m[1];
+    break;
+  }
+  const counts = new Map<string, number>();
+  for (const c of tool.calls ?? []) counts.set(c.name, (counts.get(c.name) ?? 0) + 1);
+  return [...counts].map(([name, n]) => (n > 1 ? `${name} ×${n}` : name)).join(', ');
+}
+
 /** Plain-text label, e.g. "Ran npm test" / "Reading date.js". */
 export function toolLabel(tool: ToolState) {
   const run = tool.status === 'running';
+  if (bareName(tool.name) === CODEMODE_TOOL) {
+    const what = codemodeSubject(tool);
+    return t(run ? 'toolLabel.scripting' : 'toolLabel.scripted') + (what ? `: ${what}` : '');
+  }
   switch (tool.kind) {
     case 'read': return t(run ? 'toolLabel.reading' : 'toolLabel.read', { name: fname(tool.path ?? '') });
     case 'edit': return t(run ? 'toolLabel.editing' : 'toolLabel.edited', { name: fname(tool.path ?? '') });

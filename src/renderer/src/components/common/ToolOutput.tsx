@@ -26,6 +26,7 @@ function JsonBlock({ text, value }: { text: string; value: object }) {
         <span className="min-w-0 truncate">{summary}</span>
         <div className="ml-auto flex shrink-0 items-center gap-1">
           <Segmented
+            compact
             value={raw ? 'raw' : 'data'}
             onChange={(id) => setRaw(id === 'raw')}
             options={[{ id: 'data', label: t('tool.structured') }, { id: 'raw', label: t('tool.raw') }]}

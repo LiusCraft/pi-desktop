@@ -26,7 +26,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { call } from '@/lib/api';
 import { t as tr, useT } from '@/lib/i18n';
 import { ago, fmtCost, fmtMs, fmtTok, fname } from '@/lib/format';
-import { bareName, CODEMODE_TOOL, groupStats, groupSummary, isFileTool, toolLabel, toolScope, type NestedToolCall, type ToolState } from '@/lib/tools';
+import { bareName, CODEMODE_TOOL, codemodeSubject, groupStats, groupSummary, isFileTool, toolLabel, toolScope, type NestedToolCall, type ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
 import { useApp, updateSession } from '@/store/app';
 import { forgeName, forgeOfUrl } from '@shared/forge';
@@ -515,16 +515,16 @@ function CodemodeDetail({ tool }: { tool: ToolState }) {
   const head = tool.output ? splitScriptHeader(tool.output) : null;
   const code = typeof tool.args?.code === 'string' ? tool.args.code.trim() : '';
   const body = (head ? head.body : (tool.output ?? '')).trim();
-  const running = tool.status === 'running';
-  const failed = !running && (tool.status === 'err' || (head ? !head.ok : false));
+  const failed = tool.status !== 'running' && (tool.status === 'err' || (head ? !head.ok : false));
   return (
     <>
-      <div className={cn('flex items-center gap-1.5 px-3 py-1.5 text-xs', failed ? 'text-destructive' : 'text-muted-foreground')}>
-        {running ? <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin" /> : <CodeIcon className="size-3.5 shrink-0" />}
-        <span>{t(running ? 'tool.running' : failed ? 'tool.scriptFailed' : 'tool.scriptDone')}</span>
-        {head && <><span className="opacity-50">·</span><span className="tabular-nums">{t('tool.wallTime', { secs: head.secs })}</span></>}
-      </div>
-      {!!code && <CodeBlock lang="js" code={code} flush />}
+      {failed && (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-destructive">
+          <CodeIcon className="size-3.5 shrink-0" />
+          <span>{t('tool.scriptFailed')}</span>
+        </div>
+      )}
+      {!!code && <CodeBlock lang="js" code={code} flush collapsible />}
       {!!tool.calls?.length && <NestedCalls calls={tool.calls} />}
       {!!body && <ToolOutput text={body} />}
     </>
@@ -534,6 +534,10 @@ function CodemodeDetail({ tool }: { tool: ToolState }) {
 /** "Ran" + "npm test": the verb stays muted, the subject is brighter (like Pi Desktop Code's tool list). */
 function splitLabel(tool: ToolState): [string, string] {
   if (tool.kind === 'agent') return [tr(tool.status === 'running' ? 'tool.runningAgent' : 'tool.ranAgent'), tool.desc];
+  if (bareName(tool.name) === CODEMODE_TOOL) {
+    const what = codemodeSubject(tool);
+    return [tr(tool.status === 'running' ? 'toolLabel.scripting' : 'toolLabel.scripted'), what];
+  }
   if (tool.kind === 'other') return [toolLabel(tool), ''];
   if (tool.kind === 'websearch') return [tr(tool.status === 'running' ? 'toolLabel.webSearching.verb' : 'toolLabel.webSearched.verb'), tool.q];
   const label = toolLabel(tool);
@@ -551,6 +555,7 @@ const ToolRow = memo(function ToolRow({ sid, tool }: { sid: string; tool: ToolSt
   const err = tool.status === 'err', denied = tool.status === 'denied';
   const [verb, subject] = splitLabel(tool);
   const scope = toolScope(tool);
+  const wallTime = bareName(tool.name) === CODEMODE_TOOL && tool.output ? splitScriptHeader(tool.output)?.secs : undefined;
   const toggle = () => (tool.kind === 'agent' ? openAgent(sid, tool.id) : toggleTool(sid, tool.id));
   const extra = tool.kind === 'agent' && (
     <>
@@ -587,6 +592,7 @@ const ToolRow = memo(function ToolRow({ sid, tool }: { sid: string; tool: ToolSt
         {scope && <span className="min-w-0 shrink truncate text-xs" title={scope}>{scope}</span>}
         {tool.kind === 'websearch' && tool.count != null && <span className="shrink-0 text-xs">{t(tool.count === 1 ? 'tool.result' : 'tool.results', { n: tool.count })}</span>}
         {extra}
+        {wallTime && <span className="shrink-0 text-xs tabular-nums">{t('tool.wallTime', { secs: wallTime })}</span>}
         <Stat add={tool.add} del={tool.del} />
         <Chevron open={tool.open && tool.kind !== 'agent'} />
       </div>

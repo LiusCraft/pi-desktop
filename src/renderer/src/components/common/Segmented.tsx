@@ -9,11 +9,13 @@ export interface SegmentedOption<T extends string> {
   disabled?: boolean;
 }
 
-export function Segmented<T extends string>({ value, onChange, options, className }: {
+export function Segmented<T extends string>({ value, onChange, options, className, compact }: {
   value: T;
   onChange: (id: T) => void;
   options: readonly SegmentedOption<T>[];
   className?: string;
+  /** Small text and padding, for the `text-xs` bars above code and output. */
+  compact?: boolean;
 }) {
   return (
     <ToggleGroup
@@ -22,7 +24,7 @@ export function Segmented<T extends string>({ value, onChange, options, classNam
       // Pressing the selected item would clear a single-select group; a choice always stays made.
       onValueChange={(id) => id && onChange(id as T)}
       spacing={1}
-      className={cn('shrink-0 gap-0 rounded-lg bg-muted p-0.5', className)}
+      className={cn('shrink-0 gap-0 bg-muted p-0.5', compact ? 'rounded-md' : 'rounded-lg', className)}
     >
       {options.map((o) => (
         <ToggleGroupItem
@@ -30,7 +32,7 @@ export function Segmented<T extends string>({ value, onChange, options, classNam
           value={o.id}
           title={o.hint}
           disabled={o.disabled}
-          className="h-auto rounded-md px-3 py-1 focus-visible:border-transparent focus-visible:ring-0 font-normal text-muted-foreground transition-[color,background-color,box-shadow] duration-200 hover:bg-transparent hover:text-foreground data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm"
+          className={cn('h-auto rounded-md focus-visible:border-transparent focus-visible:ring-0 font-normal text-muted-foreground transition-[color,background-color,box-shadow] duration-200 hover:bg-transparent hover:text-foreground data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm', compact ? 'px-2 py-0 text-xs' : 'px-3 py-1')}
         >
           {o.label}
         </ToggleGroupItem>
