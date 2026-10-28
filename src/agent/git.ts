@@ -132,10 +132,35 @@ export async function deleteBranch(repo: string, branch: string, base: string | 
  */
 export async function diffBase(cwd: string, base: string | null, baseBranch: string | null): Promise<string | null> {
   if (baseBranch && baseBranch !== (await currentBranch(cwd))) {
-    const fork = (await resolveRef(cwd, baseBranch)) && (await mergeBase(cwd, baseBranch));
-    if (fork) return fork;
+    // The remote copy may be ahead of the local base (a PR merged there): take whichever fork point is newer.
+    let fork: string | null = null;
+    for (const ref of [baseBranch, `origin/${baseBranch}`]) {
+      if (!(await resolveRef(cwd, ref))) continue;
+      const candidate = await mergeBase(cwd, ref);
+      if (candidate && (!fork || (await gitSafe(cwd, 'merge-base', '--is-ancestor', fork, candidate)) !== null)) fork = candidate;
+    }
+    if (fork) return (await squashMerged(cwd, fork, baseBranch)) ? head(cwd) : fork;
+  } else if (baseBranch) {
+    // On the base branch itself, what is already pushed is synced: only what is not yet there is a change.
+    const ahead = (await gitSafe(cwd, 'rev-list', '--count', '@{u}..HEAD'))?.trim();
+    if (ahead === '0') return head(cwd);
   }
   return base;
+}
+
+/**
+ * Whether the branch's commits since `fork` already live in the base: every file they touched has the same
+ * content at HEAD and at the base's tip. That is what a squash or rebase merge leaves behind, with no shared history.
+ */
+async function squashMerged(cwd: string, fork: string, baseBranch: string): Promise<boolean> {
+  const names = (await gitSafe(cwd, 'diff', '--name-only', '-z', fork, 'HEAD')) || '';
+  const files = names.split('\0').filter(Boolean);
+  if (!files.length) return false;
+  for (const ref of [`origin/${baseBranch}`, baseBranch]) {
+    if (!(await resolveRef(cwd, ref))) continue;
+    if ((await gitSafe(cwd, 'diff', '--quiet', ref, 'HEAD', '--', ...files)) !== null) return true;
+  }
+  return false;
 }
 
 /** Git's empty tree: the "before" of a root commit. */
