@@ -18,7 +18,7 @@ import type {
   AgentDraft, AgentMessage, ConnectorDraft, SkillDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
   PrStatus, PrSummary, SessionCleanup, SessionMeta, SessionRemoval, SessionStats, SetupStep, Settings, SideChat, SpawnTask, SubagentProgress, WorkIdea, WorkIdeasModelMode, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
 } from '@shared/protocol';
-import { MAX_SESSION_TITLE, SHELL_SESSION_MODES } from '@shared/protocol';
+import { AUTO_REVIEW_DEFAULT_TIMEOUT, AUTO_REVIEW_MAX_TIMEOUT, AUTO_REVIEW_MIN_TIMEOUT, MAX_SESSION_TITLE, SHELL_SESSION_MODES } from '@shared/protocol';
 import { decodeCommandMessage, isCommandMessage } from '@shared/command-message';
 import { decodePeerMessage,encodePeerMessage, isPeerMessage } from '@shared/peer-message';
 import { decodePrEvent, encodePrEvent, isPrEvent } from '@shared/pr-event';
@@ -86,6 +86,9 @@ interface Live {
 }
 
 /** Rough token count for text the SDK does not measure for us. */
+/** The review timeout setting in seconds, kept in range whatever the stored value is. */
+const clampTimeout = (seconds: unknown) =>
+  Math.min(AUTO_REVIEW_MAX_TIMEOUT, Math.max(AUTO_REVIEW_MIN_TIMEOUT, Math.round(Number(seconds)) || AUTO_REVIEW_DEFAULT_TIMEOUT));
 const approxTokens = (text: string) => Math.ceil(text.length / 4);
 
 /** What a subagent tool call shows in its transcript, and what it is doing meanwhile. */
@@ -1134,7 +1137,7 @@ export class SessionHub {
     this.namers.add(controller);
     const stop = () => controller.abort();
     signal?.addEventListener('abort', stop, { once: true });
-    const timer = setTimeout(stop, commandReview.TIMEOUT_MS);
+    const timer = setTimeout(stop, clampTimeout(settings.autoReviewTimeout) * 1000);
     try {
       // No `reasoning` option: the review runs with thinking off.
       const reply = await this.models.completeSimple(model, {

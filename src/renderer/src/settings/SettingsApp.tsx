@@ -5,7 +5,7 @@ import { BrainIcon, ChevronRightIcon, BriefcaseIcon, CodeIcon, DatabaseIcon, Fol
 import { toast } from 'sonner';
 import type { AppInfo, Project, Settings, SettingsPayload, SuggestionModelMode, TerminalShell, WorkIdeasModelMode } from '@shared/protocol';
 import { LOCALES, LOCALE_NAMES, type LanguageSetting, type MessageKey } from '@shared/i18n';
-import { SUGGESTION_DEFAULT_CONTEXT, SUGGESTION_MAX_CONTEXT, TERMINAL_DEFAULT_LINES, TERMINAL_MAX_LINES } from '@shared/protocol';
+import { AUTO_REVIEW_DEFAULT_TIMEOUT, AUTO_REVIEW_MAX_TIMEOUT, AUTO_REVIEW_MIN_TIMEOUT, SUGGESTION_DEFAULT_CONTEXT, SUGGESTION_MAX_CONTEXT, TERMINAL_DEFAULT_LINES, TERMINAL_MAX_LINES } from '@shared/protocol';
 import { BUILTIN_PETS, BUILTIN_PET_IDS, DEFAULT_PET_ID } from '@shared/pets';
 import { useCopy } from '@/components/common/Copy';
 import { Segmented } from '@/components/common/Segmented';
@@ -112,19 +112,19 @@ const THEMES: readonly { id: 'light' | 'dark' | 'system'; label: MessageKey; til
 ];
 
 /** Number input that commits on blur or Enter, so a half-typed count is never saved. */
-function CountInput({ value, disabled, max = SUGGESTION_MAX_CONTEXT, label, onCommit }: { value: number; disabled?: boolean; max?: number; label?: string; onCommit: (value: number) => void }) {
+function CountInput({ value, disabled, min = 1, max = SUGGESTION_MAX_CONTEXT, label, onCommit }: { value: number; disabled?: boolean; min?: number; max?: number; label?: string; onCommit: (value: number) => void }) {
   const t = useT();
   const [text, setText] = useState(String(value));
   useEffect(() => setText(String(value)), [value]);
   const commit = () => {
     const next = Math.round(Number(text));
     if (!Number.isFinite(next) || next < 1) return setText(String(value));
-    onCommit(Math.min(max, next));
+    onCommit(Math.min(max, Math.max(min, next)));
   };
   return (
     <Input
       type="number"
-      min={1}
+      min={min}
       max={max}
       value={text}
       disabled={disabled}
@@ -375,6 +375,18 @@ export function SettingsApp() {
                 <>
                   <Row title={t('settings.autoReview.model')} tip={t('settings.autoReview.model.tip')}>
                     <Segmented value={settings.autoReviewModel ?? 'session'} options={modeOptions} onChange={(m) => void patch({ autoReviewModel: m })} />
+                  </Row>
+                  <Row title={t('settings.autoReview.timeout')} tip={t('settings.autoReview.timeout.tip')}>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <CountInput
+                        value={settings.autoReviewTimeout ?? AUTO_REVIEW_DEFAULT_TIMEOUT}
+                        min={AUTO_REVIEW_MIN_TIMEOUT}
+                        max={AUTO_REVIEW_MAX_TIMEOUT}
+                        label={t('settings.autoReview.timeout')}
+                        onCommit={(n) => void patch({ autoReviewTimeout: n })}
+                      />
+                      <span className="text-sm text-muted-foreground">{t('settings.secondsUnit')}</span>
+                    </div>
                   </Row>
                   {(settings.autoReviewModel ?? 'session') === 'fixed' && (
                     <Row title={t('settings.fixedModelRow')} tip={t('settings.fixedModelRow.tip')}>

@@ -760,6 +760,9 @@ export type WorkIdeasModelMode = 'session' | 'auto' | 'fixed';
 export const SUGGESTION_DEFAULT_CONTEXT = 6;
 export const SUGGESTION_MAX_CONTEXT = 50;
 /** Terminal lines captured when a terminal tab is attached to a message with @; the most the setting allows. */
+export const AUTO_REVIEW_DEFAULT_TIMEOUT = 5;
+export const AUTO_REVIEW_MIN_TIMEOUT = 3;
+export const AUTO_REVIEW_MAX_TIMEOUT = 120;
 export const TERMINAL_DEFAULT_LINES = 50;
 export const TERMINAL_MAX_LINES = 500;
 export interface Settings {
@@ -791,6 +794,8 @@ export interface Settings {
   autoReviewModel: WorkIdeasModelMode;
   /** provider/model id used by `autoReviewModel: 'fixed'`; unavailable ids fall back to auto. */
   autoReviewModelId: string | null;
+  /** Seconds the review may take before the user is asked instead. */
+  autoReviewTimeout: number;
   defaultMode: SessionKind;
   sidebarCollapsed: boolean;
   /** Root folder for Code-session git worktrees; null/empty uses `<dataDir>/.worktree`. */

@@ -1,9 +1,8 @@
 // Auto mode's review: before a shell command that no rule settles runs, a model reads it and says
 // whether it plainly belongs to what the user asked. One tool-less request outside the conversation,
-// with thinking off; it never runs anything and any failure falls back to asking the user.
+// with thinking off; it never runs anything and any failure (or running past the timeout setting) falls back to asking the user.
 import { contentText } from './suggest';
 
-export const TIMEOUT_MS = 15_000;
 export const REVIEW_MAX_TOKENS = 200;
 
 const MAX_COMMAND = 4000;

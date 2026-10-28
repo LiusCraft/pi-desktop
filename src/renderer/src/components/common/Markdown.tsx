@@ -6,6 +6,7 @@ import { CheckIcon, CopyIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { call } from '@/lib/api';
 import { highlight, langOfFence } from '@/lib/highlight';
+import { remarkTrimAutolinks } from '@/lib/remark-autolink';
 import { cn } from '@/lib/utils';
 import { openFileRef } from '@/store/actions';
 import { MermaidBlock } from './MermaidBlock';
@@ -120,7 +121,7 @@ const urlTransform = (url: string) => (url.startsWith(FILE_SCHEME) ? url : defau
 export const Markdown = memo(function Markdown({ text, className, children }: { text: string; className?: string; children?: ReactNode }) {
   return (
     <div className={cn('prose-chat', className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkFileRefs]} components={components} urlTransform={urlTransform}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkTrimAutolinks, remarkFileRefs]} components={components} urlTransform={urlTransform}>
         {text}
       </ReactMarkdown>
       {children}
