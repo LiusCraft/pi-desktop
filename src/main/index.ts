@@ -260,7 +260,11 @@ function createWindow() {
   trackWindowState(win);
   load(win, 'index');
   harden(win);
-  win.on('closed', () => (win = null));
+  win.on('closed', () => {
+    win = null;
+    // Secondary windows (settings, pet, popouts) are meaningless without the main window.
+    for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.close();
+  });
 }
 
 function createSettingsWindow(section?: string) {
