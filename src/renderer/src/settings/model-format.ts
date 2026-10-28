@@ -1,5 +1,6 @@
 // Formatting shared by the model management item lists and dialogs.
-import type { EndpointModel, ModelCost } from '@shared/protocol';
+import { THINKING_LEVELS, type EndpointModel, type ModelCost, type ThinkingLevel } from '@shared/protocol';
+import { supportedThinkingLevels } from '@shared/model-metadata';
 import { t } from '@/lib/i18n';
 
 /** 400000 → "400K", 1000000 → "1M". */
@@ -25,15 +26,32 @@ export function costLabel(cost?: ModelCost): string | undefined {
   return t('fmt.perMtok', { input, output });
 }
 
+/** "minimal–xhigh" for a contiguous run, "low/high" otherwise. */
+function levelsLabel(levels: ThinkingLevel[]): string {
+  if (levels.length === 1) return levels[0];
+  const start = THINKING_LEVELS.indexOf(levels[0]);
+  const contiguous = levels.every((level, index) => THINKING_LEVELS.indexOf(level) === start + index);
+  return contiguous ? `${levels[0]}–${levels.at(-1)}` : levels.join('/');
+}
+
+/** The reasoning capability; a customized level map shows which levels remain. */
+function reasoningLabel(model: EndpointModel): string | undefined {
+  if (!model.reasoning) return undefined;
+  if (!model.thinkingLevelMap) return t('fmt.reasoning');
+  const levels = supportedThinkingLevels(model).filter((level) => level !== 'off');
+  return levels.length ? t('fmt.reasoningLevels', { levels: levelsLabel(levels) }) : undefined;
+}
+
 /** The capability/pricing summary under a model id. */
 export function modelMetaLine(model: EndpointModel): string {
-  const hasMeta = Boolean(model.contextWindow || model.maxTokens || costLabel(model.cost) || model.reasoning || model.input?.includes('image'));
+  const hasMeta = Boolean(model.contextWindow || model.maxTokens || costLabel(model.cost) || reasoningLabel(model) || model.input?.includes('image'));
   if (!hasMeta) return t('fmt.noMeta');
   const parts = [model.contextWindow ? t('fmt.context', { size: tokensLabel(model.contextWindow) }) : t('fmt.defaultContext')];
   if (model.maxTokens) parts.push(t('fmt.output', { size: tokensLabel(model.maxTokens) }));
   const cost = costLabel(model.cost);
   if (cost) parts.push(cost);
-  if (model.reasoning) parts.push(t('fmt.reasoning'));
+  const reasoning = reasoningLabel(model);
+  if (reasoning) parts.push(reasoning);
   if (model.input?.includes('image')) parts.push(t('fmt.imageInput'));
   return parts.join(' · ');
 }

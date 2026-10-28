@@ -4,9 +4,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { getSupportedThinkingLevels } from '@earendil-works/pi-ai/models';
 import { afterAll, describe, expect, it } from 'vitest';
 import { alignModel } from '../src/agent/model-admin';
 import { EndpointStore, LOCAL_KEY, discoveryUrls, isLocalUrl, parseModelList, stripJsonComments, validProviderId } from '../src/agent/endpoints';
+import { supportedThinkingLevels } from '../src/shared/model-metadata';
 import { setActiveLocale } from '../src/shared/i18n/runtime';
 
 // These assertions read the host's Chinese messages.
@@ -176,6 +178,47 @@ describe('EndpointStore', () => {
     for (const model of [{ id: 'model', contextWindow: 0 }, { id: 'model', maxTokens: -1 }, { id: 'model', cost: { input: -0.5 } }]) {
       expect(() => store.save({ ...draft, models: [model] })).toThrow(/模型 model/);
       expect(fs.readFileSync(store.file, 'utf8')).toBe(before);
+    }
+  });
+
+  it('round-trips a model thinking level map', () => {
+    const store = storeAt('thinking-levels');
+    const thinkingLevelMap = { off: null, minimal: 'minimal', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: null };
+    store.save({
+      id: 'proxy',
+      baseUrl: 'https://proxy.example.com/v1',
+      api: 'openai-completions',
+      models: [{ id: 'reasoner', reasoning: true, thinkingLevelMap }],
+    });
+    expect(JSON.parse(fs.readFileSync(store.file, 'utf8')).providers.proxy.models[0].thinkingLevelMap).toEqual(thinkingLevelMap);
+    expect(store.list(new Set(), () => ({ keySet: true }), () => undefined)[0].models[0].thinkingLevelMap).toEqual(thinkingLevelMap);
+  });
+
+  it('drops unknown levels and non-string values from a hand-edited map', () => {
+    const store = storeAt('thinking-levels-clean');
+    fs.writeFileSync(store.file, JSON.stringify({ providers: { proxy: {
+      baseUrl: 'https://proxy.example.com/v1', api: 'openai-completions',
+      models: [{ id: 'reasoner', reasoning: true, thinkingLevelMap: { high: 'max', low: null, bogus: 'xhigh', minimal: 2 } }],
+    } } }));
+    expect(store.list(new Set(), () => ({ keySet: true }), () => undefined)[0].models[0].thinkingLevelMap).toEqual({ high: 'max', low: null });
+  });
+
+  it('clamps levels like pi: defaults through high, xhigh and max need a mapping', () => {
+    expect(supportedThinkingLevels({ reasoning: true })).toEqual(['off', 'minimal', 'low', 'medium', 'high']);
+    expect(supportedThinkingLevels({ reasoning: true, thinkingLevelMap: { off: null, xhigh: 'xhigh', max: null } })).toEqual([
+      'minimal', 'low', 'medium', 'high', 'xhigh',
+    ]);
+    expect(supportedThinkingLevels({ reasoning: true, thinkingLevelMap: { low: null, medium: null, high: null } })).toEqual(['off', 'minimal']);
+    expect(supportedThinkingLevels({ reasoning: false, thinkingLevelMap: { xhigh: 'xhigh' } })).toEqual(['off']);
+    // Stay in step with the SDK, which clamps the composer's choices with the same function.
+    const levels = [undefined, { off: null }, { xhigh: 'xhigh' }, { max: 'max', high: null }, { minimal: null, low: null, medium: null, high: null }];
+    for (const thinkingLevelMap of levels) {
+      const model = {
+        id: 'model', name: 'Model', api: 'openai-completions' as const, provider: 'test', baseUrl: 'https://example.com/v1',
+        input: ['text' as const], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 128000, maxTokens: 16384, reasoning: true, thinkingLevelMap,
+      };
+      expect(supportedThinkingLevels(model)).toEqual(getSupportedThinkingLevels(model));
     }
   });
 

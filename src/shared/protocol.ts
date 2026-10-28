@@ -21,7 +21,10 @@ import type { PromptTokens } from './usage';
 export type SessionKind = 'code' | 'work';
 export type PermissionMode = 'auto' | 'default' | 'acceptEdits' | 'plan' | 'bypass';
 export type OutputStyle = 'default' | 'proactive' | 'concise' | 'explanatory' | 'learning';
-export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+/** models.json `thinkingLevelMap`: the provider value sent per level, null for unsupported. */
+export type ThinkingLevelMap = Partial<Record<ThinkingLevel, string | null>>;
 export type StreamingBehavior = 'steer' | 'followUp';
 
 export const PERMISSION_MODES: readonly PermissionMode[] = ['auto', 'default', 'acceptEdits', 'plan', 'bypass'];
@@ -629,6 +632,7 @@ export interface ModelMeta {
   contextWindow?: number;
   maxTokens?: number;
   reasoning?: boolean;
+  thinkingLevelMap?: ThinkingLevelMap;
   input?: string[];
   cost?: ModelCost;
   /** Where the metadata came from. */

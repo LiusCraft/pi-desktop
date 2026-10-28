@@ -35,6 +35,7 @@ export function mergeModels(current: EndpointModel[], fetched: EndpointModel[]):
             contextWindow: existing.contextWindow ?? model.contextWindow,
             maxTokens: existing.maxTokens ?? model.maxTokens,
             reasoning: existing.reasoning ?? model.reasoning,
+            thinkingLevelMap: existing.thinkingLevelMap ?? model.thinkingLevelMap,
             input: existing.input ?? model.input,
             cost: alignModel(existing, model).cost,
             source: existing.source ?? model.source,

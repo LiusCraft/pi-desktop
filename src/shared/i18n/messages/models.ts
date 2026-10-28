@@ -11,6 +11,7 @@ export const models = defineMessages({
   'fmt.defaultContext': { en: 'default 128K context', zh: '默认 128K 上下文' },
   'fmt.output': { en: '{size} output', zh: '{size} 输出' },
   'fmt.reasoning': { en: 'reasoning', zh: '推理' },
+  'fmt.reasoningLevels': { en: 'reasoning {levels}', zh: '推理 {levels}' },
   'fmt.imageInput': { en: 'image input', zh: '图像输入' },
   'fmt.apiDefault': { en: 'Follow provider default', zh: '跟随 provider 默认' },
 
@@ -99,6 +100,9 @@ export const models = defineMessages({
   'editor.prices': { en: 'Prices (USD per million tokens)', zh: '价格（美元 / 百万 tokens）' },
   'editor.pricePh': { en: 'Reference / default 0', zh: '参考值 / 默认 0' },
   'editor.reasoning': { en: 'Reasoning', zh: '推理能力' },
+  'editor.levels': { en: 'Supported levels', zh: '支持的等级' },
+  'editor.levelsHint': { en: 'Unchecked levels are saved as unsupported.', zh: '未勾选的等级会保存为不支持。' },
+  'editor.levelsTip': { en: 'The off level means reasoning can be turned off. xhigh and max are opt-in: pi needs an explicit provider value for them, and the level name is used unless models.json has another value.', zh: '“关闭”表示可以关闭推理。xhigh 和 max 需要手动开启：pi 需要为它们显式提供取值，默认与等级同名，除非 models.json 里已有其他值。' },
   'editor.inputType': { en: 'Input types', zh: '输入类型' },
   'editor.auto': { en: 'Reference / default', zh: '参考值 / 默认' },
   'editor.supported': { en: 'Supported', zh: '支持' },

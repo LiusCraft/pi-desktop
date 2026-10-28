@@ -6,7 +6,7 @@ import { tr } from '@shared/i18n/runtime';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { EndpointDiscovery, EndpointDraft, EndpointInfo, EndpointModel, ModelMeta } from '@shared/protocol';
-import { alignModel, COST_FIELDS, nonNegativePrice, positiveLimit } from '@shared/model-metadata';
+import { alignModel, cleanThinkingLevelMap, COST_FIELDS, nonNegativePrice, positiveLimit } from '@shared/model-metadata';
 
 /** pi's documented placeholder for endpoints that ignore the key (Ollama, llama.cpp, vLLM…). */
 export const LOCAL_KEY = 'local';
@@ -112,12 +112,12 @@ function costEntry(cost: EndpointModel['cost']): Json | undefined {
 
 /**
  * models.json holds a list of models; the editor only owns `id`, `name`,
- * `contextWindow`, `maxTokens`, `reasoning`, `input` and `cost`, and keeps any
- * other field the user (or pi) put on the same model.
+ * `contextWindow`, `maxTokens`, `reasoning`, `thinkingLevelMap`, `input` and
+ * `cost`, and keeps any other field the user (or pi) put on the same model.
  */
 function modelEntry(model: EndpointModel, previous: Json | undefined): Json {
   const out: Json = { ...previous, id: model.id };
-  for (const key of ['name', 'contextWindow', 'maxTokens', 'reasoning', 'input'] as const) {
+  for (const key of ['name', 'contextWindow', 'maxTokens', 'reasoning', 'thinkingLevelMap', 'input'] as const) {
     const value = model[key];
     if (value !== undefined) out[key] = value;
     else delete out[key];
@@ -141,6 +141,7 @@ function cleanModels(list: unknown): EndpointModel[] {
       contextWindow: num(model.contextWindow),
       maxTokens: num(model.maxTokens),
       reasoning: typeof model.reasoning === 'boolean' ? model.reasoning : undefined,
+      thinkingLevelMap: cleanThinkingLevelMap(model.thinkingLevelMap),
       input: Array.isArray(model.input) ? model.input.filter((v): v is string => typeof v === 'string') : undefined,
       cost: model.cost && typeof model.cost === 'object'
         ? {
