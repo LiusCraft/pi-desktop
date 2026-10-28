@@ -10,7 +10,7 @@ import type { MenuItemConstructorOptions } from 'electron';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, net, Notification, screen, shell } from 'electron';
 import {
   HOST_CHANNELS, MAIN_CHANNELS,
-  type ApiArgs, type ApiResult, type AttachmentSource, type BootPayload, type HostEvent, type Project, type PushChannel, type PushEvents,
+  type ApiArgs, type ApiResult, type AttachmentSource, type BootPayload, type HostEvent, type Palette, type Project, type PushChannel, type PushEvents,
   type Settings, type SettingsPayload, type WorktreeInfo,
 } from '@shared/protocol';
 import { DEFAULT_PET_ID } from '@shared/pets';
@@ -185,10 +185,14 @@ function watchSettings() {
 
 // ------------------------------------------------------------ windows
 
-const BG = { light: '#faf9f5', dark: '#262624' };
+const BG: Record<Palette, { light: string; dark: string }> = {
+  default: { light: '#faf9f5', dark: '#262624' },
+  vscode: { light: '#ffffff', dark: '#1e1e1e' },
+};
+const bgColor = (dark: boolean) => BG[settingsValue().palette][dark ? 'dark' : 'light'];
 /** The caption buttons sit over the page header, so they take the page background, not the sidebar's. */
 function overlay(dark: boolean) {
-  return dark ? { color: BG.dark, symbolColor: '#c3c1bb', height: 44 } : { color: BG.light, symbolColor: '#55534d', height: 44 };
+  return dark ? { color: bgColor(true), symbolColor: '#c3c1bb', height: 44 } : { color: bgColor(false), symbolColor: '#55534d', height: 44 };
 }
 const isDark = () => settingsPayload().resolvedTheme === 'dark';
 
@@ -268,7 +272,7 @@ function createWindow() {
     minWidth: 720,
     minHeight: 480,
     title: 'Pi Desktop',
-    backgroundColor: dark ? BG.dark : BG.light,
+    backgroundColor: bgColor(dark),
     titleBarStyle: 'hidden',
     ...(isMac ? { trafficLightPosition: { x: 18, y: 16 } } : { titleBarOverlay: overlay(dark) }),
     webPreferences: { preload: PRELOAD, contextIsolation: true, sandbox: true, nodeIntegration: false },
@@ -293,7 +297,7 @@ function createSettingsWindow(section?: string) {
     minWidth: 720,
     minHeight: 520,
     title: tr('settings.title'),
-    backgroundColor: dark ? BG.dark : BG.light,
+    backgroundColor: bgColor(dark),
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
     ...(isMac ? { trafficLightPosition: { x: 16, y: 18 } } : { titleBarOverlay: overlay(dark) }),
     show: false,
@@ -338,7 +342,7 @@ function openDiagram(svg: string) {
     minWidth: 480,
     minHeight: 360,
     title: tr('app.diagram'),
-    backgroundColor: isDark() ? BG.dark : BG.light,
+    backgroundColor: bgColor(isDark()),
     autoHideMenuBar: true,
     show: false,
     webPreferences: { preload: PRELOAD, contextIsolation: true, sandbox: true, nodeIntegration: false },
@@ -525,7 +529,7 @@ function openSide(sessionId: string) {
     minWidth: 320,
     minHeight: 320,
     title: tr('side.title'),
-    backgroundColor: isDark() ? BG.dark : BG.light,
+    backgroundColor: bgColor(isDark()),
     autoHideMenuBar: true,
     show: false,
     webPreferences: { preload: PRELOAD, contextIsolation: true, sandbox: true, nodeIntegration: false },
@@ -546,7 +550,7 @@ function applyThemeToWindows() {
   for (const w of [win, settingsWin, ...sideWindows.values()]) {
     if (!w || w.isDestroyed()) continue;
     if (!isMac && (w === win || w === settingsWin)) w.setTitleBarOverlay(overlay(dark));
-    w.setBackgroundColor(dark ? BG.dark : BG.light);
+    w.setBackgroundColor(bgColor(dark));
   }
 }
 

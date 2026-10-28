@@ -86,6 +86,34 @@
   --tok-attr: #c79be6;
 }
 
+/* VS Code Light+ / Dark+ */
+:root[data-palette='vscode'] {
+  --background: #ffffff; --foreground: #3b3b3b; --card: #ffffff; --card-foreground: #3b3b3b;
+  --popover: #ffffff; --popover-foreground: #3b3b3b; --primary: #007acc; --primary-foreground: #ffffff;
+  --secondary: #f3f3f3; --secondary-foreground: #3b3b3b; --muted: #f3f3f3; --muted-foreground: #717171;
+  --accent: rgba(0, 0, 0, 0.06); --accent-foreground: #3b3b3b; --destructive: #e51400;
+  --border: #e5e5e5; --input: #cecece; --ring: rgba(0, 122, 204, 0.5);
+  --sidebar: #f3f3f3; --sidebar-foreground: #3b3b3b; --sidebar-accent: rgba(0, 0, 0, 0.07); --sidebar-border: #e5e5e5;
+  --user-bubble: #e8e8e8; --code-bg: #f5f5f5;
+  --success: #388a34; --warning: #bf8803; --info: #0066bf;
+  --diff-add: rgba(56, 138, 52, 0.12); --diff-add-strong: rgba(56, 138, 52, 0.26);
+  --diff-del: rgba(229, 20, 0, 0.1); --diff-del-strong: rgba(229, 20, 0, 0.24);
+  --tok-keyword: #0000ff; --tok-string: #a31515; --tok-number: #098658; --tok-comment: #008000; --tok-title: #795e26; --tok-attr: #001080;
+}
+:root[data-palette='vscode'].dark {
+  --background: #1e1e1e; --foreground: #cccccc; --card: #252526; --card-foreground: #cccccc;
+  --popover: #252526; --popover-foreground: #cccccc; --primary: #0e639c; --primary-foreground: #ffffff;
+  --secondary: #2d2d30; --secondary-foreground: #cccccc; --muted: #2d2d30; --muted-foreground: #9d9d9d;
+  --accent: rgba(255, 255, 255, 0.07); --accent-foreground: #ffffff; --destructive: #f48771;
+  --border: #3c3c3c; --input: #3c3c3c; --ring: rgba(0, 122, 204, 0.6);
+  --sidebar: #252526; --sidebar-foreground: #cccccc; --sidebar-accent: rgba(255, 255, 255, 0.07); --sidebar-border: #3c3c3c;
+  --user-bubble: #37373d; --code-bg: #1a1a1a;
+  --success: #89d185; --warning: #cca700; --info: #3794ff;
+  --diff-add: rgba(137, 209, 133, 0.12); --diff-add-strong: rgba(137, 209, 133, 0.28);
+  --diff-del: rgba(244, 135, 113, 0.12); --diff-del-strong: rgba(244, 135, 113, 0.28);
+  --tok-keyword: #569cd6; --tok-string: #ce9178; --tok-number: #b5cea8; --tok-comment: #6a9955; --tok-title: #dcdcaa; --tok-attr: #9cdcfe;
+}
+
 @theme inline {
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-serif: "Source Serif 4", "Songti SC", "Noto Serif SC", Georgia, serif;
@@ -290,6 +318,12 @@
   border-radius: 5px;
   padding: 0.1em 0.35em;
 }
+/* VS Code's primary is a button blue; too dim as text on dark, so text uses its code/link colours. */
+:root[data-palette='vscode'] .prose-chat :not(pre) > code { color: #0066bf; background: rgba(220, 220, 220, 0.4); }
+:root[data-palette='vscode'].dark .prose-chat :not(pre) > code { color: #3794ff; background: rgba(10, 10, 10, 0.4); }
+:root[data-palette='vscode'] .prose-chat a { color: var(--info); }
+:root[data-palette='vscode'] .term-out .cmd,
+:root[data-palette='vscode'] .text-primary { color: var(--info); }
 .prose-chat table { border-collapse: collapse; font-size: 0.92em; }
 .prose-chat th, .prose-chat td { border: 1px solid var(--border); padding: 0.35em 0.7em; text-align: left; }
 .prose-chat th { background: var(--muted); font-weight: 600; }

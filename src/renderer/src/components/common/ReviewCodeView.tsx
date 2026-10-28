@@ -18,7 +18,10 @@ import { PendingCommentCard } from './PendingCommentCard';
 import { PrThreadCard } from './PrThreadCard';
 import { SelectionComposer, type CodeReference } from './SelectionComposer';
 
-const THEMES = { dark: 'pierre-dark', light: 'pierre-light' } as const;
+const THEMES = {
+  default: { dark: 'pierre-dark', light: 'pierre-light' },
+  vscode: { dark: 'dark-plus', light: 'light-plus' },
+} as const;
 const WORKER_POOL_SIZE = 3;
 /** Rows kept above the line a jump lands on, so it is not hard against the sticky header. */
 const JUMP_OFFSET = 40;
@@ -78,6 +81,7 @@ export const ReviewCodeView = forwardRef<ReviewHandle, ReviewProps>(function Rev
   const view = useRef<CodeViewHandle<Note, undefined>>(null);
   const root = useRef<HTMLDivElement>(null);
   const theme = useApp((s) => s.settings.resolvedTheme) === 'dark' ? 'dark' : 'light';
+  const themes = THEMES[useApp((s) => s.settings.palette) ?? 'default'];
   const [selection, setSelection] = useState<Selection | null>(null);
   // Only a selection the user made opens the composer; a jump's highlight does not.
   const [composing, setComposing] = useState(false);
@@ -217,7 +221,7 @@ export const ReviewCodeView = forwardRef<ReviewHandle, ReviewProps>(function Rev
   }, [targetKey, hasTarget]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const options = useMemo<CodeViewReactOptions<Note, undefined>>(() => ({
-    theme: THEMES,
+    theme: themes,
     themeType: theme,
     diffStyle: 'unified',
     overflow: 'wrap',
@@ -240,7 +244,7 @@ export const ReviewCodeView = forwardRef<ReviewHandle, ReviewProps>(function Rev
       setComposing(true);
       setCommenting(false);
     },
-  }), [theme, sid, hideHeader]);
+  }), [theme, themes, sid, hideHeader]);
 
   const activeRef = useRef<string | null>(null);
   const onScroll = useCallback((_top: number, viewer: { getTopForItem(id: string): number | undefined }, scrollTop = _top) => {
@@ -260,7 +264,7 @@ export const ReviewCodeView = forwardRef<ReviewHandle, ReviewProps>(function Rev
     <div ref={root} className={cn('review-code relative min-h-0', className)}>
       {/* The scroller needs a definite box, which a flex item's percentage height is not. */}
       <div className="absolute inset-0">
-      <WorkerPoolContextProvider poolOptions={{ workerFactory: () => new DiffsWorker(), poolSize: WORKER_POOL_SIZE }} highlighterOptions={{ theme: THEMES }}>
+      <WorkerPoolContextProvider key={themes.dark} poolOptions={{ workerFactory: () => new DiffsWorker(), poolSize: WORKER_POOL_SIZE }} highlighterOptions={{ theme: themes }}>
         <CodeView<Note, undefined>
           ref={view}
           items={codeItems}

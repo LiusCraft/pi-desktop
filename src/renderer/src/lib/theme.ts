@@ -6,6 +6,7 @@ import { bridge } from './api';
 export function applyTheme(settings: Partial<SettingsPayload> | undefined) {
   const dark = (settings?.resolvedTheme ?? 'light') === 'dark';
   document.documentElement.classList.toggle('dark', dark);
+  document.documentElement.dataset.palette = settings?.palette ?? 'default';
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
 }
 

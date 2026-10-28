@@ -13,10 +13,15 @@ import { fail, togglePanel } from '@/store/actions';
 import type { SessionView } from '@/store/types';
 import { Card, IconBtn, type CardProps } from './Panels';
 
+const VSCODE_THEMES: Record<'light' | 'dark', ITheme> = {
+  light: { background: '#ffffff', foreground: '#3b3b3b', cursor: '#3b3b3b', selectionBackground: '#add6ff' },
+  dark: { background: '#1e1e1e', foreground: '#cccccc', cursor: '#aeafad', selectionBackground: '#264f78' },
+};
 const THEMES: Record<'light' | 'dark', ITheme> = {
   light: { background: '#f5f4ef', foreground: '#29261b', cursor: '#29261b', selectionBackground: '#d9d6c9' },
   dark: { background: '#1f1e1d', foreground: '#e5e3dc', cursor: '#e5e3dc', selectionBackground: '#4a4842' },
 };
+const termTheme = (palette = document.documentElement.dataset.palette, mode: 'light' | 'dark' = resolvedTheme()) => (palette === 'vscode' ? VSCODE_THEMES : THEMES)[mode];
 const FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
 const exitNotice = () => `\r\n\x1b[2m${tr('terminal.exited')}\x1b[0m\r\n`;
 
@@ -25,7 +30,7 @@ function TermView({ id, active }: { id: string; active: boolean }) {
   const fit = useRef<() => void>(() => {});
 
   useEffect(() => {
-    const term = new Terminal({ fontFamily: FONT, fontSize: 12, cursorBlink: true, scrollback: 5000, theme: THEMES[resolvedTheme()] });
+    const term = new Terminal({ fontFamily: FONT, fontSize: 12, cursorBlink: true, scrollback: 5000, theme: termTheme() });
     const fitter = new FitAddon();
     term.loadAddon(fitter);
     term.open(host.current!);
@@ -46,7 +51,7 @@ function TermView({ id, active }: { id: string; active: boolean }) {
       else term.write(e.data);
     });
     const offExit = bridge.on('terminal:exit', (e) => e.id === id && term.write(exitNotice()));
-    const offTheme = bridge.on('settings:changed', () => void (term.options.theme = THEMES[resolvedTheme()]));
+    const offTheme = bridge.on('settings:changed', (s) => void (term.options.theme = termTheme(s.palette, s.resolvedTheme)));
     term.onData((data) => void call('terminal:write', id, data).catch(() => {}));
 
     let disposed = false;

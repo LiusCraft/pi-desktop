@@ -790,6 +790,9 @@ export type AuthEvent =
   | { type: 'progress'; message: string };
 
 export type ThemeSetting = 'light' | 'dark' | 'system';
+/** The colour scheme; light/dark is `theme`'s job, so each palette carries both. */
+export const PALETTES = ['default', 'vscode'] as const;
+export type Palette = (typeof PALETTES)[number];
 /**
  * How the model's shell commands keep their folder. `session` runs them in one shell that stays
  * alive, so a `cd` or an `export` carries over to the next command (the way Claude Code behaves);
@@ -818,6 +821,7 @@ export const TERMINAL_DEFAULT_LINES = 50;
 export const TERMINAL_MAX_LINES = 500;
 export interface Settings {
   theme: ThemeSetting | null;
+  palette: Palette;
   /** UI language; "system" follows the OS and falls back to English. */
   language: LanguageSetting;
   notify: boolean;

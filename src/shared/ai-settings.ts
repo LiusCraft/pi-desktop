@@ -5,7 +5,7 @@
  * (an executable the app launches), `shellSession` (how its own commands run) and `worktreeDir`
  * (a folder the app creates and writes into).
  */
-import { SUGGESTION_MAX_CONTEXT, type Settings, type SuggestionModelMode, type ThemeSetting, type WorkIdeasModelMode } from './protocol';
+import { PALETTES, SUGGESTION_MAX_CONTEXT, type Settings, type SuggestionModelMode, type ThemeSetting, type WorkIdeasModelMode } from './protocol';
 
 const THEMES: readonly ThemeSetting[] = ['light', 'dark', 'system'];
 const SUGGESTION_MODES: readonly SuggestionModelMode[] = ['auto', 'session', 'fixed'];
@@ -22,6 +22,7 @@ const oneOf = (values: readonly string[]): Field => ({ hint: values.join(' | '),
 
 export const AI_SETTING_FIELDS = {
   theme: oneOf(THEMES),
+  palette: oneOf(PALETTES),
   sidebarCollapsed: flag,
   pet: flag,
   petSkin: { hint: 'a pet skin id (see pidesk_pet_list)', ok: (v, petIds) => typeof v === 'string' && petIds.includes(v) },

@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { BrainIcon, ChevronRightIcon, BriefcaseIcon, CodeIcon, DatabaseIcon, FolderIcon, InfoIcon, MonitorSmartphoneIcon, MoonIcon, PlusIcon, SettingsIcon, Trash2Icon, Volume2Icon } from 'lucide-react';
 import { toast } from 'sonner';
-import type { AppInfo, Project, Settings, SettingsPayload, SuggestionModelMode, TerminalShell, WorkIdeasModelMode } from '@shared/protocol';
+import type { AppInfo, Palette, Project, Settings, SettingsPayload, SuggestionModelMode, TerminalShell, WorkIdeasModelMode } from '@shared/protocol';
 import { LOCALES, LOCALE_NAMES, type LanguageSetting, type MessageKey } from '@shared/i18n';
-import { AUTO_REVIEW_DEFAULT_TIMEOUT, AUTO_REVIEW_MAX_TIMEOUT, AUTO_REVIEW_MIN_TIMEOUT, SUGGESTION_DEFAULT_CONTEXT, SUGGESTION_MAX_CONTEXT, TERMINAL_DEFAULT_LINES, TERMINAL_MAX_LINES } from '@shared/protocol';
+import { PALETTES, AUTO_REVIEW_DEFAULT_TIMEOUT, AUTO_REVIEW_MAX_TIMEOUT, AUTO_REVIEW_MIN_TIMEOUT, SUGGESTION_DEFAULT_CONTEXT, SUGGESTION_MAX_CONTEXT, TERMINAL_DEFAULT_LINES, TERMINAL_MAX_LINES } from '@shared/protocol';
 import { BUILTIN_PETS, BUILTIN_PET_IDS, DEFAULT_PET_ID } from '@shared/pets';
 import { PET_SOUND_EVENTS, SOUND_EVENTS } from '@shared/sounds';
 import { useCopy } from '@/components/common/Copy';
@@ -107,6 +107,7 @@ function SwatchGroup<T extends string>({ value, onChange, options }: { value: T;
   );
 }
 
+const PALETTE_LABELS: Record<Palette, MessageKey> = { default: 'settings.paletteDefault', vscode: 'settings.paletteVscode' };
 const THEMES: readonly { id: 'light' | 'dark' | 'system'; label: MessageKey; tile: string }[] = [
   { id: 'light', label: 'settings.themeLight', tile: 'bg-[#faf9f5]' },
   { id: 'dark', label: 'settings.themeDark', tile: 'bg-[#262624]' },
@@ -298,6 +299,14 @@ export function SettingsApp() {
           </Row>
           <Row title={t('settings.theme')} col>
             <SwatchGroup value={theme} onChange={(id) => void patch({ theme: id })} options={THEMES.map((o) => ({ ...o, label: t(o.label) }))} />
+          </Row>
+          <Row title={t('settings.palette')}>
+            <Select value={settings.palette} onValueChange={(v) => void patch({ palette: v as Palette })}>
+              <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                {PALETTES.map((p) => <SelectItem key={p} value={p}>{t(PALETTE_LABELS[p])}</SelectItem>)}
+              </SelectGroup></SelectContent>
+            </Select>
           </Row>
           <Row title={t('settings.sidebar')}>
             <Switch checked={!!settings.sidebarCollapsed} onCheckedChange={(v) => void patch({ sidebarCollapsed: v })} />
