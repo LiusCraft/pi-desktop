@@ -6,6 +6,41 @@ import { t } from './i18n';
 export type ToolKind = 'read' | 'edit' | 'write' | 'bash' | 'grep' | 'glob' | 'ls' | 'agent' | 'websearch' | 'other';
 export type ToolStatus = 'running' | 'done' | 'err' | 'denied';
 
+/** The tool that runs a JavaScript script calling other tools. */
+export const CODEMODE_TOOL = 'codemode';
+
+/** One tool a codemode script called, from the tool result's `details.calls`. */
+export interface NestedToolCall {
+  name: string;
+  /** Compact JSON of the arguments, already shortened by the host. */
+  args: string;
+  status: 'running' | 'ok' | 'error' | 'cancelled';
+  durationMs?: number;
+  error?: string;
+  /** Cost in USD of a `models.*` call that reported usage. */
+  cost?: number;
+}
+
+const CALL_STATUSES: ReadonlySet<string> = new Set<NestedToolCall['status']>(['running', 'ok', 'error', 'cancelled']);
+
+/** `details.calls` of a codemode result; anything malformed is dropped rather than shown. */
+export function nestedCalls(raw: unknown): NestedToolCall[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((call): NestedToolCall[] => {
+    if (!call || typeof call !== 'object') return [];
+    const c = call as Record<string, unknown>;
+    if (typeof c.name !== 'string') return [];
+    return [{
+      name: c.name,
+      args: typeof c.args === 'string' ? c.args : '',
+      status: CALL_STATUSES.has(c.status as string) ? (c.status as NestedToolCall['status']) : 'ok',
+      ...(typeof c.durationMs === 'number' ? { durationMs: c.durationMs } : {}),
+      ...(typeof c.error === 'string' && c.error ? { error: c.error } : {}),
+      ...(typeof c.cost === 'number' && c.cost ? { cost: c.cost } : {}),
+    }];
+  });
+}
+
 export interface ToolState {
   id: string;
   name: string;
@@ -32,6 +67,8 @@ export interface ToolState {
   summary?: string;
   /** Subagent transcript, tokens and current activity (Background tasks panel). */
   sub?: SubagentProgress;
+  /** Tools a codemode script called, as its result reports them. */
+  calls?: NestedToolCall[];
   /** Keeps running after its tool call returned (`run_in_background`, `bg_shell`). */
   bg?: boolean;
   /** Background shell command and its output so far. */

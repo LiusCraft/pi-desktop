@@ -43,6 +43,11 @@ function highlightedNodes(html: string): ReactNode[] {
   return root;
 }
 
+/** Highlighted code as React nodes, for blocks outside `CodeBlock` (no HTML string, no innerHTML). */
+export function HighlightedCode({ code, lang }: { code: string; lang: string }) {
+  return <>{highlightedNodes(highlight(code, lang))}</>;
+}
+
 /** The gutter's plus button selects a line for a comment. */
 function LineNumber({ number, selectable }: { number?: number; selectable?: boolean }) {
   const t = useT();

@@ -1,11 +1,13 @@
 import { memo, useState } from 'react';
-import { ArrowUpRightIcon, BookmarkIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CircleAlertIcon, GitForkIcon, GitMergeIcon, LightbulbIcon, LoaderCircleIcon, MessageCircleQuestionIcon, MessagesSquareIcon, RotateCcwIcon, TerminalIcon, XIcon } from 'lucide-react';
+import { ArrowUpRightIcon, BookmarkIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, CircleAlertIcon, CodeIcon, GitForkIcon, GitMergeIcon, LightbulbIcon, LoaderCircleIcon, MessageCircleQuestionIcon, MessagesSquareIcon, MinusCircleIcon, RotateCcwIcon, TerminalIcon, XIcon, type LucideIcon } from 'lucide-react';
 import { PLAN_CHOICES } from '@shared/protocol';
 import type { MessageKey } from '@shared/i18n';
 import { BUILTIN_COMMAND_INFO, commandLabel, decodeCommandMessage, type CommandMessage } from '@shared/command-message';
 import { decodePeerMessage, type PeerMessage } from '@shared/peer-message';
 import * as previews from '@shared/tool-previews';
-import { Markdown } from '@/components/common/Markdown';
+import { CodeBlock, Markdown } from '@/components/common/Markdown';
+import { ToolOutput } from '@/components/common/ToolOutput';
+import { splitScriptHeader } from '@/lib/tool-output';
 import { CopyGlyph, useCopy } from '@/components/common/Copy';
 import { AttachmentTiles } from '@/components/common/Attachments';
 import { ContextCards } from '@/components/composer/ContextCards';
@@ -20,8 +22,8 @@ import { QuestionsItem } from './Questions';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { call } from '@/lib/api';
 import { t as tr, useT } from '@/lib/i18n';
-import { ago, fmtTok } from '@/lib/format';
-import { bareName, groupStats, groupSummary, isFileTool, toolLabel, toolScope, type ToolState } from '@/lib/tools';
+import { ago, fmtCost, fmtMs, fmtTok } from '@/lib/format';
+import { bareName, CODEMODE_TOOL, groupStats, groupSummary, isFileTool, toolLabel, toolScope, type NestedToolCall, type ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
 import { useApp, updateSession } from '@/store/app';
 import { forgeName, forgeOfUrl } from '@shared/forge';
@@ -372,8 +374,66 @@ function ArtifactPreviewButton({ tool }: { tool: ToolState }) {
 function ToolDetail({ sid, tool }: { sid: string; tool: ToolState }) {
   if (tool.preview) return <ToolPreviewView preview={tool.preview} path={tool.path ?? ''} sid={sid} onOpenImage={(src) => void openFileRef(tool.path!, undefined, src)} />;
   if (tool.kind === 'bash') return <TermOutput cmd={tool.cmd} out={tool.output ?? ''} />;
-  if (tool.output) return <pre className="max-h-80 overflow-auto px-3 py-2 font-mono text-xs whitespace-pre-wrap">{tool.output}</pre>;
+  if (bareName(tool.name) === CODEMODE_TOOL) return <CodemodeDetail tool={tool} />;
+  if (tool.output) return <ToolOutput text={tool.output} />;
   return <div className="px-3 py-2 text-xs text-muted-foreground">{tr(tool.status === 'running' ? 'tool.running' : 'tool.noOutput')}</div>;
+}
+
+/** How a nested call's status looks: the tool rows' icons, one size down. */
+const CALL_LOOK: Record<NestedToolCall['status'], { Icon: LucideIcon; tone: string }> = {
+  running: { Icon: LoaderCircleIcon, tone: 'animate-spin' },
+  ok: { Icon: CheckIcon, tone: 'text-success' },
+  error: { Icon: XIcon, tone: 'text-destructive' },
+  cancelled: { Icon: MinusCircleIcon, tone: 'text-muted-foreground' },
+};
+
+/** The tools a codemode script called: name, arguments, how long each took, and what failed. */
+function NestedCalls({ calls }: { calls: NestedToolCall[] }) {
+  const t = useT();
+  return (
+    <div className="border-t first:border-t-0">
+      <div className="px-3 pt-1.5 pb-1 text-xs text-muted-foreground">{t(calls.length === 1 ? 'tool.ranCall' : 'tool.ranCalls', { n: calls.length })}</div>
+      <ul className="pb-1.5">
+        {calls.map((c, i) => {
+          const look = CALL_LOOK[c.status];
+          return (
+            <li key={i} className="px-3 py-0.5 text-xs">
+              <div className="flex items-center gap-1.5">
+                <look.Icon className={cn('size-3.5 shrink-0', look.tone)} />
+                <span className="shrink-0 font-mono text-foreground/90">{c.name}</span>
+                {c.args && <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground" title={c.args}>{c.args}</span>}
+                {c.durationMs != null && <span className="shrink-0 tabular-nums text-muted-foreground">{fmtMs(c.durationMs)}</span>}
+                {!!c.cost && <span className="shrink-0 tabular-nums text-muted-foreground">{fmtCost(c.cost)}</span>}
+              </div>
+              {c.error && <div className="mt-0.5 pl-5 break-words whitespace-pre-wrap text-destructive">{c.error}</div>}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/** A codemode call: when the script ran, the script, the tools it called, then its output. */
+function CodemodeDetail({ tool }: { tool: ToolState }) {
+  const t = useT();
+  const head = tool.output ? splitScriptHeader(tool.output) : null;
+  const code = typeof tool.args?.code === 'string' ? tool.args.code.trim() : '';
+  const body = (head ? head.body : (tool.output ?? '')).trim();
+  const running = tool.status === 'running';
+  const failed = !running && (tool.status === 'err' || (head ? !head.ok : false));
+  return (
+    <>
+      <div className={cn('flex items-center gap-1.5 px-3 py-1.5 text-xs', failed ? 'text-destructive' : 'text-muted-foreground')}>
+        {running ? <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin" /> : <CodeIcon className="size-3.5 shrink-0" />}
+        <span>{t(running ? 'tool.running' : failed ? 'tool.scriptFailed' : 'tool.scriptDone')}</span>
+        {head && <><span className="opacity-50">·</span><span className="tabular-nums">{t('tool.wallTime', { secs: head.secs })}</span></>}
+      </div>
+      {!!code && <CodeBlock lang="js" code={code} flush />}
+      {!!tool.calls?.length && <NestedCalls calls={tool.calls} />}
+      {!!body && <ToolOutput text={body} />}
+    </>
+  );
 }
 
 /** "Ran" + "npm test": the verb stays muted, the subject is brighter (like Pi Desktop Code's tool list). */

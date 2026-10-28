@@ -7,7 +7,7 @@ import { decodePrEvent } from '@shared/pr-event';
 import * as previews from '@shared/tool-previews';
 import { fmtDur, fmtTok, relPath } from '@/lib/format';
 import { t } from '@/lib/i18n';
-import { bareName, toolFromArgs, toolLabel, type ToolState } from '@/lib/tools';
+import { bareName, CODEMODE_TOOL, nestedCalls, toolFromArgs, toolLabel, type ToolState } from '@/lib/tools';
 import type { ViewMode } from '@/lib/constants';
 import { readArrangement, readPanels } from './layout';
 import type { Item, ItemOf, SessionView, ThinkStep, Todo } from './types';
@@ -151,6 +151,7 @@ export function toolEnd(
     if (preview.type === 'diff') { t.add = preview.add; t.del = preview.del; }
   }
   if (t.kind === 'websearch' && !ev.isError) t.count = ev.result?.details?.hits?.length;
+  if (bareName(ev.toolName) === CODEMODE_TOOL) t.calls = nestedCalls(ev.result?.details?.calls);
   if (t.kind === 'bash') t.output = text;
   else if (t.kind === 'edit' || t.kind === 'write') {
     if (!ev.isError && t.path) {
@@ -339,6 +340,10 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
           found.tool.summary = textOf(ev.partialResult?.content);
           if (ev.partialResult?.details?.progress) found.tool.sub = ev.partialResult.details.progress;
         }
+      } else if (bareName(ev.toolName) === CODEMODE_TOOL) {
+        // Nested calls show up as the script makes them, not only once it ends.
+        const found = findTool(s, ev.toolCallId);
+        if (found) found.tool.calls = nestedCalls(ev.partialResult?.details?.calls);
       }
       return {};
     case 'tool_execution_end':

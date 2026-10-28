@@ -47,7 +47,8 @@ function remarkFileRefs() {
   return (tree: any) => visit(tree);
 }
 
-function CodeBlock({ lang, code, extra }: { lang: string; code: string; extra?: ReactNode }) {
+/** `flush`: for a code block that is already inside a bordered panel (tool output): it draws only the separator above itself. */
+export function CodeBlock({ lang, code, extra, flush }: { lang: string; code: string; extra?: ReactNode; flush?: boolean }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   const copy = () => {
@@ -57,7 +58,7 @@ function CodeBlock({ lang, code, extra }: { lang: string; code: string; extra?: 
     });
   };
   return (
-    <div className="my-2 overflow-hidden rounded-lg border bg-code">
+    <div className={cn('bg-code', flush ? 'border-t first:border-t-0' : 'my-2 overflow-hidden rounded-lg border')}>
       <div className="flex items-center justify-between border-b px-3 py-1 text-xs text-muted-foreground">
         <span className="font-mono">{lang || 'text'}</span>
         <div className="flex items-center gap-1">
@@ -68,7 +69,7 @@ function CodeBlock({ lang, code, extra }: { lang: string; code: string; extra?: 
           </button>
         </div>
       </div>
-      <pre className="overflow-x-auto px-3 py-2.5 font-mono text-[12.5px] leading-relaxed">
+      <pre className={cn('overflow-x-auto px-3 py-2.5 font-mono text-[12.5px] leading-relaxed', flush && 'max-h-80 overflow-y-auto')}>
         <code dangerouslySetInnerHTML={{ __html: highlight(code, langOfFence(lang)) }} />
       </pre>
     </div>
