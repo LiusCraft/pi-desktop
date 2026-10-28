@@ -14,6 +14,8 @@ export const main = defineMessages({
   'main.envWorktree': { en: 'Worktree', zh: 'Worktree' },
   'main.envLocal': { en: 'Local', zh: '本地' },
   'main.envTip': { en: '{env}\n{path}', zh: '{env}\n{path}' },
+  'main.panels': { en: 'Panels', zh: '面板' },
+  'main.showPrBar': { en: 'Show the branch bar', zh: '显示分支栏' },
   'main.branchTip': { en: 'Branch: {branch}\nBase: {base}', zh: '分支：{branch}\n基础：{base}' },
   'main.backgroundTasks': { en: 'Background tasks', zh: '后台任务' },
   'main.progress': { en: 'Progress', zh: '进度' },

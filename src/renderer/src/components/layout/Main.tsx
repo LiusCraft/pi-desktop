@@ -1,6 +1,6 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import {
-  BotIcon, ChevronDownIcon, ExternalLinkIcon, FileTextIcon, FolderIcon, GitBranchIcon, GitForkIcon, GlobeIcon, LaptopIcon, PanelRightIcon,
+  BotIcon, ChevronDownIcon, EllipsisIcon, EyeIcon, ExternalLinkIcon, FileTextIcon, FolderIcon, GitBranchIcon, GitForkIcon, GlobeIcon, LaptopIcon, PanelRightIcon,
   SquareTerminalIcon,
 } from 'lucide-react';
 import { PET_BLOCK_ATTR } from '@/components/composer/Clawd';
@@ -10,7 +10,7 @@ import { InlineEdit } from '@/components/common/InlineEdit';
 import { AskDock, Transcript } from '@/components/thread/Transcript';
 import { openCards, soloCard, Workspace } from '@/components/workspace/Workspace';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup,
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup,
   DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
@@ -25,7 +25,7 @@ import {
   archiveSession, deleteSession, exportHtml, setOutputStyle, setSessionTitle, setViewMode,
   togglePanel, welcomeDraftKey,
 } from '@/store/actions';
-import { useApp, useCurrent } from '@/store/app';
+import { updateSession, useApp, useCurrent } from '@/store/app';
 import { drafts } from '@/store/drafts';
 import { hasThinking } from '@/store/transcript';
 import type { SessionView } from '@/store/types';
@@ -42,9 +42,9 @@ import { Inbox } from './Inbox';
 import { SideChatView } from '@/components/side/SideChat';
 import { useSide } from '@/store/side';
 
-function HeaderButton({ on, children, ...props }: React.ComponentProps<'button'> & { on?: boolean }) {
+function HeaderButton({ on, children, className, ...props }: React.ComponentProps<'button'> & { on?: boolean }) {
   return (
-    <button {...props} className={cn('flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground', on && 'bg-accent text-foreground')}>
+    <button {...props} className={cn('flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground', on && 'bg-accent text-foreground', className)}>
       {children}
     </button>
   );
@@ -117,17 +117,54 @@ function SessionBranch({ s }: { s: SessionView }) {
   const { meta } = s;
   return (
     <span
-      className="flex min-w-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
+      className="hidden min-w-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground @lg:flex"
       title={t('main.branchTip', { branch: meta.branch ?? '-', base: meta.baseBranch ?? '-' })}
     >
-      <span className="shrink-0">{fname(meta.projectPath)}</span>
+      <span className={cn('shrink-0', meta.branch && 'hidden @xl:inline')}>{fname(meta.projectPath)}</span>
       {meta.branch && (
         <>
           <GitBranchIcon className="size-3 shrink-0" />
           <span className="truncate">{meta.branch}</span>
         </>
       )}
+      {s.prHidden && (
+        <button
+          className="no-drag shrink-0 rounded p-0.5 hover:bg-accent hover:text-foreground"
+          title={t('main.showPrBar')}
+          aria-label={t('main.showPrBar')}
+          onClick={() => updateSession(meta.id, (v) => void (v.prHidden = false))}
+        >
+          <EyeIcon className="size-3" />
+        </button>
+      )}
     </span>
+  );
+}
+
+type PanelKey = 'tasks' | 'terminal' | 'diff' | 'preview' | 'files';
+
+/** The panel toggles of a narrow header, folded into one menu. */
+function PanelsMenu({ s, hasTasks }: { s: SessionView; hasTasks: boolean }) {
+  const t = useT();
+  const p = s.panels;
+  const items: { key: PanelKey; label: string }[] = [
+    ...(hasTasks ? [{ key: 'tasks' as const, label: t('main.backgroundTasks') }] : []),
+    { key: 'terminal', label: t('main.terminal') },
+    { key: 'diff', label: t('main.diff') },
+    { key: 'preview', label: t('main.preview') },
+    { key: 'files', label: t('main.files') },
+  ];
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <HeaderButton on={items.some((i) => p[i.key])} title={t('main.panels')} aria-label={t('main.panels')} className="@2xl:hidden"><EllipsisIcon className="size-4" /></HeaderButton>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        {items.map((i) => (
+          <DropdownMenuCheckboxItem key={i.key} checked={p[i.key]} onCheckedChange={() => togglePanel(s.meta.id, i.key)}>{i.label}</DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -139,7 +176,7 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
   const p = s?.panels;
   const hasTasks = !!s?.items.some((i) => i.kind === 'group' && i.tools.some((t) => t.kind === 'agent'));
   return (
-    <header className={cn('app-drag titlebar-inset flex h-11 shrink-0 items-center gap-1 px-3', collapsed && isMac && 'pl-[84px]')}>
+    <header className={cn('@container app-drag titlebar-inset flex h-11 shrink-0 items-center gap-1 px-3', collapsed && isMac && 'pl-[84px]')}>
       {collapsed && <SidebarToggle />}
       {s ? (
         <>
@@ -182,15 +219,16 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
             <SessionBranch s={s} />
           )}
           <span className="flex-1" />
-          {hasTasks && <HeaderButton on={p!.tasks} title={t('main.backgroundTasks')} onClick={() => togglePanel(s.meta.id, 'tasks')}><BotIcon className="size-4" /></HeaderButton>}
           {work ? (
             <HeaderButton on={p!.progress} title={t('main.progress')} onClick={() => togglePanel(s.meta.id, 'progress')}><PanelRightIcon className="size-4" /></HeaderButton>
           ) : (
             <>
-              <HeaderButton on={p!.terminal} title={t('main.terminal')} onClick={() => togglePanel(s.meta.id, 'terminal')}><SquareTerminalIcon className="size-4" /></HeaderButton>
-              <HeaderButton on={p!.diff} title={`${t('main.diff')}  ${modKey}D`} onClick={() => togglePanel(s.meta.id, 'diff')}><FileTextIcon className="size-4" /></HeaderButton>
-              <HeaderButton on={p!.preview} title={t('main.preview')} onClick={() => togglePanel(s.meta.id, 'preview')}><GlobeIcon className="size-4" /></HeaderButton>
-              <HeaderButton on={p!.files} title={t('main.files')} onClick={() => togglePanel(s.meta.id, 'files')}><FolderIcon className="size-4" /></HeaderButton>
+              <PanelsMenu s={s} hasTasks={hasTasks} />
+              {hasTasks && <HeaderButton on={p!.tasks} title={t('main.backgroundTasks')} onClick={() => togglePanel(s.meta.id, 'tasks')} className="hidden @2xl:flex"><BotIcon className="size-4" /></HeaderButton>}
+              <HeaderButton on={p!.terminal} title={t('main.terminal')} onClick={() => togglePanel(s.meta.id, 'terminal')} className="hidden @2xl:flex"><SquareTerminalIcon className="size-4" /></HeaderButton>
+              <HeaderButton on={p!.diff} title={`${t('main.diff')}  ${modKey}D`} onClick={() => togglePanel(s.meta.id, 'diff')} className="hidden @2xl:flex"><FileTextIcon className="size-4" /></HeaderButton>
+              <HeaderButton on={p!.preview} title={t('main.preview')} onClick={() => togglePanel(s.meta.id, 'preview')} className="hidden @2xl:flex"><GlobeIcon className="size-4" /></HeaderButton>
+              <HeaderButton on={p!.files} title={t('main.files')} onClick={() => togglePanel(s.meta.id, 'files')} className="hidden @2xl:flex"><FolderIcon className="size-4" /></HeaderButton>
             </>
           )}
           <OpenInMenu id={s.meta.id}><HeaderButton title={t('main.openIn')}><ExternalLinkIcon className="size-4" /></HeaderButton></OpenInMenu>
