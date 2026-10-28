@@ -39,7 +39,7 @@ import { ObjectStorage } from './storage';
 import { WebSearch } from './web-search';
 import { createDesktopKit, type KitHost, type KitState, type SubagentRun } from './desktop-kit';
 import { toWireEvent } from './events';
-import { readSessionFile, readSessionImage, resolveInside, searchSessionFiles } from './files';
+import { locateSessionFile, readSessionFile, readSessionImage, resolveInside, searchSessionFiles } from './files';
 import * as git from './git';
 import { ModelAdmin } from './model-admin';
 import { PrWatcher, type PrPending } from './pr-watch';
@@ -1748,15 +1748,17 @@ export class SessionHub {
   files(id: string) {
     return git.listFiles(this.meta(id).cwd);
   }
-  readFile(id: string, rel: string) {
-    return readSessionFile(this.meta(id).cwd, rel);
+  async readFile(id: string, rel: string) {
+    const cwd = this.meta(id).cwd;
+    return readSessionFile(cwd, await locateSessionFile(cwd, rel, () => git.listFiles(cwd)));
   }
   async search(id: string, query: string, caseSensitive: boolean) {
     const cwd = this.meta(id).cwd;
     return searchSessionFiles(cwd, await git.listFiles(cwd), query, caseSensitive);
   }
-  readImage(id: string, rel: string) {
-    return readSessionImage(this.meta(id).cwd, rel);
+  async readImage(id: string, rel: string) {
+    const cwd = this.meta(id).cwd;
+    return readSessionImage(cwd, await locateSessionFile(cwd, rel, () => git.listFiles(cwd)));
   }
   /** Absolute path of something inside the session folder (for main to open or reveal). */
   resolvePath(id: string, rel: string) {

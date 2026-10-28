@@ -18,6 +18,18 @@ export function resolveInside(root: string, rel: string) {
   return abs;
 }
 
+/**
+ * A path the model wrote in chat is often relative to some subfolder rather than the session root.
+ * When `rel` is not a file under `root`, pick the listed file it names as a path suffix (shortest wins).
+ */
+export async function locateSessionFile(root: string, rel: string, list: () => Promise<string[]>): Promise<string> {
+  if (typeof rel !== 'string' || !rel || path.isAbsolute(rel)) return rel;
+  try { if (fs.statSync(resolveInside(root, rel)).isFile()) return rel; } catch { /* look for it below */ }
+  const tail = '/' + rel.replace(/\\/g, '/').replace(/^(\.\/)+/, '');
+  const match = (await list()).filter((p) => ('/' + p.replace(/\\/g, '/')).endsWith(tail)).sort((a, b) => a.length - b.length)[0];
+  return match ?? rel;
+}
+
 /** Bytes of a regular file inside `root`, or null when it is not a file or larger than `max`. */
 function readSessionBytes(root: string, rel: string, max: number): Buffer | null {
   if (typeof root !== 'string' || typeof rel !== 'string' || !rel || rel.includes('\0')) throw new Error('Invalid session file path');
