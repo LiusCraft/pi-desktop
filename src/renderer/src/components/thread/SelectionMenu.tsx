@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { MessageCircleQuestionIcon, ReplyIcon } from 'lucide-react';
+import { CopyIcon, MessageCircleQuestionIcon, ReplyIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import { copyText } from '@/components/common/Copy';
 import { errText } from '@/lib/api';
 import { replyWith } from '@/store/actions';
 import { useT } from '@/lib/i18n';
@@ -100,6 +101,13 @@ export function SelectionMenu({ sid, scope }: { sid: string; scope: RefObject<HT
       style={{ left, top: above ? picked.y - 8 : picked.y + 28, transform: above ? 'translate(-50%, -100%)' : 'translateX(-50%)' }}
       className="fixed z-50 flex items-center gap-0.5 rounded-lg border bg-popover p-1 text-sm shadow-lg"
     >
+      <button
+        role="menuitem"
+        className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-accent"
+        onClick={() => { void copyText(picked.text); window.getSelection()?.removeAllRanges(); setPicked(null); }}
+      >
+        <CopyIcon className="size-3.5" />{t('selection.copy')}
+      </button>
       <button
         role="menuitem"
         className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-accent"

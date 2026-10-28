@@ -6,7 +6,8 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, Notification, screen, shell } from 'electron';
+import type { MenuItemConstructorOptions } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, net, Notification, screen, shell } from 'electron';
 import {
   HOST_CHANNELS, MAIN_CHANNELS,
   type ApiArgs, type ApiResult, type AttachmentSource, type BootPayload, type HostEvent, type Project, type PushChannel, type PushEvents,
@@ -202,6 +203,21 @@ function harden(w: BrowserWindow) {
   });
   w.webContents.on('will-navigate', (e, url) => {
     if (!DEV_URL || !url.startsWith(DEV_URL)) e.preventDefault();
+  });
+  // Electron shows no right-click menu of its own. Pages that draw one (the sidebar, the file tree) stop the event first.
+  w.webContents.on('context-menu', (_e, p) => {
+    const flags = p.editFlags;
+    const copy = { role: 'copy', label: tr('main.copy') } as const;
+    const template: MenuItemConstructorOptions[] = p.isEditable
+      ? [
+        { role: 'cut', label: tr('main.cut'), enabled: flags.canCut },
+        { ...copy, enabled: flags.canCopy },
+        { role: 'paste', label: tr('main.paste'), enabled: flags.canPaste },
+        { type: 'separator' },
+        { role: 'selectAll', label: tr('main.selectAll'), enabled: flags.canSelectAll },
+      ]
+      : p.selectionText.trim() ? [copy] : [];
+    if (template.length) Menu.buildFromTemplate(template).popup({ window: w });
   });
 }
 

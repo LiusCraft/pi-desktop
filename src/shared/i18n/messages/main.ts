@@ -1,6 +1,10 @@
 import { defineMessages } from '../define';
 
 export const main = defineMessages({
+  'main.copy': { en: 'Copy', zh: '复制' },
+  'main.cut': { en: 'Cut', zh: '剪切' },
+  'main.paste': { en: 'Paste', zh: '粘贴' },
+  'main.selectAll': { en: 'Select all', zh: '全选' },
   'main.rename': { en: 'Rename', zh: '重命名' },
   'main.copyWorktreePath': { en: 'Copy worktree path', zh: '复制 worktree 路径' },
   'main.copyFolderPath': { en: 'Copy folder path', zh: '复制文件夹路径' },

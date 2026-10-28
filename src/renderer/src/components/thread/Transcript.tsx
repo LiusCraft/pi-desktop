@@ -53,7 +53,8 @@ function renderItem(sid: string, item: Item, items: Item[], index: number, view:
     case 'foot': {
       let prev: string | undefined;
       for (let i = index - 1; i >= 0; i--) if (items[i].kind === 'text') { prev = (items[i] as any).text; break; }
-      return <FootItem sid={sid} item={item} prevText={prev} />;
+      const next = items.slice(index + 1).find((i): i is ItemOf<'user'> => i.kind === 'user');
+      return <FootItem sid={sid} item={item} prevText={prev} forkAt={next?.entryId} />;
     }
   }
 }

@@ -336,7 +336,8 @@ export const NoteItem = memo(function NoteItem({ item }: { item: ItemOf<'note'> 
   return <div className={cn('rounded-md px-3 py-1.5 text-xs whitespace-pre-wrap', item.level === 'error' ? 'bg-destructive/10 text-destructive' : 'text-muted-foreground')}>{item.text}</div>;
 });
 
-export const FootItem = memo(function FootItem({ sid, item, prevText }: { sid: string; item: ItemOf<'foot'>; prevText?: string }) {
+/** `forkAt`: the user message that follows this turn; branching just before it keeps the conversation up to here. Without one, this turn is the last. */
+export const FootItem = memo(function FootItem({ sid, item, prevText, forkAt }: { sid: string; item: ItemOf<'foot'>; prevText?: string; forkAt?: string }) {
   const t = useT();
   const { copied, copy } = useCopy();
   return (
@@ -344,7 +345,7 @@ export const FootItem = memo(function FootItem({ sid, item, prevText }: { sid: s
       <Button variant="ghost" size="icon" className="size-7" title={t(copied ? 'foot.copied' : 'foot.copy')} onClick={() => copy(prevText ?? '')}>
         <CopyGlyph copied={copied} />
       </Button>
-      <Button variant="ghost" size="icon" className="size-7" title={t('foot.fork')} onClick={() => void forkSession(sid)}>
+      <Button variant="ghost" size="icon" className="size-7" title={t('foot.fork')} onClick={() => void (forkAt ? userMessageAction(sid, forkAt, 'fork', false) : forkSession(sid))}>
         <GitForkIcon className="size-3.5" />
       </Button>
       <span>{ago(item.t, true)}</span>

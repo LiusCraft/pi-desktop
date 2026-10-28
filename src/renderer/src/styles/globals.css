@@ -286,6 +286,7 @@
   font-family: var(--font-mono);
   font-size: 0.88em;
   background: var(--muted);
+  color: var(--primary);
   border-radius: 5px;
   padding: 0.1em 0.35em;
 }

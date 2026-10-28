@@ -182,6 +182,7 @@ export const thread = defineMessages({
   'transcript.jump': { en: 'Jump to the newest message', zh: '跳到最新消息' },
 
   'selection.actions': { en: 'Selection actions', zh: '选区操作' },
+  'selection.copy': { en: 'Copy', zh: '复制' },
   'selection.sideChat': { en: 'Send side chat', zh: '发送旁路提问' },
   'selection.reply': { en: 'Reply', zh: '回复' },
   'selection.sidePrompt': { en: 'Side chat question', zh: '旁路提问' },

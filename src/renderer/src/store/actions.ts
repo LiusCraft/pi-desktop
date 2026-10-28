@@ -1005,7 +1005,8 @@ export async function deleteSessions(ids: string[]) {
   }
 }
 
-export async function userMessageAction(id: string, entryId: string, action: 'rewind' | 'fork') {
+/** `restoreDraft: false` leaves the message's text out of the new composer (forking at a turn's end, not at a message of the user). */
+export async function userMessageAction(id: string, entryId: string, action: 'rewind' | 'fork', restoreDraft = true) {
   const s = getApp().sessions[id];
   if (!s || s.running || s.historyBusy || s.pendingUser.length) return;
   updateSession(id, (view) => void (view.historyBusy = true));
@@ -1026,9 +1027,9 @@ export async function userMessageAction(id: string, entryId: string, action: 're
       target.cacheRate = session.stats ? cacheHitRate(session.stats.tokens) : null;
       target.cost = session.stats?.cost ?? null;
     });
-    const attachments = draft.attachments.filter((attachment): attachment is Attachment => attachment.kind === 'file' || typeof attachment.data === 'string');
-    drafts.recover(sessionDraftKey(session.meta.id), { text: typedText(draft.text), attachments, label: t(action === 'rewind' ? 'act.rewoundMessage' : 'act.branchStart') });
-    if (draft.notice) drafts.error(sessionDraftKey(session.meta.id), draft.notice);
+    const attachments = restoreDraft ? draft.attachments.filter((attachment): attachment is Attachment => attachment.kind === 'file' || typeof attachment.data === 'string') : [];
+    if (restoreDraft) drafts.recover(sessionDraftKey(session.meta.id), { text: typedText(draft.text), attachments, label: t(action === 'rewind' ? 'act.rewoundMessage' : 'act.branchStart') });
+    if (restoreDraft && draft.notice) drafts.error(sessionDraftKey(session.meta.id), draft.notice);
     // Navigate only if the user has stayed on the source session during the request.
     if (getApp().current === id) await openSession(session.meta.id);
   } catch (err) {
