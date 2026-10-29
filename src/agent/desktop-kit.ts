@@ -38,6 +38,9 @@ import {
 export const PLAN_MODE_MARKER = '[pi-desktop] You are in PLAN MODE.';
 /** Distinctive phrase of the Work system prompt (the demo model looks for it). */
 export const WORK_MARKER = 'You are running in Work';
+/** What `pidesk_list_sessions` covers: this session's project, or every Work and Code session. */
+export const SESSION_SCOPES = ['project', 'all'] as const;
+export type SessionScope = (typeof SESSION_SCOPES)[number];
 
 export interface KitState {
   mode: PermissionMode;
@@ -87,9 +90,9 @@ export interface KitHost {
   setMode(mode: PermissionMode): void;
   /** Runs a subagent and returns its report; omit it to leave out the `task` tool. */
   runSubagent?(run: SubagentRun): Promise<string>;
-  /** The project's other sessions; omit it to leave out the session tools (subagents have none). */
+  /** The app's other sessions; omit it to leave out the session tools (subagents have none). */
   peers?: {
-    list(): { id: string; title: string; status: string; branch: string | null; updatedAt: number }[];
+    list(scope: SessionScope, query: string): { id: string; kind: SessionKind; project: string; title: string; status: string; branch: string | null; updatedAt: number }[];
     read(id: string, limit: number): { role: string; text: string }[];
     send(id: string, text: string): Promise<'delivered' | 'queued'>;
   };
@@ -163,6 +166,8 @@ const SHELL_TOOLS = new Set(['bash', 'powershell', 'pidesk_bg_shell']);
 const SAFE_COMMANDS = new Set([
   'cat', 'head', 'tail', 'less', 'more', 'wc', 'ls', 'pwd', 'tree', 'find', 'grep', 'rg', 'fd', 'echo',
   'which', 'file', 'stat', 'du', 'df', 'date', 'uname', 'whoami', 'printenv', 'sort', 'uniq', 'cut', 'diff',
+  // Moving the shell changes nothing on disk; what runs after it is judged on its own.
+  'cd', 'pushd', 'popd', 'realpath', 'dirname', 'basename',
 ]);
 const SAFE_GIT = new Set(['status', 'log', 'diff', 'show', 'branch', 'rev-parse', 'ls-files', 'blame', 'remote']);
 const RISKY = [
@@ -708,21 +713,32 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       pi.registerTool({
         name: 'pidesk_list_sessions',
         label: 'Sessions',
-        description: 'List the other sessions of this project (id, title, status, branch). Use it to find who to read from or message.',
-        parameters: Type.Object({}),
+        description:
+          "List the user's other Pi Desktop sessions (id, Work or Code, project folder, title, status, branch, last activity), most recent first. " +
+          'By default only this project; scope "all" covers every Work and Code session. `query` keeps sessions whose title, folder or messages contain the text. ' +
+          'Use it to find a session to read or message, or to answer what the user did or discussed in the app.',
+        promptSnippet: "Find the user's Work and Code sessions in this app",
+        promptGuidelines: [
+          "Questions about the user's sessions or conversations in this app (what they worked on, what a session decided, which session dealt with X) are answered with pidesk_list_sessions and pidesk_read_session. Never open pi's session files (*.jsonl under the agent's sessions folder) or Pi Desktop's data folder with read, grep or the shell for this.",
+        ],
+        parameters: Type.Object({
+          scope: Type.Optional(StringEnum(SESSION_SCOPES, { description: '"project" (default): this project only. "all": every Work and Code session.' })),
+          query: Type.Optional(Type.String({ description: 'Text to look for in titles, folders and messages' })),
+        }),
         annotations: { readOnlyHint: true },
-        async execute() {
-          const list = peers.list();
+        async execute(_id, params) {
+          const scope: SessionScope = params.scope === 'all' ? 'all' : 'project';
+          const list = peers.list(scope, params.query ?? '');
           const text = list.length
-            ? list.map((s) => `- ${s.id} · ${s.title} · ${s.status}${s.branch ? ` · ${s.branch}` : ''} · active ${new Date(s.updatedAt).toISOString()}`).join('\n')
-            : 'There are no other sessions in this project.';
+            ? list.map((s) => `- ${s.id} · ${s.kind} · ${s.project} · ${s.title} · ${s.status}${s.branch ? ` · ${s.branch}` : ''} · active ${new Date(s.updatedAt).toISOString()}`).join('\n')
+            : params.query ? 'No session matches.' : scope === 'all' ? 'There are no other sessions.' : 'There are no other sessions in this project. Try scope "all".';
           return { content: [{ type: 'text', text }], details: { sessions: list } };
         },
       });
       pi.registerTool({
         name: 'pidesk_read_session',
         label: 'Read session',
-        description: 'Read the most recent messages of another session of this project, to see what it is doing or has decided.',
+        description: 'Read the most recent messages of another Pi Desktop session (any project, Work or Code), to see what it did or decided.',
         parameters: Type.Object({
           session_id: Type.String({ description: 'Id from pidesk_list_sessions' }),
           limit: Type.Optional(Type.Number({ description: 'How many recent messages (default 10, at most 30)' })),
@@ -738,7 +754,7 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         name: 'pidesk_send_message',
         label: 'Message session',
         description:
-          'Send a message to another session of this project, for example to hand over context or ask for a result. ' +
+          'Send a message to another session of this project (scope "project" in pidesk_list_sessions), for example to hand over context or ask for a result. ' +
           'If that session is busy the message waits until its current turn ends. It sees who sent it and may reply the same way; do not start long back-and-forth exchanges.',
         parameters: Type.Object({
           session_id: Type.String({ description: 'Id from pidesk_list_sessions' }),

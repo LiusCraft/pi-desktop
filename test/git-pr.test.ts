@@ -29,12 +29,14 @@ describe('GitHub PR status', () => {
       mergeable: 'CONFLICTING', reviewDecision: 'CHANGES_REQUESTED', headRefOid: 'abc123', updatedAt: '2026-01-02T03:04:05Z',
       statusCheckRollup: [{ name: 'build', status: 'IN_PROGRESS', conclusion: '' }, { context: 'lint', state: 'SUCCESS' }],
       comments: [{}], reviews: [{ body: 'review' }, { body: '' }],
-    }];
+    }, 3];
     const pr = (await prStatus('project'))!;
     assert.equal(pr.num, 1);
     assert.equal(pr.state, 'open');
     assert.equal(pr.draft, true);
-    assert.equal(pr.comments, 2);
+    // One conversation comment, one review with words, three inline review comments.
+    assert.equal(pr.comments, 5);
+    assert.ok(calls.some((c) => c.args.includes('repos/{owner}/{repo}/pulls/1/comments')));
     assert.equal(pr.ci, 'pending');
     assert.deepEqual(pr.checks.map((c) => c.st), ['pending', 'pass']);
     assert.equal(pr.title, 'feat: add tool previews');

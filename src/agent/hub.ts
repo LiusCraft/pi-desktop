@@ -45,12 +45,12 @@ import { REQUEST_ORIGIN, type RequestOrigin } from '@shared/request-log';
 import { recordRequests } from './request-hook/hook';
 import { RequestLog } from './request-hook/log';
 import { withOrigin } from './request-hook/origin';
-import { createDesktopKit, type KitHost, type KitState, type SubagentRun } from './desktop-kit';
+import { createDesktopKit, type KitHost, type KitState, type SessionScope, type SubagentRun } from './desktop-kit';
 import { toWireEvent } from './events';
 import { locateSessionFile, readSessionFile, readSessionImage, readSessionMedia, resolveInside, searchSessionFiles } from './files';
 import * as git from './git';
 import { ModelAdmin } from './model-admin';
-import { PrWatcher, type PrPending } from './pr-watch';
+import { IDLE_FIRST_MS, IDLE_MS, PrWatcher, type PrPending } from './pr-watch';
 import * as naming from './naming';
 import type { Scheduler } from './scheduler';
 import { pickSideModel } from './side-model';
@@ -71,6 +71,12 @@ const EXTRA_TOOLS = ['+grep', '+find', '+ls'];
 const CLAUDE_SKILLS_DECLINED = 'claudeSkillsDeclined';
 /** Defaults minus editing; MCP and other extension tools stay (the plan-mode gate lets only read-only ones run). */
 const SUBAGENT_TOOLS = ['-edit', '-write', '+grep', '+find', '+ls'];
+/** The session tools: how many sessions a listing names, how many messages a read returns at most. */
+const PEER_LIST_MAX = 30;
+const PEER_READ_MAX = 30;
+/** A listing's query reads the messages of only this many recent sessions, this many messages each. */
+const PEER_SEARCH_FILES = 100;
+const PEER_SEARCH_MESSAGES = 200;
 
 interface PendingUi {
   request: UiRequest;
@@ -229,6 +235,9 @@ export class SessionHub {
   private readonly prWatches = new Map<string, PrWatchEntry>();
   /** Where each session's open PR merges into, when that is known. */
   private readonly prBases = new Map<string, string>();
+  /** The slow look at open PRs of sessions that are not open, and the `gh` call it has in flight. */
+  private idlePrTimer?: ReturnType<typeof setTimeout>;
+  private idlePrRead?: { id: string; read: Promise<unknown> };
 
   constructor(private readonly opts: HubOptions) {
     this.agentDir = opts.agentDir ?? getAgentDir();
@@ -278,6 +287,7 @@ export class SessionHub {
     });
     // Model catalogs refresh in the background, like pi's RPC mode.
     void this.refreshModels({ signal: AbortSignal.timeout(15_000) }).catch(() => {});
+    this.scheduleIdlePrs(IDLE_FIRST_MS);
   }
 
   /** Queue a catalog refresh behind any other refresh (each one reloads models.json). */
@@ -606,7 +616,7 @@ export class SessionHub {
       present: (files) => this.emit({ type: 'session_outputs', sessionId: live.id, files }),
       rename: (title) => void this.update(live.id, { title }),
       peers: {
-        list: () => this.peerList(live.id),
+        list: (scope, query) => this.peerList(live.id, scope, query),
         read: (id, limit) => this.peerRead(live.id, id, limit),
         send: (id, text) => this.peerSend(live.id, id, text),
       },
@@ -1287,7 +1297,7 @@ export class SessionHub {
         systemPrompt: commandReview.SYSTEM_PROMPT,
         messages: [{
           role: 'user', timestamp: Date.now(),
-          content: commandReview.reviewRequest({ command, cwd, kind: this.meta(live.id).kind, request: commandReview.latestRequest(session.messages), history: commandReview.recentConversation(session.messages) }),
+          content: commandReview.reviewRequest({ command, cwd, kind: this.meta(live.id).kind, request: commandReview.latestRequest(session.messages), history: commandReview.recentConversation(session.messages), steps: commandReview.recentSteps(session.messages) }),
         }],
       }, { signal: controller.signal, maxTokens: commandReview.REVIEW_MAX_TOKENS, sessionId: live.id });
       if (reply.stopReason === 'error' || reply.stopReason === 'aborted') return null;
@@ -1635,20 +1645,29 @@ export class SessionHub {
     return { from, to };
   }
 
-  /** The other open sessions of this session's project, most recently active first. */
-  peerList(fromId: string) {
+  /**
+   * Other open sessions, most recently active first: this session's project, or every Work and Code session
+   * with `scope` "all". A query keeps the ones whose title, folder or messages contain it.
+   */
+  peerList(fromId: string, scope: SessionScope = 'project', query = '') {
     const from = this.meta(fromId);
-    return this.metas
-      .filter((m) => m.id !== from.id && !m.archived && m.kind === from.kind && m.projectPath === from.projectPath)
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-      .slice(0, 20)
-      .map((m) => ({ id: m.id, title: m.title, status: this.live.get(m.id)?.status ?? 'idle', branch: m.branch, updatedAt: m.updatedAt }));
+    const q = query.trim().toLowerCase();
+    const pool = this.metas
+      .filter((m) => m.id !== from.id && !m.archived && (scope === 'all' || (m.kind === from.kind && m.projectPath === from.projectPath)))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+    // Titles and folders are cheap to match; only the most recent sessions have their files read.
+    const said = (m: SessionMeta, i: number) =>
+      i < PEER_SEARCH_FILES && !!m.sessionFile && fs.existsSync(m.sessionFile) && readTranscript(m.sessionFile, PEER_SEARCH_MESSAGES).some((l) => l.text.toLowerCase().includes(q));
+    return (q ? pool.filter((m, i) => m.title.toLowerCase().includes(q) || m.projectPath.toLowerCase().includes(q) || said(m, i)) : pool)
+      .slice(0, PEER_LIST_MAX)
+      .map((m) => ({ id: m.id, kind: m.kind, project: m.projectPath, title: m.title, status: this.live.get(m.id)?.status ?? 'idle', branch: m.branch, updatedAt: m.updatedAt }));
   }
 
-  /** The last few user and assistant messages of another session of the project. */
+  /** The last few user and assistant messages of another session, of any project; reading changes nothing there. */
   peerRead(fromId: string, toId: string, limit = 10) {
-    const { to } = this.peer(fromId, toId);
-    return to.sessionFile && fs.existsSync(to.sessionFile) ? readTranscript(to.sessionFile, Math.max(1, Math.min(limit, 30))) : [];
+    const to = this.metas.find((x) => x.id === toId);
+    if (!to || to.id === fromId) throw new Error(`No other session ${toId}. Use pidesk_list_sessions to see the ids.`);
+    return to.sessionFile && fs.existsSync(to.sessionFile) ? readTranscript(to.sessionFile, Math.max(1, Math.min(limit, PEER_READ_MAX))) : [];
   }
 
   private peerSent = new Map<string, number[]>();
@@ -1672,6 +1691,7 @@ export class SessionHub {
     this.stopPrWatch(id);
     // A gh process running with the worktree as its cwd blocks deleting that worktree.
     await watch?.read;
+    if (this.idlePrRead?.id === id) await this.idlePrRead.read;
     const live = this.live.get(id);
     if (!live) return;
     this.abortSuggestion(id);
@@ -2032,6 +2052,39 @@ export class SessionHub {
     entry.timer.unref?.();
   }
 
+  private scheduleIdlePrs(delay: number) {
+    clearTimeout(this.idlePrTimer);
+    this.idlePrTimer = setTimeout(() => void this.lookIdlePrs(), delay);
+    this.idlePrTimer.unref?.();
+  }
+
+  /**
+   * A PR moves on while its session sits closed (merged, conflicting, new comments): read each open one
+   * in turn, so the sidebar and the inbox are not left with what was true when it was last opened.
+   * Live sessions are left to their own watch.
+   */
+  private async lookIdlePrs() {
+    const idle = this.metas.filter((m) => m.kind === 'code' && !m.archived && m.branch && m.pr?.state === 'open' && !this.prWatches.has(m.id));
+    try {
+      for (const { id } of idle) {
+        const m = this.metas.find((x) => x.id === id);
+        if (!m || m.archived || this.prWatches.has(id) || !fs.existsSync(m.cwd)) continue;
+        await this.syncBranch(m);
+        const read = git.readPr(m.cwd).catch(() => null);
+        this.idlePrRead = { id, read };
+        const snapshot = await read;
+        this.idlePrRead = undefined;
+        // Opened, archived or removed meanwhile: its own watch, or nobody, has the say now.
+        if (snapshot && this.metas.includes(m) && !m.archived && !this.prWatches.has(id)) this.publishPr(m, snapshot.status);
+      }
+    } catch {
+      // One unreadable repository must not end the looks for the rest.
+    } finally {
+      this.idlePrRead = undefined;
+      this.scheduleIdlePrs(IDLE_MS);
+    }
+  }
+
   /** Keep the session's PR summary and the bar in step; the summary also survives a restart. */
   private publishPr(m: SessionMeta, status: PrStatus | null) {
     const summary = status ? { num: status.num, url: status.url, state: status.state, draft: status.draft } : null;
@@ -2108,6 +2161,7 @@ export class SessionHub {
   }
 
   async shutdown() {
+    clearTimeout(this.idlePrTimer);
     for (const c of this.namers) c.abort();
     this.namers.clear();
     for (const c of this.sideRuns.values()) c.abort();

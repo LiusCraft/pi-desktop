@@ -518,6 +518,14 @@ function rollupChecks(rows: RollupContext[]): PrStatus['checks'] {
   });
 }
 
+/** Inline review comments (replies included): `gh pr view` leaves them out, yet they are most of a review. */
+async function githubInlineCount(cwd: string, num: unknown): Promise<number> {
+  if (typeof num !== 'number') return 0;
+  // --paginate runs the jq per page, so each page prints its own count.
+  const out = await run('gh', ['api', `repos/{owner}/{repo}/pulls/${num}/comments`, '--paginate', '--jq', 'length'], cwd, { allowFail: true });
+  return (out ?? '').split('\n').reduce((sum, n) => sum + (Number(n.trim()) || 0), 0);
+}
+
 async function readGithubPr(cwd: string): Promise<PrSnapshot | null> {
   const full = 'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author,additions,deletions,changedFiles,mergeable,reviewDecision,headRefOid,updatedAt,baseRefName';
   let out = await run('gh', ['pr', 'view', '--json', full], cwd, { allowFail: true });
@@ -533,6 +541,8 @@ async function readGithubPr(cwd: string): Promise<PrSnapshot | null> {
     const mergeable = { MERGEABLE: 'clean', CONFLICTING: 'conflicting' } as const;
     const review = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes', REVIEW_REQUIRED: 'required' } as const;
     const size = (n: unknown) => (typeof n === 'number' ? n : undefined);
+    // A token that cannot read the comments (the identity-only fallback) will not read these either.
+    const inline = Array.isArray(pr.comments) ? await githubInlineCount(cwd, pr.number) : 0;
     const status: PrStatus = {
       num: pr.number,
       url: pr.url,
@@ -541,7 +551,7 @@ async function readGithubPr(cwd: string): Promise<PrSnapshot | null> {
       forge: 'github',
       ci,
       checks,
-      comments: (pr.comments || []).length + (pr.reviews || []).filter((r: any) => r.body).length,
+      comments: (pr.comments || []).length + (pr.reviews || []).filter((r: any) => r.body).length + inline,
       title: typeof pr.title === 'string' && pr.title.trim() ? pr.title.trim() : undefined,
       author: pr.author?.login || undefined,
       additions: size(pr.additions),

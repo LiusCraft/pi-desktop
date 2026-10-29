@@ -200,13 +200,17 @@ describe('suggested tasks', { timeout: 120_000 }, () => {
 });
 
 describe('sessions talking to each other', { timeout: 120_000 }, () => {
-  it('lists only the project’s other sessions and reads their messages', async () => {
+  it('lists the project’s other sessions, or all of them, and reads their messages', async () => {
     const project = makeProject('peers');
     const a = await code(project, { worktree: false, title: 'Alpha' });
     const b = await code(project, { worktree: false, title: 'Beta' });
     const other = await code(makeProject('peers-other'), { worktree: false, title: 'Elsewhere' });
     expect(hub.peerList(a.id).map((s) => s.id)).toEqual([b.id]);
-    expect(() => hub.peerRead(a.id, other.id)).toThrow(/different project/);
+    expect(hub.peerList(a.id, 'all').map((s) => s.id)).toContain(other.id);
+    expect(hub.peerList(a.id, 'all', 'elsewhere').map((s) => s.id)).toEqual([other.id]);
+    // Reading is fine across projects; only sending stays inside one.
+    expect(hub.peerRead(a.id, other.id)).toEqual([]);
+    await expect(hub.peerSend(a.id, other.id, 'ping')).rejects.toThrow(/different project/);
     expect(() => hub.peerRead(a.id, a.id)).toThrow(/No other session/);
 
     await hub.open(b.id);

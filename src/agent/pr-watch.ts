@@ -14,6 +14,10 @@ export const FAST_MS = 15_000;
 export const SLOW_MS = 60_000;
 /** `gh` / `glab` missing or rate-limited: stop hammering it. */
 export const BACKOFF_MS = 5 * 60_000;
+/** Open PRs of sessions nobody has open: only the sidebar and inbox show them, so a slow look is enough. */
+export const IDLE_MS = 5 * 60_000;
+/** The first such look after start, once the app has settled. */
+export const IDLE_FIRST_MS = 15_000;
 
 export interface PrWatchConfig {
   autoFixCi?: boolean;

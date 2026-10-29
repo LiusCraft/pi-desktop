@@ -1,6 +1,6 @@
 // Auto mode's command review: what the reviewer is asked and how its answer is read.
 import { describe, expect, it } from 'vitest';
-import { latestRequest, parseVerdict, recentConversation, reviewRequest, SYSTEM_PROMPT } from '../src/agent/command-review';
+import { latestRequest, parseVerdict, recentConversation, recentSteps, reviewRequest, SYSTEM_PROMPT } from '../src/agent/command-review';
 
 describe('parseVerdict', () => {
   it('reads a plain answer', () => {
@@ -95,9 +95,28 @@ describe('recentConversation', () => {
   });
 });
 
+describe('recentSteps', () => {
+  it("is the assistant's tool calls since the latest request, oldest first", () => {
+    expect(recentSteps([
+      { role: 'user', content: 'old task' },
+      { role: 'assistant', content: [{ type: 'toolCall', name: 'bash', arguments: { command: 'rm old' } }] },
+      { role: 'user', content: 'find the bug' },
+      { role: 'assistant', content: [{ type: 'text', text: 'Looking.' }, { type: 'toolCall', name: 'grep', arguments: { pattern: 'parse' } }, { type: 'toolCall', name: 'read', arguments: { path: 'src/a.ts' } }] },
+      { role: 'toolResult', content: [{ type: 'text', text: 'output' }] },
+      { role: 'assistant', content: [{ type: 'toolCall', name: 'bash', arguments: { command: 'cd ../lib &&\n  npm test' } }] },
+    ])).toBe('grep: parse\nread: src/a.ts\nbash: cd ../lib && npm test');
+  });
+
+  it('is null before any step, and goes into the review request', () => {
+    expect(recentSteps([{ role: 'user', content: 'go' }])).toBeNull();
+    expect(reviewRequest({ command: 'ls', cwd: '/p', kind: 'code', request: 'x', steps: 'read: a.ts' })).toContain("The assistant's steps since that request, oldest first:\nread: a.ts");
+  });
+});
+
 describe("the reviewer's instructions", () => {
-  it('let read-only inspection through and judge a vague request by the conversation', () => {
-    expect(SYSTEM_PROMPT).toContain('Read-only inspection inside the working folder is always "allow"');
+  it('judge harm, not scope, against the work as it unfolded', () => {
+    expect(SYSTEM_PROMPT).toContain('safety check, not a scope check');
     expect(SYSTEM_PROMPT).toContain('recent conversation');
+    expect(SYSTEM_PROMPT).toContain('part of the task');
   });
 });
