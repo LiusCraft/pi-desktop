@@ -15,8 +15,8 @@ import {
 import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import { buildMessage, decodeUserContent } from '@shared/attachments';
 import type {
-  AgentDraft, AgentMessage, ConnectorDraft, PluginResource, PromptDraft, SkillDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
-  PrStatus, PrSummary, SessionCleanup, SessionMeta, SessionRemoval, SessionStats, SetupStep, Settings, SideChat, SpawnTask, SubagentProgress, WorkIdea, WorkIdeasModelMode, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
+  AgentDraft, AgentMessage, ConnectorDraft, PluginResource, PromptDraft, SkillDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, HostResource, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
+  PrStatus, PrSummary, SessionCleanup, SessionMeta, SessionRemoval, SessionState, SessionStats, SetupStep, Settings, SideChat, SpawnTask, SubagentProgress, WorkIdea, WorkIdeasModelMode, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
 } from '@shared/protocol';
 import { AUTO_REVIEW_DEFAULT_TIMEOUT, AUTO_REVIEW_MAX_TIMEOUT, AUTO_REVIEW_MIN_TIMEOUT, MAX_SESSION_TITLE, SHELL_SESSION_MODES } from '@shared/protocol';
 import { decodeCommandMessage, encodeUserCommandMessage, isCommandMessage } from '@shared/command-message';
@@ -251,6 +251,23 @@ export class SessionHub {
   private emit(event: HostEvent) {
     this.opts.emit(event);
   }
+  /** Host-owned data changed under the windows: the views showing that resource read it again. */
+  resourceChanged(resource: HostResource) {
+    this.emit({ type: 'changed', resource });
+  }
+  /** A change to host-owned data made by the model: announced once it landed, with what it returned. */
+  private async afterChange<T>(resource: HostResource, run: () => Promise<T>): Promise<T> {
+    const result = await run();
+    this.resourceChanged(resource);
+    return result;
+  }
+  /** The same for a change that answers at once (an artifact saved from a page source). */
+  private afterChangeSync<T>(resource: HostResource, run: () => T): T {
+    const result = run();
+    this.resourceChanged(resource);
+    return result;
+  }
+  /** A Work project's text changed under the windows: the Projects page reads the list again, the open detail included. */
   private save() {
     this.store.set('sessions', this.metas);
   }
@@ -573,13 +590,13 @@ export class SessionHub {
         const c = hub.customize;
         return {
           list: () => c.list(project),
-          createSkill: (draft) => c.createSkill(draft, project),
-          setSkillDisabled: (file, disabled) => c.setSkillDisabled(file, disabled, project),
-          saveConnector: (draft) => c.saveConnector(draft, project),
-          setConnectorEnabled: (name, scope, enabled) => c.setConnectorEnabled(name, scope, enabled, project),
-          removeConnector: (name, scope) => c.removeConnector(name, scope, project),
-          installPlugin: (source, scope) => c.installPlugin(source, scope, project),
-          removePlugin: (source, scope) => c.removePlugin(source, scope, project),
+          createSkill: (draft) => hub.afterChange('customize', () => c.createSkill(draft, project)),
+          setSkillDisabled: (file, disabled) => hub.afterChange('customize', () => c.setSkillDisabled(file, disabled, project)),
+          saveConnector: (draft) => hub.afterChange('customize', () => c.saveConnector(draft, project)),
+          setConnectorEnabled: (name, scope, enabled) => hub.afterChange('customize', () => c.setConnectorEnabled(name, scope, enabled, project)),
+          removeConnector: (name, scope) => hub.afterChange('customize', () => c.removeConnector(name, scope, project)),
+          installPlugin: (source, scope) => hub.afterChange('customize', () => c.installPlugin(source, scope, project)),
+          removePlugin: (source, scope) => hub.afterChange('customize', () => c.removePlugin(source, scope, project)),
         };
       },
       web: this.web,
@@ -599,10 +616,10 @@ export class SessionHub {
       },
       artifacts: {
         list: () => hub.artifacts.list(),
-        save: (input) => hub.artifacts.save(input),
-        publish: (id) => hub.artifacts.publish(id),
-        unpublish: (id) => hub.artifacts.unpublish(id),
-        remove: (id, unpublish) => hub.artifacts.remove(id, unpublish),
+        save: (input) => hub.afterChangeSync('artifacts', () => hub.artifacts.save(input)),
+        publish: (id) => hub.afterChange('artifacts', () => hub.artifacts.publish(id)),
+        unpublish: (id) => hub.afterChange('artifacts', () => hub.artifacts.unpublish(id)),
+        remove: (id, unpublish) => hub.afterChange('artifacts', () => hub.artifacts.remove(id, unpublish)),
         storageReady: () => hub.storage.info().ready,
       },
       get project(): KitHost['project'] {
@@ -613,7 +630,7 @@ export class SessionHub {
         const project: NonNullable<KitHost['project']> = {
           context: () => projectContext(find()),
           codeFolders: () => find()?.codeFolders ?? [],
-          remember: (input) => remember(hub.projects, dir, input),
+          remember: (input) => remember(hub.projects, dir, input, () => hub.resourceChanged('workFolders')),
         };
         // What the Projects page edits, behind its switch under Settings → AI 工具.
         if (hub.storedSettings().aiProject) {
@@ -623,7 +640,7 @@ export class SessionHub {
               if (!found) throw new Error('This folder is no longer a Work project, so there is nothing to show.');
               return found;
             },
-            update: (patch) => editProject(hub.projects, dir, patch),
+            update: (patch) => editProject(hub.projects, dir, patch, () => hub.resourceChanged('workFolders')),
           };
         }
         return project;
@@ -672,6 +689,8 @@ export class SessionHub {
       this.setStatus(live, 'idle');
       m.updatedAt = Date.now();
       this.save();
+      // The sidebar orders sessions by recency: without this the order only catches up on a window reload.
+      this.emitMeta(m);
     }
     if (event.type === 'session_info_changed' && event.name && event.name !== m.title) {
       m.title = event.name;
@@ -936,14 +955,29 @@ export class SessionHub {
     return {
       meta: { ...this.meta(id) },
       messages: this.messagesWithIds(session),
-      model: session.model ? `${session.model.provider}/${session.model.id}` : null,
-      thinking: session.thinkingLevel as ThinkingLevel,
-      levels: session.getAvailableThinkingLevels() as ThinkingLevel[],
+      ...this.stateOf(session),
       isStreaming: session.isStreaming,
       isCompacting: session.isCompacting,
       hiddenMessages: this.compactedMessages(session).length,
-      stats: this.statsOf(session),
       pending: [...live.pending.values()].map((p) => p.request),
+    };
+  }
+
+  /**
+   * What a view coming back to the session needs to be current, read without its transcript or starting it.
+   * Null when the host holds nothing beyond the meta (an event carries the rest).
+   */
+  sessionState(id: string): SessionState | null {
+    const live = this.live.get(id);
+    return live && !live.disposed ? this.stateOf(live.runtime.session) : null;
+  }
+
+  private stateOf(session: AgentSession): SessionState {
+    return {
+      model: session.model ? `${session.model.provider}/${session.model.id}` : null,
+      thinking: session.thinkingLevel as ThinkingLevel,
+      levels: session.getAvailableThinkingLevels() as ThinkingLevel[],
+      stats: this.statsOf(session),
     };
   }
 
@@ -993,6 +1027,7 @@ export class SessionHub {
         session.sessionManager.appendCustomEntry('pi-desktop-rewind', { entryId });
         this.meta(id).updatedAt = Date.now();
         this.save();
+        this.emitMeta(this.meta(id));
         return { session: await this.open(id), draft };
       }
       const original = this.meta(id);

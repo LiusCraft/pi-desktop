@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react';
 import type { ModelInfo } from '@shared/protocol';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { bridge, call } from '@/lib/api';
+import { call } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { subscribeResource } from '@/store/resources';
 
 // Radix items cannot have an empty value.
 const NONE = '__none__';
@@ -25,8 +26,8 @@ export function ModelPicker({ value, onChange, emptyLabel, label, className }: {
       void call('models:list').then((r) => setModels(r.models.filter((m) => m.provider !== 'demo'))).catch(() => {});
     };
     load();
-    // A login or endpoint change in the models section refreshes this list too.
-    return bridge.on('host:event', (ev) => { if (ev.type === 'models_changed') load(); });
+    // A login or an endpoint change in the models section refreshes this list too.
+    return subscribeResource('models', load);
   }, []);
   const known = !value || models.some((m) => `${m.provider}/${m.id}` === value);
   return (

@@ -18,6 +18,7 @@ import { Switch } from '@/components/ui/switch';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Tip } from '@/components/common/Tip';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { notifyResource, subscribeResource } from '@/store/resources';
 import { Toaster } from 'sonner';
 import { bridge, call, errText, isMac, isRemote } from '@/lib/api';
 import { useLocale, useT } from '@/lib/i18n';
@@ -200,6 +201,11 @@ export function SettingsApp() {
   useEffect(() => {
     call('terminal:shells').then(setShells).catch(() => {});
   }, []);
+  // Host-owned data reaches this window as `changed` events; the sections that show it subscribe to the bus,
+  // exactly as the main window's pages do.
+  useEffect(() => bridge.on('host:event', (ev) => {
+    if (ev.type === 'changed') notifyResource(ev.resource);
+  }), []);
   useEffect(() => {
     const offChanged = bridge.on('settings:changed', (s) => {
       setSettings(s);
@@ -280,6 +286,18 @@ export function SettingsApp() {
     setProjects(await call('projects:list'));
     setFolders(await call('work:folders'));
   };
+  // The main window (or the model) can add or remove a project or a Work folder: both windows show the lists,
+  // so this one follows the same announcement.
+  useEffect(() => {
+    const offProjects = subscribeResource('projects', () => void reloadLists());
+    const offFolders = subscribeResource('workFolders', () => void reloadLists());
+    return () => {
+      offProjects();
+      offFolders();
+    };
+    // reloadLists only writes state, so the first one keeps working for the life of the window.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const modeOptions = MODEL_MODE_LABELS.map((o) => ({ id: o.id, label: t(o.label) }));
   const unspecified = t('settings.unspecified');

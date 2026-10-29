@@ -50,7 +50,8 @@ const handlers: Record<HostMethod, Handler> = {
     if (hub) return;
     hub = new SessionHub({ dataDir, agentDir, demoModel: demo, emit: (event) => send({ kind: 'event', event }) });
     await hub.init();
-    scheduler = new Scheduler(new Store(dataDir), hub, (tasks) => send({ kind: 'event', event: { type: 'tasks', tasks } }));
+    // The scheduler writes the task list; the pages showing it read it again (see HOST_RESOURCES).
+    scheduler = new Scheduler(new Store(dataDir), hub, () => send({ kind: 'event', event: { type: 'changed', resource: 'tasks' } }));
     hub.scheduler = scheduler;
     scheduler.start();
     resolveReady(hub);

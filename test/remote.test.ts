@@ -112,8 +112,8 @@ describe('remote protocol', () => {
     await again.start();
     cleanups.push(() => again.stop());
     await until(() => states.at(-1) === 'connected', 15_000);
-    again.publish({ type: 'models_changed' });
-    await until(() => events.some((e) => e.type === 'models_changed'));
+    again.publish({ type: 'changed', resource: 'models' });
+    await until(() => events.some((e) => e.type === 'changed'));
     expect(states).toEqual(['connected', 'reconnecting', 'connected']);
   });
 });

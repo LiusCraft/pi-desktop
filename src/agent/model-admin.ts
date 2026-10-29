@@ -174,7 +174,7 @@ export class ModelAdmin {
   // ------------------------------------------------------------ login / logout
 
   private changed() {
-    this.opts.emit({ type: 'models_changed' });
+    this.opts.emit({ type: 'changed', resource: 'models' });
   }
 
   login(providerId: string, authType: AuthType, name?: string): Promise<void> {

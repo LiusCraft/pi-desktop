@@ -11,6 +11,7 @@ import { call, errText } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { ago } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { subscribeResource } from '@/store/resources';
 
 const fail = (err: unknown) => toast.error(errText(err));
 const STATE_LABEL = { draft: 'artifacts.stateDraft', published: 'artifacts.statePublished', outdated: 'artifacts.stateOutdated' } as const satisfies Record<ArtifactPublishState, string>;
@@ -120,9 +121,14 @@ export function ArtifactsPage() {
   }, []);
   useEffect(() => {
     load();
-    // The model saves pages from chat and the bucket is set up in another window: look again when this one is back in focus.
+    // The bucket is set up in another window: look again when this one is back in focus. A page saved from
+    // chat arrives as a resource change instead, at once.
     window.addEventListener('focus', load);
-    return () => window.removeEventListener('focus', load);
+    const offSaved = subscribeResource('artifacts', load);
+    return () => {
+      window.removeEventListener('focus', load);
+      offSaved();
+    };
   }, [load]);
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">

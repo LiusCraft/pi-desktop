@@ -20,6 +20,7 @@ import { dialogs } from './dialogs';
 import { activeDraft, drafts, getDraft, sessionDraftKey, useDrafts } from './drafts';
 import { forgetPanels, writeArrangement, writePanels } from './layout';
 import { primeSuggestion, resumeSuggestion } from './predict';
+import { notifyResource, subscribeResource } from './resources';
 import { forgetScroll } from './scroll';
 import { askSide, showSide } from './side';
 import {
@@ -49,8 +50,9 @@ let scheduled = false;
 export function handleHostEvent(ev: HostEvent) {
   // Login prompts belong to the settings window; model changes refresh the pickers.
   if (ev.type === 'auth_prompt' || ev.type === 'auth_event') return;
-  if (ev.type === 'models_changed') {
-    void loadModels();
+  // Host-owned data: the views showing it read it again, each its own way (see store/resources.ts).
+  if (ev.type === 'changed') {
+    notifyResource(ev.resource);
     return;
   }
   if (ev.type === 'remote_link') {
@@ -76,11 +78,8 @@ function flushEvents() {
   setApp((st) => {
     const view = st.prefs.viewMode;
     for (const ev of events) {
-      if (ev.type === 'tasks') {
-        st.tasks = ev.tasks;
-        continue;
-      }
-      if (ev.type === 'auth_prompt' || ev.type === 'auth_event' || ev.type === 'models_changed' || ev.type === 'remote_link' || ev.type === 'terminal_data' || ev.type === 'terminal_exit') continue;
+      if (ev.type === 'changed') continue;
+      if (ev.type === 'auth_prompt' || ev.type === 'auth_event' || ev.type === 'remote_link' || ev.type === 'terminal_data' || ev.type === 'terminal_exit') continue;
       if (ev.type === 'host_exit') {
         for (const s of Object.values(st.sessions)) {
           if (s.running) settle(s, true, view);
@@ -279,10 +278,57 @@ export async function loadModels() {
     });
     const levels = await call('models:levels', getApp().prefs.model).catch(() => []);
     setApp((st) => void (st.levels = levels));
+    await reloadSessionLevels();
   } catch (err) {
     fail(err);
   }
 }
+
+/**
+ * A model's capabilities are edited in Settings while open sessions hold their own copy of the level list
+ * (they took it from the host when they were opened). Re-read each distinct session model once, so the
+ * composer's effort menu follows the configuration; pi clamps a level the model no longer offers.
+ */
+async function reloadSessionLevels() {
+  const wanted = [...new Set(Object.values(getApp().sessions).filter((s) => s.loaded && s.model).map((s) => s.model as string))];
+  if (!wanted.length) return;
+  const read = new Map(await Promise.all(wanted.map(async (model) => [model, await call('models:levels', model).catch(() => null)] as const)));
+  setApp((st) => {
+    for (const s of Object.values(st.sessions)) {
+      const levels = s.model ? read.get(s.model) : null;
+      if (levels) s.levels = levels;
+    }
+  });
+}
+
+/** The Work folder list, as the host holds it (the model's notes and edits land in it). */
+async function reloadWorkFolders() {
+  const folders = await call('work:folders').catch(() => null);
+  if (folders) setApp((st) => void (st.workFolders = folders));
+}
+
+/** The scheduled tasks, as the host holds them (the model and the scheduler both change them). */
+async function reloadTasks() {
+  const tasks = await call('tasks:list').catch(() => null);
+  if (tasks) setApp((st) => void (st.tasks = tasks));
+}
+
+/** The Code projects this window shows (sidebar groups, the new-session chip). */
+async function reloadProjects() {
+  const projects = await call('projects:list').catch(() => null);
+  if (!projects) return;
+  setApp((st) => {
+    st.projects = projects;
+    if (!projects.some((p) => p.path === st.prefs.project)) st.prefs.project = projects[0]?.path ?? null;
+  });
+}
+
+// The lists this window keeps for its sidebar, composer and pages alike. The host announces a change and
+// they are read again here, so a change arrives without the event having to carry the data.
+subscribeResource('models', () => void loadModels());
+subscribeResource('projects', () => void reloadProjects());
+subscribeResource('workFolders', () => void reloadWorkFolders());
+subscribeResource('tasks', () => void reloadTasks());
 
 // ------------------------------------------------------------ navigation
 
@@ -427,7 +473,10 @@ export async function openSession(id: string, fresh = false) {
   savePref('pd_last_session', id);
   activateDraftFor();
   resumeSuggestion();
-  if (s.loaded && !fresh) return;
+  if (s.loaded && !fresh) {
+    void revalidateSession(id);
+    return;
+  }
   try {
     const r = await call('sessions:open', id);
     setApp((st) => {
@@ -457,9 +506,8 @@ export async function openSession(id: string, fresh = false) {
       x.cost = r.stats?.cost ?? null;
       for (const req of r.pending) addUiRequest(x, req, st.prefs.viewMode);
     });
-    call('sessions:commands', id).then((commands) => updateSession(id, (x) => void (x.commands = commands.filter((c) => !['desktop-mode', 'desktop-output-style'].includes(c.name))))).catch(() => {});
-    if (s.meta.kind === 'code') void loadChanges(id);
-  } catch (err) {
+    void loadCommands(id);
+    if (s.meta.kind === 'code') void loadChanges(id);  } catch (err) {
     setApp((st) => {
       const x = st.sessions[id];
       if (!x) return;
@@ -467,6 +515,33 @@ export async function openSession(id: string, fresh = false) {
       push(x, { kind: 'note', key: newKey(), level: 'error', text: t('act.openFailed', { error: errText(err) }) }, st.prefs.viewMode);
     });
   }
+}
+
+/** The slash commands and skills an open session offers; the host composes them from what is installed now. */
+async function loadCommands(id: string) {
+  const commands = await call('sessions:commands', id).catch(() => null);
+  if (commands) updateSession(id, (x) => void (x.commands = commands.filter((c) => !['desktop-mode', 'desktop-output-style'].includes(c.name))));
+}
+
+/**
+ * Back on a session this window already shows: the host may have moved on while it was away (a model edited in
+ * Settings, a level picked in its terminal), so the few facts beside the transcript are read again. The
+ * transcript itself is not re-sent: it only changes through events, which arrive on their own.
+ */
+async function revalidateSession(id: string) {
+  const state = await call('sessions:state', id).catch(() => null);
+  if (!state) return;
+  updateSession(id, (v) => {
+    if (!v.loaded) return;
+    v.model = state.model;
+    v.thinking = state.thinking;
+    v.levels = state.levels;
+    v.ctxPct = state.stats?.contextUsage?.percent ?? null;
+    v.cacheRate = state.stats ? cacheHitRate(state.stats.tokens) : null;
+    v.cost = state.stats?.cost ?? null;
+  });
+  // Skills, plugins and connectors changed since the session opened: the command list the composer offers follows.
+  void loadCommands(id);
 }
 
 // ------------------------------------------------------------ sending
@@ -1062,7 +1137,7 @@ export function togglePanel(id: string, panel: keyof Panels, open?: boolean) {
     void loadChanges(id);
     void loadPrThreads(id);
   }
-  if (panel === 'files' && s?.panels.files && !s.files) void loadFiles(id);
+  if (panel === 'files' && s?.panels.files) void loadFiles(id, true);
 }
 
 /**

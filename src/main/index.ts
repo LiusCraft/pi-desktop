@@ -70,10 +70,25 @@ let pendingWorktree: WorktreeInfo | null = null;
 
 let book: ProjectBook;
 const projects = () => book.projects();
-const addProject = (dir: string) => book.addProject(dir);
+/**
+ * The Code project and Work folder lists are this process's to keep, and two windows show them: the main
+ * window's sidebar and the settings window. A write announces itself, so neither holds a stale copy.
+ */
+function listsChanged(resource: 'projects' | 'workFolders') {
+  broadcast('host:event', { type: 'changed', resource });
+}
+const addProject = (dir: string) => {
+  const project = book.addProject(dir);
+  listsChanged('projects');
+  return project;
+};
 /** Work folders the user has worked in, most recent first. */
 const workFolders = () => book.workFolders();
-const addWorkFolder = (dir: string) => book.addWorkFolder(dir);
+const addWorkFolder = (dir: string) => {
+  const folder = book.addWorkFolder(dir);
+  listsChanged('workFolders');
+  return folder;
+};
 const demoSource = (name: string) => path.join(app.getAppPath(), 'demo', name);
 /** Pi Desktop's own data folder; Electron's profile stays at the platform default. */
 const dataDir = () => appDataDir();
@@ -886,6 +901,7 @@ const handlers: MainHandlers = {
   },
   'projects:remove': (dir) => {
     store.set('projects', store.get<Project[]>('projects', []).filter((p) => p.path !== dir));
+    listsChanged('projects');
     return projects();
   },
   'projects:addPath': (dir) => addProject(existingFolder(dir)),
@@ -905,8 +921,16 @@ const handlers: MainHandlers = {
     return dir ? addWorkFolder(dir) : null;
   },
   'work:useFolder': (dir) => (fs.existsSync(dir) ? addWorkFolder(dir) : null),
-  'work:removeFolder': (dir) => book.removeWorkFolder(dir),
-  'work:update': (dir, patch) => book.updateWorkFolder(dir, patch),
+  'work:removeFolder': (dir) => {
+    const folders = book.removeWorkFolder(dir);
+    listsChanged('workFolders');
+    return folders;
+  },
+  'work:update': (dir, patch) => {
+    const folders = book.updateWorkFolder(dir, patch);
+    listsChanged('workFolders');
+    return folders;
+  },
 
   'attachments:import': (sources) => importAttachments(sources),
   'attachments:pick': async () => {

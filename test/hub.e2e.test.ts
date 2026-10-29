@@ -94,6 +94,22 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect(driver.hub.thinkingLevels('demo/demo-coder').length).toBeGreaterThan(1);
   });
 
+  it('answers a session’s live state without its transcript, and stays quiet for one nobody holds', async () => {
+    const { meta } = await codeSession();
+    expect(driver.hub.sessionState(meta.id), 'not held live before it is opened').toBeNull();
+    const opened = await driver.hub.open(meta.id);
+    const state = driver.hub.sessionState(meta.id)!;
+    expect(state.model).toBe(opened.model);
+    expect(state.thinking).toBe(opened.thinking);
+    expect(state.levels).toEqual(opened.levels);
+    // A level picked elsewhere (another window, the terminal) is what a view coming back must show.
+    // pi clamps a level the provider does not really run at, so pick one that survives: the lowest it offers.
+    const picked = state.levels.includes('medium') ? 'medium' : state.levels[0];
+    await driver.hub.setThinking(meta.id, picked);
+    expect(driver.hub.sessionState(meta.id)!.thinking).toBe(picked);
+    expect(driver.hub.meta(meta.id).thinking).toBe(picked);
+  });
+
   it('auto mode: fixes the bug end to end in an isolated worktree, without prompts', async () => {
     const { project, meta } = await codeSession('auto', true);
     expect(meta.branch).toMatch(/^claude\//);

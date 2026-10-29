@@ -461,18 +461,22 @@ export interface ContextBreakdown {
   items: { group: 'mcp' | 'extension' | 'system' | 'skills' | 'memory'; name: string; tokens: number }[];
 }
 
-export interface OpenSessionResult {
-  meta: SessionMeta;
-  messages: AgentMessage[];
+/** What a session shows beside its transcript: the facts that change under an open view. */
+export interface SessionState {
   model: string | null;
   thinking: ThinkingLevel | null;
   levels: ThinkingLevel[];
+  stats: SessionStats | null;
+}
+
+export interface OpenSessionResult extends SessionState {
+  meta: SessionMeta;
+  messages: AgentMessage[];
   isStreaming: boolean;
   /** A compaction is running: the session is busy, but not in a turn. */
   isCompacting: boolean;
   /** Messages the latest compaction summarized away: they are no longer in `messages`, but still in the session file. */
   hiddenMessages: number;
-  stats: SessionStats | null;
   /** Interactive requests still waiting for an answer (e.g. after a window reload). */
   pending: UiRequest[];
 }
@@ -634,6 +638,16 @@ export interface UiResponse {
 
 // ------------------------------------------------------------ host → renderer events
 
+/**
+ * Host-owned data a view can show. The host announces a change with one `changed` event and the views that
+ * display that resource read it again from the host, so the data lives in one place and no view keeps a copy
+ * it has to keep in step. The announce comes from whichever process owns the data: the agent host (models,
+ * tasks, customize, artifacts, activity, a model's project notes) or the main process (projects, Work folders).
+ * A new resource: name it here, announce it where it is written, subscribe in its views.
+ */
+export const HOST_RESOURCES = ['models', 'tasks', 'projects', 'workFolders', 'customize', 'artifacts', 'activity'] as const;
+export type HostResource = (typeof HOST_RESOURCES)[number];
+
 export type HostEvent =
   | { type: 'pi'; sessionId: string; event: PiEvent }
   | { type: 'ui_request'; sessionId: string; request: UiRequest }
@@ -649,14 +663,11 @@ export type HostEvent =
   | { type: 'notify'; sessionId: string; message: string; level: 'info' | 'warning' | 'error' }
   | { type: 'task'; sessionId: string; update: TaskUpdate }
   | { type: 'side'; sessionId: string; chat: SideChat }
-  /** The scheduled tasks changed (edited, ran, or finished a one-off). */
-  | { type: 'tasks'; tasks: ScheduledTask[] }
-  /** A login flow is waiting for an answer (settings window). */
+  /** Host-owned data changed: the views showing that resource read it again. */
+  | { type: 'changed'; resource: HostResource }
   | { type: 'auth_prompt'; loginId: string; provider: string; providerName: string; requestId: string; prompt: AuthPrompt }
   /** Out-of-band login progress: browser URL, device code, status text. */
   | { type: 'auth_event'; loginId: string; provider: string; event: AuthEvent }
-  /** Accounts, keys or endpoints changed: reload model lists. */
-  | { type: 'models_changed' }
   | { type: 'editor_text'; sessionId: string; text: string }
   /** The model listed result files (absolute paths) for the Files panel. */
   | { type: 'session_outputs'; sessionId: string; files: string[] }
@@ -1023,6 +1034,8 @@ export interface Api {
   'sessions:list'(): SessionSummary[];
   'sessions:create'(opts: CreateSessionOptions): SessionMeta;
   'sessions:open'(id: string): OpenSessionResult;
+  /** The session as the host holds it now, without its transcript; null when the host holds nothing more than its meta. */
+  'sessions:state'(id: string): SessionState | null;
   'sessions:prompt'(id: string, payload: PromptSubmission, behavior: StreamingBehavior): { disposition: string };
   'sessions:respond'(id: string, requestId: string, response: UiResponse): void;
   'sessions:setMode'(id: string, mode: PermissionMode): void;
@@ -1170,7 +1183,7 @@ export type ApiResult<K extends ApiChannel> = Awaited<ReturnType<Api[K]>>;
 
 /** Calls the agent host serves; main forwards these without looking at them. */
 export const HOST_CHANNELS = [
-  'sessions:list', 'sessions:create', 'sessions:open', 'sessions:prompt', 'sessions:respond',
+  'sessions:list', 'sessions:create', 'sessions:open', 'sessions:state', 'sessions:prompt', 'sessions:respond',
   'sessions:setMode', 'sessions:setStyle', 'sessions:update', 'sessions:archive', 'sessions:unarchive', 'sessions:inspect', 'sessions:remove', 'sessions:spawn', 'sessions:abort',
   'sessions:clearQueue', 'sessions:newContext', 'sessions:compact', 'sessions:compactedHistory', 'sessions:stats', 'sessions:exportHtml',
   'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:side', 'sessions:sideGet', 'sessions:sideStage', 'sessions:sideAbort', 'sessions:sideReset', 'sessions:workIdeas',

@@ -19,6 +19,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from '@/components/ui/input';
 import { bridge, call, errText, isRemote } from '@/lib/api';
 import { t, useT } from '@/lib/i18n';
+import { subscribeResource } from '@/store/resources';
 import { EndpointDialog } from './EndpointDialog';
 import { LoginDialog, type AuthUiState } from './LoginDialog';
 import { API_LABELS, agoLabel, modelMetaLine } from './model-format';
@@ -91,7 +92,9 @@ export function ModelsSection() {
 
   useEffect(() => {
     void load();
-    return bridge.on('host:event', (ev) => {
+    // A login, an endpoint change or a model edit lands as a resource change, here or in the main window.
+    const offModels = subscribeResource('models', () => void load());
+    const offEvents = bridge.on('host:event', (ev) => {
       if (ev.type === 'auth_prompt') {
         setAuth((state) => ({ ...state, loginId: ev.loginId, prompt: { requestId: ev.requestId, prompt: ev.prompt } }));
         return;
@@ -119,8 +122,11 @@ export function ModelsSection() {
         });
         return;
       }
-      if (ev.type === 'models_changed') void load();
     });
+    return () => {
+      offEvents();
+      offModels();
+    };
   }, [load]);
 
   const startLogin = async (provider: ProviderInfo, authType: AuthType) => {

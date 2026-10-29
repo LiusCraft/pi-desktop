@@ -8,6 +8,7 @@ import { fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { openSession } from '@/store/actions';
 import { useApp } from '@/store/app';
+import { subscribeResource } from '@/store/resources';
 import { activityLevels, HOURS_PER_DAY, rangeDays, rangeStats, summarize, TEMPORARY_WORKSPACE, type ActivityLog } from '@shared/activity';
 import { fmtDay, Heatmap, Legend } from './Heatmap';
 import { UsagePanel } from './UsagePanel';
@@ -67,7 +68,10 @@ export function ActivityPage() {
   const [tab, setTab] = useState<Tab>(TAB.activity);
   const [usageDays, setUsageDays] = useState<UsageRange>(DEFAULT_USAGE_RANGE);
   useEffect(() => {
-    void call('activity:get').then(setLog).catch(() => setLog({}));
+    const load = () => void call('activity:get').then(setLog).catch(() => setLog({}));
+    load();
+    // A prompt from this window, another one, or a scheduled task changes the counts.
+    return subscribeResource('activity', load);
   }, []);
 
   const today = useMemo(() => new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()), []);

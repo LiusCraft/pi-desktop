@@ -98,6 +98,15 @@ describe('editProject', () => {
   it('needs at least one field', () => {
     expect(() => editProject(book, dir, {})).toThrow(/at least one field/);
   });
+
+  it('notifies the host only for an edit it accepted', () => {
+    let calls = 0;
+    const saved = () => void (calls += 1);
+    editProject(book, dir, { description: 'Quarterly reports' }, saved);
+    expect(calls).toBe(1);
+    expect(() => editProject(book, dir, { name: '  ' }, saved)).toThrow(/empty/);
+    expect(calls).toBe(1);
+  });
 });
 
 describe('remember', () => {  it('appends notes one per line', () => {
@@ -120,5 +129,20 @@ describe('remember', () => {  it('appends notes one per line', () => {
 
   it('needs something to save', () => {
     expect(() => remember(book, dir, {})).toThrow();
+  });
+
+  it('notifies the host after the note is on disk, so the list it sends is current', () => {
+    let seen = '(not called)';
+    remember(book, dir, { note: 'prefers tables' }, () => { seen = book.workFolders()[0].memory ?? ''; });
+    expect(seen).toBe('- prefers tables');
+  });
+
+  it('stays quiet when the note does not fit or nothing was given', () => {
+    book.updateWorkFolder(dir, { memory: 'x'.repeat(PROJECT_LIMITS.memory) });
+    let calls = 0;
+    const saved = () => void (calls += 1);
+    expect(() => remember(book, dir, { note: 'one more' }, saved)).toThrow(/rewrite/);
+    expect(() => remember(book, dir, {}, saved)).toThrow();
+    expect(calls).toBe(0);
   });
 });

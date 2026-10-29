@@ -22,11 +22,14 @@ export function sessionHandlers(ready: Promise<SessionHub>, getScheduler: () => 
     'sessions:list': withHub((h) => h.list()),
     'sessions:create': withHub((h, opts) => h.create(opts)),
     'sessions:open': withHub((h, id) => h.open(id)),
+    'sessions:state': withHub((h, id) => h.sessionState(id)),
     // Only this call is the user typing; tasks, peers and PR events reach `hub.prompt` directly.
     'sessions:prompt': withHub(async (h, id, payload, behavior) => {
       const result = await h.prompt(id, payload, behavior);
       const m = h.meta(id);
       h.activity.recordPrompt(m.kind, id, m.scratch ? TEMPORARY_WORKSPACE : m.projectPath);
+      // The activity page counts prompts: a new one changes what it shows.
+      h.resourceChanged('activity');
       return result;
     }),
     'sessions:respond': withHub((h, id, requestId, response) => h.respond(id, requestId, response)),
@@ -113,7 +116,12 @@ export function sessionHandlers(ready: Promise<SessionHub>, getScheduler: () => 
     'tasks:remove': withHub((_h, id) => scheduler().remove(id)),
     'tasks:run': withHub((_h, id) => scheduler().runNow(id)),
     'artifacts:list': withHub((h) => h.artifacts.list()),
-    'artifacts:fromFile': withHub((h, sessionId, rel) => h.artifacts.save({ source: h.resolvePath(sessionId, rel) })),
+    'artifacts:fromFile': withHub((h, sessionId, rel) => {
+      const saved = h.artifacts.save({ source: h.resolvePath(sessionId, rel) });
+      // The list the Artifacts page shows is the host's: announce the new one.
+      h.resourceChanged('artifacts');
+      return saved;
+    }),
     'artifacts:remove': withHub(async (h, id, unpublish) => {
       await h.artifacts.remove(id, unpublish);
       return h.artifacts.list();

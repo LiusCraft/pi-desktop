@@ -5,6 +5,7 @@ import { call } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { ago } from '@/lib/format';
 import { showArtifacts } from '@/store/actions';
+import { subscribeResource } from '@/store/resources';
 import { Thumbnail } from './ArtifactsPage';
 
 const RECENT_COUNT = 3;
@@ -16,7 +17,11 @@ export function RecentArtifacts() {
     const load = () => void call('artifacts:list').then(setList).catch(() => setList([]));
     load();
     window.addEventListener('focus', load);
-    return () => window.removeEventListener('focus', load);
+    const offSaved = subscribeResource('artifacts', load);
+    return () => {
+      window.removeEventListener('focus', load);
+      offSaved();
+    };
   }, []);
   const recent = [...list].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, RECENT_COUNT);
   if (!recent.length) return null;

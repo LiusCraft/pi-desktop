@@ -29,8 +29,11 @@ export function projectContext(p: WorkProject | undefined): string | null {
   return `# Project: ${p.name}\n\n${parts.join('\n\n')}`;
 }
 
-/** Adds one note to the project's memory, or replaces the whole text to tidy it; returns the saved length. */
-export function remember(book: ProjectBook, dir: string, input: { note?: string; rewrite?: string }): number {
+/**
+ * Adds one note to the project's memory, or replaces the whole text to tidy it; returns the saved length.
+ * `saved` runs once the note is on disk, so the host can tell the UI what it now holds.
+ */
+export function remember(book: ProjectBook, dir: string, input: { note?: string; rewrite?: string }, saved?: () => void): number {
   const current = book.workFolders().find((p) => p.path === dir)?.memory?.trim() ?? '';
   let next: string;
   if (input.rewrite !== undefined) next = input.rewrite.trim();
@@ -40,6 +43,7 @@ export function remember(book: ProjectBook, dir: string, input: { note?: string;
     throw new Error(`Project memory is full (${PROJECT_LIMITS.memory} characters). Call pidesk_remember again with rewrite set to a shorter version that keeps what matters.`);
   }
   book.updateWorkFolder(dir, { memory: next });
+  saved?.();
   return next.length;
 }
 
@@ -47,7 +51,7 @@ export function remember(book: ProjectBook, dir: string, input: { note?: string;
  * Saves what the chat asked to change on a Work project, checking the limits the Projects page enforces first
  * (the book would clip silently). Memory is not part of this: `pidesk_remember` owns it.
  */
-export function editProject(book: ProjectBook, dir: string, patch: ProjectEdit): WorkProject {
+export function editProject(book: ProjectBook, dir: string, patch: ProjectEdit, saved?: () => void): WorkProject {
   const fields = Object.entries(patch).filter(([, value]) => value !== undefined);
   if (!fields.length) throw new Error('Give at least one field to change: name, description, instructions or links.');
   if (patch.name !== undefined) {
@@ -72,7 +76,8 @@ export function editProject(book: ProjectBook, dir: string, patch: ProjectEdit):
     }
   }
   book.updateWorkFolder(dir, patch);
-  const saved = book.workFolders().find((p) => p.path === dir);
-  if (!saved) throw new Error('That folder is not a project.');
-  return saved;
+  saved?.();
+  const project = book.workFolders().find((p) => p.path === dir);
+  if (!project) throw new Error('That folder is not a project.');
+  return project;
 }

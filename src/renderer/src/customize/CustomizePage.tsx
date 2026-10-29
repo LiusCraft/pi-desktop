@@ -14,6 +14,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { dialogs } from '@/store/dialogs';
 import { useApp } from '@/store/app';
+import { subscribeResource } from '@/store/resources';
 import { AgentsSection } from './AgentsSection';
 import { ConnectorsSection } from './ConnectorsSection';
 import { PluginsSection } from './PluginsSection';
@@ -128,6 +129,8 @@ export function CustomizePage() {
     void call('customize:list', project).then(setCatalog).catch((e) => toast.error(errText(e)));
   }, [project]);
   useEffect(load, [load, view]);
+  // The model can add a skill or a connector from chat while this page is open: the host announces it.
+  useEffect(() => subscribeResource('customize', load), [load]);
 
   const tabs: { id: Tab; label: string; icon: ReactNode; count?: number }[] = [
     { id: 'recommended', label: t('customize.tab.recommended'), icon: <StarIcon className="size-4" /> },
