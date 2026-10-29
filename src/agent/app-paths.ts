@@ -50,6 +50,10 @@ export const appUploadsDir = (dataDir: string) => path.join(dataDir, 'uploads');
 export const appObjectStorageFile = (dataDir: string) => path.join(dataDir, 'object-storage.json');
 /** The web search engine choice and the user's API keys for them (see `@shared/web-search`). */
 export const appWebSearchFile = (dataDir: string) => path.join(dataDir, 'web-search.json');
+/** One JSONL file per local day of the model request log (see `@shared/request-log`). */
+export const appRequestLogDir = (dataDir: string) => path.join(dataDir, 'request-log');
+/** The request hook's own settings. */
+export const appRequestHookFile = (dataDir: string) => path.join(dataDir, 'request-hook.json');
 /** Scratch workspaces for Work tasks started without a folder. */
 export const appWorkDir = (dataDir: string) => path.join(dataDir, 'work');
 /** Copies of the bundled demo project and demo Work folder. */

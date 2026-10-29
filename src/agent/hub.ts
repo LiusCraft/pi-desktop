@@ -39,6 +39,10 @@ import { listPets, removePet, savePet } from './pets';
 import { ArtifactService } from './artifacts';
 import { ObjectStorage } from './storage';
 import { WebSearch } from './web-search';
+import { REQUEST_ORIGIN, type RequestOrigin } from '@shared/request-log';
+import { recordRequests } from './request-hook/hook';
+import { RequestLog } from './request-hook/log';
+import { withOrigin } from './request-hook/origin';
 import { createDesktopKit, type KitHost, type KitState, type SubagentRun } from './desktop-kit';
 import { toWireEvent } from './events';
 import { locateSessionFile, readSessionFile, readSessionImage, readSessionMedia, resolveInside, searchSessionFiles } from './files';
@@ -163,6 +167,8 @@ export class SessionHub {
   readonly artifacts: ArtifactService;
   /** The model's web search and page fetching, with the user's engine keys. */
   readonly web: WebSearch;
+  /** Every model request the app sent, with its tokens and cost; the hook that fills it is set up in init. */
+  readonly requests: RequestLog;
   private settings!: SettingsManager;
   private metas: SessionMeta[];
   private readonly live = new Map<string, Live>();
@@ -192,6 +198,18 @@ export class SessionHub {
     this.storage = new ObjectStorage(opts.dataDir);
     this.artifacts = new ArtifactService(opts.dataDir, this.storage);
     this.web = new WebSearch(opts.dataDir);
+    this.requests = new RequestLog(opts.dataDir);
+    // A main session's requests carry the id pi gave it, which the hub's own session ids don't match.
+    this.requests.resolveSession = (sessionId) => {
+      for (const live of this.live.values()) {
+        if (live.runtime?.session?.sessionId === sessionId) return { origin: this.meta(live.id).kind, session: live.id };
+      }
+      return undefined;
+    };
+    this.requests.findSession = (storedId) => {
+      const m = this.metas.find((x) => x.id !== storedId && x.sessionFile?.includes(storedId));
+      return m ? { origin: m.kind, session: m.id } : undefined;
+    };
     this.metas = this.store.get<SessionMeta[]>('sessions', []);
     this.trust = new ProjectTrustStore(this.agentDir);
   }
@@ -207,6 +225,7 @@ export class SessionHub {
       modelsPath: path.join(this.agentDir, 'models.json'),
       signal: AbortSignal.timeout(15_000),
     });
+    recordRequests(this.models, this.requests);
     if (this.opts.demoModel) registerDemoModel(this.models);
     this.settings = SettingsManager.create(os.homedir(), this.agentDir);
     this.admin = new ModelAdmin({
@@ -848,6 +867,8 @@ export class SessionHub {
         cwd, agentDir: this.agentDir, modelRuntime: this.models, model: (agent.model && this.findModel(agent.model)) || run.ctx.model, resourceLoader, settingsManager,
         sessionManager: SessionManager.inMemory(cwd), tools: agent.tools ?? SUBAGENT_TOOLS,
       });
+      // Its requests carry its own session id; they are the subagent's, not the main session's.
+      this.requests.tagSession(session.sessionId, { origin: REQUEST_ORIGIN.subagent, subagent: agent.name, session: live.id });
       const abortSession = () => void session.abort();
       stop.signal.addEventListener('abort', abortSession, { once: true });
       try {
@@ -887,6 +908,7 @@ export class SessionHub {
         // would outlive it — on Windows that shell's folder cannot be deleted (EBUSY).
         await session.extensionRunner.emit({ type: 'session_shutdown', reason: 'quit' }).catch(() => {});
         session.dispose();
+        this.requests.untagSession(session.sessionId);
       }
     } finally {
       run.signal?.removeEventListener('abort', onAbort);
@@ -1057,6 +1079,11 @@ export class SessionHub {
   }
 
   /** Names the session with the session's own model: one tool-less request, outside the conversation. */
+  /** A one-off model call of the app's own, recorded under `origin`. */
+  private complete(origin: RequestOrigin, ...args: Parameters<ModelRuntime['completeSimple']>) {
+    return withOrigin({ origin }, () => this.models.completeSimple(...args));
+  }
+
   private async nameSession(id: string, prompt: string) {
     const m = this.meta(id);
     if (!m.autoName || m.titleLocked || m.autoNamed) return;
@@ -1070,7 +1097,7 @@ export class SessionHub {
     const timer = setTimeout(() => controller.abort(), naming.TIMEOUT_MS);
     let raw = '';
     try {
-      const reply = await this.models.completeSimple(model, {
+      const reply = await this.complete(REQUEST_ORIGIN.naming, model, {
         systemPrompt: naming.SYSTEM_PROMPT,
         messages: [{ role: 'user', content: prompt.slice(0, 2000), timestamp: Date.now() }],
         // Room for a reasoning model to think before it writes the title.
@@ -1121,7 +1148,7 @@ export class SessionHub {
     this.namers.add(controller);
     const timer = setTimeout(() => controller.abort(), workIdeas.TIMEOUT_MS);
     try {
-      const reply = await this.models.completeSimple(model, {
+      const reply = await this.complete(REQUEST_ORIGIN.ideas, model, {
         systemPrompt: workIdeas.SYSTEM_PROMPT,
         messages: [{ role: 'user', content: workIdeas.titlesText(recent.map((m) => m.title)), timestamp: Date.now() }],
       }, { signal: controller.signal, maxTokens: 1024 });
@@ -1171,11 +1198,11 @@ export class SessionHub {
     const timer = setTimeout(stop, clampTimeout(settings.autoReviewTimeout) * 1000);
     try {
       // No `reasoning` option: the review runs with thinking off.
-      const reply = await this.models.completeSimple(model, {
+      const reply = await this.complete(REQUEST_ORIGIN.review, model, {
         systemPrompt: commandReview.SYSTEM_PROMPT,
         messages: [{
           role: 'user', timestamp: Date.now(),
-          content: commandReview.reviewRequest({ command, cwd, kind: this.meta(live.id).kind, request: commandReview.latestRequest(session.messages) }),
+          content: commandReview.reviewRequest({ command, cwd, kind: this.meta(live.id).kind, request: commandReview.latestRequest(session.messages), history: commandReview.recentConversation(session.messages) }),
         }],
       }, { signal: controller.signal, maxTokens: commandReview.REVIEW_MAX_TOKENS, sessionId: live.id });
       if (reply.stopReason === 'error' || reply.stopReason === 'aborted') return null;
@@ -1260,7 +1287,7 @@ export class SessionHub {
       const timeout = options?.context === 'all' ? prediction.FULL_TIMEOUT_MS : prediction.TIMEOUT_MS;
       const timer = setTimeout(() => controller.abort(), timeout);
       try {
-        const reply = await this.models.completeSimple(model, {
+        const reply = await this.complete(REQUEST_ORIGIN.suggest, model, {
           systemPrompt: prediction.SYSTEM_PROMPT,
           messages: [{ role: 'user', content: excerpt.text, timestamp: Date.now() }],
         }, { signal: controller.signal, maxTokens: 256, sessionId: id });
@@ -1350,7 +1377,7 @@ export class SessionHub {
       if (!model) throw new Error('No model is available for a side chat');
       const messages = sideChat.sideMessages(sideChat.sideTranscript(session.messages, { contextWindow: model.contextWindow }), chat.turns);
       if (!messages) throw new Error('Ask a question first');
-      const reply = await this.models.completeSimple(model, { systemPrompt: sideChat.SIDE_SYSTEM_PROMPT, messages }, { signal: controller.signal, maxTokens: 4096, sessionId: id });
+      const reply = await this.complete(REQUEST_ORIGIN.sideChat, model, { systemPrompt: sideChat.SIDE_SYSTEM_PROMPT, messages }, { signal: controller.signal, maxTokens: 4096, sessionId: id });
       if (this.sideChats.get(id) !== chat) return; // reset while waiting
       if (reply.stopReason === 'aborted') throw new Error(timedOut ? 'The side chat timed out' : 'Cancelled');
       if (reply.stopReason === 'error') throw new Error(reply.errorMessage || 'The model returned an error');

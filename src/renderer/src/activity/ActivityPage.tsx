@@ -10,6 +10,11 @@ import { openSession } from '@/store/actions';
 import { useApp } from '@/store/app';
 import { activityLevels, HOURS_PER_DAY, rangeDays, rangeStats, summarize, TEMPORARY_WORKSPACE, type ActivityLog } from '@shared/activity';
 import { fmtDay, Heatmap, Legend } from './Heatmap';
+import { UsagePanel } from './UsagePanel';
+import { DEFAULT_USAGE_RANGE, USAGE_RANGES, type UsageRange } from '@shared/request-log';
+
+const TAB = { activity: 'activity', usage: 'usage' } as const;
+type Tab = (typeof TAB)[keyof typeof TAB];
 
 const RANGES = [
   { id: '13', weeks: 13 },
@@ -59,6 +64,8 @@ export function ActivityPage() {
   const [log, setLog] = useState<ActivityLog | null>(null);
   const [range, setRange] = useState<(typeof RANGES)[number]['id']>('26');
   const [selected, setSelected] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>(TAB.activity);
+  const [usageDays, setUsageDays] = useState<UsageRange>(DEFAULT_USAGE_RANGE);
   useEffect(() => {
     void call('activity:get').then(setLog).catch(() => setLog({}));
   }, []);
@@ -86,13 +93,19 @@ export function ActivityPage() {
   return (
     <div className="relative min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto max-w-4xl animate-in space-y-4 px-8 py-8 duration-200 fade-in-0 slide-in-from-bottom-1">
-        <div className="flex items-end gap-3">
-          <div className="min-w-0 flex-1">
-            <h2 className="text-xl font-semibold">{t('activity.title')}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{t('activity.sub')}</p>
+        <div>
+          <div className="flex items-center gap-3">
+            <Segmented value={tab} onChange={setTab} options={[{ id: TAB.activity, label: t('activity.tab.activity') }, { id: TAB.usage, label: t('activity.tab.usage') }]} />
+            <span className="flex-1" />
+            {tab === TAB.activity
+              ? <Segmented value={range} onChange={(id) => { setRange(id); setSelected(null); }} options={rangeOptions} />
+              : <Segmented value={String(usageDays)} onChange={(v) => setUsageDays(Number(v) as UsageRange)} options={USAGE_RANGES.map((n) => ({ id: String(n), label: n === 1 ? t('privacy.range.today') : t('privacy.range', { n }) }))} />}
           </div>
-          <Segmented value={range} onChange={(id) => { setRange(id); setSelected(null); }} options={rangeOptions} />
+          <p className="mt-2 px-1 text-sm text-muted-foreground">{t(tab === TAB.activity ? 'activity.sub' : 'activity.usage.sub')}</p>
         </div>
+
+        {tab === TAB.usage ? <UsagePanel days={usageDays} /> : (
+        <>
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Stat
@@ -169,6 +182,8 @@ export function ActivityPage() {
             </div>
           </Card>
         </div>
+        </>
+        )}
       </div>
     </div>
   );

@@ -69,6 +69,9 @@ export const pages = defineMessages({
   'archived.empty': { en: 'No archived sessions. Choose Archive in the "…" menu next to a session in the sidebar to put one here.', zh: '没有归档的会话。在侧边栏会话右边的「…」里选「归档」就会放到这里。' },
 
   'activity.title': { en: 'Activity', zh: '活动' },
+  'activity.tab.activity': { en: 'Activity', zh: '活动' },
+  'activity.tab.usage': { en: 'Usage', zh: '用量' },
+  'activity.usage.sub': { en: 'What your requests used: tokens, cost and speed, from the request log on this computer.', zh: '请求的用量：token、费用和速度，来自这台电脑上的请求日志。' },
   'activity.sub': { en: 'How you use Pi Desktop, Code and Work together. Only messages you send count; scheduled tasks and anything the agent starts by itself do not.', zh: '你在 Pi Desktop 里的使用节奏，Code 和 Work 合在一起算。只统计你自己发出的消息，定时任务和 agent 自动发起的不计入。' },
   'activity.range13': { en: '3 months', zh: '3 个月' },
   'activity.range26': { en: '6 months', zh: '半年' },

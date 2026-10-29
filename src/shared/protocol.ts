@@ -14,6 +14,7 @@ import type { ArtifactMeta } from './artifacts';
 import type { ObjectStorageDraft, ObjectStorageInfo } from './storage';
 import type { LanguageSetting, Locale } from './i18n';
 import type { SearchEngine, WebSearchDraft, WebSearchInfo } from './web-search';
+import type { RedactPreview, RedactSettings, RequestHookSettings, RequestQuery, RequestRecord, UsageQuery, UsageSummary } from './request-log';
 import type { RemoteActive, RemoteConnectionDraft, RemoteConnectionInfo, RemoteLinkState, RemoteListing, RemoteServeSettings, RemoteServeState } from './remote';
 import type { ScheduledTask, TaskDraft } from './schedule';
 import type { SearchResult } from './text-search';
@@ -1139,6 +1140,14 @@ export interface Api {
   'web:save'(draft: WebSearchDraft): WebSearchInfo;
   /** One test search with the saved key, or with `key` when the form holds an unsaved one. */
   'web:test'(engine: SearchEngine, key?: string): void;
+  // ---- model request log (what was sent to the vendors, how much it used)
+  'requests:getSettings'(): RequestHookSettings;
+  'requests:saveSettings'(draft: Partial<RequestHookSettings>): RequestHookSettings;
+  'requests:list'(query: RequestQuery): RequestRecord[];
+  /** What the requests of the last days used, in buckets and series (see `UsageSummary`). */
+  'requests:summary'(query: UsageQuery): UsageSummary;
+  /** What the vendor would get for `text` under `settings` (the saved ones when omitted). Nothing is kept. */
+  'requests:preview'(text: string, settings?: RedactSettings): RedactPreview;
   'models:list'(): { models: ModelInfo[]; defaultModel: string | null };
   'models:levels'(model: string | null): ThinkingLevel[];
   // ---- model management (pi's auth.json + models.json, shared with the CLI)
@@ -1173,6 +1182,7 @@ export const HOST_CHANNELS = [
   'activity:get', 'tasks:list', 'tasks:save', 'tasks:setEnabled', 'tasks:remove', 'tasks:run',
   'artifacts:list', 'artifacts:fromFile', 'artifacts:remove', 'artifacts:publish', 'artifacts:unpublish', 'storage:get', 'storage:save', 'storage:test',
   'web:get', 'web:save', 'web:test',
+  'requests:getSettings', 'requests:saveSettings', 'requests:list', 'requests:summary', 'requests:preview',
   'models:list', 'models:levels',
   'models:catalog', 'models:login', 'models:loginRespond', 'models:loginCancel', 'models:logout',
   'models:endpointSave', 'models:endpointRemove', 'models:endpointDiscover', 'models:refresh',

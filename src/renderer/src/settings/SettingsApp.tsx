@@ -1,7 +1,7 @@
 // Settings window. Every value comes from the main process (single source of
 // truth), so the main window and this one can never disagree.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { BrainIcon, ChevronRightIcon, BriefcaseIcon, CodeIcon, DatabaseIcon, FolderIcon, InfoIcon, MonitorSmartphoneIcon, MoonIcon, PlusIcon, SettingsIcon, Trash2Icon, Volume2Icon } from 'lucide-react';
+import { BrainIcon, ChevronRightIcon, BriefcaseIcon, CodeIcon, DatabaseIcon, FolderIcon, InfoIcon, MonitorSmartphoneIcon, MoonIcon, PlusIcon, SettingsIcon, ShieldCheckIcon, Trash2Icon, Volume2Icon } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AppInfo, Palette, Project, Settings, SettingsPayload, SuggestionModelMode, TerminalShell, WorkIdeasModelMode } from '@shared/protocol';
 import { LOCALES, LOCALE_NAMES, type LanguageSetting, type MessageKey } from '@shared/i18n';
@@ -28,13 +28,14 @@ import { allPets, PetSprite } from '@/components/composer/Clawd';
 import { FontPicker } from './FontPicker';
 import { ModelPicker } from './ModelPicker';
 import { ModelsSection } from './ModelsSection';
+import { PrivacySection } from './PrivacySection';
 import { RemoteSection } from './RemoteSection';
 import { StorageSection } from './StorageSection';
 import { UpdateSection } from './UpdateSection';
 import { WebSearchSection } from './WebSearchSection';
 import { Group, Heading, Panel, Row, groupDomId } from './ui';
 
-type Section = 'appearance' | 'general' | 'work' | 'code' | 'models' | 'projects' | 'remote' | 'storage' | 'about';
+type Section = 'appearance' | 'general' | 'work' | 'code' | 'models' | 'projects' | 'privacy' | 'remote' | 'storage' | 'about';
 /** A group inside a section: a leaf of the sidebar tree that scrolls to the group's DOM id (`group-<id>`). */
 interface GroupNode {
   id: string;
@@ -68,6 +69,7 @@ const SECTIONS: { id: Section; label: MessageKey | null; icon: ReactNode; groups
       { id: 'workFolders', label: 'settings.workFolders' },
     ],
   },
+  { id: 'privacy', label: 'settings.section.privacy', icon: <ShieldCheckIcon className="size-4" /> },
   { id: 'remote', label: 'settings.section.remote', icon: <MonitorSmartphoneIcon className="size-4" /> },
   { id: 'storage', label: 'settings.section.storage', icon: <DatabaseIcon className="size-4" /> },
   { id: 'about', label: 'settings.section.about', icon: <InfoIcon className="size-4" /> },
@@ -561,6 +563,8 @@ export function SettingsApp() {
     body = <ModelsSection />;
   } else if (section === 'storage') {
     body = <StorageSection />;
+  } else if (section === 'privacy') {
+    body = <PrivacySection />;
   } else if (section === 'remote') {
     body = <RemoteSection />;
   } else if (section === 'projects') {

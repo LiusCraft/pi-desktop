@@ -1,6 +1,6 @@
 // Auto mode's command review: what the reviewer is asked and how its answer is read.
 import { describe, expect, it } from 'vitest';
-import { latestRequest, parseVerdict, reviewRequest } from '../src/agent/command-review';
+import { latestRequest, parseVerdict, recentConversation, reviewRequest, SYSTEM_PROMPT } from '../src/agent/command-review';
 
 describe('parseVerdict', () => {
   it('reads a plain answer', () => {
@@ -55,5 +55,49 @@ describe('latestRequest', () => {
   it('is null when nobody has asked yet', () => {
     expect(latestRequest([])).toBeNull();
     expect(latestRequest([{ role: 'assistant', content: 'hi' }])).toBeNull();
+  });
+});
+
+describe('recentConversation', () => {
+  const text = (t: string) => [{ type: 'text', text: t }];
+
+  it("is the messages before the latest request, with the assistant's last words last", () => {
+    expect(recentConversation([
+      { role: 'user', content: 'clean the build folder' },
+      { role: 'assistant', content: [...text('Sure, listing first.'), { type: 'toolCall', name: 'bash' }] },
+      { role: 'toolResult', content: text('dist build') },
+      { role: 'user', content: 'do it' },
+      { role: 'assistant', content: [{ type: 'thinking', thinking: 'secret plan' }, ...text('I will look at the folder.')] },
+    ])).toBe('User: clean the build folder\nAssistant: Sure, listing first.\nAssistant: I will look at the folder.');
+  });
+
+  it('leaves out thinking, tool output and empty messages, and is null with nothing to show', () => {
+    expect(recentConversation([{ role: 'user', content: 'hi' }])).toBeNull();
+    expect(recentConversation([])).toBeNull();
+    expect(recentConversation([{ role: 'assistant', content: [{ type: 'thinking', thinking: 'x' }] }, { role: 'user', content: 'go' }])).toBeNull();
+  });
+
+  it('is cut to the last few messages, and to a length', () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: `message ${i}` }));
+    const out = recentConversation(many)!;
+    expect(out.split('\n')).toHaveLength(6);
+    expect(out).toContain('message 19');
+    expect(out).not.toContain('message 18'); // the latest request, which has its own place in the review request
+    expect(out).not.toContain('message 3\n');
+    const long = recentConversation([{ role: 'user', content: 'x'.repeat(5000) }, { role: 'assistant', content: 'y'.repeat(5000) }, { role: 'user', content: 'go' }])!;
+    expect(long.length).toBeLessThanOrEqual(2400);
+  });
+
+  it('goes into the review request', () => {
+    const body = reviewRequest({ command: 'ls -a', cwd: '/p', kind: 'code', request: 'delete it', history: 'User: clean up\nAssistant: looking first' });
+    expect(body).toContain('Recent conversation, oldest first:\nUser: clean up');
+    expect(reviewRequest({ command: 'ls', cwd: '/p', kind: 'code', request: 'x' })).not.toContain('Recent conversation');
+  });
+});
+
+describe("the reviewer's instructions", () => {
+  it('let read-only inspection through and judge a vague request by the conversation', () => {
+    expect(SYSTEM_PROMPT).toContain('Read-only inspection inside the working folder is always "allow"');
+    expect(SYSTEM_PROMPT).toContain('recent conversation');
   });
 });
