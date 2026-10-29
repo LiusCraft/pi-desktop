@@ -33,11 +33,14 @@ check-darwin:
 install: ## Install dependencies (npm ci)
 	$(NPM) ci
 
-dev: ## Run from source with hot reload (electron-vite dev)
-	$(NPM) run dev
+# dev/demo get their own Electron profile and app-data folder, so they can run beside the
+# installed app (and each other); they still share out/ in this worktree.
+dev: ## Run from source with hot reload (own profile and data folder)
+	node scripts/isolated-app.mjs dev
 
-demo: ## Build and run against the bundled offline demo
-	$(NPM) run build && $(NPM) run demo
+demo: ## Build and run the offline demo (own profile and data folder)
+	$(NPM) run build
+	node scripts/isolated-app.mjs demo
 
 test: ## Typecheck and run the test suite (real pi sessions, no API key needed)
 	$(NPM) run typecheck

@@ -69,6 +69,7 @@ npm run build && npm run demo  # 打开内置演示项目，默认使用离线�
 ```
 
 - 需要 Node 22.12+（构建与测试用）；运行时 agent 跑在 Electron 自带的 Node 上。
+- 想和已安装的 Pi Desktop 同时运行：用 `make dev` / `make demo`，它们各自使用 `~/.pi-desktop-dev` / `~/.pi-desktop-demo` 和对应的 Electron profile；直接 `npm run dev` / `npm run demo` 仍用默认目录（会与已安装版抢单实例锁）。两者仍共用当前目录的 `out/`，同时跑请换一个 worktree。
 - 离线 demo 只在未打包运行（`npm run dev` / `npm run demo` / 测试）时启用，打包产物不含 `demo/` 目录也不注册 demo 模型。启动时会把 `demo/todo-app`（Code 演示项目）和 `demo/work-workspace`（Work 演示文件夹：收件箱、日程、待办）复制到 `~/.pi-desktop/demo`。不配置任何 API Key 也能用 **Demo (offline)** 模型体验完整流程。
 - 接真实模型：打开设置（`Ctrl/⌘+,`）→ **模型管理**，和 pi CLI 用同一套配置：
   - **账号登录**：Anthropic（Claude Pro/Max）、OpenAI（ChatGPT）、GitHub Copilot、xAI、Meta、Kimi、OpenRouter、Radius 等 provider 的 OAuth 登录，浏览器授权或设备码，凭证写入 `~/.pi/agent/auth.json`。

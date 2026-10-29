@@ -2,13 +2,22 @@ import { memo, useState } from 'react';
 import {
   ArrowUpRightIcon,
   BookmarkIcon,
+  BookOpenIcon,
+  BotIcon,
+  BrainIcon,
   CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   CircleAlertIcon,
   CodeIcon,
+  FilePenIcon,
+  FilePlus2Icon,
+  FileTextIcon,
+  FolderIcon,
+  FolderSearchIcon,
   GitForkIcon,
   GitMergeIcon,
+  GlobeIcon,
   LayersIcon,
   LightbulbIcon,
   LoaderCircleIcon,
@@ -16,7 +25,9 @@ import {
   MessagesSquareIcon,
   MinusCircleIcon,
   RotateCcwIcon,
+  SearchIcon,
   TerminalIcon,
+  WrenchIcon,
   XIcon,
   type LucideIcon,
 } from 'lucide-react';
@@ -48,6 +59,16 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Kbd } from '@/components/ui/kbd';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Trace,
+  TraceCollapsible,
+  TraceCollapsibleContent,
+  TraceCollapsibleTrigger,
+  TraceDescription,
+  TraceIcon,
+  TraceLine,
+  TraceTitle,
+} from '@/components/ui/trace';
 import { QuestionsItem } from './Questions';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { call } from '@/lib/api';
@@ -854,12 +875,15 @@ function ToolDetail({ sid, tool }: { sid: string; tool: ToolState }) {
   );
 }
 
-/** How a nested call's status looks: the tool rows' icons, one size down. */
-const CALL_LOOK: Record<NestedToolCall['status'], { Icon: LucideIcon; tone: string }> = {
-  running: { Icon: LoaderCircleIcon, tone: 'animate-spin' },
+/** How a nested call's status looks: the tool rows' icons and line states, one size down. */
+const CALL_LOOK: Record<
+  NestedToolCall['status'],
+  { Icon: LucideIcon; tone: string; status?: 'running' | 'error' | 'pending' }
+> = {
+  running: { Icon: LoaderCircleIcon, tone: 'animate-spin', status: 'running' },
   ok: { Icon: CheckIcon, tone: 'text-success' },
-  error: { Icon: XIcon, tone: 'text-destructive' },
-  cancelled: { Icon: MinusCircleIcon, tone: 'text-muted-foreground' },
+  error: { Icon: XIcon, tone: 'text-destructive', status: 'error' },
+  cancelled: { Icon: MinusCircleIcon, tone: 'text-muted-foreground', status: 'pending' },
 };
 
 /** The tools a codemode script called: name, arguments, how long each took, and what failed. */
@@ -870,29 +894,33 @@ function NestedCalls({ calls }: { calls: NestedToolCall[] }) {
       <div className="px-3 pt-1.5 pb-1 text-xs text-muted-foreground">
         {t(calls.length === 1 ? 'tool.ranCall' : 'tool.ranCalls', { n: calls.length })}
       </div>
-      <ul className="pb-1.5">
+      <Trace className="gap-0.5 px-3 pb-1.5">
         {calls.map((c, i) => {
           const look = CALL_LOOK[c.status];
           return (
-            <li key={i} className="px-3 py-0.5 text-xs">
-              <div className="flex items-center gap-1.5">
-                <look.Icon className={cn('size-3.5 shrink-0', look.tone)} />
-                <span className="shrink-0 font-mono text-foreground/90">{c.name}</span>
+            <div key={i}>
+              <TraceLine status={look.status} className="w-full text-xs">
+                <TraceIcon className={look.tone}>
+                  <look.Icon className="size-3.5" />
+                </TraceIcon>
+                <TraceTitle
+                  className={cn('shrink-0 font-mono text-foreground/90', c.status === 'error' && 'text-destructive')}
+                >
+                  {c.name}
+                </TraceTitle>
                 {c.args && (
-                  <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground" title={c.args}>
+                  <TraceDescription className="min-w-0 flex-1 shrink truncate font-mono" title={c.args}>
                     {c.args}
-                  </span>
+                  </TraceDescription>
                 )}
-                {c.durationMs != null && (
-                  <span className="shrink-0 text-muted-foreground tabular-nums">{fmtMs(c.durationMs)}</span>
-                )}
-                {!!c.cost && <span className="shrink-0 text-muted-foreground tabular-nums">{fmtCost(c.cost)}</span>}
-              </div>
+                {c.durationMs != null && <TraceDescription>{fmtMs(c.durationMs)}</TraceDescription>}
+                {!!c.cost && <TraceDescription>{fmtCost(c.cost)}</TraceDescription>}
+              </TraceLine>
               {c.error && <div className="mt-0.5 pl-5 break-words whitespace-pre-wrap text-destructive">{c.error}</div>}
-            </li>
+            </div>
           );
         })}
-      </ul>
+      </Trace>
     </div>
   );
 }
@@ -936,96 +964,142 @@ function splitLabel(tool: ToolState): [string, string] {
   return cut < 0 ? [label, ''] : [label.slice(0, cut), label.slice(cut + 1)];
 }
 
-const Chevron = ({ open }: { open: boolean }) => (
-  <ChevronRightIcon className={cn('size-3.5 shrink-0 transition-transform', open && 'rotate-90')} />
-);
+/** The icon a tool row starts with: the kind of work it does. */
+function ToolIcon({ tool }: { tool: ToolState }) {
+  if (bareName(tool.name) === CODEMODE_TOOL) return <CodeIcon />;
+  if (skillOf(tool)) return <BookOpenIcon />;
+  switch (tool.kind) {
+    case 'read':
+      return <FileTextIcon />;
+    case 'edit':
+      return <FilePenIcon />;
+    case 'write':
+      return <FilePlus2Icon />;
+    case 'bash':
+      return <TerminalIcon />;
+    case 'grep':
+      return <SearchIcon />;
+    case 'glob':
+      return <FolderSearchIcon />;
+    case 'ls':
+      return <FolderIcon />;
+    case 'agent':
+      return <BotIcon />;
+    case 'websearch':
+      return <GlobeIcon />;
+    default:
+      return <WrenchIcon />;
+  }
+}
 
 const ToolRow = memo(function ToolRow({ sid, tool }: { sid: string; tool: ToolState }) {
   const t = useT();
   const running = tool.status === 'running';
   const err = tool.status === 'err',
     denied = tool.status === 'denied';
+  const status = running ? 'running' : err ? 'error' : denied ? 'pending' : undefined;
   const [verb, subject] = splitLabel(tool);
   const scope = toolScope(tool);
   const wallTime =
     bareName(tool.name) === CODEMODE_TOOL && tool.output ? splitScriptHeader(tool.output)?.secs : undefined;
-  const toggle = () => (tool.kind === 'agent' ? openAgent(sid, tool.id) : toggleTool(sid, tool.id));
+  const expandable = tool.kind !== 'agent';
+  const toggle = () => (expandable ? toggleTool(sid, tool.id) : openAgent(sid, tool.id));
   const extra = tool.kind === 'agent' && (
     <>
       {tool.sub ? (
-        <span className="shrink-0">
+        <TraceDescription className="shrink">
           {t(tool.sub.toolUses === 1 ? 'tool.use' : 'tool.uses', {
             n: tool.sub.toolUses,
             tokens: fmtTok(tool.sub.tokens),
           })}
           {running && tool.sub.activity ? ` · ${tool.sub.activity}` : ''}
-        </span>
+        </TraceDescription>
       ) : (
-        tool.summary && <span className="truncate">{tool.summary}</span>
+        tool.summary && <TraceDescription className="min-w-0 shrink truncate">{tool.summary}</TraceDescription>
       )}
-      {err && <span className="shrink-0 text-destructive">{t('tool.failed')}</span>}
-      {denied && <span className="shrink-0 text-foreground/80">{t('tool.blocked')}</span>}
+      {err && <TraceDescription className="text-destructive">{t('tool.failed')}</TraceDescription>}
+      {denied && <TraceDescription className="text-foreground/80">{t('tool.blocked')}</TraceDescription>}
     </>
   );
   return (
-    <div>
+    <TraceCollapsible
+      open={expandable && tool.open}
+      onOpenChange={(open) => (expandable && open !== tool.open ? toggleTool(sid, tool.id) : undefined)}
+    >
       <div
         className={cn(
-          'flex h-10 min-w-0 cursor-pointer items-center gap-1.5 px-3 text-sm text-muted-foreground hover:bg-accent/40',
-          err && 'text-destructive',
+          'group/tool w-fit max-w-full min-w-0 cursor-pointer rounded-lg text-left transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/30',
+          err && 'hover:text-destructive',
         )}
         role="button"
         tabIndex={0}
-        aria-expanded={tool.open}
+        aria-expanded={expandable ? tool.open : undefined}
         title={toolLabel(tool)}
         onClick={toggle}
         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggle())}
       >
-        <span className={cn('shrink-0', running && 'shimmer')}>{verb}</span>
-        {subject &&
-          (isFileTool(tool) ? (
-            <button
-              className={cn(
-                'min-w-0 truncate text-foreground/90 hover:underline',
-                err && 'text-destructive',
-                denied && 'line-through',
-              )}
-              title={t('tool.openFile', { path: tool.path ?? '' })}
-              onClick={(e) => {
-                e.stopPropagation();
-                void openFileRef(
-                  tool.path!,
-                  tool.kind === 'read' ? tool.args?.offset : tool.firstChangedLine,
-                  readImageSrc(tool),
-                );
-              }}
-            >
-              {subject}
-            </button>
-          ) : (
-            <span
-              className={cn('min-w-0 truncate text-foreground/90', err && 'text-destructive', denied && 'line-through')}
-            >
-              {subject}
-            </span>
-          ))}
-        {scope && (
-          <span className="min-w-0 shrink truncate text-xs" title={scope}>
-            {scope}
-          </span>
-        )}
-        {tool.kind === 'websearch' && tool.count != null && (
-          <span className="shrink-0 text-xs">
-            {t(tool.count === 1 ? 'tool.result' : 'tool.results', { n: tool.count })}
-          </span>
-        )}
-        {extra}
-        {wallTime && <span className="shrink-0 text-xs tabular-nums">{t('tool.wallTime', { secs: wallTime })}</span>}
-        <Stat add={tool.add} del={tool.del} />
-        <Chevron open={tool.open && tool.kind !== 'agent'} />
+        <TraceLine status={status} className={cn(!err && 'group-hover/tool:text-foreground')}>
+          <TraceIcon>
+            <ToolIcon tool={tool} />
+          </TraceIcon>
+          <TraceTitle className="flex items-baseline gap-1.5">
+            <span className={cn('shrink-0', running && 'shimmer')}>{verb}</span>
+            {subject &&
+              (isFileTool(tool) ? (
+                <button
+                  className={cn(
+                    'min-w-0 truncate text-foreground/90 hover:underline',
+                    err && 'text-destructive',
+                    denied && 'line-through',
+                  )}
+                  title={t('tool.openFile', { path: tool.path ?? '' })}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void openFileRef(
+                      tool.path!,
+                      tool.kind === 'read' ? tool.args?.offset : tool.firstChangedLine,
+                      readImageSrc(tool),
+                    );
+                  }}
+                >
+                  {subject}
+                </button>
+              ) : (
+                <span
+                  className={cn(
+                    'min-w-0 truncate text-foreground/90',
+                    err && 'text-destructive',
+                    denied && 'line-through',
+                  )}
+                >
+                  {subject}
+                </span>
+              ))}
+          </TraceTitle>
+          {scope && (
+            <TraceDescription className="min-w-0 shrink truncate" title={scope}>
+              {scope}
+            </TraceDescription>
+          )}
+          {tool.kind === 'websearch' && tool.count != null && (
+            <TraceDescription>
+              {t(tool.count === 1 ? 'tool.result' : 'tool.results', { n: tool.count })}
+            </TraceDescription>
+          )}
+          {extra}
+          {wallTime && <TraceDescription>{t('tool.wallTime', { secs: wallTime })}</TraceDescription>}
+          {!!(tool.add || tool.del) && (
+            <TraceDescription>
+              <Stat add={tool.add} del={tool.del} />
+            </TraceDescription>
+          )}
+          <TraceIcon className={cn('transition-transform', expandable && tool.open && 'rotate-90')}>
+            <ChevronRightIcon />
+          </TraceIcon>
+        </TraceLine>
       </div>
-      {tool.open && tool.kind !== 'agent' && (
-        <div className="px-3 pb-3">
+      {expandable && (
+        <TraceCollapsibleContent>
           <div className="overflow-hidden rounded-lg border bg-code">
             <ToolDetail sid={sid} tool={tool} />
             {bareName(tool.name) === ARTIFACT_TOOL && tool.args?.action === ARTIFACT_SAVE && tool.status === 'done' && (
@@ -1040,9 +1114,9 @@ const ToolRow = memo(function ToolRow({ sid, tool }: { sid: string; tool: ToolSt
               </button>
             )}
           </div>
-        </div>
+        </TraceCollapsibleContent>
       )}
-    </div>
+    </TraceCollapsible>
   );
 });
 
@@ -1062,54 +1136,59 @@ export const GroupItem = memo(function GroupItem({
   const { add, del } = groupStats(item.tools);
   const label = running ? `${toolLabel(running)}…` : groupSummary(item.tools);
   return (
-    <div className="space-y-1">
+    <Trace>
       {thoughts.map((step, i) => (
-        <Collapsible
+        <TraceCollapsible
           key={i}
           open={!!step.open}
           onOpenChange={(open) => (open !== !!step.open ? toggleThought(sid, item.key, i, open) : undefined)}
-          className="group/think"
         >
-          <CollapsibleTrigger className="flex cursor-pointer items-center gap-1 text-sm text-muted-foreground select-none hover:text-foreground">
-            {step.done ? (
-              <span>{step.secs ? t('tool.thoughtFor', { secs: step.secs }) : t('tool.thought')}</span>
-            ) : (
-              <span className="shimmer">{t('tool.thinking')}</span>
-            )}
-            <ChevronRightIcon className="size-3.5 transition-transform group-data-[state=open]/think:rotate-90" />
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div data-selectable className="mt-1 border-l-2 pl-3 text-sm whitespace-pre-wrap text-muted-foreground">
+          <TraceCollapsibleTrigger>
+            <TraceLine status={step.done ? undefined : 'running'}>
+              <TraceIcon>
+                <BrainIcon />
+              </TraceIcon>
+              <TraceTitle>
+                {step.done
+                  ? step.secs
+                    ? t('tool.thoughtFor', { secs: step.secs })
+                    : t('tool.thought')
+                  : t('tool.thinking')}
+              </TraceTitle>
+            </TraceLine>
+          </TraceCollapsibleTrigger>
+          <TraceCollapsibleContent>
+            <div data-selectable className="text-sm whitespace-pre-wrap">
               {step.text}
             </div>
-          </CollapsibleContent>
-        </Collapsible>
+          </TraceCollapsibleContent>
+        </TraceCollapsible>
       ))}
       {item.tools.length > 0 && (
-        <>
-          <button
-            className="flex max-w-full items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-            onClick={() => toggleGroup(sid, item.key)}
-            title={label}
-          >
-            <span className={cn('truncate', running && 'shimmer')}>{label}</span>
-            <Stat add={add} del={del} />
-            {item.open ? (
-              <ChevronDownIcon className="size-3.5 shrink-0" />
-            ) : (
-              <ChevronRightIcon className="size-3.5 shrink-0" />
-            )}
-          </button>
-          {item.open && (
-            <div className="mt-2 divide-y overflow-hidden rounded-[10px] border">
+        <TraceCollapsible open={item.open} onOpenChange={() => toggleGroup(sid, item.key)}>
+          <TraceCollapsibleTrigger title={label}>
+            <TraceLine status={running ? 'running' : undefined}>
+              <TraceIcon>
+                <LayersIcon />
+              </TraceIcon>
+              <TraceTitle>{label}</TraceTitle>
+              {(add > 0 || del > 0) && (
+                <TraceDescription>
+                  <Stat add={add} del={del} />
+                </TraceDescription>
+              )}
+            </TraceLine>
+          </TraceCollapsibleTrigger>
+          <TraceCollapsibleContent>
+            <Trace className="gap-1.5">
               {item.tools.map((tool) => (
                 <ToolRow key={tool.id} sid={sid} tool={tool} />
               ))}
-            </div>
-          )}
-        </>
+            </Trace>
+          </TraceCollapsibleContent>
+        </TraceCollapsible>
       )}
-    </div>
+    </Trace>
   );
 });
 
