@@ -72,6 +72,23 @@ test('a new session opens straight away, before its agent and worktree are ready
   await expect(page.getByText('Starting the session…')).toHaveCount(0);
 });
 
+test('! runs a command in the session’s own shell and keeps it in the conversation', async () => {
+  await startSession('hello');
+  // The demo model answers with its greeting, so that turn is over and the shell is free.
+  await expect(page.getByText('离线演示模型').first()).toBeVisible({ timeout: 60_000 });
+  const box = page.locator('textarea[data-composer-input]');
+  await box.fill('!echo hello-shell');
+  // The composer says where the command runs, so nobody mistakes it for a prompt.
+  await expect(page.getByTestId('composer-shell')).toHaveText(/session’s own shell/);
+  await box.press('Enter');
+  const block = page.getByTestId('bash-item');
+  await expect(block).toContainText('!echo hello-shell');
+  await expect(block.locator('.term-out')).toContainText('hello-shell', { timeout: 30_000 });
+  // It finished (the spinner is gone), and the reply that was streaming was not repeated by its result.
+  await expect(block.getByLabel('Running…')).toHaveCount(0);
+  await expect(page.getByText('离线演示模型', { exact: true })).toHaveCount(1);
+});
+
 test('archive hides a session, the Archived page restores or deletes it', async () => {
   await startSession('hello');
   const title = 'hello';

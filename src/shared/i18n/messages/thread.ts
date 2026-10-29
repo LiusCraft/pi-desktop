@@ -28,6 +28,11 @@ export const thread = defineMessages({
   'thread.peerOpen': { en: 'Open the session that sent this message', zh: '打开发来消息的会话' },
   'thread.peerGone': { en: 'That session no longer exists', zh: '那个会话已不存在' },
   'thread.fromSession': { en: 'From session “{title}”', zh: '来自会话“{title}”' },
+  'thread.shellExit': { en: 'exit {code}', zh: '退出码 {code}' },
+  'thread.shellRunning': { en: 'Running…', zh: '运行中…' },
+  'thread.shellCancelled': { en: 'Cancelled', zh: '已取消' },
+  'thread.shellExcluded': { en: 'Not sent to the model', zh: '不发给模型' },
+  'thread.shellTruncated': { en: '…(truncated)', zh: '…（已截断）' },
 
   'cmdinfo.commit': { en: 'Commit all current changes', zh: '提交当前所有改动' },
   'cmdinfo.push': { en: 'Push the current branch', zh: '推送当前分支' },

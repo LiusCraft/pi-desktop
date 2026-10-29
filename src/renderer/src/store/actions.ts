@@ -21,6 +21,7 @@ import { positiveLine } from '@shared/tool-previews';
 import { encodeTaskMessage } from '@shared/task-message';
 import { typedText } from '@shared/skill-message';
 import { call, errText, modKey } from '@/lib/api';
+import { bashCommand } from '@/lib/bash';
 import { t } from '@/lib/i18n';
 import { cuePet } from '@/lib/pet-cue';
 import { playSound } from '@/lib/sounds';
@@ -746,6 +747,49 @@ async function slashCommand(s: SessionView | undefined, head: string, text: stri
   return true;
 }
 
+/**
+ * `!command`: runs in the shell the session's own commands use, so it starts where the model left that
+ * shell; pi keeps the result in the conversation, so the next turn sees it.
+ */
+export async function runBash(id: string, command: string, excludeFromContext: boolean) {
+  const key = newKey();
+  /** Change the item this run owns; the store hands out the draft to write to. */
+  const edit = (fn: (item: ItemOf<'bash'>) => void) =>
+    setApp((st) => {
+      const s = st.sessions[id];
+      const found = s && findByKey(s, key);
+      if (found?.kind === 'bash') fn(found);
+    });
+  setApp((st) => {
+    const s = st.sessions[id];
+    if (!s) return;
+    push(
+      s,
+      { kind: 'bash', key, command, output: '', running: true, excluded: excludeFromContext, at: Date.now() },
+      st.prefs.viewMode,
+    );
+  });
+  try {
+    // The output streams in as `bash_execution_update` events carrying this key; the result is final.
+    const r = await call('sessions:bash', id, command, { excludeFromContext, id: key });
+    edit((it) =>
+      Object.assign(it, {
+        running: false,
+        output: r.output,
+        exitCode: r.exitCode,
+        cancelled: r.cancelled,
+        truncated: r.truncated,
+        fullOutputPath: r.fullOutputPath,
+      }),
+    );
+  } catch (err) {
+    edit((it) => {
+      it.running = false;
+      it.error = errText(err);
+    });
+  }
+}
+
 /** Summarise older messages to free context (/compact, or the context popover). */
 export async function compactSession(id: string, instructions?: string) {
   updateSession(id, (x) => {
@@ -907,6 +951,17 @@ export async function send(queueOnly = false) {
   const references = draft.references.filter((reference) => !reference.token || text.includes(reference.token));
   let s = currentSession();
   if (s?.stopping || s?.historyBusy) return;
+  // `!command` / `!!command`: the session's own shell, not the model. A running turn or compaction does
+  // not matter here: the shell serializes whatever it is asked to run.
+  const shell = bashCommand(text);
+  if (shell) {
+    if (!s) return void toast.warning(t('act.startSessionFirst'));
+    if (files.length || references.length) return void toast.warning(t('act.bashNoAttach'));
+    if (!shell.command) return void toast.warning(t('act.bashEmpty'));
+    drafts.clear(draft.key);
+    void runBash(s.meta.id, shell.command, shell.excludeFromContext);
+    return;
+  }
   if (!text.trim() && !files.length && !references.length) {
     if (s?.running || s?.compacting) void stop(s.meta.id);
     return;

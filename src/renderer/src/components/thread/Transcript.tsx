@@ -15,6 +15,7 @@ import type { Item, ItemOf, SessionView } from '@/store/types';
 import { SelectionMenu } from './SelectionMenu';
 import {
   AskCard,
+  BashItem,
   CompactionItem,
   FootItem,
   GroupItem,
@@ -66,6 +67,8 @@ function renderItem(
       return <UserItem sid={sid} item={item} quoted={quoted} />;
     case 'text':
       return <TextItem item={item} />;
+    case 'bash':
+      return <BashItem item={item} />;
     case 'note':
       return <NoteItem item={item} />;
     case 'group':

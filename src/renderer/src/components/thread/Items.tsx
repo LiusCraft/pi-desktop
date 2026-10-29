@@ -583,6 +583,45 @@ export const TextItem = memo(function TextItem({ item }: { item: ItemOf<'text'> 
   );
 });
 
+/**
+ * A command the user ran with `!` in the session's own shell. pi keeps the output in the conversation, so
+ * it reads like a terminal block: streamed while it runs, then with its exit code.
+ */
+export const BashItem = memo(function BashItem({ item }: { item: ItemOf<'bash'> }) {
+  const t = useT();
+  const status = item.running ? (
+    <LoaderCircleIcon className="size-3.5 animate-spin" aria-label={t('thread.shellRunning')} />
+  ) : item.cancelled ? (
+    <span className="text-muted-foreground">{t('thread.shellCancelled')}</span>
+  ) : item.exitCode ? (
+    <span className="text-destructive">{t('thread.shellExit', { code: item.exitCode })}</span>
+  ) : null;
+  return (
+    <div className="overflow-hidden rounded-xl border bg-card/60" data-testid="bash-item">
+      <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-xs">
+        <TerminalIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate font-mono text-foreground">
+          {item.excluded ? '!!' : '!'}
+          {item.command}
+        </span>
+        {item.excluded && <span className="shrink-0 text-muted-foreground">{t('thread.shellExcluded')}</span>}
+        {status}
+        <span className="shrink-0 text-muted-foreground/70 tabular-nums">{ago(item.at)}</span>
+      </div>
+      {item.error ? (
+        <div className="px-3 py-2 text-xs whitespace-pre-wrap text-destructive">{item.error}</div>
+      ) : (
+        !!item.output && <TermOutput out={item.output} />
+      )}
+      {item.truncated && (
+        <div className="border-t px-3 py-1.5 text-xs text-muted-foreground" title={item.fullOutputPath}>
+          {t('thread.shellTruncated')}
+        </div>
+      )}
+    </div>
+  );
+});
+
 export const NoteItem = memo(function NoteItem({ item }: { item: ItemOf<'note'> }) {
   return (
     <div

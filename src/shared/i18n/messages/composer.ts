@@ -79,6 +79,11 @@ export const composer = defineMessages({
     zh: 'Work 会在你选择的文件夹里读写文件；删除、移动或往外发送数据前都会先问你。不选文件夹时会新建一个临时工作区。',
   },
   'composer.suggestions': { en: 'Suggestions', zh: '建议' },
+  'composer.shellHint': { en: 'Runs in the session’s own shell', zh: '在会话自己的 shell 中执行' },
+  'composer.shellHintExcluded': {
+    en: 'Runs in the session’s own shell · not sent to the model',
+    zh: '在会话自己的 shell 中执行 · 不发给模型',
+  },
   'composer.preparing': { en: 'Preparing attachments…', zh: '正在准备附件…' },
   'composer.dismissErrors': { en: 'Dismiss attachment errors', zh: '忽略附件错误' },
   'composer.chooseProject': { en: 'Choose a project', zh: '选择项目' },

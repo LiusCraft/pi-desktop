@@ -101,6 +101,9 @@ export function findTool(s: SessionView, id: string) {
 
 const verbose = (v: ViewMode) => v === 'verbose';
 
+/** A `!command` is running in the session's own shell: Stop interrupts it, like the model's own turn. */
+export const bashRunning = (s: SessionView | undefined) => !!s?.items.some((i) => i.kind === 'bash' && i.running);
+
 /** Append an item; a finished, untouched tool group folds itself away first (except in Verbose). */
 export function push<T extends Item>(s: SessionView, item: T, view: ViewMode): T {
   const last = s.items.at(-1);
@@ -382,7 +385,8 @@ function assistantDelta(s: SessionView, ame: any, view: ViewMode) {
       if (t) {
         t.text = ame.content ?? t.text;
         t.live = false;
-        c.text = null;
+        // `c.text` keeps pointing here until message_end reconciles it: another item (the user's `!` command,
+        // a permission card) may land in between, and message_end would then repeat the whole reply.
       }
       break;
     }
@@ -427,6 +431,13 @@ function userFromMessage(s: SessionView, m: AgentMessage, view: ViewMode) {
 
 export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effects {
   switch (ev.type) {
+    case 'bash_execution_update': {
+      // A `!command` the user ran: the host streams its output, keyed by the transcript item it belongs to.
+      // Events are batched, so a chunk can land after the result already replaced the output: drop it then.
+      const item = findByKey(s, ev.id);
+      if (item?.kind === 'bash' && item.running) item.output += String(ev.delta ?? '');
+      return {};
+    }
     case 'agent_start':
       if (!s.running) {
         s.running = true;
@@ -456,6 +467,7 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
         if (live?.kind === 'text') {
           live.text = finalText || live.text;
           live.live = false;
+          live.msgTs = m.timestamp;
         } else if (finalText && !s.items.some((i) => i.kind === 'text' && i.msgTs === m.timestamp)) {
           const last = s.items.at(-1);
           if (!(last?.kind === 'text' && last.text === finalText))
@@ -691,6 +703,24 @@ function customItem(m: AgentMessage): Item {
   };
 }
 
+/** A `!command` pi recorded in the conversation: replayed like any other item. */
+function bashExecutionItem(m: AgentMessage): ItemOf<'bash'> {
+  const exitCode = Number(m.exitCode);
+  return {
+    kind: 'bash',
+    key: newKey(),
+    command: String(m.command ?? ''),
+    output: String(m.output ?? ''),
+    running: false,
+    exitCode: m.exitCode === null || m.exitCode === undefined || Number.isNaN(exitCode) ? undefined : exitCode,
+    cancelled: !!m.cancelled,
+    truncated: !!m.truncated,
+    fullOutputPath: m.fullOutputPath ? String(m.fullOutputPath) : undefined,
+    excluded: !!m.excludeFromContext,
+    at: m.timestamp || Date.now(),
+  };
+}
+
 function appendMessages(s: SessionView, messages: AgentMessage[], view: ViewMode) {
   let sawAssistant = false;
   for (const m of messages) {
@@ -744,6 +774,8 @@ function appendMessages(s: SessionView, messages: AgentMessage[], view: ViewMode
       );
     } else if (m.role === 'custom' && m.display) {
       s.items.push(customItem(m));
+    } else if (m.role === 'bashExecution') {
+      s.items.push(bashExecutionItem(m));
     } else if (m.role === 'compactionSummary') {
       const tokensBefore = Number(m.tokensBefore) || undefined;
       s.items.push({

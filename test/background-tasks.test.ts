@@ -126,6 +126,7 @@ describe('background tasks', () => {
     const shell = new AbortController();
     const subagent = new AbortController();
     let abortedTurn = false;
+    let abortedBash = false;
     // Only what abort() reads from a live session: its tracked tasks and its own session.
     const live = {
       id: 's1',
@@ -134,13 +135,17 @@ describe('background tasks', () => {
         ['call-1', shell],
         ['call-2', subagent],
       ]),
-      runtime: { session: { abort: async () => void (abortedTurn = true) } },
+      runtime: {
+        session: { abort: async () => void (abortedTurn = true), abortBash: () => void (abortedBash = true) },
+      },
     };
     (hub as unknown as { live: Map<string, unknown> }).live.set('s1', live);
 
     await hub.abort('s1');
 
     expect(abortedTurn).toBe(true);
+    // A `!command` the user ran in the session's shell stops with the turn.
+    expect(abortedBash).toBe(true);
     expect(shell.signal.aborted).toBe(true);
     expect(subagent.signal.aborted).toBe(true);
   });

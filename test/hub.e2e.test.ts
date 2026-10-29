@@ -403,6 +403,35 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect(driver.hub.sideGet(meta.id)).toMatchObject({ turns: [], quote: null, busy: false });
   });
 
+  it('runs a `!` command in the session’s own shell and keeps it in the conversation', async () => {
+    const { meta } = await codeSession('auto');
+    await driver.hub.open(meta.id);
+    fs.mkdirSync(path.join(meta.cwd, 'sub'));
+    // The shell the model's commands use keeps its folder: the composer's `!` commands start where it is.
+    const first = await driver.hub.bash(meta.id, 'cd sub', { id: 'user-1' });
+    expect(first.exitCode).toBe(0);
+    const ran = await driver.hub.bash(meta.id, 'pwd', { id: 'user-2' });
+    expect(path.basename(ran.output.trim())).toBe('sub');
+    // The view streams the output by the id it sent, so it lands in the right transcript item.
+    expect(
+      driver.events.some(
+        (e) =>
+          e.type === 'pi' &&
+          e.sessionId === meta.id &&
+          e.event.type === 'bash_execution_update' &&
+          e.event.id === 'user-2',
+      ),
+    ).toBe(true);
+    const shells = (await driver.hub.open(meta.id)).messages.filter((m) => m.role === 'bashExecution');
+    expect(shells.map((m) => m.command)).toEqual(['cd sub', 'pwd']);
+    expect(String(shells.at(-1)!.output).trim()).toMatch(/sub$/);
+    // `!!` keeps its output out of what the model reads, but the transcript still has it.
+    await driver.hub.bash(meta.id, 'echo hidden-marker', { excludeFromContext: true });
+    const hidden = (await driver.hub.open(meta.id)).messages.filter((m) => m.role === 'bashExecution').at(-1)!;
+    expect(hidden).toMatchObject({ command: 'echo hidden-marker', excludeFromContext: true });
+    expect(String(hidden.output)).toMatch(/hidden-marker/);
+  });
+
   it('uses the worktree folder from settings, and the default when it is unset', async () => {
     const project = makeProject('worktree-root');
     const custom = path.join(tmp, 'custom-worktrees');

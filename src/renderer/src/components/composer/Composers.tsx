@@ -30,6 +30,7 @@ import { cn } from '@/lib/utils';
 import { addWorkFolder, addProject, selectProject, send, setWorkFolder, stop } from '@/store/actions';
 import { modelName, setApp, setPref, useApp, useCurrent } from '@/store/app';
 import { useDrafts } from '@/store/drafts';
+import { bashRunning } from '@/store/transcript';
 import { Clawd, moodOf, PET_GROUND } from './Clawd';
 import { ComposerInput, pickAttachments, type ComposerHandle } from './ComposerInput';
 import { ContextRing, EffortMenu, FootButton, ModeMenu, ModelMenu } from './Menus';
@@ -39,7 +40,8 @@ function useSendState() {
   const s = useCurrent();
   const draft = useDrafts((st) => (st.active ? st.drafts[st.active] : undefined));
   const ready = !!(draft?.text.trim() || draft?.attachments.length || draft?.references.length);
-  const stopMode = !!(s?.running || s?.compacting) && !ready;
+  // A command of the user's still running counts as busy: Stop ends it.
+  const stopMode = !!(s?.running || s?.compacting || bashRunning(s)) && !ready;
   // While compacting only Stop stays available: pi rejects a prompt until the compaction ends.
   const busy = !!(draft?.sending || draft?.preparing || s?.stopping || s?.historyBusy || (s?.compacting && !stopMode));
   return { s, ready, busy, stopMode };

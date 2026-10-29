@@ -15,8 +15,8 @@ export const actions = defineMessages({
   'act.startSessionFirst': { en: 'Start a session first', zh: '先开始一个会话' },
   'act.commands': { en: 'Commands', zh: '命令' },
   'act.help': {
-    en: '### Shortcuts\n- `↵` send (interjects while running) · `{mod}↵` queue after the current task · `⇧↵` new line\n- `⇧Tab` switch mode · `Esc` interrupt\n- `{mod}O` switch transcript view (Normal / Thinking / Verbose)\n- `{mod}K` search · `{mod}B` sidebar · `{mod}D` Diff\n- Type `@` to reference a file · `/btw` for a side question · select reply text to "Send side chat" or "Reply"',
-    zh: '### 快捷键\n- `↵` 发送（运行中会插话）· `{mod}↵` 排队到当前任务之后 · `⇧↵` 换行\n- `⇧Tab` 切换模式 · `Esc` 中断\n- `{mod}O` 切换 transcript 视图（Normal / Thinking / Verbose）\n- `{mod}K` 搜索 · `{mod}B` 侧边栏 · `{mod}D` Diff\n- 输入 `@` 引用文件 · `/btw` 旁路提问 · 选中回复内容可「发送旁路提问」或「回复」',
+    en: '### Shortcuts\n- `↵` send (interjects while running) · `{mod}↵` queue after the current task · `⇧↵` new line\n- `⇧Tab` switch mode · `Esc` interrupt\n- `{mod}O` switch transcript view (Normal / Thinking / Verbose)\n- `{mod}K` search · `{mod}B` sidebar · `{mod}D` Diff\n- Type `@` to reference a file · `/btw` for a side question · select reply text to "Send side chat" or "Reply"\n- Type `!command` to run it in the session\'s own shell (`!!` keeps it out of the model\'s context)',
+    zh: '### 快捷键\n- `↵` 发送（运行中会插话）· `{mod}↵` 排队到当前任务之后 · `⇧↵` 换行\n- `⇧Tab` 切换模式 · `Esc` 中断\n- `{mod}O` 切换 transcript 视图（Normal / Thinking / Verbose）\n- `{mod}K` 搜索 · `{mod}B` 侧边栏 · `{mod}D` Diff\n- 输入 `@` 引用文件 · `/btw` 旁路提问 · 选中回复内容可「发送旁路提问」或「回复」\n- 输入 `!命令` 在会话自己的 shell 中执行（`!!` 不进入模型上下文）',
   },
   'act.waitCompaction': { en: 'Wait for compaction to finish before sending', zh: '等待压缩完成后再发送' },
   'act.exported': { en: 'Exported to {path}', zh: '已导出到 {path}' },
@@ -25,6 +25,11 @@ export const actions = defineMessages({
     en: 'Slash commands cannot carry attachments or context; remove them or send a normal message',
     zh: '斜杠命令不能携带附件或上下文；请先移除或使用普通消息',
   },
+  'act.bashNoAttach': {
+    en: 'A shell command cannot carry attachments or context; remove them or send a normal message',
+    zh: 'shell 命令不能携带附件或上下文；请先移除或使用普通消息',
+  },
+  'act.bashEmpty': { en: 'Type a command after “!”', zh: '“!”后面要写命令' },
   'act.pickProjectFirst': { en: 'Choose a project first', zh: '先选择一个项目' },
   'act.exitedUnconfirmed': {
     en: 'The process exited and delivery is unconfirmed; the draft was kept, so check the history before sending again',

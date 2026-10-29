@@ -31,6 +31,7 @@ import { AttachmentTiles } from '@/components/common/Attachments';
 import { ReferencePreview } from '@/components/common/InlineRefs';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { bridge, call } from '@/lib/api';
+import { bashCommand } from '@/lib/bash';
 import { desktopCommands } from '@/lib/constants';
 import { fuzzyEntry, fuzzyRank, type FuzzyEntry } from '@/lib/fuzzy';
 import { useT } from '@/lib/i18n';
@@ -250,6 +251,8 @@ export const ComposerInput = forwardRef<
   // The guess only makes sense while the session is idle and the draft is empty:
   // typing or a new turn replaces it.
   const suggestion = draft && !draft.text && !draft.sending && !running ? draft.suggestion : null;
+  /** The message runs in the session's shell: no @ or / menu applies then. */
+  const shell = bashCommand(draft?.text ?? '');
 
   /** The badges and where they sit, so a click inside one can open its preview. */
   const spans = useMemo(
@@ -285,6 +288,8 @@ export const ComposerInput = forwardRef<
     const el = input.current;
     if (!el) return;
     const current = ++request.current;
+    // A shell command is not a message: no @ or / menu belongs in it (and a pending lookup is dropped).
+    if (bashCommand(el.value)) return setItems([]);
     const pos = el.selectionStart,
       before = el.value.slice(0, pos);
     const s = currentSession();
@@ -559,6 +564,12 @@ export const ComposerInput = forwardRef<
               </button>
             </div>
           ))}
+        </div>
+      )}
+      {shell && (
+        <div className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="composer-shell">
+          <TerminalIcon className="size-3.5 shrink-0" />
+          {t(shell.excludeFromContext ? 'composer.shellHintExcluded' : 'composer.shellHint')}
         </div>
       )}
       <div className="relative">
