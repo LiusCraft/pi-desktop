@@ -114,14 +114,23 @@ test('a title is renamed where it stands, from the sidebar or the header', async
   await expect(row('Design the fix')).toBeVisible();
   await expect(row('hello')).toHaveCount(0);
 
-  // The header shows a pencil on hover; Escape leaves the title as it was.
-  const title = page.locator('header').getByRole('button', { name: 'Design the fix' });
-  await title.hover();
-  await page.locator('header').getByRole('button', { name: 'Rename' }).click();
-  const headerField = page.locator('header').getByRole('textbox', { name: 'Rename' });
+  // Double-click the title in the header; Escape leaves the title as it was.
+  const header = page.locator('header');
+  const title = header.getByTitle('Rename');
+  await title.dblclick();
+  const headerField = header.getByRole('textbox', { name: 'Rename' });
   await headerField.fill('throw this away');
   await headerField.press('Escape');
-  await expect(title).toBeVisible();
+  await expect(headerField).toHaveCount(0);
+  await expect(title).toHaveText('Design the fix');
+
+  // The Session menu renames from the header too.
+  await header.getByRole('button', { name: 'Session menu' }).click();
+  await page.getByRole('menuitem', { name: 'Rename' }).click();
+  await headerField.fill('Design the header');
+  await headerField.press('Enter');
+  await expect(title).toHaveText('Design the header');
+  await expect(row('Design the header')).toBeVisible();
 });
 
 test('removing a project archives its sessions and leaves the folder alone', async () => {
