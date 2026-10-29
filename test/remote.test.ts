@@ -1,9 +1,17 @@
 import fs from 'node:fs';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { HostEvent } from '../src/shared/protocol';
-import { isServedMethod, normalizeRemoteUrl, type RemoteLinkState } from '../src/shared/remote';
+import {
+  isServedMethod,
+  normalizeRemoteUrl,
+  REMOTE_API_VERSION,
+  type RemoteLinkState,
+  type RemotePing,
+} from '../src/shared/remote';
 import { pingRemote, RemoteClient } from '../src/agent/remote/client';
 import { newRemoteToken, RemoteServer } from '../src/agent/remote/server';
 import { Store } from '../src/agent/store';
@@ -42,6 +50,17 @@ async function serve(token = newRemoteToken(), port = 0) {
   return { server, token, calls, url: `http://127.0.0.1:${server.port}` };
 }
 
+/** Whatever a remote answers `/v1/ping` with, including endpoints from other versions. */
+async function fakePing(ping: Partial<RemotePing>): Promise<string> {
+  const server = http.createServer((_req, res) => {
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify(ping));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  cleanups.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
+  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+}
+
 function connect(url: string, token: string) {
   const events: HostEvent[] = [];
   const states: RemoteLinkState[] = [];
@@ -56,6 +75,17 @@ describe('remote protocol', () => {
     expect((await pingRemote(url)).kind).toBe('plugin');
     expect((await fetch(`${url}/v1/rpc`, { method: 'POST', body: '{}' })).status).toBe(401);
     expect((await fetch(`${url}/v1/events`, { headers: { authorization: 'Bearer nope' } })).status).toBe(401);
+  });
+
+  it('names the side to update when the two ends speak different protocol versions', async () => {
+    const older = await fakePing({ app: 'pi-remote', version: REMOTE_API_VERSION - 1, kind: 'plugin' });
+    await expect(pingRemote(older)).rejects.toThrow(/update the pi-remote plugin there/);
+    const silent = await fakePing({ app: 'pi-remote', kind: 'desktop' });
+    await expect(pingRemote(silent)).rejects.toThrow(
+      /an unknown protocol, older than v\d+ here: update Pi Desktop there/,
+    );
+    const newer = await fakePing({ app: 'pi-remote', version: REMOTE_API_VERSION + 1, kind: 'desktop' });
+    await expect(pingRemote(newer)).rejects.toThrow(/update Pi Desktop here/);
   });
 
   it('carries a call to the backend and its error back', async () => {

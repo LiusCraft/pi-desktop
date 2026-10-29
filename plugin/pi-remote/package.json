@@ -5,7 +5,16 @@
   "keywords": [
     "pi-package"
   ],
+  "homepage": "https://github.com/LiusCraft/pi-desktop/tree/main/plugin/pi-remote",
+  "bugs": {
+    "url": "https://github.com/LiusCraft/pi-desktop/issues"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LiusCraft/pi-desktop.git",
+    "directory": "plugin/pi-remote"
+  },
   "files": [
     "index.js",
     "README.md"

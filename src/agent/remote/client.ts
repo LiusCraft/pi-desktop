@@ -2,6 +2,7 @@
 // local `AgentClient` so the main process can route the UI to either.
 import type { HostEvent } from '@shared/protocol';
 import {
+  REMOTE_API_VERSION,
   REMOTE_PATHS,
   REMOTE_RETRY_MS,
   REMOTE_STALE_MS,
@@ -29,6 +30,16 @@ function reach(err: unknown): Error {
   return err instanceof Error ? err : new Error(String(err));
 }
 
+/** Which side is the older one, in words for the person who typed the address. */
+function versionMismatch(ping: RemotePing): Error {
+  const there = ping.kind === 'plugin' ? 'the pi-remote plugin there' : 'Pi Desktop there';
+  const version = Number.isInteger(ping.version) ? `protocol v${ping.version}` : 'an unknown protocol';
+  // A server too old to send a number is the older side by definition.
+  if (!Number.isInteger(ping.version) || ping.version < REMOTE_API_VERSION)
+    return new Error(`That remote speaks ${version}, older than v${REMOTE_API_VERSION} here: update ${there}.`);
+  return new Error(`That remote speaks ${version}, newer than v${REMOTE_API_VERSION} here: update Pi Desktop here.`);
+}
+
 export async function pingRemote(url: string): Promise<RemotePing> {
   let res: Response;
   try {
@@ -38,6 +49,8 @@ export async function pingRemote(url: string): Promise<RemotePing> {
   }
   const ping = (await res.json().catch(() => null)) as RemotePing | null;
   if (!ping || ping.app !== 'pi-remote') throw new Error('That address is not a Pi remote.');
+  // The plugin is published on its own and the app ships a copy, so the two sides are updated separately.
+  if (ping.version !== REMOTE_API_VERSION) throw versionMismatch(ping);
   return ping;
 }
 
