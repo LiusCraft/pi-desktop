@@ -389,7 +389,8 @@ export class ShellCommands {
   }
 
   private fallback(): BashOperations {
-    this.local ??= createLocalBashOperations({ shellPath: this.options.shellPath?.() });
+    // The same bash the shared shell would use: left to PATH, Windows may find the WSL launcher first.
+    this.local ??= createLocalBashOperations({ shellPath: resolveBash(this.options.shellPath?.()) ?? this.options.shellPath?.() });
     return this.local;
   }
 
