@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { setActiveLocale } from '../src/shared/i18n/runtime';
 import type { SessionMeta } from '../src/shared/protocol';
 import { bashCommand } from '../src/renderer/src/lib/bash';
-import { applyPiEvent, emptySession, replay } from '../src/renderer/src/store/transcript';
+import { applyPiEvent, bashRunning, emptySession, replay } from '../src/renderer/src/store/transcript';
 import type { Item, ItemOf } from '../src/renderer/src/store/types';
 
 const meta = { id: 's1', title: 'Main', kind: 'code', projectPath: '/p', cwd: '/p' } as SessionMeta;
@@ -91,12 +91,33 @@ describe('a ! command in the transcript', () => {
           excludeFromContext: true,
           timestamp: 7,
         },
+        // Stopped from the composer, with the full output parked in a temp file.
+        {
+          role: 'bashExecution',
+          command: 'npm test',
+          output: 'partial',
+          cancelled: true,
+          truncated: true,
+          fullOutputPath: '/tmp/pi-bash.log',
+          timestamp: 8,
+        },
       ],
       'normal',
     );
-    const [ok, failed, hidden] = shells(s.items);
+    const [ok, failed, hidden, stopped] = shells(s.items);
     expect(ok).toMatchObject({ command: 'ls', output: 'a\nb\n', exitCode: 0, running: false, excluded: false });
     expect(failed).toMatchObject({ exitCode: 3, cancelled: false });
     expect(hidden).toMatchObject({ excluded: true });
+    expect(stopped).toMatchObject({ cancelled: true, truncated: true, fullOutputPath: '/tmp/pi-bash.log' });
+    expect(stopped.exitCode).toBeUndefined();
+  });
+
+  it('knows while a command is still running, so Stop stays available', () => {
+    const s = emptySession(meta);
+    expect(bashRunning(s)).toBe(false);
+    s.items.push({ kind: 'bash', key: 'cmd-1', command: 'npm run dev', output: '', running: true, at: 1 });
+    expect(bashRunning(s)).toBe(true);
+    (s.items[0] as ItemOf<'bash'>).running = false;
+    expect(bashRunning(s)).toBe(false);
   });
 });

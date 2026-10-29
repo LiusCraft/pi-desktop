@@ -11,6 +11,8 @@ const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-shell-tool-'));
 fs.mkdirSync(path.join(folder, 'sub'), { recursive: true });
 
 const shutdowns: (() => void)[] = [];
+/** The shells the kit handed to its host, in order; null is the shutdown notice. */
+const shells: unknown[] = [];
 
 function load(mode: ShellSessionMode) {
   const tools = new Map<string, any>();
@@ -33,6 +35,7 @@ function load(mode: ShellSessionMode) {
     state,
     cwd: folder,
     shellSession: () => mode,
+    registerShell: (shell) => shells.push(shell),
     ask: async () => ({ value: 'Allow' }),
     setMode: () => {},
   })(pi as any);
@@ -64,6 +67,14 @@ afterEach(() => {
 });
 
 describe('bash tool', () => {
+  it('hands the session its shell, and takes it back when the session ends', () => {
+    load('session');
+    // The composer's `!command` runs in this very shell, so the host has to know about it.
+    const shell = shells.at(-1) as { operations: { exec: unknown } };
+    expect(typeof shell.operations.exec).toBe('function');
+    for (const stop of shutdowns.splice(0)) stop();
+    expect(shells.at(-1)).toBeNull();
+  });
   it("keeps pi's own description and adds workdir on top", () => {
     const tool = load('session');
     expect(tool.description).toMatch(/Execute a bash command/);

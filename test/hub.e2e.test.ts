@@ -8,7 +8,9 @@ import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { decodeUserContent } from '@shared/attachments';
 import {
+  HOST_CHANNELS,
   MAX_SESSION_TITLE,
+  type BashRunResult,
   type HostEvent,
   type PermissionMode,
   type PiEvent,
@@ -16,6 +18,7 @@ import {
   type UiResponse,
 } from '@shared/protocol';
 import { importAttachments } from '../src/agent/attachments';
+import { sessionHandlers } from '../src/agent/handlers';
 import { SessionHub } from '../src/agent/hub';
 import { setActiveLocale } from '../src/shared/i18n/runtime';
 
@@ -430,6 +433,20 @@ describe('code sessions', { timeout: 120_000 }, () => {
     const hidden = (await driver.hub.open(meta.id)).messages.filter((m) => m.role === 'bashExecution').at(-1)!;
     expect(hidden).toMatchObject({ command: 'echo hidden-marker', excludeFromContext: true });
     expect(String(hidden.output)).toMatch(/hidden-marker/);
+  });
+
+  it('serves the composer’s `!` command through the host channel, guards included', async () => {
+    const { meta } = await codeSession('auto');
+    await driver.hub.open(meta.id);
+    const handlers = sessionHandlers(Promise.resolve(driver.hub), () => null);
+    // Every channel of the protocol has an implementation here: a new one that nobody wires would throw.
+    expect(HOST_CHANNELS.filter((channel) => typeof handlers[channel] !== 'function')).toEqual([]);
+    const ran = (await handlers['sessions:bash'](meta.id, 'echo via-channel', { id: 'ch-1' })) as BashRunResult;
+    expect(ran).toMatchObject({ cancelled: false });
+    expect(ran.output.trim()).toBe('via-channel');
+    // A bare `!` never reaches the shell, and a session the host does not know cannot run anything.
+    await expect(handlers['sessions:bash'](meta.id, '   ', {})).rejects.toThrow(/命令|command/i);
+    await expect(handlers['sessions:bash']('no-such-session', 'echo hi', {})).rejects.toThrow(/Unknown session/);
   });
 
   it('uses the worktree folder from settings, and the default when it is unset', async () => {
