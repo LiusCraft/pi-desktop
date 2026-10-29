@@ -52,6 +52,26 @@ export type Item =
       wire?: string;
     }
   | { kind: 'text'; key: string; text: string; live: boolean; msgTs?: number }
+  /**
+   * A command the user ran with `!` in the session's own shell. pi keeps it in the conversation, so it
+   * arrives from `bashExecution` messages on reload and from `bash_execution_update` events while it runs.
+   */
+  | {
+      kind: 'bash';
+      key: string;
+      command: string;
+      output: string;
+      running: boolean;
+      exitCode?: number;
+      cancelled?: boolean;
+      truncated?: boolean;
+      fullOutputPath?: string;
+      /** `!!`: the transcript keeps it, the model does not see it. */
+      excluded?: boolean;
+      /** Why the command did not run at all (the host refused it). */
+      error?: string;
+      at: number;
+    }
   | { kind: 'note'; key: string; text: string; level?: 'error' }
   | { kind: 'group'; key: string; thoughts: ThinkStep[]; tools: ToolState[]; open: boolean; userToggled?: boolean }
   | { kind: 'todos'; key: string; items: Todo[] }

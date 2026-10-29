@@ -509,6 +509,25 @@ export interface SlashCommand {
   source: string;
 }
 
+/** `!command` in the composer: run one command in the shell the session's own commands use. */
+export interface BashRunOptions {
+  /** `!!command`: the result stays in the transcript but out of the model's context. */
+  excludeFromContext?: boolean;
+  /** Echoed in each `bash_execution_update` event, so the view can stream it into the right item. */
+  id?: string;
+}
+
+/** What one such command returns (pi's BashResult). */
+export interface BashRunResult {
+  /** Combined stdout and stderr, possibly truncated. */
+  output: string;
+  exitCode?: number;
+  cancelled: boolean;
+  truncated: boolean;
+  /** Where the untruncated output was written, when it was. */
+  fullOutputPath?: string;
+}
+
 export interface FileChange {
   path: string;
   status: 'A' | 'M' | 'D';
@@ -1128,6 +1147,12 @@ export interface Api {
   /** The session as the host holds it now, without its transcript; null when the host holds nothing more than its meta. */
   'sessions:state'(id: string): SessionState | null;
   'sessions:prompt'(id: string, payload: PromptSubmission, behavior: StreamingBehavior): { disposition: string };
+  /**
+   * Run a command in the shell the session's own `bash` commands use (`!command` in the composer), so it
+   * starts where they left the shell. Output streams as `bash_execution_update` pi events carrying `id`;
+   * pi keeps the result in the conversation, so the next turn sees it.
+   */
+  'sessions:bash'(id: string, command: string, options: BashRunOptions): BashRunResult;
   'sessions:respond'(id: string, requestId: string, response: UiResponse): void;
   'sessions:setMode'(id: string, mode: PermissionMode): void;
   'sessions:setStyle'(id: string, style: OutputStyle): void;
@@ -1305,6 +1330,7 @@ export const HOST_CHANNELS = [
   'sessions:open',
   'sessions:state',
   'sessions:prompt',
+  'sessions:bash',
   'sessions:respond',
   'sessions:setMode',
   'sessions:setStyle',

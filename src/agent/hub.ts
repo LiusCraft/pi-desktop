@@ -35,6 +35,8 @@ import { buildMessage, decodeUserContent } from '@shared/attachments';
 import type {
   AgentDraft,
   AgentMessage,
+  BashRunOptions,
+  BashRunResult,
   ConnectorDraft,
   PluginResource,
   PromptDraft,
@@ -107,6 +109,7 @@ import { recordRequests } from './request-hook/hook';
 import { RequestLog } from './request-hook/log';
 import { withOrigin } from './request-hook/origin';
 import { createDesktopKit, type KitHost, type KitState, type SessionScope, type SubagentRun } from './desktop-kit';
+import type { ShellCommands } from './shell-session';
 import { toWireEvent } from './events';
 import {
   locateSessionFile,
@@ -174,6 +177,8 @@ interface Live {
   disposed: boolean;
   /** Running `task` subagents by tool call id, so one can be stopped on its own. */
   tasks: Map<string, AbortController>;
+  /** The shell behind the session's `bash` tool; the composer's `!command` runs in the same one. */
+  shell?: ShellCommands;
 }
 
 /** Rough token count for text the SDK does not measure for us. */
@@ -757,6 +762,7 @@ export class SessionHub {
         const mode = hub.storedSettings().shellSession;
         return SHELL_SESSION_MODES.includes(mode) ? mode : DEFAULT_SETTINGS.shellSession;
       },
+      registerShell: (shell) => void (live.shell = shell ?? undefined),
       ask: (request, signal) => this.ask(live, request, signal),
       setMode: (mode) => this.applyMode(live.id, mode),
       runSubagent: (run) => this.runSubagent(live, run),
@@ -1334,6 +1340,31 @@ export class SessionHub {
     } finally {
       live.historyBusy = false;
     }
+  }
+
+  /**
+   * A command the user typed with `!` in the composer. It runs through the shell the session's own `bash`
+   * tool uses, so it starts where the model left that shell, and pi keeps the result in the conversation.
+   */
+  async bash(id: string, command: string, options: BashRunOptions = {}): Promise<BashRunResult> {
+    if (!command.trim()) throw new Error(tr('ag.bashEmpty'));
+    const live = await this.ensure(id);
+    // The ghost text predicted the conversation so far; a command just changed it.
+    this.abortSuggestion(id);
+    // Rewinding or forking is moving the conversation: a message landing mid-switch would be lost.
+    if (live.historyBusy) throw new Error(tr('ag.historyBusy'));
+    const result = await live.runtime.session.executeBash(command, undefined, {
+      excludeFromContext: options.excludeFromContext,
+      id: options.id,
+      // The session's own shell: `!` shares the folder and environment the model's commands left behind.
+      operations: live.shell?.operations,
+    });
+    // Running a command is activity in this session: the sidebar order and the idle reset both read this.
+    const m = this.meta(id);
+    m.updatedAt = Date.now();
+    this.save();
+    this.emitMeta(m);
+    return result;
   }
 
   async prompt(id: string, payload: unknown, behavior: StreamingBehavior): Promise<{ disposition: string }> {
@@ -2087,6 +2118,8 @@ export class SessionHub {
     this.cancelPending(live);
     // Stopping the turn stops its background tasks too; their notifications would start a new turn.
     this.stopTasks(live);
+    // A `!command` of the user's is a bash execution of its own: Stop interrupts it with the turn.
+    live.runtime.session.abortBash();
     await live.runtime.session.abort();
   }
   clearQueue(id: string) {

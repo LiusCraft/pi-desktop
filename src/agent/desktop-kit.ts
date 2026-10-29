@@ -109,6 +109,12 @@ export interface KitHost {
   review?(command: string, cwd: string, signal?: AbortSignal): Promise<CommandVerdict | null>;
   /** How the model's shell commands keep their folder; read for every command (see `SHELL_SESSION_MODES`). */
   shellSession?: () => ShellSessionMode;
+  /**
+   * The shell behind the session's `bash` tool, registered when the session starts and dropped (null)
+   * when it shuts down: the composer's `!command` runs in this very shell, so it shares the folder and
+   * environment the model's commands left behind.
+   */
+  registerShell?(shell: ShellCommands | null): void;
   /** Ask the user. Resolves `{ cancelled: true }` when nobody can answer. */
   ask(request: KitRequest, signal?: AbortSignal): Promise<UiResponse>;
   /** Called when the kit itself changes the mode (plan approval, "Always allow" on an edit). */
@@ -1175,7 +1181,11 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
     const shellMode = () => host.shellSession?.() ?? 'session';
     const sessionCwd = host.cwd ?? process.cwd();
     const shellBackend = new ShellCommands({ shellPath: () => shellPath, mode: shellMode });
-    pi.on('session_shutdown', () => shellBackend.dispose());
+    host.registerShell?.(shellBackend);
+    pi.on('session_shutdown', () => {
+      shellBackend.dispose();
+      host.registerShell?.(null);
+    });
     pi.on('session_start', () => {
       const settings = (pi.getSettings() ?? {}) as { shellPath?: string; shellCommandPrefix?: string };
       shellPath = settings.shellPath;

@@ -25,6 +25,7 @@ import {
 } from '@/store/actions';
 import { currentSession, getApp, setApp, useApp } from '@/store/app';
 import { activeDraft, drafts } from '@/store/drafts';
+import { bashRunning } from '@/store/transcript';
 import { useDialogs } from '@/store/dialogs';
 import { watchSideWindows } from '@/store/side';
 import { watchCodeSession } from '@/store/refresh';
@@ -57,7 +58,11 @@ function useShortcuts() {
       }
       const s = currentSession();
       if (!s) return;
-      if (e.key === 'Escape' && (s.running || s.compacting) && !document.querySelector('[role=menu],[role=dialog]')) {
+      if (
+        e.key === 'Escape' &&
+        (s.running || s.compacting || bashRunning(s)) &&
+        !document.querySelector('[role=menu],[role=dialog]')
+      ) {
         e.preventDefault();
         return void stop(s.meta.id);
       }

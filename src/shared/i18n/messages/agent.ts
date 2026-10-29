@@ -48,6 +48,7 @@ export const agent = defineMessages({
   'ag.skillExists': { en: 'A skill named {name} already exists', zh: '已经有名为 {name} 的技能' },
   'ag.onlyMdJson': { en: 'Only Markdown or JSON files can be viewed', zh: '只能查看 Markdown 或 JSON 文件' },
   'ag.truncated': { en: '…(truncated)', zh: '…（已截断）' },
+  'ag.bashEmpty': { en: 'Type a command after “!”', zh: '“!”后面要写命令' },
   'ag.connectorExists': { en: 'A connector named {name} already exists', zh: '已经有名为 {name} 的连接器' },
   'ag.needHttpUrl': {
     en: 'Enter an address starting with http:// or https://',

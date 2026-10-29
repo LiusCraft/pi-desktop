@@ -39,6 +39,7 @@ export function sessionHandlers(
       return result;
     }),
     'sessions:respond': withHub((h, id, requestId, response) => h.respond(id, requestId, response)),
+    'sessions:bash': withHub((h, id, command, options) => h.bash(id, command, options)),
     'sessions:setMode': withHub((h, id, mode) => h.setMode(id, mode)),
     'sessions:setStyle': withHub((h, id, style) => h.setStyle(id, style)),
     'sessions:update': withHub((h, id, patch) => h.update(id, patch)),
