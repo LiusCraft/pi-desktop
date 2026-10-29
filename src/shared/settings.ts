@@ -1,4 +1,5 @@
 import { DEFAULT_PET_ID } from './pets';
+import { IDLE_RESET_DEFAULT_MINUTES } from './idle-reset';
 import { AUTO_REVIEW_DEFAULT_TIMEOUT, SUGGESTION_DEFAULT_CONTEXT, TERMINAL_DEFAULT_LINES, type Settings } from './protocol';
 
 /** What a setting is until the user changes it; `theme: null` means "not chosen yet": follow the system. */
@@ -10,6 +11,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultMode: 'code', sidebarCollapsed: false, worktreeDir: null, pet: true, petSkin: DEFAULT_PET_ID, terminalShell: null,
   autoUpdateCheck: true, ignoredUpdate: null,
   terminalContextLines: TERMINAL_DEFAULT_LINES,
+  idleResetMinutes: IDLE_RESET_DEFAULT_MINUTES, idleResetModels: {},
   shellSession: 'session',
   aiSchedule: true, aiCustomize: true, aiSettings: true, aiProject: true,
 };

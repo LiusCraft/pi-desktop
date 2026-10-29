@@ -26,6 +26,8 @@ import { decodePrEvent, encodePrEvent, isPrEvent } from '@shared/pr-event';
 import { decodeTaskMessage, encodeTaskMessage, isTaskMessage } from '@shared/task-message';
 import { BUILTIN_PET_IDS } from '@shared/pets';
 import { DEFAULT_SETTINGS } from '@shared/settings';
+import { HANDOFF_CUSTOM_TYPE, MINUTE_MS, IDLE_RESET_MIN_TOKENS, idleResetMinutes, modelKey } from '@shared/idle-reset';
+import { buildHandoff, declaredCacheMinutes } from './handoff';
 import { appAgentsDir, appPetsDir, appWorkDir, appExtensionsDir, worktreeDir as resolveWorktreeDir } from './app-paths';
 import { validatePromptPayload } from './attachments';
 import toolsPrompt from './tools-prompt.md?raw';
@@ -570,6 +572,12 @@ export class SessionHub {
         read: (id, limit) => this.peerRead(live.id, id, limit),
         send: (id, text) => this.peerSend(live.id, id, text),
       },
+      history: {
+        search: (query, limit) => {
+          const file = live.runtime.session.sessionFile;
+          return file && fs.existsSync(file) ? searchTranscript(file, query, limit) : [];
+        },
+      },
       agents: () => loadAgents(appAgentsDir(this.opts.dataDir)),
       get schedule(): ScheduleHost | undefined {
         const scheduler = hub.scheduler;
@@ -1069,12 +1077,15 @@ export class SessionHub {
     if (images.length && !session.model?.input?.includes('image')) {
       throw new Error('The selected model does not support image attachments. Choose an image-capable model or remove the images.');
     }
+    const busy = session.isStreaming || live.status === 'running';
+    // A long gap means the prompt cache is gone: rebuild the context before this message instead of
+    // re-sending the whole history at full price. Skipped while a turn runs and for injected messages.
+    if (!busy && !slash && isPlainUserMessage(message)) await this.retireIdleContext(live, session);
     const m = this.meta(id);
     m.updatedAt = Date.now();
     this.save();
     this.maybeNameFromPrompt(id, message);
     this.kickPrWatch(id, 1_000);
-    const busy = session.isStreaming || live.status === 'running';
     // follow_up queues while streaming, but does not start an idle agent.
     if (busy && behavior === 'followUp') return { disposition: await session.followUp(message, images) };
     return new Promise((resolve, reject) => {
@@ -1660,6 +1671,46 @@ export class SessionHub {
     this.abortSuggestion(id);
     await live.runtime.newSession();
   }
+
+  /**
+   * A session idle past its prompt-cache lifetime starts over before this message: the old messages
+   * leave the model's context and one handoff card stays behind. The card is read out of the session
+   * file and the entries are dropped with `context_edit`, so nothing is summarized and nothing is
+   * re-sent — the alternative was paying full price for the whole history.
+   */
+  private async retireIdleContext(live: Live, session: AgentSession) {
+    const model = session.model;
+    if (!model) return;
+    const m = this.meta(live.id);
+    const threshold = idleResetMinutes(this.storedSettings(), modelKey(model.provider, model.id), declaredCacheMinutes(model));
+    const idleMinutes = (Date.now() - m.updatedAt) / MINUTE_MS;
+    if (threshold <= 0 || idleMinutes < threshold) return;
+    const measured = session.getContextUsage()?.tokens;
+    const tokens = measured ?? session.messages.reduce((n, message) => n + estimateTokens(message), 0);
+    if (tokens < IDLE_RESET_MIN_TOKENS) return;
+    const manager = session.sessionManager;
+    const card = buildHandoff(manager, { sessionId: m.id, title: m.title, idleMinutes, tokens });
+    try {
+      await session.sendCustomMessage(
+        { customType: HANDOFF_CUSTOM_TYPE, content: card.text, display: true, details: card.details },
+        { triggerTurn: false },
+      );
+      // Everything above the card leaves the context. The card is a custom message, so filtering to
+      // `type === 'message'` keeps it; an earlier card is dropped so only the newest one survives.
+      const entries = manager.buildContextEntries();
+      const newest = entries.filter((e) => e.type === 'custom_message' && e.customType === HANDOFF_CUSTOM_TYPE).at(-1)?.id;
+      for (const entry of entries) {
+        if (entry.type === 'message') manager.appendContextEdit(entry.id, null);
+        else if (entry.type === 'custom_message' && entry.customType === HANDOFF_CUSTOM_TYPE && entry.id !== newest) {
+          manager.appendContextEdit(entry.id, null);
+        }
+      }
+      session.refreshContext();
+    } catch (err) {
+      // A rebuild that fails leaves the conversation intact; the message is still sent as usual.
+      console.warn('[idle-reset] rebuilding the context failed:', err);
+    }
+  }
   async compact(id: string, instructions?: string) {
     const live = await this.ensure(id);
     const r = await live.runtime.session.compact(instructions);
@@ -2026,9 +2077,77 @@ export class SessionHub {
   }
 }
 
+/** A message the user typed, as opposed to a slash command or one an app feature injected. */
+export function isPlainUserMessage(message: string): boolean {
+  return !!message.trim() && !isPeerMessage(message) && !isPrEvent(message) && !isCommandMessage(message) && !isTaskMessage(message);
+}
+
 export interface TranscriptLine {
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'toolResult';
   text: string;
+}
+
+/** Enough of a match to recognise it, without flooding the context the rebuild just cleared. */
+const SNIPPET_BEFORE = 120;
+const SNIPPET_AFTER = 260;
+const TOOL_RESULT_CHARS = 600;
+
+/** One line describing a tool call, including the argument that makes it findable again. */
+function describeToolCall(block: { name?: string; arguments?: unknown }): string {
+  const args = block.arguments && typeof block.arguments === 'object' ? (block.arguments as Record<string, unknown>) : {};
+  const where = args.path ?? args.file_path ?? args.command ?? args.pattern ?? args.query;
+  return `${block.name ?? 'tool'}(${typeof where === 'string' ? where : ''})`;
+}
+
+/** Everything one message contributed, so a search can match file paths and command lines too. */
+function searchableText(message: { role: string; content?: unknown; toolName?: string }): string {
+  const blocks: any[] = Array.isArray(message.content) ? message.content : [];
+  const body = typeof message.content === 'string' ? message.content : '';
+  if (message.role === 'user') {
+    const text = decodeUserContent(message.content).text;
+    return text.startsWith('[pi-desktop]') ? '' : text;
+  }
+  if (message.role === 'toolResult') {
+    const text = body || blocks.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+    return `${message.toolName ?? 'tool'}: ${text.slice(0, TOOL_RESULT_CHARS)}`;
+  }
+  return [body, ...blocks.filter((b) => b.type === 'text').map((b) => b.text), ...blocks.filter((b) => b.type === 'toolCall').map(describeToolCall)]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/** The text around a match, on one line, marked so the model knows it is an excerpt. */
+function snippet(text: string, at: number, length: number): string {
+  const from = Math.max(0, at - SNIPPET_BEFORE);
+  const piece = text.slice(from, Math.min(text.length, at + length + SNIPPET_AFTER)).replace(/\s+/gu, ' ').trim();
+  return `${from > 0 ? '…' : ''}${piece}${at + length + SNIPPET_AFTER < text.length ? '…' : ''}`;
+}
+
+/**
+ * The messages of a session file that mention `query`, newest last, including tool calls and their
+ * output: this is what a session reads when its own context was rebuilt from a handoff card.
+ */
+export function searchTranscript(file: string, query: string, limit: number): TranscriptLine[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [];
+  const found: TranscriptLine[] = [];
+  try {
+    for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+      if (!line) continue;
+      const entry = JSON.parse(line);
+      const message = entry.type === 'message' ? entry.message : null;
+      const role = message?.role;
+      if (role !== 'user' && role !== 'assistant' && role !== 'toolResult') continue;
+      const text = searchableText(message);
+      const at = text.toLowerCase().indexOf(needle);
+      if (at < 0) continue;
+      found.push({ role, text: snippet(text, at, needle.length) });
+    }
+  } catch {
+    // A file that is half-written or gone simply has no readable history.
+  }
+  // The most recent matches are the ones that usually matter.
+  return found.slice(-Math.max(1, Math.min(limit, 20)));
 }
 
 /** The text of the last `limit` user and assistant messages in a pi session file; tool traffic is left out. */

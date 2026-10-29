@@ -93,6 +93,10 @@ export interface KitHost {
     read(id: string, limit: number): { role: string; text: string }[];
     send(id: string, text: string): Promise<'delivered' | 'queued'>;
   };
+  /** This session's own earlier transcript, tool traffic included; omit it (subagents) to leave the search tool out. */
+  history?: {
+    search(query: string, limit: number): { role: string; text: string }[];
+  };
   /** Work only: lists result files in the session's Files panel; omit it (subagents) to leave out the present-files tool. */
   present?(files: string[]): void;
   /** Renames this session; omit it (subagents) to leave out the rename tool. */
@@ -142,7 +146,7 @@ Work collaboratively and teach as you go. Explain key concepts in plain language
 const READ_ONLY_TOOLS = new Set([
   'read', 'grep', 'find', 'ls', 'pidesk_todo_write', 'pidesk_exit_plan_mode', 'pidesk_ask_question', 'pidesk_task', 'pidesk_bg_output', 'pidesk_bg_kill', 'tool_search', 'codemode',
   // Nothing here changes anything: a suggestion is only shown to the user, and the session tools below only look.
-  'pidesk_suggest_task', 'pidesk_list_sessions', 'pidesk_read_session',
+  'pidesk_suggest_task', 'pidesk_list_sessions', 'pidesk_read_session', 'pidesk_search_session',
   // Only adds names to the Files panel.
   'pidesk_present_files',
   // Only changes the label shown in the session list.
@@ -672,6 +676,31 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       artifacts: host.artifacts,
       project: host.project?.manage,
     });
+
+    // ---------------------------------------------------------------- this session's own earlier transcript
+    const history = host.history;
+    if (history) {
+      pi.registerTool({
+        name: 'pidesk_search_session',
+        label: 'Search this session',
+        description:
+          "Search this session's own earlier transcript, tool calls and command output included, for a word or phrase. " +
+          'Use it when a handoff card replaced the conversation in your context and the next step depends on something it ' +
+          'does not record — a decision, a file, an error. Matches come back newest last, as excerpts.',
+        parameters: Type.Object({
+          query: Type.String({ description: 'Text to look for, matched case-insensitively' }),
+          limit: Type.Optional(Type.Number({ description: 'How many matches (default 8, at most 20)' })),
+        }),
+        annotations: { readOnlyHint: true },
+        async execute(_id, params) {
+          const matches = history.search(params.query, params.limit ?? 8);
+          const text = matches.length
+            ? matches.map((m) => `[${m.role}] ${m.text}`).join('\n\n')
+            : 'Nothing earlier in this session mentions that. Try a shorter or different phrase, or read the file directly.';
+          return { content: [{ type: 'text', text }], details: { query: params.query, matches: matches.length } };
+        },
+      });
+    }
 
     // ---------------------------------------------------------------- other sessions of the project
     const peers = host.peers;

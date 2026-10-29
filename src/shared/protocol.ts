@@ -884,6 +884,10 @@ export interface Settings {
   ignoredUpdate: string | null;
   /** How many lines of a terminal tab an @ mention captures. */
   terminalContextLines: number;
+  /** Minutes of inactivity after which a session's context is rebuilt from a handoff card; 0 turns it off. */
+  idleResetMinutes: number;
+  /** Minutes per `provider/model`, overriding both the catalog's cache lifetime and `idleResetMinutes`; 0 turns it off for that model. */
+  idleResetModels: Record<string, number>;
   /** Shared shell for the model's commands, or one process per command (see `SHELL_SESSION_MODES`). */
   shellSession: ShellSessionMode;
   /** Which management tools the model gets (`pidesk_schedule_*`, `pidesk_customize_*`, `pidesk_settings_*`, `pidesk_project_manage`); read when a session starts. */

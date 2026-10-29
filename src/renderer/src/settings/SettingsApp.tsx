@@ -26,6 +26,7 @@ import { petVoices, previewSound } from '@/lib/sounds';
 import { applyTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import { allPets, PetSprite } from '@/components/composer/Clawd';
+import { ContextSection } from './ContextSection';
 import { FontPicker } from './FontPicker';
 import { ModelPicker } from './ModelPicker';
 import { ModelsSection } from './ModelsSection';
@@ -54,6 +55,7 @@ const SECTIONS: { id: Section; label: MessageKey | null; icon: ReactNode; groups
       { id: 'autoReview', label: 'settings.autoReview' },
       { id: 'replyRendering', label: 'settings.replyRendering' },
       { id: 'prediction', label: 'settings.prediction' },
+      { id: 'idleContext', label: 'settings.idleReset' },
       { id: 'webSearch', label: 'web.title' },
     ],
   },
@@ -511,6 +513,7 @@ export function SettingsApp() {
             </Panel>
           </Group>
 
+          <div id={groupDomId('idleContext')} className="scroll-mt-2"><ContextSection settings={settings} patch={(v) => void patch(v)} /></div>
           <div id={groupDomId('webSearch')} className="scroll-mt-2"><WebSearchSection /></div>
         </div>
       </>

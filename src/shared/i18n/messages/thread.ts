@@ -215,6 +215,8 @@ export const thread = defineMessages({
   'compact.hideEarlier': { en: 'Hide earlier messages', zh: '收起之前的消息' },
   'compact.loadingEarlier': { en: 'Loading earlier messages…', zh: '正在加载之前的消息…' },
   'compact.summaryTip': { en: 'Show or hide the summary', zh: '展开或收起摘要' },
+  'handoff.card': { en: 'Context rebuilt after {idle} idle · {tokens} tokens dropped', zh: '空闲 {idle} 后已重建上下文 · 丢弃 {tokens} tokens' },
+  'handoff.tip': { en: "The earlier conversation left the model's context so it is not re-sent at full price. Pi can still search it when the next message needs it.", zh: '之前的对话已移出模型上下文，不再按全价重发。需要时 Pi 仍可检索它。' },
   'status.interrupted': { en: 'Interrupted · tell Pi Desktop what to do next', zh: '已中断 · 告诉 Pi Desktop 接下来该怎么做' },
   'status.retrying': { en: 'Retrying ({attempt}/{max}) — {error}', zh: '重试中（{attempt}/{max}）— {error}' },
   'status.tokens': { en: '{dur} · {tokens} tokens', zh: '{dur} · {tokens} tokens' },

@@ -2,6 +2,7 @@
 // SessionView; anything that needs IPC or global UI is returned as an Effect.
 import { decodeUserContent } from '@shared/attachments';
 import { forgeOfUrl } from '@shared/forge';
+import { formatIdle, HANDOFF_CUSTOM_TYPE, type HandoffDetails } from '@shared/idle-reset';
 import type { AgentMessage, PiEvent, PrSummary, Question, SessionMeta, TaskUpdate, UiRequest } from '@shared/protocol';
 import { decodePrEvent } from '@shared/pr-event';
 import { typedText } from '@shared/skill-message';
@@ -353,7 +354,7 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
         if (m.stopReason === 'error' && m.errorMessage) push(s, { kind: 'note', key: newKey(), level: 'error', text: `Error: ${m.errorMessage}` }, view);
         if (m.stopReason === 'aborted') push(s, { kind: 'note', key: newKey(), text: t('status.interrupted') }, view);
         s.cur = null;
-      } else if (m.role === 'custom' && m.display) push(s, { kind: 'note', key: newKey(), text: textOf(m.content) }, view);
+      } else if (m.role === 'custom' && m.display) push(s, customNote(m), view);
       return {};
     }
     case 'tool_execution_start':
@@ -505,6 +506,19 @@ export function transcriptItems(meta: SessionMeta, messages: AgentMessage[], vie
   return s.items;
 }
 
+/**
+ * A handoff card carries a long, model-facing text. The transcript shows one line instead: the text
+ * is there for the model, not the reader.
+ */
+function customNote(m: AgentMessage): ItemOf<'note'> {
+  if (m.customType !== HANDOFF_CUSTOM_TYPE) return { kind: 'note', key: newKey(), text: textOf(m.content) };
+  const d = (m.details ?? {}) as Partial<HandoffDetails>;
+  return {
+    kind: 'note', key: newKey(),
+    text: t('handoff.card', { idle: formatIdle(d.idleMinutes ?? 0), tokens: fmtTok(d.tokensBefore ?? 0) }),
+  };
+}
+
 function appendMessages(s: SessionView, messages: AgentMessage[], view: ViewMode) {
   let sawAssistant = false;
   for (const m of messages) {
@@ -537,7 +551,7 @@ function appendMessages(s: SessionView, messages: AgentMessage[], view: ViewMode
     } else if (m.role === 'toolResult') {
       toolEnd(s, { toolCallId: m.toolCallId!, toolName: m.toolName!, result: { content: m.content, details: m.details }, isError: m.isError }, view, true);
     } else if (m.role === 'custom' && m.display) {
-      s.items.push({ kind: 'note', key: newKey(), text: textOf(m.content) });
+      s.items.push(customNote(m));
     } else if (m.role === 'compactionSummary') {
       const tokensBefore = Number(m.tokensBefore) || undefined;
       s.items.push({ kind: 'compaction', key: newKey(), summary: String(m.summary ?? ''), tokensBefore, open: false, hidden: 0, openSummary: true });
