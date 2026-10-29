@@ -1158,10 +1158,18 @@ function registerIpc() {
 
 // ------------------------------------------------------------ app
 
-if (!app.requestSingleInstanceLock()) app.quit();
+// The lock is per Electron profile. `make dev` / `make demo` give each run its own profile (see
+// scripts/isolated-app.mjs); everything else shares the installed app's, so a second copy quits.
+const primary = app.requestSingleInstanceLock();
+if (!primary) {
+  console.log('[main] another instance is already running; this one will quit');
+  app.quit();
+}
 app.on('second-instance', showMainWindow);
 
 void app.whenReady().then(async () => {
+  // quit() does not cancel whenReady: stop before the store, windows and the agent host are made.
+  if (!primary) return;
   store = new Store(dataDir());
   setActiveLocale(currentLocale());
   book = new ProjectBook(store);
