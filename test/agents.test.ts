@@ -11,7 +11,10 @@ setActiveLocale('zh');
 let dir: string;
 beforeAll(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-agents-'));
-  fs.writeFileSync(path.join(dir, 'reviewer.md'), '---\ndescription: Reviews a diff\nmodel: anthropic/claude-sonnet-5-5\ntools: read, grep\n---\nYou review code.\n');
+  fs.writeFileSync(
+    path.join(dir, 'reviewer.md'),
+    '---\ndescription: Reviews a diff\nmodel: anthropic/claude-sonnet-5-5\ntools: read, grep\n---\nYou review code.\n',
+  );
   fs.writeFileSync(path.join(dir, 'explore.md'), '---\nname: explore\ndescription: My explorer\n---\nBe thorough.\n');
   fs.writeFileSync(path.join(dir, 'no-description.md'), '---\nname: broken\n---\nbody\n');
   fs.writeFileSync(path.join(dir, 'bad name.md'), '---\ndescription: x\n---\nbody\n');
@@ -29,7 +32,12 @@ describe('loadAgents', () => {
     const agents = loadAgents(dir);
     expect(agents.map((a) => a.name).sort()).toEqual(['explore', 'plan', 'reviewer']);
     const reviewer = agents.find((a) => a.name === 'reviewer')!;
-    expect(reviewer).toMatchObject({ description: 'Reviews a diff', model: 'anthropic/claude-sonnet-5-5', tools: ['read', 'grep'], source: 'user' });
+    expect(reviewer).toMatchObject({
+      description: 'Reviews a diff',
+      model: 'anthropic/claude-sonnet-5-5',
+      tools: ['read', 'grep'],
+      source: 'user',
+    });
     expect(reviewer.body).toBe('You review code.');
     expect(agents.find((a) => a.name === 'explore')).toMatchObject({ description: 'My explorer', source: 'user' });
     expect(agents.find((a) => a.name === 'plan')?.source).toBe('builtin');
@@ -41,8 +49,19 @@ describe('saveAgent / removeAgent', () => {
     const { saveAgent, removeAgent } = await import('../src/agent/agents');
     const d = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-agents-save-'));
     try {
-      let cat = saveAgent(d, { name: 'tester', description: 'Runs: tests "quickly"', body: 'Run the suite.', model: 'a/b', tools: ['read', 'grep'] });
-      expect(cat.agents.find((a) => a.name === 'tester')).toMatchObject({ description: 'Runs: tests "quickly"', model: 'a/b', tools: ['read', 'grep'], source: 'user' });
+      let cat = saveAgent(d, {
+        name: 'tester',
+        description: 'Runs: tests "quickly"',
+        body: 'Run the suite.',
+        model: 'a/b',
+        tools: ['read', 'grep'],
+      });
+      expect(cat.agents.find((a) => a.name === 'tester')).toMatchObject({
+        description: 'Runs: tests "quickly"',
+        model: 'a/b',
+        tools: ['read', 'grep'],
+        source: 'user',
+      });
 
       cat = saveAgent(d, { originalName: 'tester', name: 'checker', description: 'd', body: 'b' });
       expect(cat.agents.map((a) => a.name)).toContain('checker');
@@ -53,10 +72,10 @@ describe('saveAgent / removeAgent', () => {
       expect(cat.agents.find((a) => a.name === 'plan')).toMatchObject({ overrides: true, body: 'custom plan' });
       cat = removeAgent(d, 'plan');
       expect(cat.agents.find((a) => a.name === 'plan')).toMatchObject({ source: 'builtin' });
-      expect(() => removeAgent(d, 'explore')).toThrow();
+      expect(() => removeAgent(d, 'explore')).toThrow(Error);
 
-      expect(() => saveAgent(d, { name: 'bad name', description: 'd', body: 'b' })).toThrow();
-      expect(() => saveAgent(d, { name: 'x', description: '', body: 'b' })).toThrow();
+      expect(() => saveAgent(d, { name: 'bad name', description: 'd', body: 'b' })).toThrow(Error);
+      expect(() => saveAgent(d, { name: 'x', description: '', body: 'b' })).toThrow(Error);
       expect(() => saveAgent(d, { name: 'checker', description: 'dup', body: 'b' })).toThrow(/已经有/);
     } finally {
       fs.rmSync(d, { recursive: true, force: true });

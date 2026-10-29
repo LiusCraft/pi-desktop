@@ -1,6 +1,17 @@
 import type { Attachment, DecodedAttachment } from '@shared/attachments';
 import type {
-  FileChange, GitState, PrStatus, PrSummary, PrThread, SessionMeta, SetupStep, SlashCommand, QuestionAnswer, SpawnTask, ThinkingLevel, UiRequest,
+  FileChange,
+  GitState,
+  PrStatus,
+  PrSummary,
+  PrThread,
+  SessionMeta,
+  SetupStep,
+  SlashCommand,
+  QuestionAnswer,
+  SpawnTask,
+  ThinkingLevel,
+  UiRequest,
 } from '@shared/protocol';
 import type { PrEvent } from '@shared/pr-event';
 import type { ToolState } from '@/lib/tools';
@@ -45,20 +56,54 @@ export type Item =
   | { kind: 'group'; key: string; thoughts: ThinkStep[]; tools: ToolState[]; open: boolean; userToggled?: boolean }
   | { kind: 'todos'; key: string; items: Todo[] }
   | { kind: 'perm'; key: string; requestId: string | null; toolCallId: string; title: string; resolved: string | null }
-  | { kind: 'ask'; key: string; requestId: string | null; request: UiRequest; resolved: string | null; answers?: QuestionAnswer[]; /** Set for `pidesk_ask_question`, whose card starts at the tool call. */ toolCallId?: string }
-  | { kind: 'plan'; key: string; toolCallId: string | null; title: string; md: string; requestId: string | null; resolved: string | null }
+  | {
+      kind: 'ask';
+      key: string;
+      requestId: string | null;
+      request: UiRequest;
+      resolved: string | null;
+      answers?: QuestionAnswer[];
+      /** Set for `pidesk_ask_question`, whose card starts at the tool call. */ toolCallId?: string;
+    }
+  | {
+      kind: 'plan';
+      key: string;
+      toolCallId: string | null;
+      title: string;
+      md: string;
+      requestId: string | null;
+      resolved: string | null;
+    }
   /** Tasks the agent suggests; what the user did with each lives in `meta.suggestions`. */
   | { kind: 'suggest'; key: string; toolCallId: string; tasks: SpawnTask[] }
   /**
    * A compaction checkpoint: the summary is what the model keeps, and the messages above it are
    * the history it replaces. Those start hidden behind "show earlier messages".
    */
-  | { kind: 'compaction'; key: string; summary: string; tokensBefore?: number; tokensAfter?: number; /** The earlier messages are shown. */ open: boolean; /** Messages pi dropped, not in the transcript yet; fetched when they are shown. */ hidden: number; loading?: boolean; /** The summary body is expanded. */ openSummary: boolean }
+  | {
+      kind: 'compaction';
+      key: string;
+      summary: string;
+      tokensBefore?: number;
+      tokensAfter?: number;
+      /** The earlier messages are shown. */ open: boolean;
+      /** Messages pi dropped, not in the transcript yet; fetched when they are shown. */ hidden: number;
+      loading?: boolean;
+      /** The summary body is expanded. */ openSummary: boolean;
+    }
   /**
    * An idle rebuild: the card the model was handed, and the messages that left its context. Those sit
    * above the card and stay hidden until asked for, exactly like a compaction's history.
    */
-  | { kind: 'handoff'; key: string; idle: string; tokensBefore?: number; open: boolean; hidden: number; loading?: boolean }
+  | {
+      kind: 'handoff';
+      key: string;
+      idle: string;
+      tokensBefore?: number;
+      open: boolean;
+      hidden: number;
+      loading?: boolean;
+    }
   /** A turn the PR watcher started: shown as an incoming event, never as something the user typed. */
   | { kind: 'prEvent'; key: string; event: PrEvent; at: number }
   | { kind: 'foot'; key: string; t: number; usage?: string };
@@ -68,7 +113,17 @@ export type ItemOf<K extends Item['kind']> = Extract<Item, { kind: K }>;
 export type Detail =
   | { type: 'plan'; key: string }
   | { type: 'agent'; toolCallId: string }
-  | { type: 'file'; path: string; line: number; start?: number; loading: boolean; text?: string | null; error?: string; image?: string | null; media?: { kind: 'audio' | 'video'; src: string } | null };
+  | {
+      type: 'file';
+      path: string;
+      line: number;
+      start?: number;
+      loading: boolean;
+      text?: string | null;
+      error?: string;
+      image?: string | null;
+      media?: { kind: 'audio' | 'video'; src: string } | null;
+    };
 
 /** A file open in the Files card. A tab nobody double-clicked is a preview: the next single click replaces it. */
 export interface FileTab {

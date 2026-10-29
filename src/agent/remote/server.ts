@@ -6,8 +6,14 @@ import http from 'node:http';
 import os from 'node:os';
 import type { HostEvent } from '@shared/protocol';
 import {
-  isServedMethod, REMOTE_API_VERSION, REMOTE_HEARTBEAT_MS, REMOTE_MAX_BODY_BYTES, REMOTE_PATHS,
-  type RemoteKind, type RemotePing, type RemoteRpcResponse,
+  isServedMethod,
+  REMOTE_API_VERSION,
+  REMOTE_HEARTBEAT_MS,
+  REMOTE_MAX_BODY_BYTES,
+  REMOTE_PATHS,
+  type RemoteKind,
+  type RemotePing,
+  type RemoteRpcResponse,
 } from '@shared/remote';
 
 export interface RemoteBackend {
@@ -60,7 +66,8 @@ export function remoteUrls(port: number, lan: boolean): string[] {
   const urls = [`http://127.0.0.1:${port}`];
   if (!lan) return urls;
   for (const list of Object.values(os.networkInterfaces())) {
-    for (const addr of list ?? []) if (addr.family === 'IPv4' && !addr.internal) urls.push(`http://${addr.address}:${port}`);
+    for (const addr of list ?? [])
+      if (addr.family === 'IPv4' && !addr.internal) urls.push(`http://${addr.address}:${port}`);
   }
   return urls;
 }
@@ -147,7 +154,13 @@ export class RemoteServer {
     try {
       const path = new URL(req.url ?? '/', 'http://localhost').pathname;
       if (path === REMOTE_PATHS.ping && req.method === 'GET') {
-        const ping: RemotePing = { app: 'pi-remote', version: REMOTE_API_VERSION, kind: this.options.backend.kind, host: os.hostname(), platform: process.platform };
+        const ping: RemotePing = {
+          app: 'pi-remote',
+          version: REMOTE_API_VERSION,
+          kind: this.options.backend.kind,
+          host: os.hostname(),
+          platform: process.platform,
+        };
         return this.json(res, 200, ping);
       }
       if (!this.authorized(req)) return this.json(res, 401, { ok: false, error: 'Wrong or missing access token.' });
@@ -161,7 +174,12 @@ export class RemoteServer {
   }
 
   private openStream(req: http.IncomingMessage, res: http.ServerResponse) {
-    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
+    res.writeHead(200, {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-store',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no',
+    });
     res.write(': connected\n\n');
     this.streams.add(res);
     this.options.onClients?.(this.streams.size);
@@ -175,15 +193,25 @@ export class RemoteServer {
     try {
       body = JSON.parse(await readBody(req));
     } catch (err) {
-      return this.json(res, 400, { ok: false, error: err instanceof Error ? err.message : 'Invalid request.' } satisfies RemoteRpcResponse);
+      return this.json(res, 400, {
+        ok: false,
+        error: err instanceof Error ? err.message : 'Invalid request.',
+      } satisfies RemoteRpcResponse);
     }
-    if (!isServedMethod(body.method)) return this.json(res, 400, { ok: false, error: `Unknown or unavailable method: ${String(body.method)}` } satisfies RemoteRpcResponse);
+    if (!isServedMethod(body.method))
+      return this.json(res, 400, {
+        ok: false,
+        error: `Unknown or unavailable method: ${String(body.method)}`,
+      } satisfies RemoteRpcResponse);
     const args = Array.isArray(body.args) ? body.args : [];
     try {
       const value = await this.options.backend.call(body.method, args);
       this.json(res, 200, { ok: true, value: value ?? null } satisfies RemoteRpcResponse);
     } catch (err) {
-      this.json(res, 200, { ok: false, error: err instanceof Error ? err.message : String(err) } satisfies RemoteRpcResponse);
+      this.json(res, 200, {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      } satisfies RemoteRpcResponse);
     }
   }
 }

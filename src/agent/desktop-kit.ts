@@ -16,22 +16,47 @@
 import { isAbsolute, relative, resolve } from 'node:path';
 import { statSync } from 'node:fs';
 import {
-  createBashToolDefinition, createLocalBashOperations, createLocalPowerShellOperations,
-  type ExtensionAPI, type ExtensionContext, type ExtensionFactory, type ExtensionToolContext, type ToolDefinition,
+  createBashToolDefinition,
+  createLocalBashOperations,
+  createLocalPowerShellOperations,
+  type ExtensionAPI,
+  type ExtensionContext,
+  type ExtensionFactory,
+  type ExtensionToolContext,
+  type ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
 import { StringEnum } from '@earendil-works/pi-ai';
 import { Type } from 'typebox';
 import { AGENT_TYPES, DEFAULT_AGENT, type AgentType } from './agents';
 import { ShellCommands, commandInFolder } from './shell-session';
-import { registerManageTools, type ArtifactHost, type CustomizeHost, type PetHost, type ProjectHost, type ScheduleHost, type SettingsHost } from './manage-tools';
+import {
+  registerManageTools,
+  type ArtifactHost,
+  type CustomizeHost,
+  type PetHost,
+  type ProjectHost,
+  type ScheduleHost,
+  type SettingsHost,
+} from './manage-tools';
 import type { WebSearch } from './web-search';
 import { checkScope, type WorkScope } from './work-scope';
 import type { CommandVerdict } from './command-review';
 import { tr } from '@shared/i18n/runtime';
 import { ENGINE_INFO, SEARCH_FRESHNESS, WEB_LIMITS } from '@shared/web-search';
 import {
-  MAX_SESSION_TITLE, PLAN_CHOICES, QUESTION_LIMITS,
-  type OutputStyle, type PermissionMode, type Question, type QuestionAnswer, type SessionKind, type ShellSessionMode, type SubagentProgress, type TaskUpdate, type UiRequestInput, type UiResponse,
+  MAX_SESSION_TITLE,
+  PLAN_CHOICES,
+  QUESTION_LIMITS,
+  type OutputStyle,
+  type PermissionMode,
+  type Question,
+  type QuestionAnswer,
+  type SessionKind,
+  type ShellSessionMode,
+  type SubagentProgress,
+  type TaskUpdate,
+  type UiRequestInput,
+  type UiResponse,
 } from '@shared/protocol';
 
 /** First words of the hidden message injected in plan mode (the demo model looks for it). */
@@ -92,7 +117,18 @@ export interface KitHost {
   runSubagent?(run: SubagentRun): Promise<string>;
   /** The app's other sessions; omit it to leave out the session tools (subagents have none). */
   peers?: {
-    list(scope: SessionScope, query: string): { id: string; kind: SessionKind; project: string; title: string; status: string; branch: string | null; updatedAt: number }[];
+    list(
+      scope: SessionScope,
+      query: string,
+    ): {
+      id: string;
+      kind: SessionKind;
+      project: string;
+      title: string;
+      status: string;
+      branch: string | null;
+      updatedAt: number;
+    }[];
     read(id: string, limit: number): { role: string; text: string }[];
     send(id: string, text: string): Promise<'delivered' | 'queued'>;
   };
@@ -147,9 +183,23 @@ Work collaboratively and teach as you go. Explain key concepts in plain language
 };
 
 const READ_ONLY_TOOLS = new Set([
-  'read', 'grep', 'find', 'ls', 'pidesk_todo_write', 'pidesk_exit_plan_mode', 'pidesk_ask_question', 'pidesk_task', 'pidesk_bg_output', 'pidesk_bg_kill', 'tool_search', 'codemode',
+  'read',
+  'grep',
+  'find',
+  'ls',
+  'pidesk_todo_write',
+  'pidesk_exit_plan_mode',
+  'pidesk_ask_question',
+  'pidesk_task',
+  'pidesk_bg_output',
+  'pidesk_bg_kill',
+  'tool_search',
+  'codemode',
   // Nothing here changes anything: a suggestion is only shown to the user, and the session tools below only look.
-  'pidesk_suggest_task', 'pidesk_list_sessions', 'pidesk_read_session', 'pidesk_search_session',
+  'pidesk_suggest_task',
+  'pidesk_list_sessions',
+  'pidesk_read_session',
+  'pidesk_search_session',
   // Only adds names to the Files panel.
   'pidesk_present_files',
   // Only changes the label shown in the session list.
@@ -157,29 +207,72 @@ const READ_ONLY_TOOLS = new Set([
   // Only writes the project's notes, which the user sees and edits on the Projects page.
   'pidesk_remember',
   // Look things up on the public web; the fetch refuses local and private network addresses.
-  'pidesk_web_search', 'pidesk_web_fetch',
+  'pidesk_web_search',
+  'pidesk_web_fetch',
 ]);
 const EDIT_TOOLS = new Set(['edit', 'write']);
 const SHELL_TOOLS = new Set(['bash', 'powershell', 'pidesk_bg_shell']);
 
 // Commands that only inspect state. Anything else (including running tests) counts as execution.
 const SAFE_COMMANDS = new Set([
-  'cat', 'head', 'tail', 'less', 'more', 'wc', 'ls', 'pwd', 'tree', 'find', 'grep', 'rg', 'fd', 'echo',
-  'which', 'file', 'stat', 'du', 'df', 'date', 'uname', 'whoami', 'printenv', 'sort', 'uniq', 'cut', 'diff',
+  'cat',
+  'head',
+  'tail',
+  'less',
+  'more',
+  'wc',
+  'ls',
+  'pwd',
+  'tree',
+  'find',
+  'grep',
+  'rg',
+  'fd',
+  'echo',
+  'which',
+  'file',
+  'stat',
+  'du',
+  'df',
+  'date',
+  'uname',
+  'whoami',
+  'printenv',
+  'sort',
+  'uniq',
+  'cut',
+  'diff',
   // Moving the shell changes nothing on disk; what runs after it is judged on its own.
-  'cd', 'pushd', 'popd', 'realpath', 'dirname', 'basename',
+  'cd',
+  'pushd',
+  'popd',
+  'realpath',
+  'dirname',
+  'basename',
 ]);
 const SAFE_GIT = new Set(['status', 'log', 'diff', 'show', 'branch', 'rev-parse', 'ls-files', 'blame', 'remote']);
 const RISKY = [
-  /\bgit\s+push\b/, /\bgh\s+(pr\s+(create|merge|close)|release|repo\s+delete)\b/, /\bnpm\s+publish\b/,
-  /\brm\s+-[a-z]*r/i, /\bsudo\b/, /\bgit\s+reset\s+--hard\b/, /\bgit\s+clean\b/, /\bchmod\s+(-R\s+)?777\b/,
-  /\b(curl|wget)\b[^|]*\|\s*(ba|z)?sh\b/, /\bmkfs\b/, /\bdd\s+if=/, /\bgit\s+checkout\s+--\s/,
+  /\bgit\s+push\b/,
+  /\bgh\s+(pr\s+(create|merge|close)|release|repo\s+delete)\b/,
+  /\bnpm\s+publish\b/,
+  /\brm\s+-[a-z]*r/i,
+  /\bsudo\b/,
+  /\bgit\s+reset\s+--hard\b/,
+  /\bgit\s+clean\b/,
+  /\bchmod\s+(-R\s+)?777\b/,
+  /\b(curl|wget)\b[^|]*\|\s*(ba|z)?sh\b/,
+  /\bmkfs\b/,
+  /\bdd\s+if=/,
+  /\bgit\s+checkout\s+--\s/,
 ];
 // Work works in the user's own folders (documents, downloads…), so anything that
 // deletes, moves or sends data away also needs approval.
 const WORK_RISKY = [
-  /\b(rm|rmdir|mv|del|erase|unlink|shred|truncate)\b/, /\bfind\b.*-delete\b/, /\b(scp|rsync|sftp|ftp)\b/,
-  /\b(curl|wget)\b.*(-X\s*(POST|PUT|PATCH|DELETE)|--data|\s-d\s|\s-F\s|--upload-file|\s-T\s)/, /\b(sendmail|mail|mutt)\b/,
+  /\b(rm|rmdir|mv|del|erase|unlink|shred|truncate)\b/,
+  /\bfind\b.*-delete\b/,
+  /\b(scp|rsync|sftp|ftp)\b/,
+  /\b(curl|wget)\b.*(-X\s*(POST|PUT|PATCH|DELETE)|--data|\s-d\s|\s-F\s|--upload-file|\s-T\s)/,
+  /\b(sendmail|mail|mutt)\b/,
 ];
 
 export function isReadOnlyCommand(command: string): boolean {
@@ -211,7 +304,11 @@ function workdirOf(base: string, workdir: string | undefined): string | undefine
   if (!wanted || wanted === 'null' || wanted === 'undefined') return undefined;
   const folder = resolve(base, wanted);
   let ok = false;
-  try { ok = statSync(folder).isDirectory(); } catch { /* missing: reported below */ }
+  try {
+    ok = statSync(folder).isDirectory();
+  } catch {
+    /* missing: reported below */
+  }
   if (!ok) throw new Error(`workdir is not a folder: ${folder}`);
   return folder;
 }
@@ -223,7 +320,11 @@ const inFolder = (ctx: ExtensionToolContext, cwd: string): ExtensionToolContext 
 /** Whether two paths are the same folder (a shell reports `$PWD`, which may be the symlinked spelling). */
 function sameFolder(a: string, b: string): boolean {
   if (a === b) return true;
-  try { return statSync(a).ino === statSync(b).ino && statSync(a).dev === statSync(b).dev; } catch { return false; }
+  try {
+    return statSync(a).ino === statSync(b).ino && statSync(a).dev === statSync(b).dev;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -235,7 +336,11 @@ function redundantCd(command: string, at: string, base: string): boolean {
   const found = /^\s*cd\s+(?:--\s+)?('[^']*'|"[^"]*"|[^\s&;|<>]+)\s*&&/.exec(command);
   if (!found) return false;
   const folder = found[1].replace(/^(['"])(.*)\1$/, '$2');
-  try { return sameFolder(resolve(base, folder), at); } catch { return false; }
+  try {
+    return sameFolder(resolve(base, folder), at);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -273,7 +378,11 @@ function shellToolDefinition(
     parameters: Type.Object({
       command: Type.String({ description: 'Shell command to execute' }),
       timeout: Type.Optional(Type.Number({ description: 'Timeout in seconds (optional, no default timeout)' })),
-      workdir: Type.Optional(Type.String({ description: 'Folder to run in: relative to the session folder, or absolute. Defaults to where the shell is.' })),
+      workdir: Type.Optional(
+        Type.String({
+          description: 'Folder to run in: relative to the session folder, or absolute. Defaults to where the shell is.',
+        }),
+      ),
     }),
     async execute(id, params, signal, onUpdate, ctx) {
       const input = params as { command: string; timeout?: number; workdir?: string };
@@ -281,7 +390,7 @@ function shellToolDefinition(
       const folder = workdirOf(root, input.workdir);
       const keeps = mode() === 'session';
       // Where the command starts: the shared shell's folder, or the one a process of its own gets.
-      const before = keeps ? shells.cwd ?? root : folder ?? root;
+      const before = keeps ? (shells.cwd ?? root) : (folder ?? root);
       // The shared shell cannot move for one command, so a subshell takes the `cd` instead;
       // a shell of its own can simply start in the folder.
       const command = folder && keeps ? commandInFolder(input.command, folder) : input.command;
@@ -295,13 +404,18 @@ function shellToolDefinition(
 
       const notes: string[] = [];
       const failure = shells.takeStartFailure();
-      if (failure) notes.push(`[The shared shell did not start (${failure}); each command now runs in its own process.]`);
+      if (failure)
+        notes.push(`[The shared shell did not start (${failure}); each command now runs in its own process.]`);
       const at = keeps ? shells.cwd : folder;
       if (at && !sameFolder(at, root)) notes.push(`[shell folder: ${at}]`);
       // Said after the result, not instead of it: the command ran as written, the prefix just did nothing.
-      if (keeps && before && redundantCd(input.command, before, root)) notes.push('[The shell was already in that folder, so the `cd` did nothing — a bare command is enough.]');
+      if (keeps && before && redundantCd(input.command, before, root))
+        notes.push('[The shell was already in that folder, so the `cd` did nothing — a bare command is enough.]');
       if (!notes.length) return result;
-      return { ...result, content: [...result.content, ...notes.map((text) => ({ type: 'text' as const, text: `\n${text}` }))] };
+      return {
+        ...result,
+        content: [...result.content, ...notes.map((text) => ({ type: 'text' as const, text: `\n${text}` }))],
+      };
     },
   } as ToolDefinition;
 }
@@ -320,7 +434,8 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
     // ---------------------------------------------------------------- permissions
     const ask = async (ctx: ExtensionContext, toolCallId: string, title: string, key?: string) => {
       const answer = await host.ask({ kind: 'permission', toolCallId, title }, ctx.signal);
-      if (answer.cancelled && !answer.value) return { block: true, reason: 'Approval required but nobody answered the prompt.' };
+      if (answer.cancelled && !answer.value)
+        return { block: true, reason: 'Approval required but nobody answered the prompt.' };
       if (answer.value === 'Always allow') {
         if (key) state.allowed.add(key);
         else host.setMode('acceptEdits'); // "always allow" on an edit = accept edits for this session
@@ -337,29 +452,37 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       const input = event.input as Record<string, unknown>;
 
       // Work stays in its own folder: other places need the user's say-so, whatever the tool.
-      const scope = host.scope && checkScope(host.scope, state.allowed, name, input, ctx.cwd, isReadOnlyCommand(String(input.command ?? '')), {
-        read: (path) => tr('ag.scopeRead', { path }),
-        write: (path) => tr('ag.scopeWrite', { path }),
-        run: (command, path) => tr('ag.scopeRun', { command, path }),
-      });
+      const scope =
+        host.scope &&
+        checkScope(host.scope, state.allowed, name, input, ctx.cwd, isReadOnlyCommand(String(input.command ?? '')), {
+          read: (path) => tr('ag.scopeRead', { path }),
+          write: (path) => tr('ag.scopeWrite', { path }),
+          run: (command, path) => tr('ag.scopeRun', { command, path }),
+        });
       if (scope?.kind === 'ask') return ask(ctx, event.toolCallId, scope.title, scope.key);
       if (scope?.kind === 'granted' && !SHELL_TOOLS.has(name)) return undefined;
 
       if (READ_ONLY_TOOLS.has(name)) return undefined;
 
       if (EDIT_TOOLS.has(name)) {
-        if (mode === 'plan') return { block: true, reason: 'Plan mode is read-only. Present your plan with pidesk_exit_plan_mode.' };
+        if (mode === 'plan')
+          return { block: true, reason: 'Plan mode is read-only. Present your plan with pidesk_exit_plan_mode.' };
         const abs = resolve(ctx.cwd, String(input.path ?? ''));
         const rel = relative(ctx.cwd, abs);
         const outside = rel.startsWith('..') || isAbsolute(rel);
         if (!outside && (mode === 'auto' || mode === 'acceptEdits')) return undefined;
-        return ask(ctx, event.toolCallId, `${outside ? 'Edit outside the project' : name === 'write' ? 'Create' : 'Edit'} ${input.path}`);
+        return ask(
+          ctx,
+          event.toolCallId,
+          `${outside ? 'Edit outside the project' : name === 'write' ? 'Create' : 'Edit'} ${input.path}`,
+        );
       }
 
       if (SHELL_TOOLS.has(name)) {
         const command = String(input.command ?? '');
         const readOnly = isReadOnlyCommand(command);
-        if (mode === 'plan') return readOnly ? undefined : { block: true, reason: 'Plan mode only allows read-only commands.' };
+        if (mode === 'plan')
+          return readOnly ? undefined : { block: true, reason: 'Plan mode only allows read-only commands.' };
         if (readOnly || state.allowed.has(commandKey(command))) return undefined;
         if (mode === 'auto' && !isRiskyCommand(command, state.profile)) {
           // No rule settles it: a model reads it first and authorizes it. Without that authorization
@@ -409,7 +532,9 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
     const TodoItem = Type.Object({
       content: Type.String({ description: "Imperative description, e.g. 'Fix the date formatter'" }),
       status: StringEnum(['pending', 'in_progress', 'completed'] as const),
-      activeForm: Type.Optional(Type.String({ description: "Present continuous form, e.g. 'Fixing the date formatter'" })),
+      activeForm: Type.Optional(
+        Type.String({ description: "Present continuous form, e.g. 'Fixing the date formatter'" }),
+      ),
     });
     pi.registerTool({
       name: 'pidesk_todo_write',
@@ -437,9 +562,16 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         title: Type.String({ description: 'Short plan title' }),
         plan: Type.String({ description: 'The plan in markdown' }),
       }),
-      async execute(toolCallId, params, signal): Promise<{ content: { type: 'text'; text: string }[]; details: PlanDetails; terminate?: boolean }> {
+      async execute(
+        toolCallId,
+        params,
+        signal,
+      ): Promise<{ content: { type: 'text'; text: string }[]; details: PlanDetails; terminate?: boolean }> {
         if (state.mode !== 'plan') {
-          return { content: [{ type: 'text', text: 'Not in plan mode. Proceed with the task.' }], details: { status: 'skipped' } };
+          return {
+            content: [{ type: 'text', text: 'Not in plan mode. Proceed with the task.' }],
+            details: { status: 'skipped' },
+          };
         }
         const choice = (await host.ask({ kind: 'plan', toolCallId, title: params.title }, signal)).value;
         if (choice === PLAN_CHOICES[0] || choice === PLAN_CHOICES[1]) {
@@ -450,7 +582,9 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
           };
         }
         return {
-          content: [{ type: 'text', text: 'The user wants to keep refining the plan. Stop and wait for their feedback.' }],
+          content: [
+            { type: 'text', text: 'The user wants to keep refining the plan. Stop and wait for their feedback.' },
+          ],
           details: { status: 'keep' },
           terminate: true,
         };
@@ -461,7 +595,12 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
     const Option = Type.Object({
       label: Type.String({ description: 'Short choice text (1-5 words)' }),
       description: Type.Optional(Type.String({ description: 'One sentence on what this choice means or implies' })),
-      preview: Type.Optional(Type.String({ description: 'Markdown shown beside the options when this one is highlighted (a code sketch, config, layout). Single-select only.' })),
+      preview: Type.Optional(
+        Type.String({
+          description:
+            'Markdown shown beside the options when this one is highlighted (a code sketch, config, layout). Single-select only.',
+        }),
+      ),
     });
     pi.registerTool({
       name: 'pidesk_ask_question',
@@ -477,24 +616,42 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
           Type.Object({
             question: Type.String({ description: 'The complete question, ending with a question mark' }),
             header: Type.String({ description: `Very short tab label, at most ${QUESTION_LIMITS.header} characters` }),
-            multiSelect: Type.Optional(Type.Boolean({ description: 'Allow several answers (previews are ignored then)' })),
+            multiSelect: Type.Optional(
+              Type.Boolean({ description: 'Allow several answers (previews are ignored then)' }),
+            ),
             options: Type.Array(Option, { minItems: QUESTION_LIMITS.optionsMin, maxItems: QUESTION_LIMITS.optionsMax }),
           }),
           { minItems: 1, maxItems: QUESTION_LIMITS.questions },
         ),
       }),
-      async execute(toolCallId, params, signal): Promise<{ content: { type: 'text'; text: string }[]; details: { status: 'answered' | 'cancelled'; answers?: QuestionAnswer[] } }> {
+      async execute(
+        toolCallId,
+        params,
+        signal,
+      ): Promise<{
+        content: { type: 'text'; text: string }[];
+        details: { status: 'answered' | 'cancelled'; answers?: QuestionAnswer[] };
+      }> {
         const questions: Question[] = params.questions.map((q) => ({
           question: q.question,
           header: q.header.slice(0, QUESTION_LIMITS.header),
           multiSelect: !!q.multiSelect,
-          options: q.options.map((o) => ({ label: o.label, description: o.description, preview: q.multiSelect ? undefined : o.preview })),
+          options: q.options.map((o) => ({
+            label: o.label,
+            description: o.description,
+            preview: q.multiSelect ? undefined : o.preview,
+          })),
         }));
         const title = questions.map((q) => q.question).join('\n');
         const reply = await host.ask({ kind: 'questions', toolCallId, title, questions }, signal);
         if (reply.cancelled || !reply.answers) {
           return {
-            content: [{ type: 'text', text: 'The user dismissed the questions without answering. Do not guess: stop and ask in plain text, or continue with the safest option and say so.' }],
+            content: [
+              {
+                type: 'text',
+                text: 'The user dismissed the questions without answering. Do not guess: stop and ask in plain text, or continue with the safest option and say so.',
+              },
+            ],
             details: { status: 'cancelled' },
           };
         }
@@ -521,8 +678,16 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         tasks: Type.Array(
           Type.Object({
             title: Type.String({ description: 'Short title, under 60 characters' }),
-            prompt: Type.String({ description: 'Complete, self-contained instructions: the new session knows nothing about this conversation' }),
-            code_folder: Type.Optional(Type.String({ description: 'Coding work only: one of the project\'s Code folders listed in the project context; the task then starts as a Code session there' })),
+            prompt: Type.String({
+              description:
+                'Complete, self-contained instructions: the new session knows nothing about this conversation',
+            }),
+            code_folder: Type.Optional(
+              Type.String({
+                description:
+                  "Coding work only: one of the project's Code folders listed in the project context; the task then starts as a Code session there",
+              }),
+            ),
           }),
           { minItems: 1, maxItems: 5 },
         ),
@@ -532,12 +697,19 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         const linked = host.project?.codeFolders() ?? [];
         const tasks = params.tasks.map(({ code_folder, ...task }) => {
           if (code_folder && !linked.includes(code_folder)) {
-            throw new Error(`${code_folder} is not a Code folder of this project. ${linked.length ? `Use one of: ${linked.join(', ')}.` : 'This project has no Code folders; leave code_folder out.'}`);
+            throw new Error(
+              `${code_folder} is not a Code folder of this project. ${linked.length ? `Use one of: ${linked.join(', ')}.` : 'This project has no Code folders; leave code_folder out.'}`,
+            );
           }
           return code_folder ? { ...task, codeFolder: code_folder } : task;
         });
         return {
-          content: [{ type: 'text', text: `Suggested ${tasks.length} task${tasks.length > 1 ? 's' : ''} to the user. Carry on with the current task; they decide whether to start it.` }],
+          content: [
+            {
+              type: 'text',
+              text: `Suggested ${tasks.length} task${tasks.length > 1 ? 's' : ''} to the user. Carry on with the current task; they decide whether to start it.`,
+            },
+          ],
           details: { tasks },
         };
       },
@@ -557,7 +729,10 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         promptSnippet: 'List result files in the Files panel',
         promptGuidelines: ['After a command produces a deliverable file, call pidesk_present_files with its path.'],
         parameters: Type.Object({
-          paths: Type.Array(Type.String({ description: 'File path, relative to the working folder or absolute' }), { minItems: 1, maxItems: 20 }),
+          paths: Type.Array(Type.String({ description: 'File path, relative to the working folder or absolute' }), {
+            minItems: 1,
+            maxItems: 20,
+          }),
         }),
         annotations: { readOnlyHint: true },
         // Declared to the model and never callable from a codemode script, so the call is a visible step of its own.
@@ -570,7 +745,12 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
             return abs;
           });
           present(files);
-          return { content: [{ type: 'text', text: `Listed ${files.length} file${files.length > 1 ? 's' : ''} in the Files panel.` }], details: { files } };
+          return {
+            content: [
+              { type: 'text', text: `Listed ${files.length} file${files.length > 1 ? 's' : ''} in the Files panel.` },
+            ],
+            details: { files },
+          };
         },
       });
     }
@@ -610,7 +790,10 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         }),
         async execute(_id, params) {
           const length = project.remember(params);
-          return { content: [{ type: 'text', text: `Saved to project memory (${length} characters).` }], details: { length } };
+          return {
+            content: [{ type: 'text', text: `Saved to project memory (${length} characters).` }],
+            details: { length },
+          };
         },
       });
     }
@@ -623,26 +806,55 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         label: 'Web search',
         description:
           'Search the web for current information, documentation or anything outside the project. Returns titles, URLs and snippets; ' +
-          'read a promising page in full with pidesk_web_fetch. The search engine is chosen in the user\'s settings, so do not pick one. ' +
+          "read a promising page in full with pidesk_web_fetch. The search engine is chosen in the user's settings, so do not pick one. " +
           'Write the query like a search box query, add freshness for recent news, and use domains to restrict to given sites.',
         promptSnippet: 'Search the web for current information',
         parameters: Type.Object({
           query: Type.String({ description: 'What to search for' }),
-          maxResults: Type.Optional(Type.Number({ description: `How many results, 1-${WEB_LIMITS.maxResults} (default ${WEB_LIMITS.defaultResults})` })),
-          freshness: Type.Optional(StringEnum(SEARCH_FRESHNESS, { description: 'Only results from the last day / week / month / year' })),
-          domains: Type.Optional(Type.Array(Type.String(), { description: 'Only these sites, e.g. ["docs.python.org"]' })),
+          maxResults: Type.Optional(
+            Type.Number({
+              description: `How many results, 1-${WEB_LIMITS.maxResults} (default ${WEB_LIMITS.defaultResults})`,
+            }),
+          ),
+          freshness: Type.Optional(
+            StringEnum(SEARCH_FRESHNESS, { description: 'Only results from the last day / week / month / year' }),
+          ),
+          domains: Type.Optional(
+            Type.Array(Type.String(), { description: 'Only these sites, e.g. ["docs.python.org"]' }),
+          ),
         }),
         annotations: { readOnlyHint: true },
         async execute(_id, params, signal) {
           const query = params.query.trim();
           if (!query) throw new Error('The query cannot be empty');
-          const maxResults = Math.min(WEB_LIMITS.maxResults, Math.max(1, Math.round(params.maxResults ?? WEB_LIMITS.defaultResults)));
-          const { engine, hits, failed } = await web.search({ query, maxResults, freshness: params.freshness, domains: params.domains?.filter(Boolean) }, signal);
-          const notes = failed.map((f) => `${ENGINE_INFO[f.engine].label} failed (${f.reason}), so ${ENGINE_INFO[engine].label} was used.`);
+          const maxResults = Math.min(
+            WEB_LIMITS.maxResults,
+            Math.max(1, Math.round(params.maxResults ?? WEB_LIMITS.defaultResults)),
+          );
+          const { engine, hits, failed } = await web.search(
+            { query, maxResults, freshness: params.freshness, domains: params.domains?.filter(Boolean) },
+            signal,
+          );
+          const notes = failed.map(
+            (f) => `${ENGINE_INFO[f.engine].label} failed (${f.reason}), so ${ENGINE_INFO[engine].label} was used.`,
+          );
           const body = hits.length
-            ? hits.map((h, i) => `${i + 1}. ${h.title}\n   ${h.url}${h.date ? ` · ${h.date}` : ''}${h.snippet ? `\n   ${h.snippet}` : ''}`).join('\n\n')
+            ? hits
+                .map(
+                  (h, i) =>
+                    `${i + 1}. ${h.title}\n   ${h.url}${h.date ? ` · ${h.date}` : ''}${h.snippet ? `\n   ${h.snippet}` : ''}`,
+                )
+                .join('\n\n')
             : 'No results.';
-          return { content: [{ type: 'text', text: [...notes, `Results for "${query}" (${ENGINE_INFO[engine].label}):`, body].join('\n\n') }], details: { engine, hits } };
+          return {
+            content: [
+              {
+                type: 'text',
+                text: [...notes, `Results for "${query}" (${ENGINE_INFO[engine].label}):`, body].join('\n\n'),
+              },
+            ],
+            details: { engine, hits },
+          };
         },
       });
 
@@ -655,19 +867,34 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         promptSnippet: 'Read a web page by URL',
         parameters: Type.Object({
           url: Type.String({ description: 'The page address, starting with http:// or https://' }),
-          offset: Type.Optional(Type.Number({ description: 'Character to start from, to continue a page that was cut' })),
-          maxChars: Type.Optional(Type.Number({ description: `Characters to return (default ${WEB_LIMITS.pageChars}, at most ${WEB_LIMITS.maxPageChars})` })),
+          offset: Type.Optional(
+            Type.Number({ description: 'Character to start from, to continue a page that was cut' }),
+          ),
+          maxChars: Type.Optional(
+            Type.Number({
+              description: `Characters to return (default ${WEB_LIMITS.pageChars}, at most ${WEB_LIMITS.maxPageChars})`,
+            }),
+          ),
         }),
         annotations: { readOnlyHint: true },
         async execute(_id, params, signal) {
           const page = await web.fetchPage(params.url.trim(), signal);
           const start = Math.max(0, Math.round(params.offset ?? 0));
-          const size = Math.min(WEB_LIMITS.maxPageChars, Math.max(1, Math.round(params.maxChars ?? WEB_LIMITS.pageChars)));
+          const size = Math.min(
+            WEB_LIMITS.maxPageChars,
+            Math.max(1, Math.round(params.maxChars ?? WEB_LIMITS.pageChars)),
+          );
           const slice = page.text.slice(start, start + size);
           const end = start + slice.length;
           const head = [page.title && `# ${page.title}`, page.url].filter(Boolean).join('\n');
-          const tail = end < page.text.length ? `\n\n[Cut at character ${end} of ${page.text.length}. Continue with offset=${end}.]` : '';
-          return { content: [{ type: 'text', text: `${head}\n\n${slice || '(empty page)'}${tail}` }], details: { url: page.url, title: page.title, length: page.text.length } };
+          const tail =
+            end < page.text.length
+              ? `\n\n[Cut at character ${end} of ${page.text.length}. Continue with offset=${end}.]`
+              : '';
+          return {
+            content: [{ type: 'text', text: `${head}\n\n${slice || '(empty page)'}${tail}` }],
+            details: { url: page.url, title: page.title, length: page.text.length },
+          };
         },
       });
     }
@@ -722,7 +949,11 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
           "Questions about the user's sessions or conversations in this app (what they worked on, what a session decided, which session dealt with X) are answered with pidesk_list_sessions and pidesk_read_session. Never open pi's session files (*.jsonl under the agent's sessions folder) or Pi Desktop's data folder with read, grep or the shell for this.",
         ],
         parameters: Type.Object({
-          scope: Type.Optional(StringEnum(SESSION_SCOPES, { description: '"project" (default): this project only. "all": every Work and Code session.' })),
+          scope: Type.Optional(
+            StringEnum(SESSION_SCOPES, {
+              description: '"project" (default): this project only. "all": every Work and Code session.',
+            }),
+          ),
           query: Type.Optional(Type.String({ description: 'Text to look for in titles, folders and messages' })),
         }),
         annotations: { readOnlyHint: true },
@@ -730,15 +961,25 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
           const scope: SessionScope = params.scope === 'all' ? 'all' : 'project';
           const list = peers.list(scope, params.query ?? '');
           const text = list.length
-            ? list.map((s) => `- ${s.id} · ${s.kind} · ${s.project} · ${s.title} · ${s.status}${s.branch ? ` · ${s.branch}` : ''} · active ${new Date(s.updatedAt).toISOString()}`).join('\n')
-            : params.query ? 'No session matches.' : scope === 'all' ? 'There are no other sessions.' : 'There are no other sessions in this project. Try scope "all".';
+            ? list
+                .map(
+                  (s) =>
+                    `- ${s.id} · ${s.kind} · ${s.project} · ${s.title} · ${s.status}${s.branch ? ` · ${s.branch}` : ''} · active ${new Date(s.updatedAt).toISOString()}`,
+                )
+                .join('\n')
+            : params.query
+              ? 'No session matches.'
+              : scope === 'all'
+                ? 'There are no other sessions.'
+                : 'There are no other sessions in this project. Try scope "all".';
           return { content: [{ type: 'text', text }], details: { sessions: list } };
         },
       });
       pi.registerTool({
         name: 'pidesk_read_session',
         label: 'Read session',
-        description: 'Read the most recent messages of another Pi Desktop session (any project, Work or Code), to see what it did or decided.',
+        description:
+          'Read the most recent messages of another Pi Desktop session (any project, Work or Code), to see what it did or decided.',
         parameters: Type.Object({
           session_id: Type.String({ description: 'Id from pidesk_list_sessions' }),
           limit: Type.Optional(Type.Number({ description: 'How many recent messages (default 10, at most 30)' })),
@@ -746,7 +987,9 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         annotations: { readOnlyHint: true },
         async execute(_id, params) {
           const lines = peers.read(params.session_id, params.limit ?? 10);
-          const text = lines.length ? lines.map((l) => `${l.role === 'user' ? 'User' : 'Assistant'}: ${l.text}`).join('\n\n') : 'That session has no messages yet.';
+          const text = lines.length
+            ? lines.map((l) => `${l.role === 'user' ? 'User' : 'Assistant'}: ${l.text}`).join('\n\n')
+            : 'That session has no messages yet.';
           return { content: [{ type: 'text', text }], details: { session: params.session_id } };
         },
       });
@@ -758,12 +1001,22 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
           'If that session is busy the message waits until its current turn ends. It sees who sent it and may reply the same way; do not start long back-and-forth exchanges.',
         parameters: Type.Object({
           session_id: Type.String({ description: 'Id from pidesk_list_sessions' }),
-          message: Type.String({ description: 'The message: self-contained, since that session has not seen this conversation' }),
+          message: Type.String({
+            description: 'The message: self-contained, since that session has not seen this conversation',
+          }),
         }),
         async execute(_id, params) {
           const outcome = await peers.send(params.session_id, params.message);
           return {
-            content: [{ type: 'text', text: outcome === 'queued' ? 'That session is busy: the message will be delivered when its current turn ends.' : 'Delivered; that session is now working on it.' }],
+            content: [
+              {
+                type: 'text',
+                text:
+                  outcome === 'queued'
+                    ? 'That session is busy: the message will be delivered when its current turn ends.'
+                    : 'Delivered; that session is now working on it.',
+              },
+            ],
             details: { session: params.session_id, outcome },
           };
         },
@@ -787,7 +1040,11 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       }
     };
     const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}\n…(truncated)` : text);
-    const ended = (progress: SubagentProgress, activity: string): SubagentProgress => ({ ...progress, endedAt: Date.now(), activity });
+    const ended = (progress: SubagentProgress, activity: string): SubagentProgress => ({
+      ...progress,
+      endedAt: Date.now(),
+      activity,
+    });
 
     // ---------------------------------------------------------------- task (subagent)
     const runSubagent = host.runSubagent;
@@ -804,8 +1061,14 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         parameters: Type.Object({
           description: Type.String({ description: '3-6 word summary shown to the user' }),
           prompt: Type.String({ description: 'Complete, self-contained instructions for the subagent' }),
-          subagent_type: Type.Optional(StringEnum(agents.map((a) => a.name) as [string, ...string[]], { description: `Which subagent to use (default ${DEFAULT_AGENT}). ${agents.map((a) => `${a.name}: ${a.description}`).join(' ')}` })),
-          run_in_background: Type.Optional(Type.Boolean({ description: 'Return immediately and get the report in a later message' })),
+          subagent_type: Type.Optional(
+            StringEnum(agents.map((a) => a.name) as [string, ...string[]], {
+              description: `Which subagent to use (default ${DEFAULT_AGENT}). ${agents.map((a) => `${a.name}: ${a.description}`).join(' ')}`,
+            }),
+          ),
+          run_in_background: Type.Optional(
+            Type.Boolean({ description: 'Return immediately and get the report in a later message' }),
+          ),
         }),
         annotations: { readOnlyHint: true },
         async execute(id, params, signal, onUpdate, ctx) {
@@ -830,20 +1093,48 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
               (text) => {
                 const report = text || 'The subagent produced no report.';
                 const state = text ? 'done' : 'err';
-                const done = ended(progress ?? { startedAt: Date.now(), tokens: 0, toolUses: 0, activity: '', steps: [] }, text ? 'Done' : 'Failed');
-                host.taskUpdate?.({ toolCallId: id, state, progress: done, summary: subagentSummary(stats), text: report });
+                const done = ended(
+                  progress ?? { startedAt: Date.now(), tokens: 0, toolUses: 0, activity: '', steps: [] },
+                  text ? 'Done' : 'Failed',
+                );
+                host.taskUpdate?.({
+                  toolCallId: id,
+                  state,
+                  progress: done,
+                  summary: subagentSummary(stats),
+                  text: report,
+                });
                 notify(id, `Background task "${params.description}" finished.`, state, clip(report, 20000));
               },
               (err: Error) => {
                 const stopped = /stopped this subagent/.test(err.message);
                 const state = stopped ? 'stopped' : 'err';
-                const end = ended(progress ?? { startedAt: Date.now(), tokens: 0, toolUses: 0, activity: '', steps: [] }, stopped ? 'Stopped' : 'Failed');
-                host.taskUpdate?.({ toolCallId: id, state, progress: end, summary: subagentSummary(stats), text: err.message });
-                notify(id, `Background task "${params.description}" ${stopped ? 'was stopped by the user' : 'failed'}.`, state, err.message);
+                const end = ended(
+                  progress ?? { startedAt: Date.now(), tokens: 0, toolUses: 0, activity: '', steps: [] },
+                  stopped ? 'Stopped' : 'Failed',
+                );
+                host.taskUpdate?.({
+                  toolCallId: id,
+                  state,
+                  progress: end,
+                  summary: subagentSummary(stats),
+                  text: err.message,
+                });
+                notify(
+                  id,
+                  `Background task "${params.description}" ${stopped ? 'was stopped by the user' : 'failed'}.`,
+                  state,
+                  err.message,
+                );
               },
             );
             return {
-              content: [{ type: 'text', text: `Started "${params.description}" in the background (task ${id}). Keep working; its report will arrive as a <task-notification> message. Do not poll or wait for it.` }],
+              content: [
+                {
+                  type: 'text',
+                  text: `Started "${params.description}" in the background (task ${id}). Keep working; its report will arrive as a <task-notification> message. Do not poll or wait for it.`,
+                },
+              ],
               details: { ...shown, background: true },
             };
           }
@@ -857,7 +1148,10 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
             onProgress: (next, live) => {
               stats = next;
               progress = live;
-              onUpdate?.({ content: [{ type: 'text', text: subagentSummary(stats) }], details: { ...shown, stats, progress, text: '' } });
+              onUpdate?.({
+                content: [{ type: 'text', text: subagentSummary(stats) }],
+                details: { ...shown, stats, progress, text: '' },
+              });
             },
           });
           if (signal?.aborted) throw new Error('Subagent aborted');
@@ -885,16 +1179,28 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
     pi.on('session_start', () => {
       const settings = (pi.getSettings() ?? {}) as { shellPath?: string; shellCommandPrefix?: string };
       shellPath = settings.shellPath;
-      pi.registerTool(shellToolDefinition(
-        createBashToolDefinition(sessionCwd, { operations: shellBackend.operations, commandPrefix: settings.shellCommandPrefix }),
-        shellBackend,
-        shellMode,
-        sessionCwd,
-      ));
+      pi.registerTool(
+        shellToolDefinition(
+          createBashToolDefinition(sessionCwd, {
+            operations: shellBackend.operations,
+            commandPrefix: settings.shellCommandPrefix,
+          }),
+          shellBackend,
+          shellMode,
+          sessionCwd,
+        ),
+      );
     });
 
     // ---------------------------------------------------------------- pidesk_bg_shell
-    interface ShellTask { command: string; output: string; state: TaskUpdate['state']; exitCode?: number | null; startedAt: number; stop: AbortController }
+    interface ShellTask {
+      command: string;
+      output: string;
+      state: TaskUpdate['state'];
+      exitCode?: number | null;
+      startedAt: number;
+      stop: AbortController;
+    }
     const shells = new Map<string, ShellTask>();
     const OUTPUT_CAP = 200_000;
     const SHOWN_TAIL = 16_000;
@@ -905,8 +1211,19 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       state: t.state,
       summary: t.state === 'running' ? 'running' : `exit ${t.exitCode ?? '?'}`,
       progress: {
-        startedAt: t.startedAt, endedAt: t.state === 'running' ? undefined : Date.now(), tokens: 0, toolUses: 0, steps: [],
-        activity: t.state === 'running' ? 'Running a command' : t.state === 'stopped' ? 'Stopped' : t.state === 'err' ? 'Failed' : 'Done',
+        startedAt: t.startedAt,
+        endedAt: t.state === 'running' ? undefined : Date.now(),
+        tokens: 0,
+        toolUses: 0,
+        steps: [],
+        activity:
+          t.state === 'running'
+            ? 'Running a command'
+            : t.state === 'stopped'
+              ? 'Stopped'
+              : t.state === 'err'
+                ? 'Failed'
+                : 'Done',
       },
       shell: { output: t.output.slice(-SHOWN_TAIL), exitCode: t.exitCode },
     });
@@ -923,11 +1240,19 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       parameters: Type.Object({
         command: Type.String({ description: 'The command to run' }),
         description: Type.Optional(Type.String({ description: '3-6 word summary shown to the user' })),
-        workdir: Type.Optional(Type.String({ description: 'Folder to run in: relative to the session folder, or absolute' })),
+        workdir: Type.Optional(
+          Type.String({ description: 'Folder to run in: relative to the session folder, or absolute' }),
+        ),
       }),
       async execute(id, params, _signal, _onUpdate, ctx) {
         const folder = workdirOf(ctx.cwd, params.workdir);
-        const task: ShellTask = { command: params.command, output: '', state: 'running', startedAt: Date.now(), stop: new AbortController() };
+        const task: ShellTask = {
+          command: params.command,
+          output: '',
+          state: 'running',
+          startedAt: Date.now(),
+          stop: new AbortController(),
+        };
         shells.set(id, task);
         const untrack = host.trackTask?.(id, task.stop);
         let timer: ReturnType<typeof setTimeout> | undefined;
@@ -958,11 +1283,22 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
             untrack?.();
             if (timer) clearTimeout(timer);
             push();
-            const how = task.state === 'stopped' ? 'was stopped by the user' : `exited with code ${task.exitCode ?? 'unknown'}`;
-            notify(id, `Background command "${title}" ${how}.`, task.state, `Last output:\n${task.output.slice(-4000) || '(no output)'}`);
+            const how =
+              task.state === 'stopped' ? 'was stopped by the user' : `exited with code ${task.exitCode ?? 'unknown'}`;
+            notify(
+              id,
+              `Background command "${title}" ${how}.`,
+              task.state,
+              `Last output:\n${task.output.slice(-4000) || '(no output)'}`,
+            );
           });
         return {
-          content: [{ type: 'text', text: `Started \`${params.command}\` in the background (task ${id}). Use pidesk_bg_output to read its output and pidesk_bg_kill to stop it; you will be notified when it exits, so end the turn instead of sleeping or polling.` }],
+          content: [
+            {
+              type: 'text',
+              text: `Started \`${params.command}\` in the background (task ${id}). Use pidesk_bg_output to read its output and pidesk_bg_kill to stop it; you will be notified when it exits, so end the turn instead of sleeping or polling.`,
+            },
+          ],
           details: { description: title, command: params.command, background: true },
         };
       },
@@ -980,7 +1316,8 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       async execute(_id, params) {
         const task = shells.get(params.id);
         if (!task) throw new Error(`No background shell with id ${params.id}`);
-        const status = task.state === 'running' ? 'running' : `finished (${task.state}, exit code ${task.exitCode ?? 'unknown'})`;
+        const status =
+          task.state === 'running' ? 'running' : `finished (${task.state}, exit code ${task.exitCode ?? 'unknown'})`;
         const out = task.output.slice(-Math.max(1, Math.min(params.tail ?? 8000, 50_000)));
         return { content: [{ type: 'text', text: `Status: ${status}\n${out || '(no output yet)'}` }], details: {} };
       },
@@ -994,7 +1331,8 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       async execute(_id, params) {
         const task = shells.get(params.id);
         if (!task) throw new Error(`No background shell with id ${params.id}`);
-        if (task.state !== 'running') return { content: [{ type: 'text', text: `Already finished (${task.state}).` }], details: {} };
+        if (task.state !== 'running')
+          return { content: [{ type: 'text', text: `Already finished (${task.state}).` }], details: {} };
         task.stop.abort();
         return { content: [{ type: 'text', text: 'Stopping the command.' }], details: {} };
       },
@@ -1003,10 +1341,14 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
 }
 
 export function subagentSummary(stats: SubagentStats) {
-  return [
-    stats.commands && `ran ${stats.commands} command${stats.commands > 1 ? 's' : ''}${stats.failed ? ` (${stats.failed} failed)` : ''}`,
-    stats.reads && `read ${stats.reads} file${stats.reads > 1 ? 's' : ''}`,
-    stats.searches && `searched ${stats.searches} time${stats.searches > 1 ? 's' : ''}`,
-  ].filter(Boolean).join(', ') || 'working';
+  return (
+    [
+      stats.commands &&
+        `ran ${stats.commands} command${stats.commands > 1 ? 's' : ''}${stats.failed ? ` (${stats.failed} failed)` : ''}`,
+      stats.reads && `read ${stats.reads} file${stats.reads > 1 ? 's' : ''}`,
+      stats.searches && `searched ${stats.searches} time${stats.searches > 1 ? 's' : ''}`,
+    ]
+      .filter(Boolean)
+      .join(', ') || 'working'
+  );
 }
-

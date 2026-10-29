@@ -1,10 +1,31 @@
 import {
-  ArrowUpIcon, CheckIcon, ChevronDownIcon, CircleDashedIcon, GitBranchIcon, GitCommitHorizontalIcon, GitMergeIcon, GitPullRequestCreateIcon, GitPullRequestIcon,
-  LoaderCircleIcon, MessageSquareIcon, SquareArrowOutUpRightIcon, TriangleAlertIcon, XIcon,
+  ArrowUpIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  CircleDashedIcon,
+  GitBranchIcon,
+  GitCommitHorizontalIcon,
+  GitMergeIcon,
+  GitPullRequestCreateIcon,
+  GitPullRequestIcon,
+  LoaderCircleIcon,
+  MessageSquareIcon,
+  SquareArrowOutUpRightIcon,
+  TriangleAlertIcon,
+  XIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { call } from '@/lib/api';
@@ -21,8 +42,18 @@ import { forgeName, forgeWords } from '@shared/forge';
 import { gitActions, type GitAction, type GitActionItem } from './pr-actions';
 import { fmtLines, prBadge, prCiLine, prRepo, prSize, type PrBadge, type PrLike, type PrTone } from '@shared/pr-status';
 
-const DOT: Record<string, string> = { pass: 'bg-success', fail: 'bg-destructive', pending: 'bg-warning', none: 'bg-muted-foreground/60' };
-const ACTION_ICON: Record<GitAction, typeof ArrowUpIcon> = { pr: GitPullRequestCreateIcon, commit: GitCommitHorizontalIcon, push: ArrowUpIcon, sync: GitMergeIcon };
+const DOT: Record<string, string> = {
+  pass: 'bg-success',
+  fail: 'bg-destructive',
+  pending: 'bg-warning',
+  none: 'bg-muted-foreground/60',
+};
+const ACTION_ICON: Record<GitAction, typeof ArrowUpIcon> = {
+  pr: GitPullRequestCreateIcon,
+  commit: GitCommitHorizontalIcon,
+  push: ArrowUpIcon,
+  sync: GitMergeIcon,
+};
 export const TONE: Record<PrTone, string> = {
   conflict: 'bg-warning/15 text-warning',
   review: 'bg-warning/15 text-warning',
@@ -40,7 +71,11 @@ const BAR_TONE: Partial<Record<PrTone, string>> = {
   conflict: 'border-warning/40 bg-warning/10 hover:bg-warning/15',
   closed: 'border-destructive/30 bg-destructive/5 hover:bg-destructive/10',
 };
-const STATE_COLOR: Record<string, string> = { open: 'text-success', merged: 'text-[#8957e5]', closed: 'text-destructive' };
+const STATE_COLOR: Record<string, string> = {
+  open: 'text-success',
+  merged: 'text-[#8957e5]',
+  closed: 'text-destructive',
+};
 const CHECK_LABEL = { pass: 'prbar.checkPass', fail: 'prbar.checkFail', pending: 'prbar.checkPending' } as const;
 
 /** Branch / PR status above the Code composer: what the branch still owes, and how to send it. */
@@ -51,7 +86,14 @@ export function PrBar({ s }: { s: SessionView }) {
   const id = s.meta.id;
   const st = s.gitState;
   const pr = s.pr;
-  const { actions, primary } = gitActions({ branch: s.meta.branch, baseBranch: s.meta.baseBranch, st, pr, forge: pr?.forge ?? st?.forge, strategy });
+  const { actions, primary } = gitActions({
+    branch: s.meta.branch,
+    baseBranch: s.meta.baseBranch,
+    st,
+    pr,
+    forge: pr?.forge ?? st?.forge,
+    strategy,
+  });
   // Nothing to commit, push or open: the bar would only restate the branch name.
   if (st && !pr && !st.behind && !st.baseBehind && !actions.some((a) => a.enabled)) return null;
   // With nothing else to send, a base branch that moved on is the only thing the button offers.
@@ -69,17 +111,25 @@ export function PrBar({ s }: { s: SessionView }) {
   // The PR's own size beats the working tree once there is one: that is the number that gets reviewed.
   const size = pr ? prSize(pr) : null;
   const sync = st && (
-    <span className="flex shrink-0 items-center gap-2 whitespace-nowrap font-mono text-[11px]">
-      {dirty > 0 && (pending.length > 0 && !size ? (
-        <Lines add={add} del={del} title={t('prbar.viewDiff')} onClick={openDiffPanel} />
-      ) : (
-        <span className="text-muted-foreground">{t('prbar.uncommitted', { n: dirty })}</span>
-      ))}
+    <span className="flex shrink-0 items-center gap-2 font-mono text-[11px] whitespace-nowrap">
+      {dirty > 0 &&
+        (pending.length > 0 && !size ? (
+          <Lines add={add} del={del} title={t('prbar.viewDiff')} onClick={openDiffPanel} />
+        ) : (
+          <span className="text-muted-foreground">{t('prbar.uncommitted', { n: dirty })}</span>
+        ))}
       {st.ahead > 0 && <span className="text-warning">{t('prbar.toPush', { n: st.ahead })}</span>}
       {st.behind > 0 && <span className="text-info">{t('prbar.toPull', { n: st.behind })}</span>}
-      {st.baseBehind > 0 && st.base && <span className="text-info">{t('prbar.baseBehind', { base: st.base, n: st.baseBehind })}</span>}
+      {st.baseBehind > 0 && st.base && (
+        <span className="text-info">{t('prbar.baseBehind', { base: st.base, n: st.baseBehind })}</span>
+      )}
       {!st.upstream && <span className="text-muted-foreground">{t('prbar.notPushed')}</span>}
-      {!dirty && !st.ahead && !st.behind && !st.baseBehind && st.upstream && <span className="flex items-center gap-1 text-muted-foreground"><CheckIcon className="size-3" />{t('prbar.synced')}</span>}
+      {!dirty && !st.ahead && !st.behind && !st.baseBehind && st.upstream && (
+        <span className="flex items-center gap-1 text-muted-foreground">
+          <CheckIcon className="size-3" />
+          {t('prbar.synced')}
+        </span>
+      )}
     </span>
   );
   const hide = (
@@ -96,8 +146,10 @@ export function PrBar({ s }: { s: SessionView }) {
     return (
       <div className="mb-2 flex items-center gap-2 rounded-lg border bg-card/60 px-2.5 py-1.5 text-xs transition-colors hover:bg-card">
         <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="shrink-0 whitespace-nowrap font-medium">{fname(s.meta.projectPath)}</span>
-        <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={s.meta.branch}>{s.meta.branch}</span>
+        <span className="shrink-0 font-medium whitespace-nowrap">{fname(s.meta.projectPath)}</span>
+        <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={s.meta.branch}>
+          {s.meta.branch}
+        </span>
         <span className="flex-1" />
         {sync}
         {current && <SplitButton s={s} current={current} actions={actions} primary={primary} run={ask} />}
@@ -107,36 +159,67 @@ export function PrBar({ s }: { s: SessionView }) {
   }
   const open = () => call('app:openExternal', pr.url);
   const badge = prBadge(pr);
-  const color = pr.draft ? 'text-muted-foreground' : STATE_COLOR[pr.state] ?? 'text-muted-foreground';
+  const color = pr.draft ? 'text-muted-foreground' : (STATE_COLOR[pr.state] ?? 'text-muted-foreground');
   const Icon = pr.state === 'merged' ? GitMergeIcon : GitPullRequestIcon;
   return (
-    <div className={cn('group/pr mb-2 flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors', BAR_TONE[badge.tone] ?? 'bg-card/60 hover:bg-card')}>
+    <div
+      className={cn(
+        'group/pr mb-2 flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors',
+        BAR_TONE[badge.tone] ?? 'bg-card/60 hover:bg-card',
+      )}
+    >
       <div className="flex min-w-0 items-center gap-1.5">
         <Tooltip>
           <TooltipTrigger asChild>
             <div className="flex min-w-0 cursor-default items-center gap-1.5">
-              <button onClick={open} className={cn('flex shrink-0 items-center gap-1 font-medium tabular-nums', color)} title={`${badge.label} · ${pr.url}`}>
-                {pr.mergeable === 'conflicting' ? <TriangleAlertIcon className="size-3.5 text-warning" /> : <Icon className="size-3.5" />}#{pr.num}
+              <button
+                onClick={open}
+                className={cn('flex shrink-0 items-center gap-1 font-medium tabular-nums', color)}
+                title={`${badge.label} · ${pr.url}`}
+              >
+                {pr.mergeable === 'conflicting' ? (
+                  <TriangleAlertIcon className="size-3.5 text-warning" />
+                ) : (
+                  <Icon className="size-3.5" />
+                )}
+                #{pr.num}
               </button>
-              <span className="truncate text-muted-foreground" title={s.meta.projectPath}>{fname(s.meta.projectPath)}</span>
-              <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground/70" title={s.meta.branch}>{s.meta.branch}</span>
+              <span className="truncate text-muted-foreground" title={s.meta.projectPath}>
+                {fname(s.meta.projectPath)}
+              </span>
+              <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground/70" title={s.meta.branch}>
+                {s.meta.branch}
+              </span>
             </div>
           </TooltipTrigger>
-          <TooltipContent side="top" align="start" sideOffset={10} className="pr-card max-w-none rounded-xl border bg-popover p-0 text-popover-foreground shadow-xl">
+          <TooltipContent
+            side="top"
+            align="start"
+            sideOffset={10}
+            className="pr-card max-w-none rounded-xl border bg-popover p-0 text-popover-foreground shadow-xl"
+          >
             <PrCard pr={pr} repo={prRepo(pr.url, fname(s.meta.projectPath))} badge={badge} />
           </TooltipContent>
         </Tooltip>
       </div>
       <span className="flex-1" />
       {sync}
-      {size && <Lines add={size.add} del={size.del} title={size.files != null ? t('prbar.filesDiff', { n: size.files }) : t('prbar.viewDiff')} onClick={openDiffPanel} />}
+      {size && (
+        <Lines
+          add={size.add}
+          del={size.del}
+          title={size.files != null ? t('prbar.filesDiff', { n: size.files }) : t('prbar.viewDiff')}
+          onClick={openDiffPanel}
+        />
+      )}
       {!!pr.comments && (
         <button
           className="flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           title={t('prbar.viewComments')}
           onClick={() => void openPrComments()}
         >
-          <MessageSquareIcon className="size-3.5" />{pr.comments}
+          <MessageSquareIcon className="size-3.5" />
+          {pr.comments}
         </button>
       )}
       {badge.tone === 'conflict' && (
@@ -146,13 +229,22 @@ export function PrBar({ s }: { s: SessionView }) {
           className="h-6 shrink-0 gap-1 border-warning/50 px-2 text-xs text-warning hover:text-warning"
           disabled={s.running}
           title={t('prbar.fixConflictsTip')}
-          onClick={() => ask('fix-conflicts', t('prbar.conflictPrompt', { num: pr.num, base: pr.base ?? s.meta.baseBranch ?? t('gitact.targetFallback') }))}
+          onClick={() =>
+            ask(
+              'fix-conflicts',
+              t('prbar.conflictPrompt', {
+                num: pr.num,
+                base: pr.base ?? s.meta.baseBranch ?? t('gitact.targetFallback'),
+              }),
+            )
+          }
         >
-          <TriangleAlertIcon className="size-3" />{t('prbar.fixConflicts')}
+          <TriangleAlertIcon className="size-3" />
+          {t('prbar.fixConflicts')}
         </Button>
       )}
       <CiPanel s={s} pr={pr} open={open} ask={ask} />
-      {current &&<SplitButton s={s} current={current} actions={actions} primary={primary} run={ask} />}
+      {current && <SplitButton s={s} current={current} actions={actions} primary={primary} run={ask} />}
       {hide}
     </div>
   );
@@ -165,16 +257,29 @@ function PrCard({ pr, repo, badge }: { pr: PrLike; repo: string; badge: PrBadge 
   return (
     <div className="w-80 p-3">
       <div className="flex items-center gap-2">
-        <span className={cn('flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium leading-4', TONE[badge.tone])}>
+        <span
+          className={cn(
+            'flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] leading-4 font-medium',
+            TONE[badge.tone],
+          )}
+        >
           {badge.tone === 'conflict' && <TriangleAlertIcon className="size-3" />}
           {badge.label}
         </span>
         <span className="min-w-0 truncate text-[11px] text-muted-foreground">
           {repo} <span className="opacity-60">#{pr.num}</span>
         </span>
-        {!!pr.updatedAt && <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground/80">{ago(pr.updatedAt)}</span>}
+        {!!pr.updatedAt && (
+          <span className="ml-auto shrink-0 text-[11px] text-muted-foreground/80 tabular-nums">
+            {ago(pr.updatedAt)}
+          </span>
+        )}
       </div>
-      {pr.title && <p className="mt-2 line-clamp-3 text-[13px] font-semibold leading-snug" data-selectable>{pr.title}</p>}
+      {pr.title && (
+        <p className="mt-2 line-clamp-3 text-[13px] leading-snug font-semibold" data-selectable>
+          {pr.title}
+        </p>
+      )}
       <div className="mt-2.5 flex items-center gap-2 text-[11px] text-muted-foreground">
         {pr.author && <span className="truncate">{pr.author}</span>}
         <span className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -194,16 +299,31 @@ function Lines({ add, del, title, onClick }: { add: number; del: number; title?:
       <span className="text-destructive">−{fmtLines(del)}</span>
     </>
   );
-  const base = 'flex shrink-0 items-center gap-1.5 rounded-md bg-muted/70 px-1.5 py-0.5 font-mono text-[11px] leading-4 tabular-nums';
+  const base =
+    'flex shrink-0 items-center gap-1.5 rounded-md bg-muted/70 px-1.5 py-0.5 font-mono text-[11px] leading-4 tabular-nums';
   return onClick ? (
-    <button className={cn(base, 'cursor-pointer transition-colors hover:bg-accent')} title={title} onClick={onClick}>{chip}</button>
+    <button className={cn(base, 'cursor-pointer transition-colors hover:bg-accent')} title={title} onClick={onClick}>
+      {chip}
+    </button>
   ) : (
-    <span className={base} title={title}>{chip}</span>
+    <span className={base} title={title}>
+      {chip}
+    </span>
   );
 }
 
 /** CI status in a chip, and the panel behind it: the checks themselves plus what the bar may do on its own. */
-function CiPanel({ s, pr, open, ask }: { s: SessionView; pr: PrLike; open: () => void; ask: (command: BuiltinCommand, text: string) => void }) {
+function CiPanel({
+  s,
+  pr,
+  open,
+  ask,
+}: {
+  s: SessionView;
+  pr: PrLike;
+  open: () => void;
+  ask: (command: BuiltinCommand, text: string) => void;
+}) {
   const t = useT();
   const checks = pr.checks ?? [];
   return (
@@ -220,26 +340,44 @@ function CiPanel({ s, pr, open, ask }: { s: SessionView; pr: PrLike; open: () =>
       <PopoverContent side="top" align="end" sideOffset={8} className="w-72 p-0">
         <div className="flex items-center gap-2 border-b px-3 py-2">
           <span className="text-[11.5px] font-medium">{t('prbar.ciMonitoring')}</span>
-          <button className="ml-auto rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title={t('prbar.openChecks', { forge: forgeName(pr.forge) })} onClick={open}>
+          <button
+            className="ml-auto rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            title={t('prbar.openChecks', { forge: forgeName(pr.forge) })}
+            onClick={open}
+          >
             <SquareArrowOutUpRightIcon className="size-3.5" />
           </button>
         </div>
         <div className="px-3 py-2">
           <p className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
-            {pr.ci === 'pending' ? <LoaderCircleIcon className="size-3 shrink-0 animate-spin" /> : !checks.length ? <CircleDashedIcon className="size-3 shrink-0" /> : null}
+            {pr.ci === 'pending' ? (
+              <LoaderCircleIcon className="size-3 shrink-0 animate-spin" />
+            ) : !checks.length ? (
+              <CircleDashedIcon className="size-3 shrink-0" />
+            ) : null}
             {prCiLine(pr)}
           </p>
           {!!checks.length && (
-            <div className="mt-1.5 max-h-40 space-y-0.5 overflow-y-auto pr-1">
+            <div className="space-y-0.5 mt-1.5 max-h-40 overflow-y-auto pr-1">
               {checks.map((c) => (
                 <div key={c.n} className="flex items-center gap-2 py-0.5 text-[11.5px]">
                   <span className={cn('size-1.5 shrink-0 rounded-full', DOT[c.st])} />
                   {c.url ? (
-                    <button className="min-w-0 truncate text-left hover:text-foreground hover:underline" title={t('prbar.openCheck', { forge: forgeName(pr.forge), name: c.n })} onClick={() => call('app:openExternal', c.url!)}>{c.n}</button>
+                    <button
+                      className="min-w-0 truncate text-left hover:text-foreground hover:underline"
+                      title={t('prbar.openCheck', { forge: forgeName(pr.forge), name: c.n })}
+                      onClick={() => call('app:openExternal', c.url!)}
+                    >
+                      {c.n}
+                    </button>
                   ) : (
-                    <span className="min-w-0 truncate" title={c.n}>{c.n}</span>
+                    <span className="min-w-0 truncate" title={c.n}>
+                      {c.n}
+                    </span>
                   )}
-                  <span className="ml-auto shrink-0 text-[10.5px] text-muted-foreground/70">{t(CHECK_LABEL[c.st])}</span>
+                  <span className="ml-auto shrink-0 text-[10.5px] text-muted-foreground/70">
+                    {t(CHECK_LABEL[c.st])}
+                  </span>
                 </div>
               ))}
             </div>
@@ -247,11 +385,19 @@ function CiPanel({ s, pr, open, ask }: { s: SessionView; pr: PrLike; open: () =>
         </div>
         <div className="space-y-1 border-t px-3 py-2">
           <label className="flex cursor-pointer items-start gap-2 py-0.5 text-[11.5px]">
-            <Checkbox className="mt-px size-3.5" checked={!!s.meta.autoFixCi} onCheckedChange={(v) => void setPrAuto(s.meta.id, { fixCi: v === true })} />
+            <Checkbox
+              className="mt-px size-3.5"
+              checked={!!s.meta.autoFixCi}
+              onCheckedChange={(v) => void setPrAuto(s.meta.id, { fixCi: v === true })}
+            />
             <span>{t('prbar.autoFix')}</span>
           </label>
           <label className="flex cursor-pointer items-start gap-2 py-0.5 text-[11.5px]">
-            <Checkbox className="mt-px size-3.5" checked={!!s.meta.autoMerge} onCheckedChange={(v) => void setPrAuto(s.meta.id, { merge: v === true })} />
+            <Checkbox
+              className="mt-px size-3.5"
+              checked={!!s.meta.autoMerge}
+              onCheckedChange={(v) => void setPrAuto(s.meta.id, { merge: v === true })}
+            />
             <span>{t('prbar.autoMerge')}</span>
           </label>
         </div>
@@ -260,16 +406,16 @@ function CiPanel({ s, pr, open, ask }: { s: SessionView; pr: PrLike; open: () =>
             <div className="border-t" />
             <button
               className="w-full px-3 py-2 text-left text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              onClick={() => ask('fix-ci', t('prbar.fixCiPrompt', { checks: forgeWords(pr.forge).checks(pr.num), num: pr.num }))}
+              onClick={() =>
+                ask('fix-ci', t('prbar.fixCiPrompt', { checks: forgeWords(pr.forge).checks(pr.num), num: pr.num }))
+              }
             >
               {t('prbar.fixOnce')}
             </button>
           </>
         )}
         {(s.meta.autoFixCi || s.meta.autoMerge) && (
-          <div className="border-t px-3 py-1.5 text-[10.5px] text-muted-foreground">
-            {t('prbar.watching')}
-          </div>
+          <div className="border-t px-3 py-1.5 text-[10.5px] text-muted-foreground">{t('prbar.watching')}</div>
         )}
       </PopoverContent>
     </Popover>
@@ -277,7 +423,13 @@ function CiPanel({ s, pr, open, ask }: { s: SessionView; pr: PrLike; open: () =>
 }
 
 /** The default action plus a menu of the other ways to send the branch's work. */
-function SplitButton({ s, current, actions, primary, run }: {
+function SplitButton({
+  s,
+  current,
+  actions,
+  primary,
+  run,
+}: {
   s: SessionView;
   current: GitActionItem;
   actions: GitActionItem[];
@@ -289,24 +441,45 @@ function SplitButton({ s, current, actions, primary, run }: {
   const strategy = useApp((a) => a.prefs.syncStrategy);
   return (
     <div className="flex shrink-0">
-      <Button size="xs" variant="outline" className="h-6 rounded-r-none px-2 text-xs" disabled={s.running} title={current.hint} onClick={() => run(current.command, current.prompt)}>
+      <Button
+        size="xs"
+        variant="outline"
+        className="h-6 rounded-r-none px-2 text-xs"
+        disabled={s.running}
+        title={current.hint}
+        onClick={() => run(current.command, current.prompt)}
+      >
         {current.label}
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="xs" variant="outline" className="h-6 rounded-l-none border-l-0 px-1 text-xs" disabled={s.running} title={t('prbar.chooseSubmit')} aria-label={t('prbar.chooseSubmit')}>
+          <Button
+            size="xs"
+            variant="outline"
+            className="h-6 rounded-l-none border-l-0 px-1 text-xs"
+            disabled={s.running}
+            title={t('prbar.chooseSubmit')}
+            aria-label={t('prbar.chooseSubmit')}
+          >
             <ChevronDownIcon className="size-3.5" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" align="end" className="w-64">
           <DropdownMenuLabel className="flex items-baseline gap-1 text-xs text-muted-foreground">
             <span className="truncate">{branch}</span>
-            {baseBranch && baseBranch !== branch && <span className="shrink-0 whitespace-nowrap opacity-70">→ {baseBranch}</span>}
+            {baseBranch && baseBranch !== branch && (
+              <span className="shrink-0 whitespace-nowrap opacity-70">→ {baseBranch}</span>
+            )}
           </DropdownMenuLabel>
           {actions.map((a) => {
             const Icon = ACTION_ICON[a.act];
             return (
-              <DropdownMenuItem key={a.act} disabled={!a.enabled} onSelect={() => run(a.command, a.prompt)} className="items-start gap-2 py-1.5">
+              <DropdownMenuItem
+                key={a.act}
+                disabled={!a.enabled}
+                onSelect={() => run(a.command, a.prompt)}
+                className="items-start gap-2 py-1.5"
+              >
                 <CheckIcon className={cn('mt-0.5 size-3.5 shrink-0', a.act !== primary && 'invisible')} />
                 <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
                 <span className="min-w-0">
@@ -320,9 +493,16 @@ function SplitButton({ s, current, actions, primary, run }: {
             <>
               <DropdownMenuSeparator />
               <DropdownMenuLabel className="text-xs text-muted-foreground">{t('gitact.strategy')}</DropdownMenuLabel>
-              <DropdownMenuRadioGroup value={strategy} onValueChange={(v) => setPref('syncStrategy', v as SyncStrategy)}>
-                <DropdownMenuRadioItem value="merge" onSelect={(e) => e.preventDefault()}>{t('gitact.strategyMerge')}</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="rebase" onSelect={(e) => e.preventDefault()}>{t('gitact.strategyRebase')}</DropdownMenuRadioItem>
+              <DropdownMenuRadioGroup
+                value={strategy}
+                onValueChange={(v) => setPref('syncStrategy', v as SyncStrategy)}
+              >
+                <DropdownMenuRadioItem value="merge" onSelect={(e) => e.preventDefault()}>
+                  {t('gitact.strategyMerge')}
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="rebase" onSelect={(e) => e.preventDefault()}>
+                  {t('gitact.strategyRebase')}
+                </DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
             </>
           )}

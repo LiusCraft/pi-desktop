@@ -36,7 +36,10 @@ describe('omittedMessages', () => {
     manager.appendMessage(user('first'));
     rebuild(manager);
     // Entries stay as empty shells; what the model reads is the projection's messages.
-    assert.deepEqual(manager.buildSessionProjection().messages.filter((m) => m.role === 'user'), []);
+    assert.deepEqual(
+      manager.buildSessionProjection().messages.filter((m) => m.role === 'user'),
+      [],
+    );
     assert.equal(manager.buildSessionProjection().messages.length, 1);
   });
 

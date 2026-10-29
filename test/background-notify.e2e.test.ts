@@ -5,8 +5,19 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from '@earendil-works/pi-coding-agent';
-import { fauxAssistantMessage as msg, fauxProvider, fauxText as text, fauxToolCall as call } from '@earendil-works/pi-ai';
+import {
+  createAgentSession,
+  DefaultResourceLoader,
+  ModelRuntime,
+  SessionManager,
+  SettingsManager,
+} from '@earendil-works/pi-coding-agent';
+import {
+  fauxAssistantMessage as msg,
+  fauxProvider,
+  fauxText as text,
+  fauxToolCall as call,
+} from '@earendil-works/pi-ai';
 import { createDesktopKit } from '../src/agent/desktop-kit';
 import { toWireEvent } from '../src/agent/events';
 import { applyPiEvent, emptySession } from '../src/renderer/src/store/transcript';
@@ -56,7 +67,9 @@ async function makeSession(script: (step: number) => ReturnType<typeof msg>) {
   const tasks: TaskUpdate[] = [];
   const settingsManager = SettingsManager.create(cwd, agentDir);
   const resourceLoader = new DefaultResourceLoader({
-    cwd, agentDir, settingsManager,
+    cwd,
+    agentDir,
+    settingsManager,
     extensionFactories: [
       createDesktopKit({
         // bypass: the point of the test is the notification, not the permission card.
@@ -69,8 +82,14 @@ async function makeSession(script: (step: number) => ReturnType<typeof msg>) {
   });
   await resourceLoader.reload();
   const { session } = await createAgentSession({
-    cwd, agentDir, modelRuntime: models, model: models.getModel('scripted', 'm')!, resourceLoader, settingsManager,
-    sessionManager: SessionManager.inMemory(cwd), tools: ['+grep', '+find', '+ls'],
+    cwd,
+    agentDir,
+    modelRuntime: models,
+    model: models.getModel('scripted', 'm')!,
+    resourceLoader,
+    settingsManager,
+    sessionManager: SessionManager.inMemory(cwd),
+    tools: ['+grep', '+find', '+ls'],
   });
   await session.bindExtensions({});
   const custom: any[] = [];
@@ -84,14 +103,27 @@ async function makeSession(script: (step: number) => ReturnType<typeof msg>) {
 }
 
 const assistantTexts = (session: { messages: unknown }) =>
-  (session.messages as any[]).filter((m) => m.role === 'assistant')
-    .flatMap((m) => (Array.isArray(m.content) ? m.content : []).filter((c: any) => c.type === 'text').map((c: any) => c.text));
+  (session.messages as any[])
+    .filter((m) => m.role === 'assistant')
+    .flatMap((m) =>
+      (Array.isArray(m.content) ? m.content : []).filter((c: any) => c.type === 'text').map((c: any) => c.text),
+    );
 
 describe('background task notifications', () => {
   it('wakes the model when a shell command exits after the turn ended', async () => {
-    const { session, tasks, custom, wire } = await makeSession((step) => (step === 1
-      ? msg([call('pidesk_bg_shell', { command: 'node -e "setTimeout(() => console.log(\'bg-done\'), 800)"', description: 'Slow command' })], { stopReason: 'toolUse' })
-      : msg([text(`answer ${step}`)])));
+    const { session, tasks, custom, wire } = await makeSession((step) =>
+      step === 1
+        ? msg(
+            [
+              call('pidesk_bg_shell', {
+                command: 'node -e "setTimeout(() => console.log(\'bg-done\'), 800)"',
+                description: 'Slow command',
+              }),
+            ],
+            { stopReason: 'toolUse' },
+          )
+        : msg([text(`answer ${step}`)]),
+    );
 
     await session.prompt('start a slow command in the background');
     // The turn ended on its own (step 2 answered), while the command still runs.
@@ -113,10 +145,12 @@ describe('background task notifications', () => {
     const view = emptySession({ id: 's1' } as SessionMeta);
     const wake = wire.findIndex((e, i) => e.type === 'agent_start' && i > 0);
     expect(wake).toBeGreaterThan(0);
+    let runningAtWake = false;
     for (const [i, event] of wire.entries()) {
       applyPiEvent(view, event, 'normal');
-      if (i === wake) expect(view.running).toBe(true); // the UI shows the new turn as running
+      if (i === wake) runningAtWake = view.running;
     }
+    expect(runningAtWake).toBe(true); // the UI shows the new turn as running
     const shown = view.items.flatMap((item) => (item.kind === 'text' ? [item.text] : []));
     expect(shown).toContain('answer 2');
     expect(shown).toContain('answer 3');

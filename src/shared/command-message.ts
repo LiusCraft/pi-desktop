@@ -4,7 +4,15 @@
 
 import type { MessageKey } from './i18n';
 
-export type BuiltinCommand = 'commit' | 'push' | 'create-pr' | 'update-pr' | 'new-pr' | 'fix-conflicts' | 'fix-ci' | 'sync-base';
+export type BuiltinCommand =
+  | 'commit'
+  | 'push'
+  | 'create-pr'
+  | 'update-pr'
+  | 'new-pr'
+  | 'fix-conflicts'
+  | 'fix-ci'
+  | 'sync-base';
 
 /** What each command is for, shown beside the instruction it expands to. */
 export const BUILTIN_COMMAND_INFO: Record<BuiltinCommand, MessageKey> = {
@@ -28,17 +36,26 @@ export interface CommandMessage {
   args: string;
 }
 
-export const encodeCommandMessage = (name: BuiltinCommand, prompt: string) => `<pi-command name="${name}">\n${prompt}\n</pi-command>`;
+export const encodeCommandMessage = (name: BuiltinCommand, prompt: string) =>
+  `<pi-command name="${name}">\n${prompt}\n</pi-command>`;
 
 /** A prompt template the user typed as `/name args`, already expanded: it shows as a chip like the built-in ones. */
-export const encodeUserCommandMessage = (name: string, args: string, prompt: string) => `<pi-command name="${name}" source="user" args=${JSON.stringify(args)}>\n${prompt}\n</pi-command>`;
+export const encodeUserCommandMessage = (name: string, args: string, prompt: string) =>
+  `<pi-command name="${name}" source="user" args=${JSON.stringify(args)}>\n${prompt}\n</pi-command>`;
 
 export function decodeCommandMessage(wire: string): CommandMessage | null {
-  const m = /^<pi-command name="([^"\s]+)"(?: source="(user)" args=("(?:[^"\\]|\\.)*"))?>\n([\s\S]*)\n<\/pi-command>$/.exec(wire.trim());
+  const m =
+    /^<pi-command name="([^"\s]+)"(?: source="(user)" args=("(?:[^"\\]|\\.)*"))?>\n([\s\S]*)\n<\/pi-command>$/.exec(
+      wire.trim(),
+    );
   if (!m) return null;
   if (m[2]) {
     let args = '';
-    try { args = JSON.parse(m[3]); } catch { /* keep empty */ }
+    try {
+      args = JSON.parse(m[3]);
+    } catch {
+      /* keep empty */
+    }
     return { name: m[1], prompt: m[4], user: true, args };
   }
   if (!(m[1] in BUILTIN_COMMAND_INFO)) return null;

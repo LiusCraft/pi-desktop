@@ -12,11 +12,17 @@ interface Caller {
 }
 
 async function readUpload(source: AttachmentSource, spent: number): Promise<RemoteUpload & { size: number }> {
-  if (!('path' in source)) return { name: source.name, data: source.data, size: Buffer.byteLength(source.data, 'base64') };
+  if (!('path' in source))
+    return { name: source.name, data: source.data, size: Buffer.byteLength(source.data, 'base64') };
   const stat = await fs.promises.stat(source.path);
   if (!stat.isFile()) throw new Error(tr('remote.upload.notFile'));
-  if (stat.size > LIMITS.fileBytes || spent + stat.size > REMOTE_UPLOAD_MAX_BYTES) throw new Error(tr('remote.upload.tooBig'));
-  return { name: path.basename(source.path), data: (await fs.promises.readFile(source.path)).toString('base64'), size: stat.size };
+  if (stat.size > LIMITS.fileBytes || spent + stat.size > REMOTE_UPLOAD_MAX_BYTES)
+    throw new Error(tr('remote.upload.tooBig'));
+  return {
+    name: path.basename(source.path),
+    data: (await fs.promises.readFile(source.path)).toString('base64'),
+    size: stat.size,
+  };
 }
 
 export async function uploadAttachments(remote: Caller, sources: AttachmentSource[]): Promise<AttachmentImportResult> {
@@ -31,9 +37,19 @@ export async function uploadAttachments(remote: Caller, sources: AttachmentSourc
       uploads.push(upload);
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
-      errors.push({ name, message: code === 'ENOENT' ? tr('remote.upload.gone') : code === 'EACCES' || code === 'EPERM' ? tr('remote.upload.unreadable') : (err as Error).message });
+      errors.push({
+        name,
+        message:
+          code === 'ENOENT'
+            ? tr('remote.upload.gone')
+            : code === 'EACCES' || code === 'EPERM'
+              ? tr('remote.upload.unreadable')
+              : (err as Error).message,
+      });
     }
   }
-  const result = uploads.length ? await remote.call<AttachmentImportResult>('attachments:upload', uploads) : { attachments: [], errors: [] };
+  const result = uploads.length
+    ? await remote.call<AttachmentImportResult>('attachments:upload', uploads)
+    : { attachments: [], errors: [] };
   return { attachments: result.attachments, errors: [...errors, ...result.errors] };
 }

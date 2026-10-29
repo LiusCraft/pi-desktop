@@ -10,17 +10,26 @@ export const customize = defineMessages({
   'customize.tab.agents': { en: 'Subagents', zh: '子代理' },
   'customize.project': { en: 'Project: ', zh: '项目：' },
   'customize.workOnlyPersonal': { en: 'Work only uses personal settings', zh: 'Work 只使用个人配置' },
-  'customize.noProject': { en: 'No project selected; only personal settings are shown', zh: '没有选择项目，只显示个人配置' },
+  'customize.noProject': {
+    en: 'No project selected; only personal settings are shown',
+    zh: '没有选择项目，只显示个人配置',
+  },
   'customize.noDescription': { en: '(no description)', zh: '（没有描述）' },
   'customize.scope.package': { en: 'Plugin', zh: '插件' },
   'customize.scope.project': { en: 'Project', zh: '项目' },
   'customize.scope.user': { en: 'Personal', zh: '个人' },
 
   'prompts.sub': { en: 'Type /name to expand a preset prompt', zh: '输入 /名称 展开预设提示' },
-  'prompts.tip': { en: 'Add a .md file to the prompts folder to create one.', zh: '把 .md 文件放进 prompts 文件夹即可添加。' },
+  'prompts.tip': {
+    en: 'Add a .md file to the prompts folder to create one.',
+    zh: '把 .md 文件放进 prompts 文件夹即可添加。',
+  },
   'prompts.new': { en: 'New command', zh: '新建命令' },
   'prompts.new.sub': { en: 'Type /name in the input box to insert this text', zh: '在输入框输入 /名称 即插入这段文字' },
-  'prompts.new.tip': { en: 'Unlike a skill, a command is only used when you type it; the model never picks it.', zh: '与技能不同，命令只在你输入时使用，模型不会自己选用。' },
+  'prompts.new.tip': {
+    en: 'Unlike a skill, a command is only used when you type it; the model never picks it.',
+    zh: '与技能不同，命令只在你输入时使用，模型不会自己选用。',
+  },
   'prompts.edit': { en: 'Edit /{name}', zh: '编辑 /{name}' },
   'prompts.save': { en: 'Save', zh: '保存' },
   'prompts.saved': { en: 'Saved; new sessions will use it', zh: '已保存，新会话生效' },
@@ -31,13 +40,19 @@ export const customize = defineMessages({
   'prompts.created': { en: 'Created; new sessions will use it', zh: '已创建，新会话生效' },
   'prompts.name.hint': { en: 'Letters, digits, - and _', zh: '字母、数字、- 和 _' },
   'prompts.content': { en: 'Content', zh: '内容' },
-  'prompts.empty': { en: 'No prompt templates. Add a Markdown file to {dir}.', zh: '还没有提示模板。把 Markdown 文件放进 {dir}。' },
+  'prompts.empty': {
+    en: 'No prompt templates. Add a Markdown file to {dir}.',
+    zh: '还没有提示模板。把 Markdown 文件放进 {dir}。',
+  },
 
   'skills.scope.user': { en: 'Personal skills', zh: '个人技能' },
   'skills.scope.project': { en: 'Project skills', zh: '项目技能' },
   'skills.scope.package': { en: 'From plugins', zh: '来自插件' },
   'skills.manualOnly': { en: 'Manual only', zh: '仅手动' },
-  'skills.manualOnlyHint': { en: 'Can only be invoked with /skill:name; the model never picks it by itself', zh: '只能用 /skill:名称 手动调用，模型不会自己选它' },
+  'skills.manualOnlyHint': {
+    en: 'Can only be invoked with /skill:name; the model never picks it by itself',
+    zh: '只能用 /skill:名称 手动调用，模型不会自己选它',
+  },
   'skills.delete': { en: 'Delete', zh: '删除' },
   'skills.deleteTitle': { en: 'Delete {name}?', zh: '删除 {name}？' },
   'skills.deleteBody': { en: 'The skill folder is removed from disk.', zh: '会从磁盘删除这个技能的文件夹。' },
@@ -50,7 +65,10 @@ export const customize = defineMessages({
   'skills.created': { en: 'Created; new sessions will use it', zh: '已创建，新会话生效' },
   'skills.new': { en: 'New skill', zh: '新建技能' },
   'skills.new.sub': { en: 'A manual written for the model', zh: '写给模型的说明书' },
-  'skills.new.tip': { en: 'The description decides when it is used; the body tells the model how.', zh: '描述决定何时用到，正文告诉模型怎么做。' },
+  'skills.new.tip': {
+    en: 'The description decides when it is used; the body tells the model how.',
+    zh: '描述决定何时用到，正文告诉模型怎么做。',
+  },
   'skills.saveTo': { en: 'Save to', zh: '保存位置' },
   'skills.allProjects': { en: 'Available in every project.', zh: '所有项目都能用。' },
   'skills.onlyIn': { en: 'Only active in {name}.', zh: '只在 {name} 里生效。' },
@@ -58,7 +76,10 @@ export const customize = defineMessages({
   'skills.personal': { en: 'Personal', zh: '个人' },
   'skills.projectOpt': { en: 'Project', zh: '项目' },
   'skills.store': { en: 'Stored in', zh: '存放在' },
-  'skills.homeAgents': { en: 'Saved in {home}/.agents/skills; other tools read it too', zh: '存于 {home}/.agents/skills，其他工具也会读取' },
+  'skills.homeAgents': {
+    en: 'Saved in {home}/.agents/skills; other tools read it too',
+    zh: '存于 {home}/.agents/skills，其他工具也会读取',
+  },
   'skills.homePiUser': { en: "pi's skills folder", zh: 'pi 的 skills 文件夹' },
   'skills.homePiProject': { en: "the project's .pi/skills", zh: '项目的 .pi/skills' },
   'skills.homePi': { en: 'pi only, saved in {where}', zh: '仅 pi 使用，存于 {where}' },
@@ -72,7 +93,10 @@ export const customize = defineMessages({
   'skills.cancel': { en: 'Cancel', zh: '取消' },
   'skills.imported': { en: 'Imported; new sessions will use them', zh: '已引入，新会话生效' },
   'skills.sub': { en: 'Teach the model to work your way', zh: '教模型按你的方式做事' },
-  'skills.tip': { en: 'Disabled skills stay on disk and are just not loaded.', zh: '停用的技能留在磁盘上，只是不再加载。' },
+  'skills.tip': {
+    en: 'Disabled skills stay on disk and are just not loaded.',
+    zh: '停用的技能留在磁盘上，只是不再加载。',
+  },
   'skills.openFolder': { en: 'Open folder', zh: '打开文件夹' },
   'skills.piSkills': { en: "pi's skills", zh: 'pi 的 skills' },
   'skills.sharedSkills': { en: '~/.agents/skills (shared)', zh: '~/.agents/skills（通用）' },
@@ -82,7 +106,10 @@ export const customize = defineMessages({
   'skills.dismiss': { en: 'No thanks', zh: '不用了' },
   'skills.empty': { en: 'No skills yet. Create one, or install a plugin.', zh: '还没有技能。新建一个，或安装插件。' },
   'skills.nSkills': { en: '{n} skills', zh: '{n} 个技能' },
-  'skills.untrusted': { en: 'Project not trusted yet; its skills and connectors are not loaded', zh: '项目尚未信任，其技能和连接器不会加载' },
+  'skills.untrusted': {
+    en: 'Project not trusted yet; its skills and connectors are not loaded',
+    zh: '项目尚未信任，其技能和连接器不会加载',
+  },
 
   'connectors.saved': { en: 'Saved; new sessions will connect', zh: '已保存，新会话生效' },
   'connectors.back': { en: 'Back to connectors', zh: '返回连接器列表' },
@@ -94,7 +121,10 @@ export const customize = defineMessages({
   'connectors.remote': { en: 'Remote URL', zh: '远程地址' },
   'connectors.name.hint': { en: 'Letters, digits, - and _', zh: '字母、数字、- 和 _' },
   'connectors.url': { en: 'URL', zh: '地址' },
-  'connectors.url.hint': { en: 'Streamable HTTP MCP URL, usually ending in /mcp', zh: 'streamable HTTP 的 MCP 地址，通常以 /mcp 结尾' },
+  'connectors.url.hint': {
+    en: 'Streamable HTTP MCP URL, usually ending in /mcp',
+    zh: 'streamable HTTP 的 MCP 地址，通常以 /mcp 结尾',
+  },
   'connectors.headers': { en: 'Headers', zh: '请求头' },
   'connectors.headers.hint': { en: 'One per line: Name: value', zh: '每行一个：Name: value' },
   'connectors.command': { en: 'Command', zh: '命令' },
@@ -125,9 +155,15 @@ export const customize = defineMessages({
   'connectors.editBtn': { en: 'Edit', zh: '编辑' },
   'connectors.deleteBtn': { en: 'Delete', zh: '删除' },
   'connectors.tools': { en: 'Tools', zh: '工具' },
-  'connectors.noTools': { en: 'No tools recorded yet; they appear after the first connection.', zh: '暂无工具；首次连接成功后列出。' },
+  'connectors.noTools': {
+    en: 'No tools recorded yet; they appear after the first connection.',
+    zh: '暂无工具；首次连接成功后列出。',
+  },
   'connectors.confirmTitle': { en: 'Delete {name}?', zh: '删除 {name}？' },
-  'connectors.confirmBody': { en: 'Only removes it from the config; the server is untouched.', zh: '只从配置移除，不影响服务器本身。' },
+  'connectors.confirmBody': {
+    en: 'Only removes it from the config; the server is untouched.',
+    zh: '只从配置移除，不影响服务器本身。',
+  },
   'connectors.title': { en: 'Connectors', zh: '连接器' },
   'connectors.sub': { en: 'Connect outside tools and data (MCP)', zh: '接入外部工具和数据（MCP）' },
   'connectors.tip': { en: 'Changes apply to new sessions only.', zh: '改动只对新会话生效。' },
@@ -137,8 +173,14 @@ export const customize = defineMessages({
   'agents.saved': { en: 'Saved; new sessions will use it', zh: '已保存，新会话生效' },
   'agents.edit': { en: 'Edit {name}', zh: '编辑 {name}' },
   'agents.new': { en: 'New subagent', zh: '新建子代理' },
-  'agents.form.sub': { en: 'The description decides when it is picked, the prompt how it works', zh: '描述决定何时选用，系统提示决定怎么做' },
-  'agents.form.tip': { en: 'Subagents are always read-only and never modify files.', zh: '子代理始终只读，不会修改文件。' },
+  'agents.form.sub': {
+    en: 'The description decides when it is picked, the prompt how it works',
+    zh: '描述决定何时选用，系统提示决定怎么做',
+  },
+  'agents.form.tip': {
+    en: 'Subagents are always read-only and never modify files.',
+    zh: '子代理始终只读，不会修改文件。',
+  },
   'agents.name.hint': { en: 'Letters, digits, - and _', zh: '字母、数字、- 和 _' },
   'agents.description.hint': { en: 'What it is good at; shown to the model', zh: '擅长什么；展示给模型' },
   'agents.model': { en: 'Model', zh: '模型' },
@@ -146,7 +188,10 @@ export const customize = defineMessages({
   'agents.modelLabel': { en: 'Model used by the subagent', zh: '子代理使用的模型' },
   'agents.tools': { en: 'Tool allowlist', zh: '工具白名单' },
   'agents.tools.hint': { en: 'Name or pattern (e.g. mcp__*), then Enter', zh: '名称或模式（如 mcp__*），回车添加' },
-  'agents.tools.tip': { en: 'Empty uses the default read-only tools plus MCP tools; otherwise only the tools listed here are enabled. You can also pick from the list.', zh: '留空则使用默认的只读工具并保留 MCP 工具；填写后只启用这里列出的工具。也可以从下拉里选。' },
+  'agents.tools.tip': {
+    en: 'Empty uses the default read-only tools plus MCP tools; otherwise only the tools listed here are enabled. You can also pick from the list.',
+    zh: '留空则使用默认的只读工具并保留 MCP 工具；填写后只启用这里列出的工具。也可以从下拉里选。',
+  },
   'agents.toolsPh': { en: 'Empty = default', zh: '留空 = 默认' },
   'agents.prompt': { en: 'System prompt', zh: '系统提示' },
   'agents.saveCustom': { en: 'Save as custom version', zh: '保存为自定义版本' },
@@ -156,7 +201,10 @@ export const customize = defineMessages({
   'agents.delete': { en: 'Delete', zh: '删除' },
   'agents.title': { en: 'Subagents', zh: '子代理' },
   'agents.sub': { en: 'Identities the model can hand research work to', zh: '模型可交付调研工作的身份' },
-  'agents.tip': { en: 'Built-in ones can be rewritten; custom ones are stored in the folder below.', zh: '内置的可以改写，自定义的保存在下面的文件夹里。' },
+  'agents.tip': {
+    en: 'Built-in ones can be rewritten; custom ones are stored in the folder below.',
+    zh: '内置的可以改写，自定义的保存在下面的文件夹里。',
+  },
   'agents.openFolder': { en: 'Open folder', zh: '打开文件夹' },
   'agents.newOnly': { en: 'Applies to new sessions', zh: '新会话生效' },
   'agents.builtin': { en: 'Built-in', zh: '内置' },
@@ -169,12 +217,18 @@ export const customize = defineMessages({
   'plugins.removing': { en: 'Removing…', zh: '移除中…' },
   'plugins.installed': { en: 'Installed; new sessions will load it', zh: '已安装，新会话生效' },
   'plugins.removeTitle': { en: 'Remove {source}?', zh: '移除 {source}？' },
-  'plugins.removeBody': { en: 'Its skills, commands and tools are gone from new sessions.', zh: '它的技能、命令和工具在新会话中不再可用。' },
+  'plugins.removeBody': {
+    en: 'Its skills, commands and tools are gone from new sessions.',
+    zh: '它的技能、命令和工具在新会话中不再可用。',
+  },
   'plugins.remove': { en: 'Remove', zh: '移除' },
   'plugins.removed': { en: 'Removed', zh: '已移除' },
   'plugins.title': { en: 'Plugins', zh: '插件' },
   'plugins.sub': { en: 'pi packages: skills, prompts, extensions, MCP', zh: 'pi 包：技能、提示、扩展、MCP' },
-  'plugins.tip': { en: 'One install can bring skills, prompt templates, extensions and MCP servers. The source can be npm, git or a local folder.', zh: '一次安装可带来技能、提示模板、扩展和 MCP 服务器。来源可以是 npm、git 或本地文件夹。' },
+  'plugins.tip': {
+    en: 'One install can bring skills, prompt templates, extensions and MCP servers. The source can be npm, git or a local folder.',
+    zh: '一次安装可带来技能、提示模板、扩展和 MCP 服务器。来源可以是 npm、git 或本地文件夹。',
+  },
   'plugins.updatedAll': { en: 'Updated all plugins', zh: '已更新全部插件' },
   'plugins.updateAll': { en: 'Update all', zh: '全部更新' },
   'plugins.install': { en: 'Install a plugin', zh: '安装插件' },
@@ -187,30 +241,51 @@ export const customize = defineMessages({
   'plugins.filtered': { en: 'Filtered', zh: '已过滤' },
   'plugins.filteredHint': { en: 'Settings limit which resources it loads', zh: '设置里限制了它加载哪些资源' },
   'plugins.notInstalled': { en: 'Not installed', zh: '未安装' },
-  'plugins.notInstalledHint': { en: 'Not installed; a new session will try to install it', zh: '未安装；新会话启动时会尝试安装' },
+  'plugins.notInstalledHint': {
+    en: 'Not installed; a new session will try to install it',
+    zh: '未安装；新会话启动时会尝试安装',
+  },
   'plugins.update': { en: 'Update', zh: '更新' },
   'plugins.updated': { en: 'Updated {source}', zh: '已更新 {source}' },
   'plugins.recommended': { en: 'Recommended', zh: '推荐' },
-  'plugins.lensDesc': { en: 'Code intelligence: LSP diagnostics, syntax trees, linters, type checks.', zh: '代码智能：LSP 诊断、语法树、lint、类型检查。' },
+  'plugins.lensDesc': {
+    en: 'Code intelligence: LSP diagnostics, syntax trees, linters, type checks.',
+    zh: '代码智能：LSP 诊断、语法树、lint、类型检查。',
+  },
   'plugins.items': { en: 'Contents', zh: '内容' },
   'plugins.itemsEmpty': { en: 'Nothing to configure.', zh: '没有可配置的内容。' },
-  'plugins.itemsTip': { en: 'Turn off parts of a package, such as extensions that duplicate desktop features. Applies to new sessions.', zh: '可单独关闭包里的部分内容，比如与桌面端功能重复的扩展。新会话生效。' },
+  'plugins.itemsTip': {
+    en: 'Turn off parts of a package, such as extensions that duplicate desktop features. Applies to new sessions.',
+    zh: '可单独关闭包里的部分内容，比如与桌面端功能重复的扩展。新会话生效。',
+  },
   'plugins.kind.extensions': { en: 'Extensions', zh: '扩展' },
   'plugins.kind.skills': { en: 'Skills', zh: '技能' },
   'plugins.kind.prompts': { en: 'Prompts', zh: '提示词' },
   'plugins.kind.themes': { en: 'Themes', zh: '主题' },
-  'plugins.empty': { en: 'No plugins yet. Enter a package name above, e.g. npm:pi-web-access.', zh: '还没有插件。在上面输入包名，如 npm:pi-web-access。' },
+  'plugins.empty': {
+    en: 'No plugins yet. Enter a package name above, e.g. npm:pi-web-access.',
+    zh: '还没有插件。在上面输入包名，如 npm:pi-web-access。',
+  },
 
   'customize.tab.recommended': { en: 'Recommended', zh: '推荐' },
   'rec.sub': { en: 'One-click setups for common work', zh: '常见工作的一键配置' },
-  'rec.tip': { en: 'Skills are written to your personal skills folder and can be edited there. Plugins and connectors are installed for every project. New sessions pick them up.', zh: '技能会写入个人技能文件夹，可随意修改。插件和连接器对所有项目生效。新会话生效。' },
+  'rec.tip': {
+    en: 'Skills are written to your personal skills folder and can be edited there. Plugins and connectors are installed for every project. New sessions pick them up.',
+    zh: '技能会写入个人技能文件夹，可随意修改。插件和连接器对所有项目生效。新会话生效。',
+  },
   'rec.group.create': { en: 'Slides, video, audio', zh: 'PPT、视频、音频' },
   'rec.group.roles': { en: 'Roles', zh: '角色' },
   'rec.install': { en: 'Install', zh: '安装' },
   'rec.uninstall': { en: 'Uninstall', zh: '卸载' },
   'rec.uninstallTitle': { en: 'Uninstall {name}?', zh: '卸载 {name}？' },
-  'rec.uninstallBody': { en: 'Removes what it installed. Your other settings stay.', zh: '只移除它装入的内容，其他设置不受影响。' },
-  'rec.notFound': { en: 'Nothing to uninstall: it was not installed from here', zh: '没有可卸载的内容：它不是从这里安装的' },
+  'rec.uninstallBody': {
+    en: 'Removes what it installed. Your other settings stay.',
+    zh: '只移除它装入的内容，其他设置不受影响。',
+  },
+  'rec.notFound': {
+    en: 'Nothing to uninstall: it was not installed from here',
+    zh: '没有可卸载的内容：它不是从这里安装的',
+  },
   'rec.removed': { en: 'Uninstalled', zh: '已卸载' },
   'rec.installed': { en: 'Installed', zh: '已安装' },
   'rec.done': { en: 'Installed; new sessions will use it', zh: '已安装，新会话生效' },
@@ -221,7 +296,10 @@ export const customize = defineMessages({
 
   'rec.slides.title': { en: 'Slides', zh: 'PPT 制作' },
   'rec.slides.desc': { en: 'Build .pptx decks with code, with a layout checklist', zh: '用代码生成 .pptx，附排版清单' },
-  'rec.slides.skillDesc': { en: 'Create or revise slide decks and presentations (.pptx, PDF, Slidev). Use when asked for slides, a deck, a pitch or a talk.', zh: '制作或修改幻灯片、演示文稿（.pptx、PDF、Slidev）。用户要做 PPT、汇报、路演、演讲稿时使用。' },
+  'rec.slides.skillDesc': {
+    en: 'Create or revise slide decks and presentations (.pptx, PDF, Slidev). Use when asked for slides, a deck, a pitch or a talk.',
+    zh: '制作或修改幻灯片、演示文稿（.pptx、PDF、Slidev）。用户要做 PPT、汇报、路演、演讲稿时使用。',
+  },
   'rec.slides.body': {
     en: `# Slides
 
@@ -268,10 +346,16 @@ Render to images (LibreOffice: \`soffice --headless --convert-to pdf\`), look at
   'rec.remotion.title': { en: 'Video (Remotion)', zh: '视频制作（Remotion）' },
   'rec.remotion.desc': { en: 'Write videos as React code; official skills', zh: '用 React 代码做视频，官方技能包' },
   'rec.tts.title': { en: 'Free speech synthesis', zh: '免费语音合成' },
-  'rec.tts.desc': { en: 'Edge voices, no API key; outputs MP3 and word timings. Needs uv', zh: '微软 Edge 音色，免 API Key，输出 MP3 和逐词时间。需要 uv' },
+  'rec.tts.desc': {
+    en: 'Edge voices, no API key; outputs MP3 and word timings. Needs uv',
+    zh: '微软 Edge 音色，免 API Key，输出 MP3 和逐词时间。需要 uv',
+  },
   'rec.voiceover.title': { en: 'Voiceover and audio', zh: '配音与音频' },
   'rec.voiceover.desc': { en: 'Script, synthesize and mix narration for videos', zh: '写稿、合成、混音，给视频配旁白' },
-  'rec.voiceover.skillDesc': { en: 'Generate narration, voiceover and audio files from text with free TTS, and mix them with video. Use when asked for audio, dubbing or a read-aloud.', zh: '用免费 TTS 把文字合成旁白、配音、音频文件，并与视频混音。用户要音频、配音、朗读时使用。' },
+  'rec.voiceover.skillDesc': {
+    en: 'Generate narration, voiceover and audio files from text with free TTS, and mix them with video. Use when asked for audio, dubbing or a read-aloud.',
+    zh: '用免费 TTS 把文字合成旁白、配音、音频文件，并与视频混音。用户要音频、配音、朗读时使用。',
+  },
   'rec.voiceover.body': {
     en: `# Voiceover
 
@@ -311,7 +395,10 @@ Listen to the first sentence before synthesizing everything. Fix pronunciation w
 
   'rec.pm.title': { en: 'Product manager', zh: '互联网产品经理' },
   'rec.pm.desc': { en: 'PRDs, prioritization, metrics, competitor analysis', zh: 'PRD、优先级、指标、竞品分析' },
-  'rec.pm.skillDesc': { en: 'Product management work: PRDs, user stories, prioritization, metrics, competitor analysis, launch plans. Use when asked to define, scope or evaluate a product or feature.', zh: '产品经理工作：PRD、用户故事、优先级、指标、竞品分析、上线计划。用户要定义、拆解、评估产品或功能时使用。' },
+  'rec.pm.skillDesc': {
+    en: 'Product management work: PRDs, user stories, prioritization, metrics, competitor analysis, launch plans. Use when asked to define, scope or evaluate a product or feature.',
+    zh: '产品经理工作：PRD、用户故事、优先级、指标、竞品分析、上线计划。用户要定义、拆解、评估产品或功能时使用。',
+  },
   'rec.pm.body': {
     en: `# Product manager
 
@@ -367,7 +454,10 @@ Short sentences, tables for comparisons, flow charts in Mermaid. Every requireme
 
   'rec.arch.title': { en: 'Architect', zh: '架构师' },
   'rec.arch.desc': { en: 'System design, trade-offs, ADRs, reviews', zh: '系统设计、方案取舍、ADR、评审' },
-  'rec.arch.skillDesc': { en: 'Architecture work: system design, technology choices, API and data modeling, ADRs, design reviews, capacity and failure analysis. Use when asked to design or review a system.', zh: '架构师工作：系统设计、技术选型、接口与数据建模、ADR、方案评审、容量与故障分析。用户要设计或评审系统时使用。' },
+  'rec.arch.skillDesc': {
+    en: 'Architecture work: system design, technology choices, API and data modeling, ADRs, design reviews, capacity and failure analysis. Use when asked to design or review a system.',
+    zh: '架构师工作：系统设计、技术选型、接口与数据建模、ADR、方案评审、容量与故障分析。用户要设计或评审系统时使用。',
+  },
   'rec.arch.body': {
     en: `# Architect
 
@@ -429,7 +519,10 @@ Prefer boring technology. Say what you would not build yet. Keep diagrams small 
 
   'rec.design.title': { en: 'UI designer', zh: '设计师' },
   'rec.design.desc': { en: 'Design specs, visual systems, design reviews', zh: '设计规范、视觉体系、设计评审' },
-  'rec.design.skillDesc': { en: 'UI/UX design work: user flows, wireframes, design systems, visual specs, accessibility, design reviews, and building the result as HTML/CSS. Use when asked to design or critique an interface.', zh: 'UI/UX 设计工作：用户流程、线框、设计系统、视觉规范、无障碍、设计评审，并用 HTML/CSS 落地。用户要设计或评审界面时使用。' },
+  'rec.design.skillDesc': {
+    en: 'UI/UX design work: user flows, wireframes, design systems, visual specs, accessibility, design reviews, and building the result as HTML/CSS. Use when asked to design or critique an interface.',
+    zh: 'UI/UX 设计工作：用户流程、线框、设计系统、视觉规范、无障碍、设计评审，并用 HTML/CSS 落地。用户要设计或评审界面时使用。',
+  },
   'rec.design.body': {
     en: `# UI designer
 

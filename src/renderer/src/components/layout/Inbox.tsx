@@ -13,12 +13,29 @@ const needsReply = (s: SessionView) => !!s.waiting || (s.unread && !s.running);
 
 const byRecent = (a: SessionView, b: SessionView) => (b.meta.updatedAt || 0) - (a.meta.updatedAt || 0);
 
-function Row({ s, icon, note, badge }: { s: SessionView; icon: React.ReactNode; note: string; badge?: { label: string; className: string } }) {
+function Row({
+  s,
+  icon,
+  note,
+  badge,
+}: {
+  s: SessionView;
+  icon: React.ReactNode;
+  note: string;
+  badge?: { label: string; className: string };
+}) {
   return (
-    <button onClick={() => void openSession(s.meta.id)} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm hover:bg-accent">
+    <button
+      onClick={() => void openSession(s.meta.id)}
+      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-sm hover:bg-accent"
+    >
       <span className="flex size-4 shrink-0 items-center justify-center">{icon}</span>
       <span className="min-w-0 flex-1 truncate">{s.meta.title}</span>
-      {badge && <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] leading-4 font-medium', badge.className)}>{badge.label}</span>}
+      {badge && (
+        <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] leading-4 font-medium', badge.className)}>
+          {badge.label}
+        </span>
+      )}
       <span className="shrink-0 text-xs text-muted-foreground">{note}</span>
     </button>
   );
@@ -45,14 +62,20 @@ export function Inbox() {
   const prs = mine.filter((s) => s.pr?.state === 'open').sort(byRecent);
   if (!replies.length && !prs.length) return null;
   return (
-    <div className="mt-6 w-full max-w-2xl space-y-4 text-left">
+    <div className="space-y-4 mt-6 w-full max-w-2xl text-left">
       {replies.length > 0 && (
         <Section title={t('inbox.needsReply')} count={replies.length}>
           {replies.map((s) => (
             <Row
               key={s.meta.id}
               s={s}
-              icon={s.waiting ? <TriangleAlertIcon className="size-3.5 text-warning" /> : <MessageCircleIcon className="size-3.5 text-primary" />}
+              icon={
+                s.waiting ? (
+                  <TriangleAlertIcon className="size-3.5 text-warning" />
+                ) : (
+                  <MessageCircleIcon className="size-3.5 text-primary" />
+                )
+              }
               note={s.waiting ? t('inbox.waitingApproval') : ago(s.meta.updatedAt || Date.now())}
             />
           ))}
@@ -67,7 +90,13 @@ export function Inbox() {
               <Row
                 key={s.meta.id}
                 s={s}
-                icon={pr.draft ? <GitPullRequestDraftIcon className="size-3.5 text-muted-foreground" /> : <GitPullRequestIcon className="size-3.5 text-success" />}
+                icon={
+                  pr.draft ? (
+                    <GitPullRequestDraftIcon className="size-3.5 text-muted-foreground" />
+                  ) : (
+                    <GitPullRequestIcon className="size-3.5 text-success" />
+                  )
+                }
                 note={`#${pr.num} · ${fname(s.meta.projectPath)}`}
                 badge={{ label: badge.label, className: TONE[badge.tone] }}
               />

@@ -122,8 +122,8 @@ describe('remote addresses', () => {
   it('fills in the scheme and drops trailing paths', () => {
     expect(normalizeRemoteUrl('192.168.1.5:7431')).toBe('http://192.168.1.5:7431');
     expect(normalizeRemoteUrl(' https://box.example.com/ ')).toBe('https://box.example.com');
-    expect(() => normalizeRemoteUrl('ftp://x')).toThrow();
-    expect(() => normalizeRemoteUrl('  ')).toThrow();
+    expect(() => normalizeRemoteUrl('ftp://x')).toThrow(Error);
+    expect(() => normalizeRemoteUrl('  ')).toThrow(Error);
   });
 });
 
@@ -151,7 +151,7 @@ describe('remote workspace', () => {
     const file = path.join(tmp(), 'f.txt');
     fs.writeFileSync(file, 'x');
     expect(() => existingFolder(file)).toThrow('not a folder');
-    expect(() => existingFolder('relative/dir')).toThrow();
+    expect(() => existingFolder('relative/dir')).toThrow(/absolute path/);
   });
 
   it('lists sub-folders without hidden ones, and the way back up', () => {

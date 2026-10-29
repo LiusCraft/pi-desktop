@@ -31,7 +31,10 @@ function offer(release: ReleaseNote) {
     action: release.asset
       ? { label: t('update.install'), onClick: () => void install(id) }
       : { label: t('update.viewOnGithub'), onClick: () => void call('app:openExternal', release.url) },
-    cancel: { label: t('update.ignore'), onClick: () => void call('settings:set', { ignoredUpdate: release.version }).catch(() => {}) },
+    cancel: {
+      label: t('update.ignore'),
+      onClick: () => void call('settings:set', { ignoredUpdate: release.version }).catch(() => {}),
+    },
   });
 }
 

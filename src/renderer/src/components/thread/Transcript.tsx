@@ -13,7 +13,22 @@ import { collapsedItems } from '@/store/transcript';
 import { rememberScroll, savedScroll, type ScrollSpot } from '@/store/scroll';
 import type { Item, ItemOf, SessionView } from '@/store/types';
 import { SelectionMenu } from './SelectionMenu';
-import { AskCard, CompactionItem, FootItem, GroupItem, HandoffItem, isPendingAsk, NoteItem, PermItem, PlanItem, PrEventItem, SuggestItem, TextItem, TodosItem, UserItem } from './Items';
+import {
+  AskCard,
+  CompactionItem,
+  FootItem,
+  GroupItem,
+  HandoffItem,
+  isPendingAsk,
+  NoteItem,
+  PermItem,
+  PlanItem,
+  PrEventItem,
+  SuggestItem,
+  TextItem,
+  TodosItem,
+  UserItem,
+} from './Items';
 
 /** Under a passage that was replied to: a pin per reply, which jumps to the message that quoted it. */
 function QuotePins({ pins }: { pins?: QuotePin[] }) {
@@ -37,23 +52,47 @@ function QuotePins({ pins }: { pins?: QuotePin[] }) {
   );
 }
 
-function renderItem(sid: string, item: Item, items: Item[], index: number, view: string, quoted?: (string | null)[], before?: Map<string, number>) {
+function renderItem(
+  sid: string,
+  item: Item,
+  items: Item[],
+  index: number,
+  view: string,
+  quoted?: (string | null)[],
+  before?: Map<string, number>,
+) {
   switch (item.kind) {
-    case 'user': return <UserItem sid={sid} item={item} quoted={quoted} />;
-    case 'text': return <TextItem item={item} />;
-    case 'note': return <NoteItem item={item} />;
-    case 'group': return <GroupItem sid={sid} item={item} view={view} />;
-    case 'todos': return <TodosItem item={item} />;
-    case 'perm': return <PermItem sid={sid} item={item} />;
-    case 'ask': return <AskCard sid={sid} item={item} />;
-    case 'plan': return <PlanItem sid={sid} item={item} />;
-    case 'suggest': return <SuggestItem sid={sid} item={item} />;
-    case 'compaction': return <CompactionItem sid={sid} item={item} before={before?.get(item.key) ?? 0} />;
-    case 'handoff': return <HandoffItem sid={sid} item={item} before={before?.get(item.key) ?? 0} />;
-    case 'prEvent': return <PrEventItem sid={sid} item={item} />;
+    case 'user':
+      return <UserItem sid={sid} item={item} quoted={quoted} />;
+    case 'text':
+      return <TextItem item={item} />;
+    case 'note':
+      return <NoteItem item={item} />;
+    case 'group':
+      return <GroupItem sid={sid} item={item} view={view} />;
+    case 'todos':
+      return <TodosItem item={item} />;
+    case 'perm':
+      return <PermItem sid={sid} item={item} />;
+    case 'ask':
+      return <AskCard sid={sid} item={item} />;
+    case 'plan':
+      return <PlanItem sid={sid} item={item} />;
+    case 'suggest':
+      return <SuggestItem sid={sid} item={item} />;
+    case 'compaction':
+      return <CompactionItem sid={sid} item={item} before={before?.get(item.key) ?? 0} />;
+    case 'handoff':
+      return <HandoffItem sid={sid} item={item} before={before?.get(item.key) ?? 0} />;
+    case 'prEvent':
+      return <PrEventItem sid={sid} item={item} />;
     case 'foot': {
       let prev: string | undefined;
-      for (let i = index - 1; i >= 0; i--) if (items[i].kind === 'text') { prev = (items[i] as any).text; break; }
+      for (let i = index - 1; i >= 0; i--)
+        if (items[i].kind === 'text') {
+          prev = (items[i] as any).text;
+          break;
+        }
       const next = items.slice(index + 1).find((i): i is ItemOf<'user'> => i.kind === 'user');
       return <FootItem sid={sid} item={item} prevText={prev} forkAt={next?.entryId} />;
     }
@@ -74,13 +113,24 @@ function SetupCard({ steps }: { steps: SetupStep[] }) {
         {steps.map((step) => (
           <li key={step.id} className="flex items-start gap-2">
             <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
-              {step.state === 'done' ? <CheckIcon className="size-3.5 text-success" />
-                : step.state === 'error' ? <CircleAlertIcon className="size-3.5 text-destructive" />
-                : step.state === 'running' ? <span className="size-3 animate-spin rounded-full border-[1.5px] border-primary border-t-transparent" />
-                : <span className="size-2.5 rounded-full border-[1.5px] border-muted-foreground/40" />}
+              {step.state === 'done' ? (
+                <CheckIcon className="size-3.5 text-success" />
+              ) : step.state === 'error' ? (
+                <CircleAlertIcon className="size-3.5 text-destructive" />
+              ) : step.state === 'running' ? (
+                <span className="size-3 animate-spin rounded-full border-[1.5px] border-primary border-t-transparent" />
+              ) : (
+                <span className="size-2.5 rounded-full border-[1.5px] border-muted-foreground/40" />
+              )}
             </span>
             <span className="min-w-0">
-              <span className={cn(step.state === 'pending' || step.state === 'done' ? 'text-muted-foreground' : 'text-foreground')}>{step.label}</span>
+              <span
+                className={cn(
+                  step.state === 'pending' || step.state === 'done' ? 'text-muted-foreground' : 'text-foreground',
+                )}
+              >
+                {step.label}
+              </span>
               {step.detail && <span className="block text-xs break-words text-destructive">{step.detail}</span>}
             </span>
           </li>
@@ -107,16 +157,24 @@ function StatusLine({ s }: { s: SessionView }) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <span className="spark opacity-60" />
-        <button className="rounded-md bg-info/15 px-1.5 py-0.5 text-info hover:bg-info/25" title={t('transcript.showTasks')} onClick={() => togglePanel(s.meta.id, 'tasks', true)}>
+        <button
+          className="rounded-md bg-info/15 px-1.5 py-0.5 text-info hover:bg-info/25"
+          title={t('transcript.showTasks')}
+          onClick={() => togglePanel(s.meta.id, 'tasks', true)}
+        >
           {t(tasks > 1 ? 'transcript.runningTasks' : 'transcript.runningTask', { n: tasks })}
         </button>
       </div>
     );
   }
   return (
-    <div className="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap text-sm text-muted-foreground">
+    <div className="flex min-w-0 items-center gap-2 overflow-hidden text-sm whitespace-nowrap text-muted-foreground">
       <span className="spark spin shrink-0" />
-      {s.running && <span className="shrink-0">{t('transcript.tokens', { dur: fmtDur(Date.now() - s.t0), tokens: fmtTok(s.tokens) })}</span>}
+      {s.running && (
+        <span className="shrink-0">
+          {t('transcript.tokens', { dur: fmtDur(Date.now() - s.t0), tokens: fmtTok(s.tokens) })}
+        </span>
+      )}
       {tasks > 0 && (
         <button
           className="shrink-0 rounded-md bg-info/15 px-1.5 py-0.5 text-info hover:bg-info/25"
@@ -126,7 +184,13 @@ function StatusLine({ s }: { s: SessionView }) {
           {t(tasks > 1 ? 'transcript.runningTasks' : 'transcript.runningTask', { n: tasks })}
         </button>
       )}
-      <span className="min-w-0 flex-1 truncate">{s.waiting ? t('transcript.waitingYou') : s.compacting && !s.stopping ? t('status.compacting') : s.statusText || t('status.thinking')}</span>
+      <span className="min-w-0 flex-1 truncate">
+        {s.waiting
+          ? t('transcript.waitingYou')
+          : s.compacting && !s.stopping
+            ? t('status.compacting')
+            : s.statusText || t('status.thinking')}
+      </span>
     </div>
   );
 }
@@ -317,14 +381,27 @@ export function Transcript({ s }: { s: SessionView }) {
   return (
     <div ref={frame} className="relative min-h-0 flex-1">
       <SelectionMenu sid={sid} scope={frame} />
-      <div ref={scroller} onScroll={onScroll} onWheel={onWheel} onPointerDown={endRestore} onTouchStart={endRestore} onClick={onQuoteClick} onMouseMove={onQuoteHover} className="h-full overflow-y-auto">
+      {/* A scroll surface: wheel, scroll and pointer events are not keyboard controls. */}
+      {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+      <div
+        ref={scroller}
+        onScroll={onScroll}
+        onWheel={onWheel}
+        onPointerDown={endRestore}
+        onTouchStart={endRestore}
+        onClick={onQuoteClick}
+        onMouseMove={onQuoteHover}
+        className="h-full overflow-y-auto"
+      >
         <div ref={content} className="mx-auto flex w-full max-w-[786px] flex-col gap-4 px-6 pt-6 pb-4">
-          {s.items.map((item, i) => (isPendingAsk(item) || collapse.hidden.has(item.key) ? null : (
-            <div key={item.key} data-item-key={item.key} className="transcript-item">
-              {renderItem(s.meta.id, item, s.items, i, view, links.targets.get(item.key), collapse.before)}
-              <QuotePins pins={links.pins.get(item.key)} />
-            </div>
-          )))}
+          {s.items.map((item, i) =>
+            isPendingAsk(item) || collapse.hidden.has(item.key) ? null : (
+              <div key={item.key} data-item-key={item.key} className="transcript-item">
+                {renderItem(s.meta.id, item, s.items, i, view, links.targets.get(item.key), collapse.before)}
+                <QuotePins pins={links.pins.get(item.key)} />
+              </div>
+            ),
+          )}
           {s.setup && <SetupCard steps={s.setup} />}
           <StatusLine s={s} />
         </div>

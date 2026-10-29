@@ -18,14 +18,27 @@ test.beforeEach(async () => {
   const electronProfile = path.join(temporary, 'electron-profile');
   fs.mkdirSync(electronProfile, { recursive: true });
   fs.mkdirSync(path.join(dataDir, 'cache'), { recursive: true });
-  fs.writeFileSync(path.join(dataDir, 'cache', 'models-dev.json'), JSON.stringify({ fetchedAt: Date.now(), providers: { openai: [
-    { id: 'editable-model', context: 200000, output: 32000, cost: { input: 5, output: 10 } },
-    { id: 'gpt-image-1', context: 0, output: 0 },
-  ] } }));
+  fs.writeFileSync(
+    path.join(dataDir, 'cache', 'models-dev.json'),
+    JSON.stringify({
+      fetchedAt: Date.now(),
+      providers: {
+        openai: [
+          { id: 'editable-model', context: 200000, output: 32000, cost: { input: 5, output: 10 } },
+          { id: 'gpt-image-1', context: 0, output: 0 },
+        ],
+      },
+    }),
+  );
   app = await electron.launch({
     executablePath: createRequire(path.resolve('package.json'))('electron') as string,
     args: [path.resolve('.'), '--demo', '--lang=en-US', `--user-data-dir=${electronProfile}`],
-    env: { ...process.env, PI_DESKTOP_HOME: dataDir, PI_CODING_AGENT_DIR: path.join(temporary, 'agent'), PI_OFFLINE: '1' },
+    env: {
+      ...process.env,
+      PI_DESKTOP_HOME: dataDir,
+      PI_CODING_AGENT_DIR: path.join(temporary, 'agent'),
+      PI_OFFLINE: '1',
+    },
   });
   const actualUserData = await app.evaluate(({ app: application }) => application.getPath('userData'));
   expect(fs.realpathSync(actualUserData)).toBe(fs.realpathSync(electronProfile));
@@ -43,7 +56,8 @@ test.afterEach(async ({}, testInfo) => {
     await testInfo.attach('window', { body: await page.screenshot(), contentType: 'image/png' });
   }
   if (app) {
-    if (previousClipboard !== undefined) await app.evaluate(({ clipboard }, text) => clipboard.writeText(text), previousClipboard);
+    if (previousClipboard !== undefined)
+      await app.evaluate(({ clipboard }, text) => clipboard.writeText(text), previousClipboard);
     await app.close();
   }
   fs.rmSync(temporary, { recursive: true, force: true });
@@ -181,7 +195,10 @@ test('file menus, preview excerpts, diff comments, send, fork and rewind', async
   const original = await page.evaluate((id) => window.piDesktop.invoke('sessions:open', id), sourceId);
   expect(original.messages.filter((message) => message.role === 'user')).toHaveLength(2);
 
-  await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.getAllWindows()[0].webContents.send('session:focus', id), sourceId);
+  await app.evaluate(
+    ({ BrowserWindow }, id) => BrowserWindow.getAllWindows()[0].webContents.send('session:focus', id),
+    sourceId,
+  );
   await expect(page.getByRole('button', { name: 'Rewind to here', exact: true })).toHaveCount(2);
   await page.getByRole('button', { name: 'Rewind to here', exact: true }).last().click();
   await expect(page.getByRole('button', { name: 'Rewind to here', exact: true })).toHaveCount(1);
@@ -194,7 +211,9 @@ test('edits model context and free prices without catalog replacement', async ()
   const settingsWindow = app.waitForEvent('window');
   await page.evaluate(async () => {
     await window.piDesktop.invoke('models:endpointSave', {
-      id: 'test-editable', baseUrl: 'http://localhost:11434/v1', api: 'openai-completions',
+      id: 'test-editable',
+      baseUrl: 'http://localhost:11434/v1',
+      api: 'openai-completions',
       models: [{ id: 'editable-model' }, { id: 'gpt-image-1' }],
     });
     await window.piDesktop.invoke('settings:open', 'models');
@@ -232,7 +251,11 @@ test('edits model context and free prices without catalog replacement', async ()
   const catalog = await settings.evaluate(() => window.piDesktop.invoke('models:catalog'));
   expect(catalog.errors).toEqual([]);
   expect(catalog.endpoints[0].models[0].cost).toMatchObject({ input: 0, output: 0.25 });
-  expect(catalog.endpoints[0].models.find((model) => model.id === 'my-private-model')).toMatchObject({ contextWindow: 128000, maxTokens: 16000, cost: { input: 0, output: 0 } });
+  expect(catalog.endpoints[0].models.find((model) => model.id === 'my-private-model')).toMatchObject({
+    contextWindow: 128000,
+    maxTokens: 16000,
+    cost: { input: 0, output: 0 },
+  });
   expect(errors).toEqual([]);
 });
 
@@ -248,7 +271,10 @@ test('customize page: create a skill, switch it off, add and remove a connector'
   await page.getByPlaceholder(/Write release notes/).fill('Write release notes from merged PRs');
   await page.getByPlaceholder(/List merged PRs/).fill('# Release notes\n\nList the merged PRs.');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
-  const row = page.locator('div', { hasText: /^release-notes/ }).filter({ has: page.getByRole('switch') }).last();
+  const row = page
+    .locator('div', { hasText: /^release-notes/ })
+    .filter({ has: page.getByRole('switch') })
+    .last();
   await expect(row).toBeVisible();
   await page.screenshot({ path: process.env.CUSTOMIZE_SHOT ?? path.join(temporary, 'customize.png') });
   await page.getByRole('switch', { name: 'Disable release-notes' }).click();
@@ -306,13 +332,14 @@ test('selecting a reply offers Reply and a side chat that can pop out and pin', 
   await box.press('Enter');
   await expect(page.getByRole('button', { name: 'Rewind to here', exact: true })).toBeEnabled({ timeout: 45_000 });
 
-  const select = (locator = page.locator('.prose-chat').last()) => locator.evaluate((el) => {
-    const range = document.createRange();
-    range.selectNodeContents(el);
-    getSelection()!.removeAllRanges();
-    getSelection()!.addRange(range);
-    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-  });
+  const select = (locator = page.locator('.prose-chat').last()) =>
+    locator.evaluate((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      getSelection()!.removeAllRanges();
+      getSelection()!.addRange(range);
+      el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
 
   // Reply is typed in a draggable popup and lands in the composer as a card.
   await select();
@@ -353,7 +380,9 @@ test('selecting a reply offers Reply and a side chat that can pop out and pin', 
   await expect(page.getByTestId('side-chat')).toHaveCount(0);
   await popup.getByTitle('Pin window').click();
   await expect(popup.getByTitle('Unpin')).toBeVisible();
-  const pinned = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.isAlwaysOnTop()).length);
+  const pinned = await app.evaluate(
+    ({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.isAlwaysOnTop()).length,
+  );
   expect(pinned).toBe(1);
 
   // Dock: back inside the session.

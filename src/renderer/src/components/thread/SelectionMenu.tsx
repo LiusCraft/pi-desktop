@@ -33,7 +33,8 @@ export function SelectionMenu({ sid, scope }: { sid: string; scope: RefObject<HT
       const text = sel?.toString().trim();
       if (!sel || sel.isCollapsed || !text || !sel.rangeCount) return setPicked(null);
       const range = sel.getRangeAt(0);
-      const within = (node: Node) => !!(node instanceof Element ? node : node.parentElement)?.closest('.prose-chat') && el.contains(node);
+      const within = (node: Node) =>
+        !!(node instanceof Element ? node : node.parentElement)?.closest('.prose-chat') && el.contains(node);
       if (!within(range.startContainer) || !within(range.endContainer)) return setPicked(null);
       const rect = range.getBoundingClientRect();
       setPicked({ text, x: rect.left + rect.width / 2, y: rect.top });
@@ -95,32 +96,44 @@ export function SelectionMenu({ sid, scope }: { sid: string; scope: RefObject<HT
     <div
       ref={menu}
       role="menu"
+      tabIndex={-1}
       aria-label={t('selection.actions')}
       // Pressing a button must not collapse the selection it acts on.
       onMouseDown={(e) => e.preventDefault()}
-      style={{ left, top: above ? picked.y - 8 : picked.y + 28, transform: above ? 'translate(-50%, -100%)' : 'translateX(-50%)' }}
+      style={{
+        left,
+        top: above ? picked.y - 8 : picked.y + 28,
+        transform: above ? 'translate(-50%, -100%)' : 'translateX(-50%)',
+      }}
       className="fixed z-50 flex items-center gap-0.5 rounded-lg border bg-popover p-1 text-sm shadow-lg"
     >
       <button
         role="menuitem"
         className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-accent"
-        onClick={() => { void copyText(picked.text); window.getSelection()?.removeAllRanges(); setPicked(null); }}
+        onClick={() => {
+          void copyText(picked.text);
+          window.getSelection()?.removeAllRanges();
+          setPicked(null);
+        }}
       >
-        <CopyIcon className="size-3.5" />{t('selection.copy')}
+        <CopyIcon className="size-3.5" />
+        {t('selection.copy')}
       </button>
       <button
         role="menuitem"
         className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-accent"
         onClick={() => open('side')}
       >
-        <MessageCircleQuestionIcon className="size-3.5" />{t('selection.sideChat')}
+        <MessageCircleQuestionIcon className="size-3.5" />
+        {t('selection.sideChat')}
       </button>
       <button
         role="menuitem"
         className="flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-accent"
         onClick={() => open('reply')}
       >
-        <ReplyIcon className="size-3.5" />{t('selection.reply')}
+        <ReplyIcon className="size-3.5" />
+        {t('selection.reply')}
       </button>
     </div>
   );

@@ -1,6 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  DIFF_TOKEN, MAX_CONTEXT_CHARS, badgeDeletion, decodeReferencePrompt, diffSummaryText, messageSegments, referenceLocation, referencePrompt, sessionToken, terminalToken,
+  DIFF_TOKEN,
+  MAX_CONTEXT_CHARS,
+  badgeDeletion,
+  decodeReferencePrompt,
+  diffSummaryText,
+  messageSegments,
+  referenceLocation,
+  referencePrompt,
+  sessionToken,
+  terminalToken,
   type ContextReference,
 } from '../src/shared/context-reference';
 import { drafts, getDraft, useDrafts } from '../src/renderer/src/store/drafts';
@@ -8,8 +17,14 @@ import { drafts, getDraft, useDrafts } from '../src/renderer/src/store/drafts';
 vi.mock('@/lib/api', () => ({ errText: (error: unknown) => String(error) }));
 
 const comment: ContextReference = {
-  id: 'comment-1', kind: 'comment', path: 'src/example.ts', startLine: 8, endLine: 12,
-  side: 'old', text: 'const value = 1;\nconsole.log(value);', comment: 'Please preserve the previous behavior.',
+  id: 'comment-1',
+  kind: 'comment',
+  path: 'src/example.ts',
+  startLine: 8,
+  endLine: 12,
+  side: 'old',
+  text: 'const value = 1;\nconsole.log(value);',
+  comment: 'Please preserve the previous behavior.',
 };
 
 beforeEach(() => useDrafts.setState({ drafts: {}, active: null }));
@@ -22,11 +37,19 @@ describe('context references', () => {
     expect(prompt).toContain('Comment on "src/example.ts:8–12 (before change)"');
     expect(prompt).toContain(comment.text);
     expect(prompt).toContain(comment.comment);
-    expect(referencePrompt('', [{ id: 'folder', kind: 'path', path: 'src', directory: true }])).toContain('Context from "src/"');
+    expect(referencePrompt('', [{ id: 'folder', kind: 'path', path: 'src', directory: true }])).toContain(
+      'Context from "src/"',
+    );
   });
 
   it('sends a reply to a conversation passage as a card with its comment', () => {
-    const reply: ContextReference = { id: 'reply-1', kind: 'quote', path: '', text: 'The date was off by one month.', comment: 'Why?' };
+    const reply: ContextReference = {
+      id: 'reply-1',
+      kind: 'quote',
+      path: '',
+      text: 'The date was off by one month.',
+      comment: 'Why?',
+    };
     expect(referenceLocation(reply)).toBe('conversation');
     const prompt = referencePrompt('', [reply]);
     expect(prompt).toContain('Reply to a passage of the "conversation"');
@@ -90,7 +113,13 @@ describe('context references', () => {
 
 describe('decodeReferencePrompt', () => {
   it('turns a sent prompt back into the typed text and its cards', () => {
-    const quote: ContextReference = { id: 'q', kind: 'quote', path: '', text: '己改的\n\n(尤其 Clawd.tsx)', comment: 'hi' };
+    const quote: ContextReference = {
+      id: 'q',
+      kind: 'quote',
+      path: '',
+      text: '己改的\n\n(尤其 Clawd.tsx)',
+      comment: 'hi',
+    };
     const file: ContextReference = { id: 'f', kind: 'path', path: 'src/', directory: true };
     const decoded = decodeReferencePrompt(referencePrompt('看一下', [comment, quote, file]));
     expect(decoded?.text).toBe('看一下');
@@ -126,28 +155,62 @@ describe('@ context (diff, terminal, session)', () => {
   });
 
   it('sends a terminal snapshot under its tab title', () => {
-    const reference: ContextReference = { id: 't', kind: 'terminal', path: '', title: 'zsh 1', token: terminalToken('zsh 1'), text: '$ npm test\npass 12' };
+    const reference: ContextReference = {
+      id: 't',
+      kind: 'terminal',
+      path: '',
+      title: 'zsh 1',
+      token: terminalToken('zsh 1'),
+      text: '$ npm test\npass 12',
+    };
     expect(terminalToken('zsh 1')).toBe('@term:zsh-1');
     const prompt = referencePrompt('看看终端', [reference]);
     expect(prompt).toContain('Context from "terminal: zsh 1"');
-    expect(decodeReferencePrompt(prompt)?.references[0]).toMatchObject({ kind: 'terminal', title: 'zsh 1', token: '@term:zsh-1', text: '$ npm test\npass 12' });
+    expect(decodeReferencePrompt(prompt)?.references[0]).toMatchObject({
+      kind: 'terminal',
+      title: 'zsh 1',
+      token: '@term:zsh-1',
+      text: '$ npm test\npass 12',
+    });
   });
 
   it('sends another session as a pointer with its id', () => {
-    const reference: ContextReference = { id: 's', kind: 'session', path: '', title: 'Fix login bug', sessionId: 'abc123', token: sessionToken('Fix login bug') };
+    const reference: ContextReference = {
+      id: 's',
+      kind: 'session',
+      path: '',
+      title: 'Fix login bug',
+      sessionId: 'abc123',
+      token: sessionToken('Fix login bug'),
+    };
     const prompt = referencePrompt('接着那边的活', [reference]);
     expect(prompt).toContain('Context from "session: Fix login bug (id abc123)"');
     expect(prompt).toContain('pidesk_read_session(session_id: "abc123")');
     const decoded = decodeReferencePrompt(prompt)?.references[0];
-    expect(decoded).toMatchObject({ kind: 'session', title: 'Fix login bug', sessionId: 'abc123', token: '@session:Fix-login-bug' });
+    expect(decoded).toMatchObject({
+      kind: 'session',
+      title: 'Fix login bug',
+      sessionId: 'abc123',
+      token: '@session:Fix-login-bug',
+    });
   });
 
   it('splits a message into text and the badges drawn inline', () => {
     const references: ContextReference[] = [
       { id: 'd', kind: 'diff', path: '', token: DIFF_TOKEN, text: '1 changed file, +2 −1' },
-      { id: 's', kind: 'session', path: '', title: 'Fix login bug', sessionId: 'abc', token: sessionToken('Fix login bug') },
+      {
+        id: 's',
+        kind: 'session',
+        path: '',
+        title: 'Fix login bug',
+        sessionId: 'abc',
+        token: sessionToken('Fix login bug'),
+      },
     ];
-    const segments = messageSegments('/skill:pdf-tools 看下 @diff 和 @src/a.ts，再问 @session:Fix-login-bug 和 a@b.com', references);
+    const segments = messageSegments(
+      '/skill:pdf-tools 看下 @diff 和 @src/a.ts，再问 @session:Fix-login-bug 和 a@b.com',
+      references,
+    );
     expect(segments.map((s) => (s.kind === 'text' ? s.text.trim() : `${s.kind}:${s.token}`))).toEqual([
       'command:/skill:pdf-tools',
       '看下',
@@ -163,23 +226,31 @@ describe('@ context (diff, terminal, session)', () => {
   });
 
   it('leaves @ tokens typed by hand as text when nothing was captured for them', () => {
-    expect(messageSegments('看看 @diff 和 @term:zsh-1 还有 @src/a.ts', []).map((s) => (s.kind === 'text' ? s.text : s.kind))).toEqual([
-      '看看 @diff 和 @term:zsh-1 还有 ',
-      'reference',
-    ]);
+    expect(
+      messageSegments('看看 @diff 和 @term:zsh-1 还有 @src/a.ts', []).map((s) => (s.kind === 'text' ? s.text : s.kind)),
+    ).toEqual(['看看 @diff 和 @term:zsh-1 还有 ', 'reference']);
   });
 
   it('badges a typed @path only when the caller knows the file', () => {
     const visible = messageSegments('看 @src/a.ts 和 @nope', [], { isKnownPath: (path) => path === 'src/a.ts' });
     expect(visible.map((s) => (s.kind === 'text' ? s.text : s.token))).toEqual(['看 ', '@src/a.ts', ' 和 @nope']);
-    expect(messageSegments('看 @nope', [], { isKnownPath: () => false }).map((s) => (s.kind === 'text' ? s.text : s.token))).toEqual(['看 @nope']);
+    expect(
+      messageSegments('看 @nope', [], { isKnownPath: () => false }).map((s) => (s.kind === 'text' ? s.text : s.token)),
+    ).toEqual(['看 @nope']);
   });
 });
 
 describe('badge deletion', () => {
   const references: ContextReference[] = [
     { id: 'd', kind: 'diff', path: '', token: DIFF_TOKEN, text: '' },
-    { id: 's', kind: 'session', path: '', title: 'Fix login bug', sessionId: 'abc', token: sessionToken('Fix login bug') },
+    {
+      id: 's',
+      kind: 'session',
+      path: '',
+      title: 'Fix login bug',
+      sessionId: 'abc',
+      token: sessionToken('Fix login bug'),
+    },
   ];
   const text = 'see @diff and @session:Fix-login-bug now';
 

@@ -23,13 +23,22 @@ afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
 describe('work project book', () => {
   it('keeps description, instructions and notes when the folder is used again', () => {
-    book.updateWorkFolder(dir, { description: 'Weekly report', instructions: 'Answer in Chinese', memory: '- uses CSV' });
+    book.updateWorkFolder(dir, {
+      description: 'Weekly report',
+      instructions: 'Answer in Chinese',
+      memory: '- uses CSV',
+    });
     const other = path.join(root, 'other');
     fs.mkdirSync(other);
     book.addWorkFolder(other);
     book.addWorkFolder(dir);
     const [first, second] = book.workFolders();
-    expect(first).toMatchObject({ path: dir, description: 'Weekly report', instructions: 'Answer in Chinese', memory: '- uses CSV' });
+    expect(first).toMatchObject({
+      path: dir,
+      description: 'Weekly report',
+      instructions: 'Answer in Chinese',
+      memory: '- uses CSV',
+    });
     expect(second.path).toBe(other);
   });
 
@@ -49,7 +58,7 @@ describe('work project book', () => {
   });
 
   it('refuses to edit a folder that is not a project', () => {
-    expect(() => book.updateWorkFolder(path.join(root, 'nope'), { description: 'x' })).toThrow();
+    expect(() => book.updateWorkFolder(path.join(root, 'nope'), { description: 'x' })).toThrow(Error);
   });
 });
 
@@ -63,7 +72,11 @@ describe('project context', () => {
   });
 
   it('carries instructions, links and memory', () => {
-    book.updateWorkFolder(dir, { instructions: 'Lead with the conclusion', memory: '- client is Acme', links: [{ title: 'Board', url: 'https://example.com/board' }] });
+    book.updateWorkFolder(dir, {
+      instructions: 'Lead with the conclusion',
+      memory: '- client is Acme',
+      links: [{ title: 'Board', url: 'https://example.com/board' }],
+    });
     const text = projectContext(book.workFolders()[0])!;
     expect(text).toContain('Lead with the conclusion');
     expect(text).toContain('- Board: https://example.com/board');
@@ -74,9 +87,15 @@ describe('project context', () => {
 describe('editProject', () => {
   it('saves the fields given and leaves the others as they were', () => {
     book.updateWorkFolder(dir, { description: 'Quarterly reports' });
-    const saved = editProject(book, dir, { instructions: 'Answer in Chinese', links: [{ title: 'Board', url: 'https://example.com/board' }] });
+    const saved = editProject(book, dir, {
+      instructions: 'Answer in Chinese',
+      links: [{ title: 'Board', url: 'https://example.com/board' }],
+    });
     expect(saved).toMatchObject({
-      name: 'reports', description: 'Quarterly reports', instructions: 'Answer in Chinese', links: [{ title: 'Board', url: 'https://example.com/board' }],
+      name: 'reports',
+      description: 'Quarterly reports',
+      instructions: 'Answer in Chinese',
+      links: [{ title: 'Board', url: 'https://example.com/board' }],
     });
   });
 
@@ -88,10 +107,15 @@ describe('editProject', () => {
   });
 
   it('names the limit instead of clipping what the model wrote', () => {
-    expect(() => editProject(book, dir, { instructions: 'x'.repeat(PROJECT_LIMITS.instructions + 1) })).toThrow(/limit/);
+    expect(() => editProject(book, dir, { instructions: 'x'.repeat(PROJECT_LIMITS.instructions + 1) })).toThrow(
+      /limit/,
+    );
     expect(() => editProject(book, dir, { name: '   ' })).toThrow(/empty/);
     expect(() => editProject(book, dir, { links: [{ title: '', url: 'javascript:alert(1)' }] })).toThrow(/http/);
-    const tooMany = Array.from({ length: PROJECT_LIMITS.links + 1 }, (_, i) => ({ title: '', url: `https://example.com/${i}` }));
+    const tooMany = Array.from({ length: PROJECT_LIMITS.links + 1 }, (_, i) => ({
+      title: '',
+      url: `https://example.com/${i}`,
+    }));
     expect(() => editProject(book, dir, { links: tooMany })).toThrow(/at most/);
   });
 
@@ -109,7 +133,8 @@ describe('editProject', () => {
   });
 });
 
-describe('remember', () => {  it('appends notes one per line', () => {
+describe('remember', () => {
+  it('appends notes one per line', () => {
     remember(book, dir, { note: 'prefers tables' });
     remember(book, dir, { note: 'deadline\nis Friday' });
     expect(book.workFolders()[0].memory).toBe('- prefers tables\n- deadline is Friday');
@@ -128,12 +153,14 @@ describe('remember', () => {  it('appends notes one per line', () => {
   });
 
   it('needs something to save', () => {
-    expect(() => remember(book, dir, {})).toThrow();
+    expect(() => remember(book, dir, {})).toThrow(Error);
   });
 
   it('notifies the host after the note is on disk, so the list it sends is current', () => {
     let seen = '(not called)';
-    remember(book, dir, { note: 'prefers tables' }, () => { seen = book.workFolders()[0].memory ?? ''; });
+    remember(book, dir, { note: 'prefers tables' }, () => {
+      seen = book.workFolders()[0].memory ?? '';
+    });
     expect(seen).toBe('- prefers tables');
   });
 
@@ -142,7 +169,7 @@ describe('remember', () => {  it('appends notes one per line', () => {
     let calls = 0;
     const saved = () => void (calls += 1);
     expect(() => remember(book, dir, { note: 'one more' }, saved)).toThrow(/rewrite/);
-    expect(() => remember(book, dir, {}, saved)).toThrow();
+    expect(() => remember(book, dir, {}, saved)).toThrow(Error);
     expect(calls).toBe(0);
   });
 });

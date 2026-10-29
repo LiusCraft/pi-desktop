@@ -22,5 +22,27 @@ import { update } from './update';
 import { privacy } from './privacy';
 
 /** Every message of the app, by dotted key; each area lives in its own file next to this one. */
-export const MESSAGES = { ...agent, ...actions, ...pet, ...widgets, ...git, ...tools, ...workspace, ...thread, ...pages, ...scheduled, ...customize, ...remote, ...models, ...common, ...composer, ...main, ...settings, ...sidebar, ...web, ...update, ...privacy } satisfies Record<string, Entry>;
+export const MESSAGES = {
+  ...agent,
+  ...actions,
+  ...pet,
+  ...widgets,
+  ...git,
+  ...tools,
+  ...workspace,
+  ...thread,
+  ...pages,
+  ...scheduled,
+  ...customize,
+  ...remote,
+  ...models,
+  ...common,
+  ...composer,
+  ...main,
+  ...settings,
+  ...sidebar,
+  ...web,
+  ...update,
+  ...privacy,
+} satisfies Record<string, Entry>;
 export type MessageKey = keyof typeof MESSAGES;

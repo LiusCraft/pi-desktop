@@ -18,7 +18,12 @@ test.beforeEach(async () => {
   app = await electron.launch({
     executablePath: createRequire(path.resolve('package.json'))('electron') as string,
     args: [path.resolve('.'), '--demo', '--lang=en-US', `--user-data-dir=${electronProfile}`],
-    env: { ...process.env, PI_DESKTOP_HOME: dataDir, PI_CODING_AGENT_DIR: path.join(temporary, 'agent'), PI_OFFLINE: '1' },
+    env: {
+      ...process.env,
+      PI_DESKTOP_HOME: dataDir,
+      PI_CODING_AGENT_DIR: path.join(temporary, 'agent'),
+      PI_OFFLINE: '1',
+    },
   });
   await expect.poll(() => fs.existsSync(path.join(dataDir, 'demo', 'todo-app'))).toBe(true);
   page = await app.firstWindow();
@@ -46,7 +51,8 @@ function removeTemporary(dir: string) {
 }
 
 const sidebar = () => page.locator('aside');
-const row = (title: string) => sidebar().locator('div.group', { has: page.getByRole('button', { name: title, exact: true }) });
+const row = (title: string) =>
+  sidebar().locator('div.group', { has: page.getByRole('button', { name: title, exact: true }) });
 
 /** Start a session from the welcome screen; resolves once the conversation is showing. */
 async function startSession(text: string) {

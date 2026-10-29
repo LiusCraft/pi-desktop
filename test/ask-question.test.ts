@@ -6,14 +6,28 @@ function load(reply: UiResponse) {
   const tools = new Map<string, any>();
   const requests: KitRequest[] = [];
   const pi = { on: () => {}, getAllTools: () => [], registerTool: (t: any) => tools.set(t.name, t) };
-  const state = { mode: 'plan', profile: 'code', outputStyle: 'default', allowed: new Set<string>() } as KitHost['state'];
+  const state = {
+    mode: 'plan',
+    profile: 'code',
+    outputStyle: 'default',
+    allowed: new Set<string>(),
+  } as KitHost['state'];
   createDesktopKit({ state, ask: async (r) => (requests.push(r), reply), setMode: () => {} })(pi as any);
   return { tool: tools.get('pidesk_ask_question'), requests };
 }
 
 const questions = [
-  { question: 'Which database?', header: 'A very long header indeed', options: [{ label: 'SQLite', preview: '```sql\nSELECT 1;\n```' }, { label: 'Postgres' }] },
-  { question: 'Which extras?', header: 'Extras', multiSelect: true, options: [{ label: 'Auth', preview: 'ignored' }, { label: 'Cache' }] },
+  {
+    question: 'Which database?',
+    header: 'A very long header indeed',
+    options: [{ label: 'SQLite', preview: '```sql\nSELECT 1;\n```' }, { label: 'Postgres' }],
+  },
+  {
+    question: 'Which extras?',
+    header: 'Extras',
+    multiSelect: true,
+    options: [{ label: 'Auth', preview: 'ignored' }, { label: 'Cache' }],
+  },
 ];
 
 describe('pidesk_ask_question', () => {

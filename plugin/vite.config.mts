@@ -7,7 +7,16 @@ const root = resolve(__dirname, '..');
 export default defineConfig({
   root,
   resolve: { alias: { '@shared': resolve(root, 'src/shared') } },
-  ssr: { noExternal: true, external: ['@earendil-works/pi-coding-agent', '@earendil-works/pi-ai', '@earendil-works/pi-agent-core', '@earendil-works/pi-tui', 'typebox'] },
+  ssr: {
+    noExternal: true,
+    external: [
+      '@earendil-works/pi-coding-agent',
+      '@earendil-works/pi-ai',
+      '@earendil-works/pi-agent-core',
+      '@earendil-works/pi-tui',
+      'typebox',
+    ],
+  },
   build: {
     ssr: resolve(root, 'src/agent/remote/plugin.ts'),
     outDir: resolve(__dirname, 'pi-remote'),

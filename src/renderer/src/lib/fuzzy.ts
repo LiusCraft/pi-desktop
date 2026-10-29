@@ -43,7 +43,12 @@ export function fuzzyScore(query: string, lower: string): number {
   const at = lower.indexOf(query);
   if (at >= 0) {
     const wordStart = at === 0 || WORD_START.test(lower[at - 1]);
-    return SUBSTRING_SCORE + (at === 0 ? PREFIX_SCORE : wordStart ? WORD_START_SCORE : 0) - Math.min(200, at * 2) - lower.length * LENGTH_PENALTY;
+    return (
+      SUBSTRING_SCORE +
+      (at === 0 ? PREFIX_SCORE : wordStart ? WORD_START_SCORE : 0) -
+      Math.min(200, at * 2) -
+      lower.length * LENGTH_PENALTY
+    );
   }
   let score = 0;
   let cursor = 0;

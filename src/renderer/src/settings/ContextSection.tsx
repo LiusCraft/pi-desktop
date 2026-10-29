@@ -14,7 +14,12 @@ import { Group, Panel, Row } from './ui';
  * Whole minutes, 0 allowed: `value` is what the setting holds (null = no value of its own), and the
  * field only commits a number it can stand behind — anything else falls back to what is stored.
  */
-function MinutesInput({ value, fallback, label, onCommit }: {
+function MinutesInput({
+  value,
+  fallback,
+  label,
+  onCommit,
+}: {
   value: number | null;
   fallback: number;
   label: string;
@@ -40,13 +45,21 @@ function MinutesInput({ value, fallback, label, onCommit }: {
       aria-label={label}
       onChange={(e) => setText(e.target.value)}
       onBlur={commit}
-      onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') commit();
+      }}
       className="h-8 w-20 text-center"
     />
   );
 }
 
-export function ContextSection({ settings, patch }: { settings: Partial<Settings>; patch: (value: Partial<Settings>) => void }) {
+export function ContextSection({
+  settings,
+  patch,
+}: {
+  settings: Partial<Settings>;
+  patch: (value: Partial<Settings>) => void;
+}) {
   const t = useT();
   const global = settings.idleResetMinutes ?? IDLE_RESET_DEFAULT_MINUTES;
   const configured = settings.idleResetModels ?? {};
@@ -59,7 +72,12 @@ export function ContextSection({ settings, patch }: { settings: Partial<Settings
   };
 
   return (
-    <Group id="idleContext" title={t('settings.idleReset')} sub={t('settings.idleReset.sub')} tip={t('settings.idleReset.tip')}>
+    <Group
+      id="idleContext"
+      title={t('settings.idleReset')}
+      sub={t('settings.idleReset.sub')}
+      tip={t('settings.idleReset.tip')}
+    >
       <Panel>
         <Row title={t('settings.idleReset.global')} hint={t('settings.idleReset.global.hint')}>
           <div className="flex shrink-0 items-center gap-2">
@@ -75,14 +93,14 @@ export function ContextSection({ settings, patch }: { settings: Partial<Settings
         {overrides.map(([key, minutes]) => (
           <Row key={key} title={key} hint={t('settings.idleReset.model.hint')}>
             <div className="flex shrink-0 items-center gap-2">
-              <MinutesInput
-                value={minutes}
-                fallback={global}
-                label={key}
-                onCommit={(next) => setModel(key, next)}
-              />
+              <MinutesInput value={minutes} fallback={global} label={key} onCommit={(next) => setModel(key, next)} />
               <span className="text-sm text-muted-foreground">{t('settings.minutesUnit')}</span>
-              <Button variant="ghost" size="icon" aria-label={t('settings.idleReset.models')} onClick={() => setModel(key, null)}>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t('settings.idleReset.models')}
+                onClick={() => setModel(key, null)}
+              >
                 <XIcon className="size-4" />
               </Button>
             </div>
@@ -96,7 +114,9 @@ export function ContextSection({ settings, patch }: { settings: Partial<Settings
             className="w-64 shrink-0"
             emptyLabel={t('settings.idleReset.pick')}
             label={t('settings.idleReset.pickerLabel')}
-            onChange={(id) => { if (id && !(id in configured)) setModel(id, global); }}
+            onChange={(id) => {
+              if (id && !(id in configured)) setModel(id, global);
+            }}
           />
         </Row>
       </Panel>

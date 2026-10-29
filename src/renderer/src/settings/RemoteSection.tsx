@@ -54,7 +54,18 @@ function ServePanel() {
   return (
     <Group title={t('remote.serve.title')} sub={t('remote.serve.sub')} tip={t('remote.serve.tip')}>
       <Panel>
-        <Row title={t('remote.allow')} hint={state.error ? <span className="text-destructive">{state.error}</span> : state.listening ? t('remote.listening', { n: state.clients }) : t('remote.notListening')}>
+        <Row
+          title={t('remote.allow')}
+          hint={
+            state.error ? (
+              <span className="text-destructive">{state.error}</span>
+            ) : state.listening ? (
+              t('remote.listening', { n: state.clients })
+            ) : (
+              t('remote.notListening')
+            )
+          }
+        >
           <Switch checked={state.enabled} onCheckedChange={(v) => void patch({ enabled: v })} />
         </Row>
         <Row title={t('remote.lan')} hint={t('remote.lan.hint')} tip={t('remote.lan.tip')}>
@@ -63,24 +74,54 @@ function ServePanel() {
         <Row
           title={t('remote.tunnel')}
           hint={
-            state.tunnelState === 'error' ? <span className="text-destructive">{state.tunnelError}</span>
-              : state.tunnelState === 'starting' ? t('remote.tunnel.starting')
-                : state.tunnelState === 'ready' ? t('remote.tunnel.ready')
-                  : t('remote.tunnel.idle')
+            state.tunnelState === 'error' ? (
+              <span className="text-destructive">{state.tunnelError}</span>
+            ) : state.tunnelState === 'starting' ? (
+              t('remote.tunnel.starting')
+            ) : state.tunnelState === 'ready' ? (
+              t('remote.tunnel.ready')
+            ) : (
+              t('remote.tunnel.idle')
+            )
           }
         >
           <Switch checked={state.tunnel} onCheckedChange={(v) => void patch({ tunnel: v })} />
         </Row>
         <Row title={t('remote.port')}>
-          <Input className="h-8 w-24 font-mono" inputMode="numeric" value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ''))} placeholder={String(REMOTE_DEFAULT_PORT)} />
-          <Button size="sm" variant="outline" disabled={!portValue || portValue === state.port} onClick={() => void patch({ port: portValue })}>{t('remote.apply')}</Button>
+          <Input
+            className="h-8 w-24 font-mono"
+            inputMode="numeric"
+            value={port}
+            onChange={(e) => setPort(e.target.value.replace(/\D/g, ''))}
+            placeholder={String(REMOTE_DEFAULT_PORT)}
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!portValue || portValue === state.port}
+            onClick={() => void patch({ port: portValue })}
+          >
+            {t('remote.apply')}
+          </Button>
         </Row>
         <Row title={t('remote.token')} hint={t('remote.token.hint')} tip={t('remote.token.tip')} col>
           <div className="flex items-center gap-2">
-            <code className="min-w-0 flex-1 truncate rounded-md border bg-muted/40 px-2.5 py-1.5 font-mono text-xs">{shown}</code>
-            <Button size="sm" variant="outline" onClick={() => setReveal((v) => !v)}>{reveal ? t('remote.hide') : t('remote.show')}</Button>
-            <Button size="sm" variant="outline" onClick={() => copy(state.token)}>{copied ? t('remote.copied') : t('remote.copy')}</Button>
-            <Button size="sm" variant="ghost" onClick={() => void call('remote:serveRotate').then(setState).catch(fail)}>{t('remote.reset')}</Button>
+            <code className="min-w-0 flex-1 truncate rounded-md border bg-muted/40 px-2.5 py-1.5 font-mono text-xs">
+              {shown}
+            </code>
+            <Button size="sm" variant="outline" onClick={() => setReveal((v) => !v)}>
+              {reveal ? t('remote.hide') : t('remote.show')}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => copy(state.token)}>
+              {copied ? t('remote.copied') : t('remote.copy')}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void call('remote:serveRotate').then(setState).catch(fail)}
+            >
+              {t('remote.reset')}
+            </Button>
           </div>
         </Row>
         {state.enabled && state.listening && (
@@ -89,7 +130,9 @@ function ServePanel() {
               {state.urls.map((u) => (
                 <div key={u} className="flex items-center gap-2">
                   <code className="min-w-0 flex-1 truncate font-mono text-xs">{u}</code>
-                  <Button size="sm" variant="ghost" onClick={() => copy(u)}>{copied ? t('remote.copied') : t('remote.copy')}</Button>
+                  <Button size="sm" variant="ghost" onClick={() => copy(u)}>
+                    {copied ? t('remote.copied') : t('remote.copy')}
+                  </Button>
                 </div>
               ))}
             </div>
@@ -165,33 +208,85 @@ function ConnectPanel() {
       title={t('remote.connect.title')}
       sub={t('remote.connect.sub')}
       tip={t('remote.connect.tip')}
-      action={!draft && <Button size="sm" variant="outline" onClick={() => setDraft(EMPTY)}>{t('remote.addConnection')}</Button>}
+      action={
+        !draft && (
+          <Button size="sm" variant="outline" onClick={() => setDraft(EMPTY)}>
+            {t('remote.addConnection')}
+          </Button>
+        )
+      }
     >
       <Panel>
-        {connections.length === 0 && !draft && <Row title={t('remote.noConnections')} hint={t('remote.noConnections.hint')} />}
+        {connections.length === 0 && !draft && (
+          <Row title={t('remote.noConnections')} hint={t('remote.noConnections.hint')} />
+        )}
         {connections.map((c) => {
           const isActive = active?.id === c.id;
           return (
-            <Row key={c.id} title={<span className="flex items-center gap-2">{c.name}{isActive && <span className="rounded bg-success/15 px-1.5 text-[10px] font-normal text-success">{t('remote.inUse')}</span>}</span>} hint={<span className="font-mono">{c.url}</span>}>
+            <Row
+              key={c.id}
+              title={
+                <span className="flex items-center gap-2">
+                  {c.name}
+                  {isActive && (
+                    <span className="rounded bg-success/15 px-1.5 text-[10px] font-normal text-success">
+                      {t('remote.inUse')}
+                    </span>
+                  )}
+                </span>
+              }
+              hint={<span className="font-mono">{c.url}</span>}
+            >
               {isActive ? (
-                <Button size="sm" variant="outline" onClick={() => void disconnect()}>{t('remote.disconnect')}</Button>
+                <Button size="sm" variant="outline" onClick={() => void disconnect()}>
+                  {t('remote.disconnect')}
+                </Button>
               ) : (
-                <Button size="sm" disabled={busy !== null} onClick={() => void connect(c.id)}>{busy === c.id ? t('remote.connecting') : t('remote.connect')}</Button>
+                <Button size="sm" disabled={busy !== null} onClick={() => void connect(c.id)}>
+                  {busy === c.id ? t('remote.connecting') : t('remote.connect')}
+                </Button>
               )}
-              <Button size="sm" variant="ghost" onClick={() => setDraft({ id: c.id, name: c.name, url: c.url, token: '' })}>{t('remote.edit')}</Button>
-              <Button size="sm" variant="ghost" onClick={() => void remove(c.id)}>{t('remote.delete')}</Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setDraft({ id: c.id, name: c.name, url: c.url, token: '' })}
+              >
+                {t('remote.edit')}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => void remove(c.id)}>
+                {t('remote.delete')}
+              </Button>
             </Row>
           );
         })}
         {draft && (
           <Row title={t(edit ? 'remote.editConnection' : 'remote.newConnection')} col>
             <div className="grid gap-2">
-              <Input value={draft.name} onChange={(e) => set({ name: e.target.value })} placeholder={t('remote.namePh')} />
-              <Input value={draft.url} onChange={(e) => set({ url: e.target.value })} placeholder={t('remote.urlPh')} className="font-mono" />
-              <Input value={draft.token ?? ''} onChange={(e) => set({ token: e.target.value })} type="password" placeholder={t(edit ? 'remote.tokenKeepPh' : 'remote.tokenPh')} className="font-mono" />
+              <Input
+                value={draft.name}
+                onChange={(e) => set({ name: e.target.value })}
+                placeholder={t('remote.namePh')}
+              />
+              <Input
+                value={draft.url}
+                onChange={(e) => set({ url: e.target.value })}
+                placeholder={t('remote.urlPh')}
+                className="font-mono"
+              />
+              <Input
+                value={draft.token ?? ''}
+                onChange={(e) => set({ token: e.target.value })}
+                type="password"
+                placeholder={t(edit ? 'remote.tokenKeepPh' : 'remote.tokenPh')}
+                className="font-mono"
+              />
               <div className="flex justify-end gap-2">
-                <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>{t('remote.cancel')}</Button>
-                <Button size="sm" disabled={!draft.url.trim()} onClick={() => void save()}>{t('remote.save')}</Button>
+                <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>
+                  {t('remote.cancel')}
+                </Button>
+                <Button size="sm" disabled={!draft.url.trim()} onClick={() => void save()}>
+                  {t('remote.save')}
+                </Button>
               </div>
             </div>
           </Row>
@@ -210,9 +305,15 @@ function PluginPanel() {
       <Panel>
         <Row title={t('remote.plugin.install')} col>
           <div className="space-y-1.5">
-            {commands.map((c) => <code key={c} className="block rounded-md border bg-muted/40 px-2.5 py-1.5 font-mono text-xs">{c}</code>)}
+            {commands.map((c) => (
+              <code key={c} className="block rounded-md border bg-muted/40 px-2.5 py-1.5 font-mono text-xs">
+                {c}
+              </code>
+            ))}
             <div className="flex justify-end">
-              <Button size="sm" variant="ghost" onClick={() => copy(commands.join('\n'))}>{copied ? t('remote.copied') : t('remote.plugin.copy')}</Button>
+              <Button size="sm" variant="ghost" onClick={() => copy(commands.join('\n'))}>
+                {copied ? t('remote.copied') : t('remote.plugin.copy')}
+              </Button>
             </div>
           </div>
         </Row>

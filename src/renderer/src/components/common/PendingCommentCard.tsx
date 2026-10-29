@@ -13,9 +13,19 @@ export function PendingCommentCard({ sid, reference }: { sid: string; reference:
       <div className="flex items-center gap-1.5 border-b bg-muted/40 py-0.5 pr-1 pl-2.5 text-muted-foreground">
         <MessageSquareIcon className="size-3 shrink-0" />
         <span className="min-w-0 flex-1 truncate">{t('ctx.comment')}</span>
-        <Button type="button" variant="ghost" size="icon-xs" aria-label={t('ctx.remove', { name: referenceLocation(reference) })} onClick={() => drafts.removeReference(sessionDraftKey(sid), reference.id)}><XIcon /></Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label={t('ctx.remove', { name: referenceLocation(reference) })}
+          onClick={() => drafts.removeReference(sessionDraftKey(sid), reference.id)}
+        >
+          <XIcon />
+        </Button>
       </div>
-      <p className="px-2.5 py-1.5 text-[12.5px] leading-relaxed whitespace-pre-wrap break-words" data-selectable>{reference.comment}</p>
+      <p className="px-2.5 py-1.5 text-[12.5px] leading-relaxed break-words whitespace-pre-wrap" data-selectable>
+        {reference.comment}
+      </p>
     </div>
   );
 }

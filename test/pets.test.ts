@@ -11,7 +11,13 @@ const fox = {
   id: 'fox',
   label: '小狐狸',
   shapes: [
-    { fill: '#e07b39', rects: [{ x: 3, y: 0, w: 16, h: 10 }, { x: 4, y: 10, w: 2, h: 4, part: 'leg a' }] },
+    {
+      fill: '#e07b39',
+      rects: [
+        { x: 3, y: 0, w: 16, h: 10 },
+        { x: 4, y: 10, w: 2, h: 4, part: 'leg a' },
+      ],
+    },
     { fill: '#141413', part: 'eyes', rects: [{ x: 6, y: 3, w: 2, h: 2 }] },
   ],
 };
@@ -24,8 +30,16 @@ describe('parsePetDef', () => {
   it.each([
     ['a bad id', { ...fox, id: 'Fox!' }, /id must be/],
     ['a bad colour', { ...fox, shapes: [{ fill: 'red', rects: fox.shapes[0].rects }] }, /fill must be a hex/],
-    ['an unknown part', { ...fox, shapes: [{ fill: '#fff', rects: [{ x: 0, y: 0, w: 1, h: 1, part: 'wing' }] }] }, /part must be one of/],
-    ['a rectangle off the grid', { ...fox, shapes: [{ fill: '#fff', rects: [{ x: 28, y: 0, w: 5, h: 1 }] }] }, /must stay inside/],
+    [
+      'an unknown part',
+      { ...fox, shapes: [{ fill: '#fff', rects: [{ x: 0, y: 0, w: 1, h: 1, part: 'wing' }] }] },
+      /part must be one of/,
+    ],
+    [
+      'a rectangle off the grid',
+      { ...fox, shapes: [{ fill: '#fff', rects: [{ x: 28, y: 0, w: 5, h: 1 }] }] },
+      /must stay inside/,
+    ],
     ['a fractional size', { ...fox, shapes: [{ fill: '#fff', rects: [{ x: 0, y: 0, w: 1.5, h: 1 }] }] }, /integer/],
     ['no shapes', { ...fox, shapes: [] }, /shapes must be/],
   ])('rejects %s', (_name, pet, message) => {
@@ -66,7 +80,9 @@ describe('pidesk_pet tools', () => {
     const out = await tools.get('pidesk_pet_manage').execute('c', { action: 'save', ...fox });
     expect(out.content[0].text).toMatch(/Saved pet "小狐狸"/);
     expect(listPets(dir)).toHaveLength(1);
-    await expect(tools.get('pidesk_pet_manage').execute('c', { action: 'save', id: 'bad', label: 'x', shapes: [] })).rejects.toThrow(/shapes/);
+    await expect(
+      tools.get('pidesk_pet_manage').execute('c', { action: 'save', id: 'bad', label: 'x', shapes: [] }),
+    ).rejects.toThrow(/shapes/);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });

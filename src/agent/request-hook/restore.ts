@@ -1,7 +1,12 @@
 // Puts masked values back into the model's reply while it streams, so the session, the screen and the files the model
 // writes hold the real values. Text and tool-call arguments are restored; reasoning is left as the vendor wrote it,
 // since it is signed.
-import { createAssistantMessageEventStream, type AssistantMessage, type AssistantMessageEvent, type AssistantMessageEventStream } from '@earendil-works/pi-ai';
+import {
+  createAssistantMessageEventStream,
+  type AssistantMessage,
+  type AssistantMessageEvent,
+  type AssistantMessageEventStream,
+} from '@earendil-works/pi-ai';
 import type { Redactor } from './redact';
 
 /** A placeholder cut off at the end of a chunk: `{`, `{{`, `{{API_KEY_3f`, `{{API_KEY_3fa9c01b}`. */
@@ -19,7 +24,8 @@ export function restoreMessage(redactor: Redactor, msg: AssistantMessage): Assis
   return {
     ...msg,
     content: msg.content.map((block) => {
-      if (block.type === 'text') return block.text.includes('{{') ? { ...block, text: redactor.restore(block.text) } : block;
+      if (block.type === 'text')
+        return block.text.includes('{{') ? { ...block, text: redactor.restore(block.text) } : block;
       if (block.type === 'toolCall') return { ...block, arguments: redactor.restoreDeep(block.arguments) };
       return block;
     }),
@@ -30,7 +36,12 @@ export function restoreMessage(redactor: Redactor, msg: AssistantMessage): Assis
  * `source` with placeholders restored in every event. While `active()` is false the request had nothing masked and
  * events pass through as they are. `observe` sees each event as it comes from `source`.
  */
-export function restoreStream(source: AssistantMessageEventStream, redactor: Redactor, active: () => boolean, observe?: (ev: AssistantMessageEvent) => void): AssistantMessageEventStream {
+export function restoreStream(
+  source: AssistantMessageEventStream,
+  redactor: Redactor,
+  active: () => boolean,
+  observe?: (ev: AssistantMessageEvent) => void,
+): AssistantMessageEventStream {
   const out = createAssistantMessageEventStream();
   // The tail of a text or tool-call block that may be a placeholder in the making, by block.
   const held = new Map<string, string>();
@@ -38,15 +49,19 @@ export function restoreStream(source: AssistantMessageEventStream, redactor: Red
 
   const flush = (partial: AssistantMessage, only?: string): AssistantMessageEvent[] => {
     const events: AssistantMessageEvent[] = [];
+    // A copy: the loop deletes from `held`.
+    // oxlint-disable-next-line unicorn/no-useless-spread
     for (const [key, tail] of [...held]) {
       if (only && key !== only) continue;
       held.delete(key);
       if (!tail) continue;
       const [kind, index] = key.split(':') as [Held, string];
       const delta = redactor.restore(tail, kind === 'toolcall');
-      events.push(kind === 'text'
-        ? { type: 'text_delta', contentIndex: Number(index), delta, partial }
-        : { type: 'toolcall_delta', contentIndex: Number(index), delta, partial });
+      events.push(
+        kind === 'text'
+          ? { type: 'text_delta', contentIndex: Number(index), delta, partial }
+          : { type: 'toolcall_delta', contentIndex: Number(index), delta, partial },
+      );
     }
     return events;
   };
@@ -64,11 +79,17 @@ export function restoreStream(source: AssistantMessageEventStream, redactor: Red
       }
       case 'text_end': {
         const partial = restoreMessage(redactor, ev.partial);
-        return [...flush(partial, slot('text', ev.contentIndex)), { ...ev, content: redactor.restore(ev.content), partial }];
+        return [
+          ...flush(partial, slot('text', ev.contentIndex)),
+          { ...ev, content: redactor.restore(ev.content), partial },
+        ];
       }
       case 'toolcall_end': {
         const partial = restoreMessage(redactor, ev.partial);
-        return [...flush(partial, slot('toolcall', ev.contentIndex)), { ...ev, toolCall: { ...ev.toolCall, arguments: redactor.restoreDeep(ev.toolCall.arguments) }, partial }];
+        return [
+          ...flush(partial, slot('toolcall', ev.contentIndex)),
+          { ...ev, toolCall: { ...ev.toolCall, arguments: redactor.restoreDeep(ev.toolCall.arguments) }, partial },
+        ];
       }
       case 'done': {
         const message = restoreMessage(redactor, ev.message);

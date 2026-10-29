@@ -2,15 +2,27 @@ import { defineMessages } from '../define';
 
 export const common = defineMessages({
   'mode.auto': { en: 'Auto', zh: '自动' },
-  'mode.auto.desc': { en: 'Runs safe actions automatically; asks before risky ones such as pushing, opening PRs or deleting', zh: '自动执行安全操作；推送、发 PR、删除等有风险的命令才询问' },
+  'mode.auto.desc': {
+    en: 'Runs safe actions automatically; asks before risky ones such as pushing, opening PRs or deleting',
+    zh: '自动执行安全操作；推送、发 PR、删除等有风险的命令才询问',
+  },
   'mode.default': { en: 'Ask permissions', zh: '逐项询问' },
   'mode.default.desc': { en: 'Asks before editing files or running commands', zh: '编辑文件和运行命令前都先征求同意' },
   'mode.acceptEdits': { en: 'Accept edits', zh: '自动接受编辑' },
-  'mode.acceptEdits.desc': { en: 'Edits files in the project directly, asks before running commands', zh: '直接修改项目内文件，运行命令前询问' },
+  'mode.acceptEdits.desc': {
+    en: 'Edits files in the project directly, asks before running commands',
+    zh: '直接修改项目内文件，运行命令前询问',
+  },
   'mode.plan': { en: 'Plan', zh: '计划' },
-  'mode.plan.desc': { en: 'Explores read-only and proposes a plan; acts after you approve', zh: '只读探索，先给出计划，批准后再动手' },
+  'mode.plan.desc': {
+    en: 'Explores read-only and proposes a plan; acts after you approve',
+    zh: '只读探索，先给出计划，批准后再动手',
+  },
   'mode.bypass': { en: 'Bypass permissions', zh: '跳过权限' },
-  'mode.bypass.desc': { en: 'Never asks; only recommended in an isolated environment', zh: '完全不询问，仅建议在隔离环境中使用' },
+  'mode.bypass.desc': {
+    en: 'Never asks; only recommended in an isolated environment',
+    zh: '完全不询问，仅建议在隔离环境中使用',
+  },
 
   'level.off': { en: 'Off', zh: '关闭' },
   'level.minimal': { en: 'Minimal', zh: '极低' },
@@ -40,7 +52,10 @@ export const common = defineMessages({
 
   'cmd.clear': { en: 'Start a fresh context (keeps the session)', zh: '开始新的上下文（保留会话）' },
   'cmd.compact': { en: 'Compact the conversation history', zh: '压缩对话历史' },
-  'cmd.btw': { en: 'Side question: chat about the current session without adding to its context', zh: '旁路提问：基于当前会话聊一句，不进入上下文' },
+  'cmd.btw': {
+    en: 'Side question: chat about the current session without adding to its context',
+    zh: '旁路提问：基于当前会话聊一句，不进入上下文',
+  },
   'cmd.context': { en: 'Show context usage', zh: '查看上下文用量' },
   'cmd.model': { en: 'Switch model', zh: '切换模型' },
   'cmd.permissions': { en: 'Switch permission mode', zh: '切换权限模式' },
@@ -48,11 +63,20 @@ export const common = defineMessages({
   'cmd.help': { en: 'Show commands and shortcuts', zh: '查看命令与快捷键' },
 
   'idea.briefing': { en: 'Send me a daily briefing', zh: '给我发每日简报' },
-  'idea.briefing.prompt': { en: 'Every weekday at 8 am, send me a briefing: my schedule, to-dos and important emails', zh: '每个工作日早上 8 点给我发一份简报：日程、待办和重要邮件' },
+  'idea.briefing.prompt': {
+    en: 'Every weekday at 8 am, send me a briefing: my schedule, to-dos and important emails',
+    zh: '每个工作日早上 8 点给我发一份简报：日程、待办和重要邮件',
+  },
   'idea.inbox': { en: 'Organize my inbox', zh: '整理我的收件箱' },
-  'idea.inbox.prompt': { en: 'Organize my inbox: sort it, flag the emails that need a reply, and draft the replies', zh: '帮我整理收件箱：归类、标记需要回复的邮件，并起草回复' },
+  'idea.inbox.prompt': {
+    en: 'Organize my inbox: sort it, flag the emails that need a reply, and draft the replies',
+    zh: '帮我整理收件箱：归类、标记需要回复的邮件，并起草回复',
+  },
   'idea.customize': { en: 'Customize Work for me', zh: '为我定制 Work' },
-  'idea.customize.prompt': { en: 'Customize Work for the way I work: recommend suitable skills and connectors', zh: '根据我的工作方式，帮我定制 Work：推荐合适的技能和连接器' },
+  'idea.customize.prompt': {
+    en: 'Customize Work for the way I work: recommend suitable skills and connectors',
+    zh: '根据我的工作方式，帮我定制 Work：推荐合适的技能和连接器',
+  },
 
   'palette.newSession': { en: 'New session', zh: '新会话' },
   'palette.newTask': { en: 'New task', zh: '新任务' },

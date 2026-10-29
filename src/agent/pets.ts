@@ -12,7 +12,10 @@ const file = (dir: string, id: string) => path.join(dir, `${id}.json`);
 export function listPets(dir: string): PetDef[] {
   let names: string[];
   try {
-    names = fs.readdirSync(dir).filter((n) => n.endsWith('.json')).sort();
+    names = fs
+      .readdirSync(dir)
+      .filter((n) => n.endsWith('.json'))
+      .sort();
   } catch {
     return [];
   }
@@ -33,8 +36,11 @@ export function savePet(dir: string, raw: unknown): PetDef {
   const pet = parsePetDef(raw);
   if (BUILTIN_PET_IDS.includes(pet.id)) throw new Error(`"${pet.id}" is a built-in pet; pick another id`);
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(file(dir, pet.id), `${JSON.stringify(pet, null, 2)}
-`);
+  fs.writeFileSync(
+    file(dir, pet.id),
+    `${JSON.stringify(pet, null, 2)}
+`,
+  );
   return pet;
 }
 

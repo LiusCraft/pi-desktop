@@ -1,15 +1,27 @@
 import { defineMessages } from '../define';
 
 export const thread = defineMessages({
-  'thread.queued': { en: 'Queued: handled after Pi Desktop finishes the current step', zh: '排队中：Pi Desktop 完成当前步骤后处理' },
+  'thread.queued': {
+    en: 'Queued: handled after Pi Desktop finishes the current step',
+    zh: '排队中：Pi Desktop 完成当前步骤后处理',
+  },
   'thread.copied': { en: 'Copied', zh: '已复制' },
   'thread.copyMessage': { en: 'Copy message', zh: '复制消息' },
   'thread.copiedMessage': { en: 'Message copied', zh: '已复制消息' },
   'thread.rewind': { en: 'Rewind to here', zh: '回退到这里' },
-  'thread.rewind.tip': { en: 'Rewind to here: removes this message and everything after it, and puts the text back in the input box. File changes are kept.', zh: '回退到这里：移除此消息及后续对话，原文放回输入框。文件改动会保留。' },
+  'thread.rewind.tip': {
+    en: 'Rewind to here: removes this message and everything after it, and puts the text back in the input box. File changes are kept.',
+    zh: '回退到这里：移除此消息及后续对话，原文放回输入框。文件改动会保留。',
+  },
   'thread.fork': { en: 'Branch from here', zh: '从这里创建分支' },
-  'thread.fork.tip': { en: 'Creates a new session from before this message, with the text in its input box; the current conversation stays.', zh: '从此消息之前创建新会话，原文放入新会话输入框，保留当前对话。' },
-  'thread.deliveryFailed': { en: 'Delivery not confirmed. Check the conversation before retrying.', zh: '没有确认送达。重试前请先看一下对话。' },
+  'thread.fork.tip': {
+    en: 'Creates a new session from before this message, with the text in its input box; the current conversation stays.',
+    zh: '从此消息之前创建新会话，原文放入新会话输入框，保留当前对话。',
+  },
+  'thread.deliveryFailed': {
+    en: 'Delivery not confirmed. Check the conversation before retrying.',
+    zh: '没有确认送达。重试前请先看一下对话。',
+  },
   'thread.restoreDraft': { en: 'Restore draft', zh: '恢复草稿' },
   'thread.skillTip': { en: 'See the skill instructions', zh: '查看技能内容' },
   'thread.commandTip': { en: 'See what this command expanded to', zh: '查看这条命令展开后的内容' },
@@ -38,12 +50,21 @@ export const thread = defineMessages({
   'prevent.showInstruction': { en: 'Show the instruction given to Pi', zh: '查看交给 Pi 的说明' },
 
   'suggest.title': { en: 'Suggested tasks', zh: '建议的任务' },
-  'suggest.sub': { en: ' · Pi Desktop noticed something outside the current task', zh: ' · Pi Desktop 发现了当前任务之外的事' },
+  'suggest.sub': {
+    en: ' · Pi Desktop noticed something outside the current task',
+    zh: ' · Pi Desktop 发现了当前任务之外的事',
+  },
   'suggest.toggle': { en: 'Expand / collapse', zh: '展开 / 收起' },
   'suggest.start': { en: 'Start', zh: '开始' },
-  'suggest.startTip': { en: 'Open a new session in the same project to do it; you stay in this one', zh: '在同一项目里新开一个会话来做，你留在当前会话' },
-  'suggest.startCodeTip': { en: 'Open a Code session in this folder to do it; you stay in this one', zh: '在这个文件夹里新开一个 Code 会话来做，你留在当前会话' },
-  'suggest.doHere':{ en: 'Do it here', zh: '在这里做' },
+  'suggest.startTip': {
+    en: 'Open a new session in the same project to do it; you stay in this one',
+    zh: '在同一项目里新开一个会话来做，你留在当前会话',
+  },
+  'suggest.startCodeTip': {
+    en: 'Open a Code session in this folder to do it; you stay in this one',
+    zh: '在这个文件夹里新开一个 Code 会话来做，你留在当前会话',
+  },
+  'suggest.doHere': { en: 'Do it here', zh: '在这里做' },
   'suggest.doHereTip': { en: 'Send it to this session as a message', zh: '把它作为一条消息发给当前会话' },
   'suggest.dismiss': { en: 'Dismiss', zh: '忽略' },
   'suggest.started': { en: 'Started in a new session', zh: '已在新会话中开始' },
@@ -177,7 +198,10 @@ export const thread = defineMessages({
   'transcript.pinLabel': { en: 'Replied to', zh: '被回复' },
   'transcript.setupFailed': { en: 'The session failed to start', zh: '会话启动失败' },
   'transcript.setupRunning': { en: 'Starting the session…', zh: '正在启动会话…' },
-  'transcript.setupRetry': { en: 'Send another message to retry; delete the session if you do not need it.', zh: '再发一条消息会重试；不需要这个会话时可以删除它。' },
+  'transcript.setupRetry': {
+    en: 'Send another message to retry; delete the session if you do not need it.',
+    zh: '再发一条消息会重试；不需要这个会话时可以删除它。',
+  },
   'transcript.showTasks': { en: 'Show background tasks', zh: '显示后台任务' },
   'transcript.runningTask': { en: '{n} running task', zh: '{n} 个任务运行中' },
   'transcript.runningTasks': { en: '{n} running tasks', zh: '{n} 个任务运行中' },
@@ -196,7 +220,10 @@ export const thread = defineMessages({
   'selection.close': { en: 'Close', zh: '关闭' },
   'selection.sideMessage': { en: 'Side chat message', zh: '旁路提问内容' },
   'selection.replyMessage': { en: 'Reply message', zh: '回复内容' },
-  'selection.sidePh': { en: 'Ask about this passage… (not added to the conversation)', zh: '问问这段内容…（不会写入会话）' },
+  'selection.sidePh': {
+    en: 'Ask about this passage… (not added to the conversation)',
+    zh: '问问这段内容…（不会写入会话）',
+  },
   'selection.replyPh': { en: 'Write your reply… (added to the input box)', zh: '写下你的回复…（添加到输入框）' },
   'selection.ask': { en: 'Ask', zh: '提问' },
   'selection.addReply': { en: 'Add reply', zh: '添加回复' },
@@ -217,8 +244,14 @@ export const thread = defineMessages({
   'compact.summaryTip': { en: 'Show or hide the summary', zh: '展开或收起摘要' },
   'handoff.title': { en: 'Context rebuilt', zh: '上下文已重建' },
   'handoff.card': { en: 'Idle {idle} · {tokens} tokens dropped', zh: '空闲 {idle} · 丢弃 {tokens} tokens' },
-  'handoff.tip': { en: "The earlier conversation left the model's context so it is not re-sent at full price. Pi can still search it when the next message needs it.", zh: '之前的对话已移出模型上下文，不再按全价重发。需要时 Pi 仍可检索它。' },
-  'status.interrupted': { en: 'Interrupted · tell Pi Desktop what to do next', zh: '已中断 · 告诉 Pi Desktop 接下来该怎么做' },
+  'handoff.tip': {
+    en: "The earlier conversation left the model's context so it is not re-sent at full price. Pi can still search it when the next message needs it.",
+    zh: '之前的对话已移出模型上下文，不再按全价重发。需要时 Pi 仍可检索它。',
+  },
+  'status.interrupted': {
+    en: 'Interrupted · tell Pi Desktop what to do next',
+    zh: '已中断 · 告诉 Pi Desktop 接下来该怎么做',
+  },
   'status.retrying': { en: 'Retrying ({attempt}/{max}) — {error}', zh: '重试中（{attempt}/{max}）— {error}' },
   'status.tokens': { en: '{dur} · {tokens} tokens', zh: '{dur} · {tokens} tokens' },
 });

@@ -1,5 +1,5 @@
-@import "tailwindcss";
-@import "tw-animate-css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -7,8 +7,11 @@
    shadcn token names, Claude-desktop palette: warm paper in light, warm charcoal in dark. */
 :root {
   /* Native UI fonts per OS (no web fonts): the app should look like it belongs to the platform. */
-  --system-font-sans: system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
-  --system-font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Cascadia Code", Menlo, Consolas, "Microsoft YaHei UI", monospace;
+  --system-font-sans:
+    system-ui, -apple-system, 'Segoe UI Variable Text', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI',
+    'Noto Sans CJK SC', sans-serif;
+  --system-font-mono:
+    ui-monospace, 'SF Mono', 'Cascadia Mono', 'Cascadia Code', Menlo, Consolas, 'Microsoft YaHei UI', monospace;
   --radius: 0.625rem;
   --background: #faf9f5;
   --foreground: #141413;
@@ -91,37 +94,89 @@
 
 /* VS Code Light+ / Dark+ */
 :root[data-palette='vscode'] {
-  --background: #ffffff; --foreground: #3b3b3b; --card: #ffffff; --card-foreground: #3b3b3b;
-  --popover: #ffffff; --popover-foreground: #3b3b3b; --primary: #007acc; --primary-foreground: #ffffff;
-  --secondary: #f3f3f3; --secondary-foreground: #3b3b3b; --muted: #f3f3f3; --muted-foreground: #717171;
-  --accent: rgba(0, 0, 0, 0.06); --accent-foreground: #3b3b3b; --destructive: #e51400;
-  --border: #e5e5e5; --input: #cecece; --ring: rgba(0, 122, 204, 0.5);
-  --sidebar: #f3f3f3; --sidebar-foreground: #3b3b3b; --sidebar-accent: rgba(0, 0, 0, 0.07); --sidebar-border: #e5e5e5;
-  --user-bubble: #e8e8e8; --code-bg: #f5f5f5;
-  --success: #388a34; --warning: #bf8803; --info: #0066bf;
-  --diff-add: rgba(56, 138, 52, 0.12); --diff-add-strong: rgba(56, 138, 52, 0.26);
-  --diff-del: rgba(229, 20, 0, 0.1); --diff-del-strong: rgba(229, 20, 0, 0.24);
-  --tok-keyword: #0000ff; --tok-string: #a31515; --tok-number: #098658; --tok-comment: #008000; --tok-title: #795e26; --tok-attr: #001080;
+  --background: #ffffff;
+  --foreground: #3b3b3b;
+  --card: #ffffff;
+  --card-foreground: #3b3b3b;
+  --popover: #ffffff;
+  --popover-foreground: #3b3b3b;
+  --primary: #007acc;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f3f3;
+  --secondary-foreground: #3b3b3b;
+  --muted: #f3f3f3;
+  --muted-foreground: #717171;
+  --accent: rgba(0, 0, 0, 0.06);
+  --accent-foreground: #3b3b3b;
+  --destructive: #e51400;
+  --border: #e5e5e5;
+  --input: #cecece;
+  --ring: rgba(0, 122, 204, 0.5);
+  --sidebar: #f3f3f3;
+  --sidebar-foreground: #3b3b3b;
+  --sidebar-accent: rgba(0, 0, 0, 0.07);
+  --sidebar-border: #e5e5e5;
+  --user-bubble: #e8e8e8;
+  --code-bg: #f5f5f5;
+  --success: #388a34;
+  --warning: #bf8803;
+  --info: #0066bf;
+  --diff-add: rgba(56, 138, 52, 0.12);
+  --diff-add-strong: rgba(56, 138, 52, 0.26);
+  --diff-del: rgba(229, 20, 0, 0.1);
+  --diff-del-strong: rgba(229, 20, 0, 0.24);
+  --tok-keyword: #0000ff;
+  --tok-string: #a31515;
+  --tok-number: #098658;
+  --tok-comment: #008000;
+  --tok-title: #795e26;
+  --tok-attr: #001080;
 }
 :root[data-palette='vscode'].dark {
-  --background: #1e1e1e; --foreground: #cccccc; --card: #252526; --card-foreground: #cccccc;
-  --popover: #252526; --popover-foreground: #cccccc; --primary: #0e639c; --primary-foreground: #ffffff;
-  --secondary: #2d2d30; --secondary-foreground: #cccccc; --muted: #2d2d30; --muted-foreground: #9d9d9d;
-  --accent: rgba(255, 255, 255, 0.07); --accent-foreground: #ffffff; --destructive: #f48771;
-  --border: #3c3c3c; --input: #3c3c3c; --ring: rgba(0, 122, 204, 0.6);
-  --sidebar: #252526; --sidebar-foreground: #cccccc; --sidebar-accent: rgba(255, 255, 255, 0.07); --sidebar-border: #3c3c3c;
-  --user-bubble: #37373d; --code-bg: #1a1a1a;
-  --success: #89d185; --warning: #cca700; --info: #3794ff;
-  --diff-add: rgba(137, 209, 133, 0.12); --diff-add-strong: rgba(137, 209, 133, 0.28);
-  --diff-del: rgba(244, 135, 113, 0.12); --diff-del-strong: rgba(244, 135, 113, 0.28);
-  --tok-keyword: #569cd6; --tok-string: #ce9178; --tok-number: #b5cea8; --tok-comment: #6a9955; --tok-title: #dcdcaa; --tok-attr: #9cdcfe;
+  --background: #1e1e1e;
+  --foreground: #cccccc;
+  --card: #252526;
+  --card-foreground: #cccccc;
+  --popover: #252526;
+  --popover-foreground: #cccccc;
+  --primary: #0e639c;
+  --primary-foreground: #ffffff;
+  --secondary: #2d2d30;
+  --secondary-foreground: #cccccc;
+  --muted: #2d2d30;
+  --muted-foreground: #9d9d9d;
+  --accent: rgba(255, 255, 255, 0.07);
+  --accent-foreground: #ffffff;
+  --destructive: #f48771;
+  --border: #3c3c3c;
+  --input: #3c3c3c;
+  --ring: rgba(0, 122, 204, 0.6);
+  --sidebar: #252526;
+  --sidebar-foreground: #cccccc;
+  --sidebar-accent: rgba(255, 255, 255, 0.07);
+  --sidebar-border: #3c3c3c;
+  --user-bubble: #37373d;
+  --code-bg: #1a1a1a;
+  --success: #89d185;
+  --warning: #cca700;
+  --info: #3794ff;
+  --diff-add: rgba(137, 209, 133, 0.12);
+  --diff-add-strong: rgba(137, 209, 133, 0.28);
+  --diff-del: rgba(244, 135, 113, 0.12);
+  --diff-del-strong: rgba(244, 135, 113, 0.28);
+  --tok-keyword: #569cd6;
+  --tok-string: #ce9178;
+  --tok-number: #b5cea8;
+  --tok-comment: #6a9955;
+  --tok-title: #dcdcaa;
+  --tok-attr: #9cdcfe;
 }
 
 @theme inline {
   /* Native UI fonts per OS (no web fonts): the app should look like it belongs to the platform. */
   /* --app-font-* are set from the font settings (lib/theme.ts) and lead the system stack when present. */
   --font-sans: var(--app-font-sans, var(--system-font-sans));
-  --font-serif: "Songti SC", "SimSun", "Noto Serif CJK SC", Georgia, serif;
+  --font-serif: 'Songti SC', 'SimSun', 'Noto Serif CJK SC', Georgia, serif;
   --font-mono: var(--app-font-mono, var(--system-font-mono));
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -172,14 +227,20 @@
     height: 100%;
   }
   body {
-    @apply bg-background text-foreground font-sans antialiased;
+    @apply bg-background font-sans text-foreground antialiased;
     font-size: 14px;
     text-rendering: optimizeLegibility;
     overflow: hidden;
     /* App chrome is not selectable; only content and inputs opt back in. */
     user-select: none;
   }
-  .prose-chat, .code-lines, pre, [data-selectable], input, textarea, [contenteditable="true"] {
+  .prose-chat,
+  .code-lines,
+  pre,
+  [data-selectable],
+  input,
+  textarea,
+  [contenteditable='true'] {
     user-select: text;
   }
   button {
@@ -199,27 +260,69 @@
   --spacing-scaled: calc(var(--spacing) * var(--space-scale));
 }
 
-@utility p-* { padding: calc(var(--spacing-scaled) * --value(number)); }
-@utility px-* { padding-inline: calc(var(--spacing-scaled) * --value(number)); }
-@utility py-* { padding-block: calc(var(--spacing-scaled) * --value(number)); }
-@utility ps-* { padding-inline-start: calc(var(--spacing-scaled) * --value(number)); }
-@utility pe-* { padding-inline-end: calc(var(--spacing-scaled) * --value(number)); }
-@utility pt-* { padding-top: calc(var(--spacing-scaled) * --value(number)); }
-@utility pr-* { padding-right: calc(var(--spacing-scaled) * --value(number)); }
-@utility pb-* { padding-bottom: calc(var(--spacing-scaled) * --value(number)); }
-@utility pl-* { padding-left: calc(var(--spacing-scaled) * --value(number)); }
-@utility m-* { margin: calc(var(--spacing-scaled) * --value(number)); }
-@utility mx-* { margin-inline: calc(var(--spacing-scaled) * --value(number)); }
-@utility my-* { margin-block: calc(var(--spacing-scaled) * --value(number)); }
-@utility ms-* { margin-inline-start: calc(var(--spacing-scaled) * --value(number)); }
-@utility me-* { margin-inline-end: calc(var(--spacing-scaled) * --value(number)); }
-@utility mt-* { margin-top: calc(var(--spacing-scaled) * --value(number)); }
-@utility mr-* { margin-right: calc(var(--spacing-scaled) * --value(number)); }
-@utility mb-* { margin-bottom: calc(var(--spacing-scaled) * --value(number)); }
-@utility ml-* { margin-left: calc(var(--spacing-scaled) * --value(number)); }
-@utility gap-* { gap: calc(var(--spacing-scaled) * --value(number)); }
-@utility gap-x-* { column-gap: calc(var(--spacing-scaled) * --value(number)); }
-@utility gap-y-* { row-gap: calc(var(--spacing-scaled) * --value(number)); }
+@utility p-* {
+  padding: calc(var(--spacing-scaled) * --value(number));
+}
+@utility px-* {
+  padding-inline: calc(var(--spacing-scaled) * --value(number));
+}
+@utility py-* {
+  padding-block: calc(var(--spacing-scaled) * --value(number));
+}
+@utility ps-* {
+  padding-inline-start: calc(var(--spacing-scaled) * --value(number));
+}
+@utility pe-* {
+  padding-inline-end: calc(var(--spacing-scaled) * --value(number));
+}
+@utility pt-* {
+  padding-top: calc(var(--spacing-scaled) * --value(number));
+}
+@utility pr-* {
+  padding-right: calc(var(--spacing-scaled) * --value(number));
+}
+@utility pb-* {
+  padding-bottom: calc(var(--spacing-scaled) * --value(number));
+}
+@utility pl-* {
+  padding-left: calc(var(--spacing-scaled) * --value(number));
+}
+@utility m-* {
+  margin: calc(var(--spacing-scaled) * --value(number));
+}
+@utility mx-* {
+  margin-inline: calc(var(--spacing-scaled) * --value(number));
+}
+@utility my-* {
+  margin-block: calc(var(--spacing-scaled) * --value(number));
+}
+@utility ms-* {
+  margin-inline-start: calc(var(--spacing-scaled) * --value(number));
+}
+@utility me-* {
+  margin-inline-end: calc(var(--spacing-scaled) * --value(number));
+}
+@utility mt-* {
+  margin-top: calc(var(--spacing-scaled) * --value(number));
+}
+@utility mr-* {
+  margin-right: calc(var(--spacing-scaled) * --value(number));
+}
+@utility mb-* {
+  margin-bottom: calc(var(--spacing-scaled) * --value(number));
+}
+@utility ml-* {
+  margin-left: calc(var(--spacing-scaled) * --value(number));
+}
+@utility gap-* {
+  gap: calc(var(--spacing-scaled) * --value(number));
+}
+@utility gap-x-* {
+  column-gap: calc(var(--spacing-scaled) * --value(number));
+}
+@utility gap-y-* {
+  row-gap: calc(var(--spacing-scaled) * --value(number));
+}
 /* Space-between is written without :where() on purpose: that gives it the class's
    own specificity, so it outranks Tailwind's zero-specificity default regardless
    of the order the two rules are emitted in. */
@@ -238,15 +341,33 @@
   }
 }
 /* Negatives are separate utility names in Tailwind, so they need their own rule. */
-@utility -m-* { margin: calc(var(--spacing-scaled) * -1 * --value(number)); }
-@utility -mx-* { margin-inline: calc(var(--spacing-scaled) * -1 * --value(number)); }
-@utility -my-* { margin-block: calc(var(--spacing-scaled) * -1 * --value(number)); }
-@utility -ms-* { margin-inline-start: calc(var(--spacing-scaled) * -1 * --value(number)); }
-@utility -me-* { margin-inline-end: calc(var(--spacing-scaled) * -1 * --value(number)); }
-@utility -mt-* { margin-top: calc(var(--spacing-scaled) * -1 * --value(number)); }
-@utility -mr-* { margin-right: calc(var(--spacing-scaled) * -1 * --value(number)); }
-@utility -mb-* { margin-bottom: calc(var(--spacing-scaled) * -1 * --value(number)); }
-@utility -ml-* { margin-left: calc(var(--spacing-scaled) * -1 * --value(number)); }
+@utility -m-* {
+  margin: calc(var(--spacing-scaled) * -1 * --value(number));
+}
+@utility -mx-* {
+  margin-inline: calc(var(--spacing-scaled) * -1 * --value(number));
+}
+@utility -my-* {
+  margin-block: calc(var(--spacing-scaled) * -1 * --value(number));
+}
+@utility -ms-* {
+  margin-inline-start: calc(var(--spacing-scaled) * -1 * --value(number));
+}
+@utility -me-* {
+  margin-inline-end: calc(var(--spacing-scaled) * -1 * --value(number));
+}
+@utility -mt-* {
+  margin-top: calc(var(--spacing-scaled) * -1 * --value(number));
+}
+@utility -mr-* {
+  margin-right: calc(var(--spacing-scaled) * -1 * --value(number));
+}
+@utility -mb-* {
+  margin-bottom: calc(var(--spacing-scaled) * -1 * --value(number));
+}
+@utility -ml-* {
+  margin-left: calc(var(--spacing-scaled) * -1 * --value(number));
+}
 
 /* ---------------------------------------------------------------- window chrome */
 .app-drag {
@@ -254,14 +375,14 @@
 }
 .app-drag button,
 .app-drag input,
-.app-drag [role="button"],
+.app-drag [role='button'],
 .app-drag a,
 .no-drag {
   -webkit-app-region: no-drag;
 }
 /* Windows draws its own caption buttons over the top-right corner. */
-[data-platform="win32"] .titlebar-inset,
-[data-platform="linux"] .titlebar-inset {
+[data-platform='win32'] .titlebar-inset,
+[data-platform='linux'] .titlebar-inset {
   padding-right: 148px;
 }
 .resizing * {
@@ -270,8 +391,12 @@
 
 /* ---------------------------------------------------------------- motion */
 @keyframes shimmer {
-  0% { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
 }
 .shimmer {
   background: linear-gradient(90deg, var(--muted-foreground) 35%, var(--foreground) 50%, var(--muted-foreground) 65%);
@@ -282,7 +407,9 @@
   animation: shimmer 1.8s linear infinite;
 }
 @keyframes spark-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 .spark {
   display: inline-block;
@@ -298,30 +425,73 @@
 /* ---------------------------------------------------------------- markdown */
 /* Streamed text rises into place. The words are inline spans, which ignore transform, so it moves with `top`. */
 @keyframes sd-rise {
-  from { opacity: 0; top: 0.5em; filter: blur(3px); }
-  to { opacity: 1; top: 0; filter: blur(0); }
+  from {
+    opacity: 0;
+    top: 0.5em;
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    top: 0;
+    filter: blur(0);
+  }
 }
-[data-sd-animate] { position: relative; }
+[data-sd-animate] {
+  position: relative;
+}
 .prose-chat {
   line-height: 1.65;
   overflow-wrap: anywhere;
 }
-.prose-chat > * + * { margin-top: 0.7em; }
-.prose-chat h1, .prose-chat h2, .prose-chat h3, .prose-chat h4 {
+.prose-chat > * + * {
+  margin-top: 0.7em;
+}
+.prose-chat h1,
+.prose-chat h2,
+.prose-chat h3,
+.prose-chat h4 {
   font-weight: 600;
   line-height: 1.35;
   margin-top: 1.1em;
 }
-.prose-chat h1 { font-size: 1.3em; }
-.prose-chat h2 { font-size: 1.15em; }
-.prose-chat h3, .prose-chat h4 { font-size: 1.02em; }
-.prose-chat ul { list-style: disc; padding-left: 1.4em; }
-.prose-chat ol { list-style: decimal; padding-left: 1.4em; }
-.prose-chat li + li { margin-top: 0.25em; }
-.prose-chat li > p { margin: 0; }
-.prose-chat a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
-.prose-chat blockquote { border-left: 3px solid var(--border); padding-left: 0.9em; color: var(--muted-foreground); }
-.prose-chat hr { border: 0; border-top: 1px solid var(--border); }
+.prose-chat h1 {
+  font-size: 1.3em;
+}
+.prose-chat h2 {
+  font-size: 1.15em;
+}
+.prose-chat h3,
+.prose-chat h4 {
+  font-size: 1.02em;
+}
+.prose-chat ul {
+  list-style: disc;
+  padding-left: 1.4em;
+}
+.prose-chat ol {
+  list-style: decimal;
+  padding-left: 1.4em;
+}
+.prose-chat li + li {
+  margin-top: 0.25em;
+}
+.prose-chat li > p {
+  margin: 0;
+}
+.prose-chat a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose-chat blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 0.9em;
+  color: var(--muted-foreground);
+}
+.prose-chat hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+}
 .prose-chat :not(pre) > code {
   font-family: var(--font-mono);
   font-size: 0.88em;
@@ -331,15 +501,38 @@
   padding: 0.1em 0.35em;
 }
 /* VS Code's primary is a button blue; too dim as text on dark, so text uses its code/link colours. */
-:root[data-palette='vscode'] .prose-chat :not(pre) > code { color: #0066bf; background: rgba(220, 220, 220, 0.4); }
-:root[data-palette='vscode'].dark .prose-chat :not(pre) > code { color: #3794ff; background: rgba(10, 10, 10, 0.4); }
-:root[data-palette='vscode'] .prose-chat a { color: var(--info); }
+:root[data-palette='vscode'] .prose-chat :not(pre) > code {
+  color: #0066bf;
+  background: rgba(220, 220, 220, 0.4);
+}
+:root[data-palette='vscode'].dark .prose-chat :not(pre) > code {
+  color: #3794ff;
+  background: rgba(10, 10, 10, 0.4);
+}
+:root[data-palette='vscode'] .prose-chat a {
+  color: var(--info);
+}
 :root[data-palette='vscode'] .term-out .cmd,
-:root[data-palette='vscode'] .text-primary { color: var(--info); }
-.prose-chat table { border-collapse: collapse; font-size: 0.92em; }
-.prose-chat th, .prose-chat td { border: 1px solid var(--border); padding: 0.35em 0.7em; text-align: left; }
-.prose-chat th { background: var(--muted); font-weight: 600; }
-.prose-chat input[type="checkbox"] { margin-right: 0.4em; }
+:root[data-palette='vscode'] .text-primary {
+  color: var(--info);
+}
+.prose-chat table {
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+.prose-chat th,
+.prose-chat td {
+  border: 1px solid var(--border);
+  padding: 0.35em 0.7em;
+  text-align: left;
+}
+.prose-chat th {
+  background: var(--muted);
+  font-weight: 600;
+}
+.prose-chat input[type='checkbox'] {
+  margin-right: 0.4em;
+}
 
 /* ---------------------------------------------------------------- code, diff, syntax */
 .code-lines {
@@ -373,20 +566,50 @@
   color: var(--muted-foreground);
   user-select: none;
 }
-.code-row.add { background: var(--diff-add); }
-.code-row.del { background: var(--diff-del); }
-.code-row.add .sign { color: var(--success); }
-.code-row.del .sign { color: var(--destructive); }
+.code-row.add {
+  background: var(--diff-add);
+}
+.code-row.del {
+  background: var(--diff-del);
+}
+.code-row.add .sign {
+  color: var(--success);
+}
+.code-row.del .sign {
+  color: var(--destructive);
+}
 /* Diffs: old and new line-number gutters, tinted harder on changed rows, with an edge marker. */
-.code-row.diff { grid-template-columns: 3.6em 1.5em minmax(0, 1fr); }
-.code-row.diff .ln { padding-right: 0.7em; }
-.code-row.diff .sign { text-align: center; }
-.code-row.diff.add .ln { color: var(--success); opacity: 1; }
-.code-row.diff.del .ln { color: var(--destructive); opacity: 1; }
-.code-row.diff.add { box-shadow: inset 3px 0 0 var(--success); }
-.code-row.diff.del { box-shadow: inset 3px 0 0 var(--destructive); }
-.code-lines.wrap { font-size: 12.5px; }
-.code-lines.wrap .code-row > :last-child { white-space: pre-wrap; overflow-wrap: anywhere; padding-right: 0.8em; }
+.code-row.diff {
+  grid-template-columns: 3.6em 1.5em minmax(0, 1fr);
+}
+.code-row.diff .ln {
+  padding-right: 0.7em;
+}
+.code-row.diff .sign {
+  text-align: center;
+}
+.code-row.diff.add .ln {
+  color: var(--success);
+  opacity: 1;
+}
+.code-row.diff.del .ln {
+  color: var(--destructive);
+  opacity: 1;
+}
+.code-row.diff.add {
+  box-shadow: inset 3px 0 0 var(--success);
+}
+.code-row.diff.del {
+  box-shadow: inset 3px 0 0 var(--destructive);
+}
+.code-lines.wrap {
+  font-size: 12.5px;
+}
+.code-lines.wrap .code-row > :last-child {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding-right: 0.8em;
+}
 .hunk-gap {
   display: grid;
   grid-template-columns: 5.1em minmax(0, 1fr);
@@ -399,41 +622,123 @@
   background: color-mix(in srgb, var(--info) 7%, var(--muted));
   border-block: 1px solid var(--border);
 }
-.hunk-gap > :first-child { align-self: stretch; display: flex; align-items: center; background: color-mix(in srgb, var(--info) 12%, var(--muted)); }
-.hunk-gap > :last-child { padding-left: 0.9em; }
-.code-row.add .wd { background: var(--diff-add-strong); border-radius: 2px; }
-.code-row.del .wd { background: var(--diff-del-strong); border-radius: 2px; }
+.hunk-gap > :first-child {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  background: color-mix(in srgb, var(--info) 12%, var(--muted));
+}
+.hunk-gap > :last-child {
+  padding-left: 0.9em;
+}
+.code-row.add .wd {
+  background: var(--diff-add-strong);
+  border-radius: 2px;
+}
+.code-row.del .wd {
+  background: var(--diff-del-strong);
+  border-radius: 2px;
+}
 /* A PR review thread the PR bar jumped to: it pulses once, like a hover that draws the eye. */
-.pr-thread[data-flash] { animation: pr-thread-flash 1.8s ease-out 1; border-color: var(--info); }
+.pr-thread[data-flash] {
+  animation: pr-thread-flash 1.8s ease-out 1;
+  border-color: var(--info);
+}
 @keyframes pr-thread-flash {
-  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--info) 55%, transparent); transform: scale(1); }
-  25% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--info) 28%, transparent); transform: scale(1.012); }
-  60% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--info) 14%, transparent); transform: scale(1.004); }
-  100% { box-shadow: 0 0 0 0 transparent; transform: scale(1); }
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--info) 55%, transparent);
+    transform: scale(1);
+  }
+  25% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--info) 28%, transparent);
+    transform: scale(1.012);
+  }
+  60% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--info) 14%, transparent);
+    transform: scale(1.004);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    transform: scale(1);
+  }
 }
 /* A transcript item the user jumped to (a quoted passage, or the reply that quoted it). */
-.transcript-item[data-flash] { animation: transcript-flash 1.6s ease-out 1; border-radius: 0.75rem; }
-@keyframes transcript-flash {
-  0%, 30% { background: color-mix(in srgb, var(--info) 18%, transparent); }
-  100% { background: transparent; }
+.transcript-item[data-flash] {
+  animation: transcript-flash 1.6s ease-out 1;
+  border-radius: 0.75rem;
 }
-.code-row.target { background: color-mix(in srgb, var(--warning) 18%, transparent); }
+@keyframes transcript-flash {
+  0%,
+  30% {
+    background: color-mix(in srgb, var(--info) 18%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+.code-row.target {
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+}
 
-.hljs-keyword, .hljs-built_in, .hljs-selector-tag, .hljs-literal, .hljs-type { color: var(--tok-keyword); }
-.hljs-string, .hljs-regexp, .hljs-addition, .hljs-template-variable { color: var(--tok-string); }
-.hljs-number, .hljs-symbol, .hljs-bullet { color: var(--tok-number); }
-.hljs-comment, .hljs-quote, .hljs-meta { color: var(--tok-comment); font-style: italic; }
-.hljs-title, .hljs-section, .hljs-name, .hljs-function .hljs-title { color: var(--tok-title); }
-.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-property, .hljs-params { color: var(--tok-attr); }
-.hljs-deletion { color: var(--destructive); }
+.hljs-keyword,
+.hljs-built_in,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-type {
+  color: var(--tok-keyword);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-template-variable {
+  color: var(--tok-string);
+}
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet {
+  color: var(--tok-number);
+}
+.hljs-comment,
+.hljs-quote,
+.hljs-meta {
+  color: var(--tok-comment);
+  font-style: italic;
+}
+.hljs-title,
+.hljs-section,
+.hljs-name,
+.hljs-function .hljs-title {
+  color: var(--tok-title);
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-property,
+.hljs-params {
+  color: var(--tok-attr);
+}
+.hljs-deletion {
+  color: var(--destructive);
+}
 
-.term-out .ok { color: var(--success); }
-.term-out .err { color: var(--destructive); }
-.term-out .dim { color: var(--muted-foreground); }
-.term-out .cmd { color: var(--primary); font-weight: 500; }
+.term-out .ok {
+  color: var(--success);
+}
+.term-out .err {
+  color: var(--destructive);
+}
+.term-out .dim {
+  color: var(--muted-foreground);
+}
+.term-out .cmd {
+  color: var(--primary);
+  font-weight: 500;
+}
 
 /* The composer's PR card borrows the tooltip for positioning, but it is a card: no pointer arrow (a span beside the card). */
-.pr-card[data-slot="tooltip-content"] > span { display: none; }
+.pr-card[data-slot='tooltip-content'] > span {
+  display: none;
+}
 
 /* An @ token inside a message: a badge drawn behind the token's own text. Padding comes from
    the box-shadow spread, so the composer's mirror layer keeps the textarea's exact metrics. */
@@ -454,91 +759,334 @@ button.chip-inline:hover {
 /* Pixel mascot in the code composer. */
 /* ---------------------------------------------------------------- Clawd, the composer pet
    Transforms are in SVG user units (1px = one pixel of the sprite). */
-.clawd { display: block; overflow: visible; color: var(--muted-foreground); }
-.clawd * { transform-box: fill-box; transform-origin: center; }
-.clawd .fx-think, .clawd .fx-alert, .clawd .fx-sweat, .clawd .fx-heart, .clawd .mouth, .clawd .prop { opacity: 0; }
-.clawd .eyes { animation: clawd-blink 4.5s infinite; }
+.clawd {
+  display: block;
+  overflow: visible;
+  color: var(--muted-foreground);
+}
+.clawd * {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.clawd .fx-think,
+.clawd .fx-alert,
+.clawd .fx-sweat,
+.clawd .fx-heart,
+.clawd .mouth,
+.clawd .prop {
+  opacity: 0;
+}
+.clawd .eyes {
+  animation: clawd-blink 4.5s infinite;
+}
 
-@keyframes clawd-blink { 0%, 93%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.15); } }
-@keyframes clawd-step { 0%, 49% { transform: translateY(0); } 50%, 100% { transform: translateY(-1px); } }
-@keyframes clawd-bob { 0%, 49% { transform: translateY(0); } 50%, 100% { transform: translateY(-1px); } }
-@keyframes clawd-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
-@keyframes clawd-dot { 0%, 20% { opacity: 0; } 40%, 80% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes clawd-tap { 0%, 49% { transform: translateY(0); } 50%, 100% { transform: translateY(2px); } }
-@keyframes clawd-scan { 0%, 30% { transform: translateX(-1px); } 50%, 80% { transform: translateX(1px); } 100% { transform: translateX(-1px); } }
-@keyframes clawd-talk { 0%, 49% { transform: scaleY(1); } 50%, 100% { transform: scaleY(2); } }
-@keyframes clawd-hop { 0%, 55%, 100% { transform: translateY(0); } 70% { transform: translateY(-3px); } 85% { transform: translateY(-1px); } }
-@keyframes clawd-joy { 0%, 50%, 100% { transform: translateY(0); } 25% { transform: translateY(-4px); } 75% { transform: translateY(-3px); } }
-@keyframes clawd-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-1px); } 75% { transform: translateX(1px); } }
-@keyframes clawd-heart { 0% { opacity: 0; transform: translateY(2px); } 20%, 60% { opacity: 1; } 100% { opacity: 0; transform: translateY(-3px); } }
-@keyframes clawd-flash { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0.25; } }
+@keyframes clawd-blink {
+  0%,
+  93%,
+  100% {
+    transform: scaleY(1);
+  }
+  95% {
+    transform: scaleY(0.15);
+  }
+}
+@keyframes clawd-step {
+  0%,
+  49% {
+    transform: translateY(0);
+  }
+  50%,
+  100% {
+    transform: translateY(-1px);
+  }
+}
+@keyframes clawd-bob {
+  0%,
+  49% {
+    transform: translateY(0);
+  }
+  50%,
+  100% {
+    transform: translateY(-1px);
+  }
+}
+@keyframes clawd-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1px);
+  }
+}
+@keyframes clawd-dot {
+  0%,
+  20% {
+    opacity: 0;
+  }
+  40%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes clawd-tap {
+  0%,
+  49% {
+    transform: translateY(0);
+  }
+  50%,
+  100% {
+    transform: translateY(2px);
+  }
+}
+@keyframes clawd-scan {
+  0%,
+  30% {
+    transform: translateX(-1px);
+  }
+  50%,
+  80% {
+    transform: translateX(1px);
+  }
+  100% {
+    transform: translateX(-1px);
+  }
+}
+@keyframes clawd-talk {
+  0%,
+  49% {
+    transform: scaleY(1);
+  }
+  50%,
+  100% {
+    transform: scaleY(2);
+  }
+}
+@keyframes clawd-hop {
+  0%,
+  55%,
+  100% {
+    transform: translateY(0);
+  }
+  70% {
+    transform: translateY(-3px);
+  }
+  85% {
+    transform: translateY(-1px);
+  }
+}
+@keyframes clawd-joy {
+  0%,
+  50%,
+  100% {
+    transform: translateY(0);
+  }
+  25% {
+    transform: translateY(-4px);
+  }
+  75% {
+    transform: translateY(-3px);
+  }
+}
+@keyframes clawd-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-1px);
+  }
+  75% {
+    transform: translateX(1px);
+  }
+}
+@keyframes clawd-heart {
+  0% {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  20%,
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+@keyframes clawd-flash {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0.25;
+  }
+}
 
 /* Idle: legs alternate while strolling. */
-.clawd.walking .leg.a { animation: clawd-step 0.36s infinite; }
-.clawd.walking .leg.b { animation: clawd-step 0.36s infinite reverse; }
-.clawd.walking .pet { animation: clawd-bob 0.18s infinite; }
+.clawd.walking .leg.a {
+  animation: clawd-step 0.36s infinite;
+}
+.clawd.walking .leg.b {
+  animation: clawd-step 0.36s infinite reverse;
+}
+.clawd.walking .pet {
+  animation: clawd-bob 0.18s infinite;
+}
 
 /* Cat tail. */
-.clawd .tail { transform-origin: left center; }
-.clawd.walking .tail, .clawd.mood-waiting .tail { animation: clawd-float 0.4s ease-in-out infinite; }
+.clawd .tail {
+  transform-origin: left center;
+}
+.clawd.walking .tail,
+.clawd.mood-waiting .tail {
+  animation: clawd-float 0.4s ease-in-out infinite;
+}
 
 /* Thinking: looks up, dots appear one by one. */
-.clawd.mood-thinking .pet { animation: clawd-float 1.6s ease-in-out infinite; }
-.clawd.mood-thinking .eyes { transform: translate(1px, -1px); animation: none; }
-.clawd.mood-thinking .fx-think rect { animation: clawd-dot 1.5s infinite; }
-.clawd.mood-thinking .fx-think rect:nth-child(2) { animation-delay: 0.25s; }
-.clawd.mood-thinking .fx-think rect:nth-child(3) { animation-delay: 0.5s; }
+.clawd.mood-thinking .pet {
+  animation: clawd-float 1.6s ease-in-out infinite;
+}
+.clawd.mood-thinking .eyes {
+  transform: translate(1px, -1px);
+  animation: none;
+}
+.clawd.mood-thinking .fx-think rect {
+  animation: clawd-dot 1.5s infinite;
+}
+.clawd.mood-thinking .fx-think rect:nth-child(2) {
+  animation-delay: 0.25s;
+}
+.clawd.mood-thinking .fx-think rect:nth-child(3) {
+  animation-delay: 0.5s;
+}
 
 /* Props: the computer, the book. They only show while the pet is doing that job. */
-.clawd.mood-typing .prop-screen, .clawd.mood-typing .prop-typing,
-.clawd.mood-running .prop-screen, .clawd.mood-running .prop-running,
-.clawd.mood-reading .prop-reading { opacity: 1; }
-.clawd.mood-typing .prop-typing .lines rect { animation: clawd-dot 0.9s infinite; }
-.clawd.mood-typing .prop-typing .lines rect:nth-child(2) { animation-delay: 0.4s; }
-.clawd.mood-running .prop-running .cursor { animation: clawd-flash 0.8s steps(1) infinite; }
+.clawd.mood-typing .prop-screen,
+.clawd.mood-typing .prop-typing,
+.clawd.mood-running .prop-screen,
+.clawd.mood-running .prop-running,
+.clawd.mood-reading .prop-reading {
+  opacity: 1;
+}
+.clawd.mood-typing .prop-typing .lines rect {
+  animation: clawd-dot 0.9s infinite;
+}
+.clawd.mood-typing .prop-typing .lines rect:nth-child(2) {
+  animation-delay: 0.4s;
+}
+.clawd.mood-running .prop-running .cursor {
+  animation: clawd-flash 0.8s steps(1) infinite;
+}
 
 /* Editing: sits at the computer and taps away with both arms, eyes on the keys. */
-.clawd.mood-typing .pet { animation: clawd-bob 0.24s infinite; }
-.clawd.mood-typing .arm.l { animation: clawd-tap 0.24s infinite; }
-.clawd.mood-typing .arm.r { animation: clawd-tap 0.24s infinite reverse; }
-.clawd.mood-typing .eyes { transform: translateY(1px); animation: none; }
+.clawd.mood-typing .pet {
+  animation: clawd-bob 0.24s infinite;
+}
+.clawd.mood-typing .arm.l {
+  animation: clawd-tap 0.24s infinite;
+}
+.clawd.mood-typing .arm.r {
+  animation: clawd-tap 0.24s infinite reverse;
+}
+.clawd.mood-typing .eyes {
+  transform: translateY(1px);
+  animation: none;
+}
 
 /* Running a command: runs in place, sweating. */
-.clawd.mood-running .leg.a { animation: clawd-step 0.16s infinite; }
-.clawd.mood-running .leg.b { animation: clawd-step 0.16s infinite reverse; }
-.clawd.mood-running .pet { animation: clawd-bob 0.08s infinite; }
-.clawd.mood-running .fx-sweat { animation: clawd-flash 0.6s infinite; }
+.clawd.mood-running .leg.a {
+  animation: clawd-step 0.16s infinite;
+}
+.clawd.mood-running .leg.b {
+  animation: clawd-step 0.16s infinite reverse;
+}
+.clawd.mood-running .pet {
+  animation: clawd-bob 0.08s infinite;
+}
+.clawd.mood-running .fx-sweat {
+  animation: clawd-flash 0.6s infinite;
+}
 
 /* Reading or searching: eyes scan the page. */
-.clawd.mood-reading .eyes { animation: clawd-scan 1.4s steps(1) infinite; }
-.clawd.mood-reading .pet { animation: clawd-float 2s ease-in-out infinite; }
-.clawd.mood-reading .prop-reading .lines rect { animation: clawd-dot 1.4s infinite; }
+.clawd.mood-reading .eyes {
+  animation: clawd-scan 1.4s steps(1) infinite;
+}
+.clawd.mood-reading .pet {
+  animation: clawd-float 2s ease-in-out infinite;
+}
+.clawd.mood-reading .prop-reading .lines rect {
+  animation: clawd-dot 1.4s infinite;
+}
 
 /* Writing the reply: mouth moves. */
-.clawd.mood-talking .mouth { opacity: 1; animation: clawd-talk 0.3s infinite; }
-.clawd.mood-talking .pet { animation: clawd-float 1.2s ease-in-out infinite; }
+.clawd.mood-talking .mouth {
+  opacity: 1;
+  animation: clawd-talk 0.3s infinite;
+}
+.clawd.mood-talking .pet {
+  animation: clawd-float 1.2s ease-in-out infinite;
+}
 
 /* Waiting for the user: hops with a "!". */
-.clawd.mood-done .pet { animation: clawd-joy 0.6s 3; }
-.clawd.mood-done .eyes { transform: scaleY(0.35); animation: none; }
-.clawd.mood-error .pet { animation: clawd-shake 0.12s 8; }
-.clawd.mood-error .eyes { transform: translateY(1px); animation: none; }
-.clawd.mood-error .fx-sweat { animation: clawd-flash 0.6s infinite; }
-.clawd.mood-waiting .pet { animation: clawd-hop 1.1s infinite; }
-.clawd.mood-waiting .fx-alert { opacity: 1; animation: clawd-flash 1.1s infinite; }
+.clawd.mood-done .pet {
+  animation: clawd-joy 0.6s 3;
+}
+.clawd.mood-done .eyes {
+  transform: scaleY(0.35);
+  animation: none;
+}
+.clawd.mood-error .pet {
+  animation: clawd-shake 0.12s 8;
+}
+.clawd.mood-error .eyes {
+  transform: translateY(1px);
+  animation: none;
+}
+.clawd.mood-error .fx-sweat {
+  animation: clawd-flash 0.6s infinite;
+}
+.clawd.mood-waiting .pet {
+  animation: clawd-hop 1.1s infinite;
+}
+.clawd.mood-waiting .fx-alert {
+  opacity: 1;
+  animation: clawd-flash 1.1s infinite;
+}
 
 /* Picked up by the mouse: legs dangle. */
-.clawd.held .pet { animation: none; }
-.clawd.held .leg.a { animation: clawd-step 0.14s infinite; }
-.clawd.held .leg.b { animation: clawd-step 0.14s infinite reverse; }
+.clawd.held .pet {
+  animation: none;
+}
+.clawd.held .leg.a {
+  animation: clawd-step 0.14s infinite;
+}
+.clawd.held .leg.b {
+  animation: clawd-step 0.14s infinite reverse;
+}
 
 /* Double-clicked: hops twice, squints happily, a heart floats up. */
-.clawd.joy .pet { animation: clawd-joy 0.7s 2; }
-.clawd.joy .eyes { transform: scaleY(0.35); animation: none; }
-.clawd.joy .fx-heart { animation: clawd-heart 1.4s forwards; }
+.clawd.joy .pet {
+  animation: clawd-joy 0.7s 2;
+}
+.clawd.joy .eyes {
+  transform: scaleY(0.35);
+  animation: none;
+}
+.clawd.joy .fx-heart {
+  animation: clawd-heart 1.4s forwards;
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .clawd *, .clawd .eyes { animation: none !important; }
+  .clawd *,
+  .clawd .eyes {
+    animation: none !important;
+  }
 }
 
 /* @pierre/diffs and @pierre/trees draw in shadow roots; custom properties are how they take the app's palette. */

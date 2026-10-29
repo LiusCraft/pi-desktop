@@ -2,10 +2,18 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import {
-  formatIdle, IDLE_RESET_DEFAULT_MINUTES, IDLE_RESET_MAX_MINUTES, idleMinutes, idleResetMinutes, modelKey,
+  formatIdle,
+  IDLE_RESET_DEFAULT_MINUTES,
+  IDLE_RESET_MAX_MINUTES,
+  idleMinutes,
+  idleResetMinutes,
+  modelKey,
 } from '../src/shared/idle-reset';
 
-const settings = (minutes: number, models: Record<string, number> = {}) => ({ idleResetMinutes: minutes, idleResetModels: models });
+const settings = (minutes: number, models: Record<string, number> = {}) => ({
+  idleResetMinutes: minutes,
+  idleResetModels: models,
+});
 
 describe('idleResetMinutes', () => {
   const key = modelKey('anthropic', 'claude-sonnet-5');

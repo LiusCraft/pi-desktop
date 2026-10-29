@@ -60,10 +60,14 @@ export function referenceToken(reference: ContextReference): string | undefined 
 export function referenceLocation(reference: ContextReference): string {
   if (reference.kind === 'diff') return DIFF_LOCATION;
   if (reference.kind === 'terminal') return `${TERMINAL_LOCATION}${reference.title ?? ''}`;
-  if (reference.kind === 'session') return `${SESSION_LOCATION}${reference.title ?? ''} (id ${reference.sessionId ?? ''})`;
+  if (reference.kind === 'session')
+    return `${SESSION_LOCATION}${reference.title ?? ''} (id ${reference.sessionId ?? ''})`;
   if (reference.kind === 'quote') return 'conversation';
-  const range = reference.startLine ? `:${reference.startLine}${reference.endLine && reference.endLine !== reference.startLine ? `–${reference.endLine}` : ''}` : '';
-  const side = reference.side === 'old' ? ' (before change)' : reference.side === 'mixed' ? ' (diff, old/new line numbers)' : '';
+  const range = reference.startLine
+    ? `:${reference.startLine}${reference.endLine && reference.endLine !== reference.startLine ? `–${reference.endLine}` : ''}`
+    : '';
+  const side =
+    reference.side === 'old' ? ' (before change)' : reference.side === 'mixed' ? ' (diff, old/new line numbers)' : '';
   return `${reference.path}${reference.directory && !reference.path.endsWith('/') ? '/' : ''}${range}${side}`;
 }
 
@@ -93,7 +97,9 @@ export function referencePrompt(text: string, references: ContextReference[]): s
   if (!references.length) return text;
   const blocks = references.map((reference) => {
     const location = referenceLocation(reference);
-    const lines = [`${reference.kind === 'comment' ? 'Comment on' : reference.kind === 'quote' ? 'Reply to a passage of the' : 'Context from'} ${JSON.stringify(location)}`];
+    const lines = [
+      `${reference.kind === 'comment' ? 'Comment on' : reference.kind === 'quote' ? 'Reply to a passage of the' : 'Context from'} ${JSON.stringify(location)}`,
+    ];
     if (reference.kind === 'session') {
       lines.push(
         'Another session of this project, attached as a pointer only: its messages are not included. ' +
@@ -114,7 +120,11 @@ export function referencePrompt(text: string, references: ContextReference[]): s
 const ATTACHED_MARK = 'Attached context:';
 const BLOCK_HEAD = /^(Comment on|Reply to a passage of the|Context from) ("(?:[^"\\]|\\.)*")/;
 const LOCATION = /^(.*?)(?::(\d+)(?:–(\d+))?)?( \(before change\)| \(diff, old\/new line numbers\))?$/;
-const HEAD_KINDS: Record<string, ContextReference['kind']> = { 'Comment on': 'comment', 'Reply to a passage of the': 'quote', 'Context from': 'excerpt' };
+const HEAD_KINDS: Record<string, ContextReference['kind']> = {
+  'Comment on': 'comment',
+  'Reply to a passage of the': 'quote',
+  'Context from': 'excerpt',
+};
 const SESSION_LOCATION_BACK = /^session: (.*) \(id ([^()]*)\)$/;
 
 /** The reference an @ block stands for, read back from its location; null for cards and paths. */
@@ -125,7 +135,8 @@ function tokenReference(id: string, location: string): ContextReference | null {
     return { id, kind: 'terminal', path: '', title, token: terminalToken(title) };
   }
   const session = SESSION_LOCATION_BACK.exec(location);
-  if (session) return { id, kind: 'session', path: '', title: session[1], sessionId: session[2], token: sessionToken(session[1]) };
+  if (session)
+    return { id, kind: 'session', path: '', title: session[1], sessionId: session[2], token: sessionToken(session[1]) };
   return null;
 }
 
@@ -215,7 +226,11 @@ const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
  * Split a composed or sent message into text and badges: a leading /command, @ paths, and
  * the tokens of the @ context references. Cheap enough to run on every keystroke.
  */
-export function messageSegments(text: string, references: ContextReference[] = [], options: SegmentOptions = {}): MessageSegment[] {
+export function messageSegments(
+  text: string,
+  references: ContextReference[] = [],
+  options: SegmentOptions = {},
+): MessageSegment[] {
   if (!text) return [];
   const known = new Map<string, ContextReference>();
   for (const reference of references) {
@@ -244,7 +259,9 @@ export function messageSegments(text: string, references: ContextReference[] = [
       }
     }
     if (char === '@' && startsWord) {
-      const token = tokens.find((candidate) => text.startsWith(candidate, at) && !TOKEN_CHAR.test(text[at + candidate.length] ?? ''));
+      const token = tokens.find(
+        (candidate) => text.startsWith(candidate, at) && !TOKEN_CHAR.test(text[at + candidate.length] ?? ''),
+      );
       if (token) {
         flush();
         out.push({ kind: 'reference', token, reference: known.get(token)! });
@@ -271,7 +288,11 @@ export function messageSegments(text: string, references: ContextReference[] = [
 }
 
 /** The segments with their offsets, for clicks on a badge and for deleting one whole. */
-export function messageSpans(text: string, references: ContextReference[] = [], options: SegmentOptions = {}): MessageSpan[] {
+export function messageSpans(
+  text: string,
+  references: ContextReference[] = [],
+  options: SegmentOptions = {},
+): MessageSpan[] {
   let at = 0;
   return messageSegments(text, references, options).map((segment) => {
     const start = at;

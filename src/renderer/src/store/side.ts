@@ -27,7 +27,9 @@ export function watchSideWindows() {
       // Docking puts the chat back into its session; closing the window just closes it.
       return w.docked ? { windows, open: { ...s.open, [w.sessionId]: true } } : { windows };
     });
-  void call('side:windows').then((list) => list.forEach(apply)).catch(() => {});
+  void call('side:windows')
+    .then((list) => list.forEach(apply))
+    .catch(() => {});
   return bridge.on('side:window', apply);
 }
 
@@ -74,7 +76,9 @@ export function useSideChat(sid: string): SideChat {
     const off = bridge.on('host:event', (ev) => {
       if (ev.type === 'side' && ev.sessionId === sid) setChat(ev.chat);
     });
-    call('sessions:sideGet', sid).then((c) => live && setChat((now) => (now.turns.length || now.busy ? now : c))).catch((err) => live && setChat({ ...empty(sid), error: errText(err) }));
+    call('sessions:sideGet', sid)
+      .then((c) => live && setChat((now) => (now.turns.length || now.busy ? now : c)))
+      .catch((err) => live && setChat({ ...empty(sid), error: errText(err) }));
     return () => {
       live = false;
       off();

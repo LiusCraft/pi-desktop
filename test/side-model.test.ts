@@ -5,7 +5,11 @@ import { describe, it } from 'vitest';
 import { pickSideModel } from '../src/agent/side-model';
 
 const model = (id: string, provider: string, input: number, output: number, extra: Record<string, unknown> = {}) => ({
-  id, provider, cost: { input, output }, contextWindow: 200000, ...extra,
+  id,
+  provider,
+  cost: { input, output },
+  contextWindow: 200000,
+  ...extra,
 });
 
 describe('pickSideModel', () => {

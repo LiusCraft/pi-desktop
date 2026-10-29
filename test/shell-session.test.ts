@@ -18,7 +18,12 @@ function open() {
 }
 
 /** Run one command and collect everything the model would have seen. */
-async function run(shell: SharedShell, command: string, cwd = folder, extra: { timeoutMs?: number; timeoutText?: number } = {}) {
+async function run(
+  shell: SharedShell,
+  command: string,
+  cwd = folder,
+  extra: { timeoutMs?: number; timeoutText?: number } = {},
+) {
   let out = '';
   const { exitCode } = await shell.run(command, cwd, { onData: (chunk) => (out += chunk.toString('utf8')), ...extra });
   return { exitCode, out };
@@ -147,17 +152,20 @@ describe('ShellCommands', () => {
     commands.dispose();
   });
 
-  it.skipIf(process.platform === 'win32')('falls back to one process per command when the shared shell will not answer', async () => {
-    // A "bash" that exits instead of reading commands: the marker never comes back.
-    const fake = path.join(folder, 'fake-bash.sh');
-    fs.writeFileSync(fake, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-    const commands = new ShellCommands({ shellPath: () => fake, mode: () => 'session' });
-    const result = await commands.operations.exec('echo hi', folder, { onData: () => {} });
-    // The command still ran: through pi's own one-process-per-command backend.
-    expect(result.exitCode).toBe(0);
-    expect(commands.takeStartFailure()).toMatch(/did not answer|could not start|exited/);
-    commands.dispose();
-  });
+  it.skipIf(process.platform === 'win32')(
+    'falls back to one process per command when the shared shell will not answer',
+    async () => {
+      // A "bash" that exits instead of reading commands: the marker never comes back.
+      const fake = path.join(folder, 'fake-bash.sh');
+      fs.writeFileSync(fake, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+      const commands = new ShellCommands({ shellPath: () => fake, mode: () => 'session' });
+      const result = await commands.operations.exec('echo hi', folder, { onData: () => {} });
+      // The command still ran: through pi's own one-process-per-command backend.
+      expect(result.exitCode).toBe(0);
+      expect(commands.takeStartFailure()).toMatch(/did not answer|could not start|exited/);
+      commands.dispose();
+    },
+  );
 
   it('keeps the folder in `session` mode', async () => {
     const commands = new ShellCommands({ mode: () => 'session' });

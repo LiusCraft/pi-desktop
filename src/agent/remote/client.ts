@@ -2,7 +2,12 @@
 // local `AgentClient` so the main process can route the UI to either.
 import type { HostEvent } from '@shared/protocol';
 import {
-  REMOTE_PATHS, REMOTE_RETRY_MS, REMOTE_STALE_MS, type RemoteLinkState, type RemotePing, type RemoteRpcResponse,
+  REMOTE_PATHS,
+  REMOTE_RETRY_MS,
+  REMOTE_STALE_MS,
+  type RemoteLinkState,
+  type RemotePing,
+  type RemoteRpcResponse,
 } from '@shared/remote';
 
 const PING_TIMEOUT_MS = 5000;
@@ -19,7 +24,8 @@ function reach(err: unknown): Error {
   const code = (err as { cause?: { code?: string } })?.cause?.code;
   if (code === 'ECONNREFUSED') return new Error('Connection refused: remote access is not running at that address.');
   if (code === 'ENOTFOUND') return new Error('The address could not be found.');
-  if ((err as Error)?.name === 'TimeoutError' || (err as Error)?.name === 'AbortError') return new Error('The remote did not answer in time.');
+  if ((err as Error)?.name === 'TimeoutError' || (err as Error)?.name === 'AbortError')
+    return new Error('The remote did not answer in time.');
   return err instanceof Error ? err : new Error(String(err));
 }
 
@@ -113,7 +119,12 @@ export class RemoteClient {
       } catch (err) {
         if ((err as Error).message === 'Wrong access token.') {
           // The token was rotated on the other side: retrying cannot help.
-          this.options.onEvent({ type: 'notify', sessionId: '', message: 'The remote refused the access token.', level: 'error' });
+          this.options.onEvent({
+            type: 'notify',
+            sessionId: '',
+            message: 'The remote refused the access token.',
+            level: 'error',
+          });
         }
         this.set('reconnecting');
       }
@@ -141,7 +152,11 @@ export class RemoteClient {
         while ((end = buffer.indexOf('\n\n')) >= 0) {
           const frame = buffer.slice(0, end);
           buffer = buffer.slice(end + 2);
-          const data = frame.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trimStart()).join('\n');
+          const data = frame
+            .split('\n')
+            .filter((l) => l.startsWith('data:'))
+            .map((l) => l.slice(5).trimStart())
+            .join('\n');
           if (!data) continue;
           try {
             this.options.onEvent(JSON.parse(data) as HostEvent);

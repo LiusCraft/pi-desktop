@@ -13,15 +13,23 @@ describe('transcriptExcerpt', () => {
       message('user', '日期显示少了一个月，帮我修一下'),
       message('assistant', '修好了，测试全部通过。'),
     ]);
-    assert.equal(excerpt?.text, '<user>日期显示少了一个月，帮我修一下</user>\n<assistant>修好了，测试全部通过。</assistant>');
+    assert.equal(
+      excerpt?.text,
+      '<user>日期显示少了一个月，帮我修一下</user>\n<assistant>修好了，测试全部通过。</assistant>',
+    );
     assert.equal(excerpt?.lastAssistant, '修好了，测试全部通过。');
   });
 
   it('reads text blocks only and flattens the formatting', () => {
-    const excerpt = transcriptExcerpt([{
-      role: 'assistant',
-      content: [{ type: 'text', text: 'Done.\n\n  Tests pass.  ' }, { type: 'toolCall', name: 'bash' }],
-    }]);
+    const excerpt = transcriptExcerpt([
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Done.\n\n  Tests pass.  ' },
+          { type: 'toolCall', name: 'bash' },
+        ],
+      },
+    ]);
     assert.equal(excerpt?.text, '<assistant>Done. Tests pass.</assistant>');
   });
 
@@ -35,7 +43,9 @@ describe('transcriptExcerpt', () => {
   });
 
   it('keeps only the newest turns and needs at least one message', () => {
-    const messages = Array.from({ length: 10 }, (_, i) => (i % 2 ? message('assistant', `reply ${i}`) : message('user', `ask ${i}`)));
+    const messages = Array.from({ length: 10 }, (_, i) =>
+      i % 2 ? message('assistant', `reply ${i}`) : message('user', `ask ${i}`),
+    );
     const excerpt = transcriptExcerpt(messages);
     assert.equal(excerpt?.text.split('\n').length, 6);
     assert.ok(excerpt?.text.startsWith('<user>ask 4</user>'));
@@ -46,14 +56,21 @@ describe('transcriptExcerpt', () => {
   });
 
   it('honors the configured message count', () => {
-    const messages = Array.from({ length: 10 }, (_, i) => (i % 2 ? message('assistant', `reply ${i}`) : message('user', `ask ${i}`)));
-    assert.equal(transcriptExcerpt(messages, { context: 2 })?.text, '<user>ask 8</user>\n<assistant>reply 9</assistant>');
+    const messages = Array.from({ length: 10 }, (_, i) =>
+      i % 2 ? message('assistant', `reply ${i}`) : message('user', `ask ${i}`),
+    );
+    assert.equal(
+      transcriptExcerpt(messages, { context: 2 })?.text,
+      '<user>ask 8</user>\n<assistant>reply 9</assistant>',
+    );
     assert.equal(transcriptExcerpt(messages, { context: 99 })?.text.split('\n').length, 10);
     assert.equal(transcriptExcerpt(messages, { context: 0 })?.text.split('\n').length, 6);
   });
 
   it('sends the whole conversation for context all, bounded by the model window', () => {
-    const messages = Array.from({ length: 10 }, (_, i) => message(i % 2 ? 'assistant' : 'user', `${i}:${'x'.repeat(300)}`));
+    const messages = Array.from({ length: 10 }, (_, i) =>
+      message(i % 2 ? 'assistant' : 'user', `${i}:${'x'.repeat(300)}`),
+    );
     assert.equal(transcriptExcerpt(messages, { context: 'all' })?.text.split('\n').length, 10);
     const bounded = transcriptExcerpt(messages, { context: 'all', contextWindow: 1_000 });
     assert.ok(bounded);

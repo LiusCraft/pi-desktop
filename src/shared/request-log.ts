@@ -3,7 +3,14 @@
 
 /** What a request was for. Subagents also carry their name (`RequestRecord.subagent`). */
 export const REQUEST_ORIGIN = {
-  code: 'code', work: 'work', subagent: 'subagent', naming: 'naming', suggest: 'suggest', sideChat: 'sideChat', review: 'review', ideas: 'ideas',
+  code: 'code',
+  work: 'work',
+  subagent: 'subagent',
+  naming: 'naming',
+  suggest: 'suggest',
+  sideChat: 'sideChat',
+  review: 'review',
+  ideas: 'ideas',
 } as const;
 export type RequestOrigin = (typeof REQUEST_ORIGIN)[keyof typeof REQUEST_ORIGIN];
 /** The usage view's key for a request that has no origin. */
@@ -64,27 +71,52 @@ export const REQUEST_RETENTION = { min: 1, max: 365, default: 30 } as const;
 /** A logged body is cut at this many characters. */
 export const REQUEST_BODY_LIMIT = 200_000;
 
-export function normalizeRequestHookSettings(raw: Partial<RequestHookSettings> | null | undefined): RequestHookSettings {
+export function normalizeRequestHookSettings(
+  raw: Partial<RequestHookSettings> | null | undefined,
+): RequestHookSettings {
   const days = Math.round(Number(raw?.retentionDays));
   return {
     logBody: raw?.logBody === true,
-    retentionDays: Number.isFinite(days) ? Math.min(REQUEST_RETENTION.max, Math.max(REQUEST_RETENTION.min, days)) : REQUEST_RETENTION.default,
+    retentionDays: Number.isFinite(days)
+      ? Math.min(REQUEST_RETENTION.max, Math.max(REQUEST_RETENTION.min, days))
+      : REQUEST_RETENTION.default,
     redact: normalizeRedactSettings(raw?.redact),
   };
 }
 
-const strings = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((s): s is string => typeof s === 'string').map((s) => s.trim()).filter(Boolean))] : []);
+const strings = (v: unknown): string[] =>
+  Array.isArray(v)
+    ? [
+        ...new Set(
+          v
+            .filter((s): s is string => typeof s === 'string')
+            .map((s) => s.trim())
+            .filter(Boolean),
+        ),
+      ]
+    : [];
 
 export function normalizeRedactSettings(raw: Partial<RedactSettings> | null | undefined): RedactSettings {
   const rules = Array.isArray(raw?.rules)
-    ? raw.rules.flatMap((r) => (r && typeof r.pattern === 'string' && r.pattern.trim() ? [{ pattern: r.pattern.trim(), regex: r.regex === true }] : []))
+    ? raw.rules.flatMap((r) =>
+        r && typeof r.pattern === 'string' && r.pattern.trim()
+          ? [{ pattern: r.pattern.trim(), regex: r.regex === true }]
+          : [],
+      )
     : [];
   const actions: RedactSettings['actions'] = {};
   for (const kind of MASK_KINDS) {
     const a = raw?.actions?.[kind];
     if (a === MASK_ACTION.warn || a === MASK_ACTION.block) actions[kind] = a;
   }
-  return { secrets: raw?.secrets === true, personal: raw?.personal === true, words: strings(raw?.words), rules, allow: strings(raw?.allow), actions };
+  return {
+    secrets: raw?.secrets === true,
+    personal: raw?.personal === true,
+    words: strings(raw?.words),
+    rules,
+    allow: strings(raw?.allow),
+    actions,
+  };
 }
 
 export interface RequestQuery {
@@ -99,7 +131,13 @@ export interface RequestQuery {
 export const REQUEST_PAGE_SIZE = 100;
 
 /** How a usage summary is cut: one series per model, per model and provider, per provider, per session, or per purpose. */
-export const USAGE_SPLIT = { model: 'model', modelProvider: 'modelProvider', provider: 'provider', session: 'session', purpose: 'purpose' } as const;
+export const USAGE_SPLIT = {
+  model: 'model',
+  modelProvider: 'modelProvider',
+  provider: 'provider',
+  session: 'session',
+  purpose: 'purpose',
+} as const;
 /** The usage view's key for requests that belong to no session. */
 export const NO_SESSION_KEY = 'none';
 export type UsageSplit = (typeof USAGE_SPLIT)[keyof typeof USAGE_SPLIT];
@@ -173,8 +211,18 @@ export type MaskKind = (typeof MASK_KIND)[keyof typeof MASK_KIND];
 export const MASK_KINDS = Object.values(MASK_KIND);
 
 /** The kinds the "secrets" switch covers; the "personal" switch covers the next group; words and rules have their own lists. */
-export const SECRET_KINDS: readonly MaskKind[] = [MASK_KIND.privateKey, MASK_KIND.apiKey, MASK_KIND.jwt, MASK_KIND.password];
-export const PERSONAL_KINDS: readonly MaskKind[] = [MASK_KIND.email, MASK_KIND.phone, MASK_KIND.idCard, MASK_KIND.bankCard];
+export const SECRET_KINDS: readonly MaskKind[] = [
+  MASK_KIND.privateKey,
+  MASK_KIND.apiKey,
+  MASK_KIND.jwt,
+  MASK_KIND.password,
+];
+export const PERSONAL_KINDS: readonly MaskKind[] = [
+  MASK_KIND.email,
+  MASK_KIND.phone,
+  MASK_KIND.idCard,
+  MASK_KIND.bankCard,
+];
 
 /** What happens when a value of a kind is found. */
 export const MASK_ACTION = { mask: 'mask', warn: 'warn', block: 'block' } as const;
@@ -198,9 +246,20 @@ export interface RedactSettings {
   actions: Partial<Record<MaskKind, MaskAction>>;
 }
 
-export const DEFAULT_REDACT_SETTINGS: RedactSettings = { secrets: false, personal: false, words: [], rules: [], allow: [], actions: {} };
+export const DEFAULT_REDACT_SETTINGS: RedactSettings = {
+  secrets: false,
+  personal: false,
+  words: [],
+  rules: [],
+  allow: [],
+  actions: {},
+};
 
-export const DEFAULT_REQUEST_HOOK_SETTINGS: RequestHookSettings = { logBody: false, retentionDays: REQUEST_RETENTION.default, redact: DEFAULT_REDACT_SETTINGS };
+export const DEFAULT_REQUEST_HOOK_SETTINGS: RequestHookSettings = {
+  logBody: false,
+  retentionDays: REQUEST_RETENTION.default,
+  redact: DEFAULT_REDACT_SETTINGS,
+};
 
 /** Masked kinds counted for one request. */
 export type MaskCounts = Partial<Record<MaskKind, number>>;

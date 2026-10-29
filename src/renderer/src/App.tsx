@@ -10,7 +10,19 @@ import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { bridge, call, isMac } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
-import { answerUi, bootstrap, cycleViewMode, fail, handleHostEvent, openSession, requestFind, showWelcome, stop, toggleSidebar, togglePanel } from '@/store/actions';
+import {
+  answerUi,
+  bootstrap,
+  cycleViewMode,
+  fail,
+  handleHostEvent,
+  openSession,
+  requestFind,
+  showWelcome,
+  stop,
+  toggleSidebar,
+  togglePanel,
+} from '@/store/actions';
 import { currentSession, getApp, setApp, useApp } from '@/store/app';
 import { activeDraft, drafts } from '@/store/drafts';
 import { useDialogs } from '@/store/dialogs';
@@ -63,7 +75,13 @@ function useShortcuts() {
       }
       // 1 / 2 / 3 answer a waiting permission card while the composer is empty.
       const waiting = s.waiting ? s.items.find((i) => i.key === s.waiting) : undefined;
-      if (waiting?.kind === 'perm' && ['1', '2', '3'].includes(e.key) && !mod && !activeDraft()?.text.trim() && document.activeElement?.tagName !== 'INPUT') {
+      if (
+        waiting?.kind === 'perm' &&
+        ['1', '2', '3'].includes(e.key) &&
+        !mod &&
+        !activeDraft()?.text.trim() &&
+        document.activeElement?.tagName !== 'INPUT'
+      ) {
         e.preventDefault();
         const v = PERMISSION_CHOICES[Number(e.key) - 1];
         answerUi(s.meta.id, waiting.key, { value: v }, v);
@@ -118,7 +136,12 @@ export function App() {
   return (
     <TooltipProvider delayDuration={400}>
       <div className="h-screen w-screen" data-platform={bridge.platform}>
-        <ResizablePanelGroup orientation="horizontal" id="shell" defaultLayout={shell.defaultLayout} onLayoutChanged={shell.onLayoutChanged}>
+        <ResizablePanelGroup
+          orientation="horizontal"
+          id="shell"
+          defaultLayout={shell.defaultLayout}
+          onLayoutChanged={shell.onLayoutChanged}
+        >
           <ResizablePanel
             id="sidebar"
             panelRef={sidebar}

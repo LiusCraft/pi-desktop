@@ -23,16 +23,27 @@ const SHELL_TOOLS = new Set(['bash', 'powershell', 'pidesk_bg_shell']);
 export const SCOPE_KEY = 'scope:';
 
 /** Variables a command may use to reach folders outside the session folder. */
-const ENV_DIRS: Record<string, string> = { HOME: os.homedir(), USERPROFILE: os.homedir(), TMPDIR: os.tmpdir(), TMP: os.tmpdir(), TEMP: os.tmpdir() };
+const ENV_DIRS: Record<string, string> = {
+  HOME: os.homedir(),
+  USERPROFILE: os.homedir(),
+  TMPDIR: os.tmpdir(),
+  TMP: os.tmpdir(),
+  TEMP: os.tmpdir(),
+};
 /** First folders of POSIX paths that are real places even when this machine has no such folder (Git Bash on Windows maps /tmp). */
 const SYSTEM_ROOTS = new Set(['tmp', 'var', 'usr', 'etc', 'home', 'opt', 'root', 'mnt', 'private', 'Users', 'Volumes']);
 /** A command that makes its own temporary file or folder, wherever the script then puts it. */
 const TEMP_MAKERS = /\b(mktemp|tempfile|TemporaryDirectory|NamedTemporaryFile|mkdtemp)\b/;
-const PATH_TOKEN = /(?:^|[\s"'=(<>|;&,])((?:~|\$\{?[A-Z]+\}?|[A-Za-z]:[\\/]|\.\.(?=[\\/]|$)|\/(?!\/))[^\s"'<>|;&)(,]*)/g;
+const PATH_TOKEN =
+  /(?:^|[\s"'=(<>|;&,])((?:~|\$\{?[A-Z]+\}?|[A-Za-z]:[\\/]|\.\.(?=[\\/]|$)|\/(?!\/))[^\s"'<>|;&)(,]*)/g;
 
 /** The path as the disk spells it: symlinks resolved as far as the path exists. */
 function real(p: string): string {
-  try { return realpathSync.native(p); } catch { /* not there yet: resolve what is */ }
+  try {
+    return realpathSync.native(p);
+  } catch {
+    /* not there yet: resolve what is */
+  }
   const parent = path.dirname(p);
   return parent === p ? p : path.join(real(parent), path.basename(p));
 }
@@ -78,7 +89,11 @@ export function commandPaths(command: string, cwd: string, readOnly: boolean): s
 }
 
 const folderOf = (p: string) => {
-  try { return existsSync(p) && path.extname(p) === '' && !path.basename(p).startsWith('.') ? p : path.dirname(p); } catch { return path.dirname(p); }
+  try {
+    return existsSync(p) && path.extname(p) === '' && !path.basename(p).startsWith('.') ? p : path.dirname(p);
+  } catch {
+    return path.dirname(p);
+  }
 };
 
 /** Whether the user already allowed a folder (or one above it) for this session. */

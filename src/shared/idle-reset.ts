@@ -34,7 +34,9 @@ export const modelKey = (provider: string, model: string) => `${provider}/${mode
 
 /** A hand-edited minutes value: finite, in range and not negative; anything else is treated as unset. */
 export const idleMinutes = (value: unknown): number | undefined =>
-  typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= IDLE_RESET_MAX_MINUTES ? value : undefined;
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= IDLE_RESET_MAX_MINUTES
+    ? value
+    : undefined;
 
 /**
  * The minutes before a context is rebuilt. The model's own value wins (0 = never rebuild for it). A

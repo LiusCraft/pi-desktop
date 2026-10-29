@@ -57,7 +57,15 @@ export interface TaskDraft {
   schedule: TaskSchedule;
 }
 
-const WEEKDAY_KEYS = ['schedule.sun', 'schedule.mon', 'schedule.tue', 'schedule.wed', 'schedule.thu', 'schedule.fri', 'schedule.sat'] as const;
+const WEEKDAY_KEYS = [
+  'schedule.sun',
+  'schedule.mon',
+  'schedule.tue',
+  'schedule.wed',
+  'schedule.thu',
+  'schedule.fri',
+  'schedule.sat',
+] as const;
 /** Day 0 is Sunday; the name follows the language of the running process. */
 export const weekdayName = (day: number) => (WEEKDAY_KEYS[day] ? tr(WEEKDAY_KEYS[day]) : '');
 export const MAX_TASK_RUNS = 30;
@@ -69,7 +77,8 @@ const HOUR = 3600_000;
 export function parseTime(time: string): { h: number; m: number } | null {
   const hit = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
   if (!hit) return null;
-  const h = Number(hit[1]), m = Number(hit[2]);
+  const h = Number(hit[1]),
+    m = Number(hit[2]);
   return h < 24 && m < 60 ? { h, m } : null;
 }
 
@@ -88,16 +97,19 @@ function parseField(text: string, f: (typeof FIELDS)[number]): Set<number> {
   for (const part of text.split(',')) {
     const [range, step, extra] = part.split('/');
     const n = step === undefined ? 1 : Number(step);
-    if (extra !== undefined || !Number.isInteger(n) || n < 1) throw new Error(tr('schedule.err.step', { field: tr(f.name), part }));
+    if (extra !== undefined || !Number.isInteger(n) || n < 1)
+      throw new Error(tr('schedule.err.step', { field: tr(f.name), part }));
     let lo: number, hi: number;
     if (range === '*') [lo, hi] = [f.min, f.max];
     else {
       const [a, b, more] = range.split('-');
       lo = Number(a);
       hi = b === undefined ? (step === undefined ? lo : f.max) : Number(b);
-      if (more !== undefined || !/^\d+$/.test(a) || (b !== undefined && !/^\d+$/.test(b))) throw new Error(tr('schedule.err.field', { field: tr(f.name), part }));
+      if (more !== undefined || !/^\d+$/.test(a) || (b !== undefined && !/^\d+$/.test(b)))
+        throw new Error(tr('schedule.err.field', { field: tr(f.name), part }));
     }
-    if (lo < f.min || hi > f.max || lo > hi) throw new Error(tr('schedule.err.range', { field: tr(f.name), min: f.min, max: f.max, part }));
+    if (lo < f.min || hi > f.max || lo > hi)
+      throw new Error(tr('schedule.err.range', { field: tr(f.name), min: f.min, max: f.max, part }));
     for (let v = lo; v <= hi; v += n) out.add(v);
   }
   return out;
@@ -123,7 +135,8 @@ export function parseCron(expr: string): Cron {
 
 function dayMatches(c: Cron, d: Date) {
   if (!c.month.has(d.getMonth() + 1)) return false;
-  const dom = c.dom.has(d.getDate()), dow = c.dow.has(d.getDay());
+  const dom = c.dom.has(d.getDate()),
+    dow = c.dow.has(d.getDay());
   // Like cron: when both day fields are restricted, either one matching is enough.
   return c.domAny || c.dowAny ? dom && dow : dom || dow;
 }
@@ -156,7 +169,9 @@ export function validateSchedule(s: TaskSchedule, now = Date.now()): string | nu
     case 'weekdays':
       return parseTime(s.time) ? null : tr('schedule.err.time');
     case 'weekly':
-      return parseTime(s.time) && Number.isInteger(s.day) && s.day >= 0 && s.day <= 6 ? null : tr('schedule.err.weekTime');
+      return parseTime(s.time) && Number.isInteger(s.day) && s.day >= 0 && s.day <= 6
+        ? null
+        : tr('schedule.err.weekTime');
     case 'once':
       return Number.isFinite(s.at) && s.at > now ? null : tr('schedule.err.future');
     case 'cron':
@@ -212,12 +227,19 @@ export function nextRun(s: TaskSchedule, after: number): number | null {
 
 export function describeSchedule(s: TaskSchedule): string {
   switch (s.type) {
-    case 'manual': return tr('schedule.manual');
-    case 'hourly': return tr('schedule.hourly');
-    case 'daily': return tr('schedule.daily', { time: s.time });
-    case 'weekdays': return tr('schedule.weekdays', { time: s.time });
-    case 'weekly': return tr('schedule.weekly', { day: weekdayName(s.day), time: s.time });
-    case 'once': return tr('schedule.once', { at: new Date(s.at).toLocaleString() });
-    case 'cron': return `cron ${s.expr}`;
+    case 'manual':
+      return tr('schedule.manual');
+    case 'hourly':
+      return tr('schedule.hourly');
+    case 'daily':
+      return tr('schedule.daily', { time: s.time });
+    case 'weekdays':
+      return tr('schedule.weekdays', { time: s.time });
+    case 'weekly':
+      return tr('schedule.weekly', { day: weekdayName(s.day), time: s.time });
+    case 'once':
+      return tr('schedule.once', { at: new Date(s.at).toLocaleString() });
+    case 'cron':
+      return `cron ${s.expr}`;
   }
 }

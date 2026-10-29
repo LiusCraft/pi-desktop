@@ -19,7 +19,9 @@ function fake(body: string) {
 
 describe('cloudflare tunnel', () => {
   it('reads the public address from cloudflared output', async () => {
-    const tunnel = fake("console.error('INF Requesting new quick Tunnel');console.error('https://quiet-river-1234.trycloudflare.com');setInterval(()=>{},1000)");
+    const tunnel = fake(
+      "console.error('INF Requesting new quick Tunnel');console.error('https://quiet-river-1234.trycloudflare.com');setInterval(()=>{},1000)",
+    );
     expect(await tunnel.start(7431)).toEqual({ state: 'ready', url: 'https://quiet-river-1234.trycloudflare.com' });
     tunnel.stop();
     expect(tunnel.current.state).toBe('off');

@@ -7,21 +7,82 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  createAgentSession, createAgentSessionFromServices, createAgentSessionRuntime, createAgentSessionServices,
-  createCodemodeExtension, createMcpExtension, createToolSearchExtension, DefaultResourceLoader, estimateTokens,
-  formatSkillsForPrompt, getAgentDir, getLatestCompactionEntry, hasTrustRequiringProjectResources, ModelRuntime, ProjectTrustStore, sessionEntryToContextMessages, SessionManager, SettingsManager,
-  type AgentSession, type AgentSessionRuntime, type CreateAgentSessionRuntimeFactory, type ExtensionUIContext,
+  createAgentSession,
+  createAgentSessionFromServices,
+  createAgentSessionRuntime,
+  createAgentSessionServices,
+  createCodemodeExtension,
+  createMcpExtension,
+  createToolSearchExtension,
+  DefaultResourceLoader,
+  estimateTokens,
+  formatSkillsForPrompt,
+  getAgentDir,
+  getLatestCompactionEntry,
+  hasTrustRequiringProjectResources,
+  ModelRuntime,
+  ProjectTrustStore,
+  sessionEntryToContextMessages,
+  SessionManager,
+  SettingsManager,
+  type AgentSession,
+  type AgentSessionRuntime,
+  type CreateAgentSessionRuntimeFactory,
+  type ExtensionUIContext,
 } from '@earendil-works/pi-coding-agent';
 import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import { buildMessage, decodeUserContent } from '@shared/attachments';
 import type {
-  AgentDraft, AgentMessage, ConnectorDraft, PluginResource, PromptDraft, SkillDraft, ChangeSet, ContextBreakdown, CreateSessionOptions, HostEvent, HostResource, ImportableSession, ModelInfo, OpenSessionResult, OutputStyle, PermissionMode,
-  PrStatus, PrSummary, SessionCleanup, SessionMeta, SessionRemoval, SessionState, SessionStats, SetupStep, Settings, SideChat, SpawnTask, SubagentProgress, WorkIdea, WorkIdeasModelMode, SessionSummary, SlashCommand, StreamingBehavior, SuggestionOptions, ThinkingLevel, ToolOption, UiRequest, UiRequestInput, UiResponse,
+  AgentDraft,
+  AgentMessage,
+  ConnectorDraft,
+  PluginResource,
+  PromptDraft,
+  SkillDraft,
+  ChangeSet,
+  ContextBreakdown,
+  CreateSessionOptions,
+  HostEvent,
+  HostResource,
+  ImportableSession,
+  ModelInfo,
+  OpenSessionResult,
+  OutputStyle,
+  PermissionMode,
+  PrStatus,
+  PrSummary,
+  SessionCleanup,
+  SessionMeta,
+  SessionRemoval,
+  SessionState,
+  SessionStats,
+  SetupStep,
+  Settings,
+  SideChat,
+  SpawnTask,
+  SubagentProgress,
+  WorkIdea,
+  WorkIdeasModelMode,
+  SessionSummary,
+  SlashCommand,
+  StreamingBehavior,
+  SuggestionOptions,
+  ThinkingLevel,
+  ToolOption,
+  UiRequest,
+  UiRequestInput,
+  UiResponse,
 } from '@shared/protocol';
-import { AUTO_REVIEW_DEFAULT_TIMEOUT, AUTO_REVIEW_MAX_TIMEOUT, AUTO_REVIEW_MIN_TIMEOUT, MAX_SESSION_TITLE, SHELL_SESSION_MODES } from '@shared/protocol';
+import {
+  AUTO_REVIEW_DEFAULT_TIMEOUT,
+  AUTO_REVIEW_MAX_TIMEOUT,
+  AUTO_REVIEW_MIN_TIMEOUT,
+  MAX_SESSION_TITLE,
+  SHELL_SESSION_MODES,
+} from '@shared/protocol';
 import { decodeCommandMessage, encodeUserCommandMessage, isCommandMessage } from '@shared/command-message';
 import { expandUserCommand } from './prompt-template';
-import { decodePeerMessage,encodePeerMessage, isPeerMessage } from '@shared/peer-message';
+import { decodePeerMessage, encodePeerMessage, isPeerMessage } from '@shared/peer-message';
 import { decodePrEvent, encodePrEvent, isPrEvent } from '@shared/pr-event';
 import { decodeTaskMessage, encodeTaskMessage, isTaskMessage } from '@shared/task-message';
 import { BUILTIN_PET_IDS } from '@shared/pets';
@@ -47,7 +108,14 @@ import { RequestLog } from './request-hook/log';
 import { withOrigin } from './request-hook/origin';
 import { createDesktopKit, type KitHost, type KitState, type SessionScope, type SubagentRun } from './desktop-kit';
 import { toWireEvent } from './events';
-import { locateSessionFile, readSessionFile, readSessionImage, readSessionMedia, resolveInside, searchSessionFiles } from './files';
+import {
+  locateSessionFile,
+  readSessionFile,
+  readSessionImage,
+  readSessionMedia,
+  resolveInside,
+  searchSessionFiles,
+} from './files';
 import * as git from './git';
 import { ModelAdmin } from './model-admin';
 import { IDLE_FIRST_MS, IDLE_MS, PrWatcher, type PrPending } from './pr-watch';
@@ -64,7 +132,16 @@ import * as sideChat from './side-chat';
 import * as workIdeas from './work-ideas';
 import * as commandReview from './command-review';
 
-const NAMES = ['trusting-maxwell', 'eager-lovelace', 'quiet-hopper', 'brave-turing', 'calm-knuth', 'swift-ritchie', 'bold-curie', 'keen-dijkstra'];
+const NAMES = [
+  'trusting-maxwell',
+  'eager-lovelace',
+  'quiet-hopper',
+  'brave-turing',
+  'calm-knuth',
+  'swift-ritchie',
+  'bold-curie',
+  'keen-dijkstra',
+];
 /** Tools on top of pi's defaults (read, bash, edit, write). */
 const EXTRA_TOOLS = ['+grep', '+find', '+ls'];
 /** Store key: the user said no to importing Claude Code's skills. */
@@ -102,19 +179,28 @@ interface Live {
 /** Rough token count for text the SDK does not measure for us. */
 /** The review timeout setting in seconds, kept in range whatever the stored value is. */
 const clampTimeout = (seconds: unknown) =>
-  Math.min(AUTO_REVIEW_MAX_TIMEOUT, Math.max(AUTO_REVIEW_MIN_TIMEOUT, Math.round(Number(seconds)) || AUTO_REVIEW_DEFAULT_TIMEOUT));
+  Math.min(
+    AUTO_REVIEW_MAX_TIMEOUT,
+    Math.max(AUTO_REVIEW_MIN_TIMEOUT, Math.round(Number(seconds)) || AUTO_REVIEW_DEFAULT_TIMEOUT),
+  );
 const approxTokens = (text: string) => Math.ceil(text.length / 4);
 
 /** What a subagent tool call shows in its transcript, and what it is doing meanwhile. */
 function subagentStepLabel(name: string, args: any) {
   const a = args ?? {};
   switch (name) {
-    case 'bash': return { label: String(a.command ?? ''), activity: 'Running a command' };
-    case 'read': return { label: String(a.path ?? ''), activity: `Reading ${path.basename(String(a.path ?? 'a file'))}` };
-    case 'grep': return { label: String(a.pattern ?? ''), activity: 'Searching' };
-    case 'find': return { label: String(a.pattern ?? a.path ?? ''), activity: 'Finding files' };
-    case 'ls': return { label: String(a.path ?? '.'), activity: 'Listing files' };
-    default: return { label: name, activity: `Using ${name}` };
+    case 'bash':
+      return { label: String(a.command ?? ''), activity: 'Running a command' };
+    case 'read':
+      return { label: String(a.path ?? ''), activity: `Reading ${path.basename(String(a.path ?? 'a file'))}` };
+    case 'grep':
+      return { label: String(a.pattern ?? ''), activity: 'Searching' };
+    case 'find':
+      return { label: String(a.pattern ?? a.path ?? ''), activity: 'Finding files' };
+    case 'ls':
+      return { label: String(a.path ?? '.'), activity: 'Listing files' };
+    default:
+      return { label: name, activity: `Using ${name}` };
   }
 }
 
@@ -129,7 +215,6 @@ export interface HubOptions {
   /** Register the offline demo model (dev and tests only; packaged builds leave it off). */
   demoModel?: boolean;
 }
-
 
 interface PrWatchEntry {
   watcher: PrWatcher;
@@ -164,7 +249,8 @@ export function compactedMessages(manager: SessionManager): AgentMessage[] {
 export function dropContextAbove(manager: SessionManager): void {
   // The projection is what the model would see: it already excludes what an earlier rebuild dropped.
   const { entries } = manager.buildSessionProjection();
-  const isCard = (entry: { type: string; customType?: string }) => entry.type === 'custom_message' && entry.customType === HANDOFF_CUSTOM_TYPE;
+  const isCard = (entry: { type: string; customType?: string }) =>
+    entry.type === 'custom_message' && entry.customType === HANDOFF_CUSTOM_TYPE;
   const newest = entries.filter((item) => isCard(item.sourceEntry)).at(-1)?.sourceEntry.id;
   for (const { sourceEntry } of entries) {
     if (sourceEntry.type === 'message') manager.appendContextEdit(sourceEntry.id, null);
@@ -183,7 +269,8 @@ export function omittedMessages(manager: SessionManager): AgentMessage[] {
   const newest = cards.at(-1);
   if (!newest) return [];
   const omitted = new Set<string>();
-  for (const entry of branch) if (entry.type === 'context_edit' && entry.replacement === null) omitted.add(entry.targetId);
+  for (const entry of branch)
+    if (entry.type === 'context_edit' && entry.replacement === null) omitted.add(entry.targetId);
   if (!omitted.size) return [];
   // Only after the previous rebuild's card: what that one replaced belongs behind it, not behind this one.
   const previous = cards.at(-2);
@@ -251,7 +338,8 @@ export class SessionHub {
     // A main session's requests carry the id pi gave it, which the hub's own session ids don't match.
     this.requests.resolveSession = (sessionId) => {
       for (const live of this.live.values()) {
-        if (live.runtime?.session?.sessionId === sessionId) return { origin: this.meta(live.id).kind, session: live.id };
+        if (live.runtime?.session?.sessionId === sessionId)
+          return { origin: this.meta(live.id).kind, session: live.id };
       }
       return undefined;
     };
@@ -358,23 +446,38 @@ export class SessionHub {
   // ------------------------------------------------------------ models
 
   private modelInfo(m: any): ModelInfo {
-    return { provider: m.provider, id: m.id, name: m.name, contextWindow: m.contextWindow, maxTokens: m.maxTokens, reasoning: m.reasoning, input: m.input, cost: m.cost };
+    return {
+      provider: m.provider,
+      id: m.id,
+      name: m.name,
+      contextWindow: m.contextWindow,
+      maxTokens: m.maxTokens,
+      reasoning: m.reasoning,
+      input: m.input,
+      cost: m.cost,
+    };
   }
   private findModel(id: string | null | undefined) {
     if (!id) return undefined;
     const [provider, ...rest] = id.split('/');
-    return this.models.getAvailableSnapshot().find((m) => m.provider === provider && m.id === rest.join('/')) ?? this.models.getModel(provider, rest.join('/'));
+    return (
+      this.models.getAvailableSnapshot().find((m) => m.provider === provider && m.id === rest.join('/')) ??
+      this.models.getModel(provider, rest.join('/'))
+    );
   }
   /** Models with working credentials (the availability check runs asynchronously). */
   async listModels() {
     const available = [...(await this.models.getAvailable())];
     // The offline demo model needs no credentials, so it never waits on availability checks.
-    for (const m of this.models.getModels('demo')) if (!available.some((a) => a.provider === m.provider && a.id === m.id)) available.push(m);
+    for (const m of this.models.getModels('demo'))
+      if (!available.some((a) => a.provider === m.provider && a.id === m.id)) available.push(m);
     const models = available.map((m) => this.modelInfo(m));
     const settings = this.settings ?? SettingsManager.create(os.homedir(), this.agentDir);
-    const provider = settings.getDefaultProvider(), model = settings.getDefaultModel();
+    const provider = settings.getDefaultProvider(),
+      model = settings.getDefaultModel();
     const fallback = models.find((m) => m.provider !== 'demo');
-    const defaultModel = provider && model ? `${provider}/${model}` : fallback ? `${fallback.provider}/${fallback.id}` : null;
+    const defaultModel =
+      provider && model ? `${provider}/${model}` : fallback ? `${fallback.provider}/${fallback.id}` : null;
     return { models, defaultModel };
   }
   thinkingLevels(id: string | null): ThinkingLevel[] {
@@ -401,8 +504,15 @@ export class SessionHub {
     const id = crypto.randomUUID();
     const slug = `${NAMES[Math.floor(Math.random() * NAMES.length)]}-${id.slice(0, 6)}`;
     const base = {
-      id, model: opts.model ?? null, thinking: opts.thinking ?? null, mode: opts.mode || 'auto', outputStyle: opts.outputStyle || 'default',
-      sessionFile: null, createdAt: Date.now(), updatedAt: Date.now(), pr: null,
+      id,
+      model: opts.model ?? null,
+      thinking: opts.thinking ?? null,
+      mode: opts.mode || 'auto',
+      outputStyle: opts.outputStyle || 'default',
+      sessionFile: null,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      pr: null,
       ...(opts.parentId ? { parentId: opts.parentId } : {}),
     } satisfies Partial<SessionMeta>;
     let meta: SessionMeta;
@@ -414,8 +524,16 @@ export class SessionHub {
         fs.mkdirSync(cwd, { recursive: true });
       }
       meta = {
-        ...base, kind: 'work', ...this.titleState(opts.title, opts.autoName, 'New task'),
-        projectPath: cwd, cwd, scratch: !opts.projectPath, branch: null, baseBranch: null, baseCommit: null, worktree: false,
+        ...base,
+        kind: 'work',
+        ...this.titleState(opts.title, opts.autoName, 'New task'),
+        projectPath: cwd,
+        cwd,
+        scratch: !opts.projectPath,
+        branch: null,
+        baseBranch: null,
+        baseCommit: null,
+        worktree: false,
       };
     } else {
       const projectPath = opts.projectPath;
@@ -449,9 +567,17 @@ export class SessionHub {
         worktreeSetup = { root, base: baseCommit ?? headCommit };
       }
       meta = {
-        ...base, kind: 'code', ...this.titleState(opts.title, opts.autoName, 'New session'),
-        projectPath, cwd, branch, baseBranch, baseCommit, worktree: cwd !== projectPath,
-        ...(external ? { external } : {}), ...(worktreeSetup ? { worktreeSetup } : {}),
+        ...base,
+        kind: 'code',
+        ...this.titleState(opts.title, opts.autoName, 'New session'),
+        projectPath,
+        cwd,
+        branch,
+        baseBranch,
+        baseCommit,
+        worktree: cwd !== projectPath,
+        ...(external ? { external } : {}),
+        ...(worktreeSetup ? { worktreeSetup } : {}),
       };
     }
     this.metas.unshift(meta);
@@ -484,7 +610,8 @@ export class SessionHub {
     const m = this.meta(id);
     if (m.archived) throw new Error('This session is archived');
     const steps: SetupStep[] = [];
-    if (m.worktreeSetup) steps.push({ id: 'worktree', label: tr('ag.stepWorktree', { branch: m.branch ?? '' }), state: 'running' });
+    if (m.worktreeSetup)
+      steps.push({ id: 'worktree', label: tr('ag.stepWorktree', { branch: m.branch ?? '' }), state: 'running' });
     steps.push({ id: 'agent', label: tr('ag.stepAgent'), state: m.worktreeSetup ? 'pending' : 'running' });
     const send = () => this.emit({ type: 'setup', sessionId: id, steps: steps.map((x) => ({ ...x })) });
     const report = (stage: SetupStep['id'], state: SetupStep['state'], detail?: string) => {
@@ -525,12 +652,23 @@ export class SessionHub {
       // SAFETY: runtime is assigned immediately below before live is published or used.
       runtime: null as unknown as AgentSessionRuntime,
       kit: { mode: m.mode, profile: m.kind, outputStyle: m.outputStyle, allowed: new Set() },
-      pending: new Map(), status: 'idle', generation: 0, historyBusy: false, disposed: false, tasks: new Map(),
+      pending: new Map(),
+      status: 'idle',
+      generation: 0,
+      historyBusy: false,
+      disposed: false,
+      tasks: new Map(),
     };
     const resumed = m.sessionFile && fs.existsSync(m.sessionFile);
-    const sessionManager = resumed ? SessionManager.open(m.sessionFile!, undefined, m.cwd) : SessionManager.create(m.cwd);
+    const sessionManager = resumed
+      ? SessionManager.open(m.sessionFile!, undefined, m.cwd)
+      : SessionManager.create(m.cwd);
     if (!resumed) sessionManager.appendSessionInfo(m.title);
-    live.runtime = await createAgentSessionRuntime(this.factory(live), { cwd: m.cwd, agentDir: this.agentDir, sessionManager });
+    live.runtime = await createAgentSessionRuntime(this.factory(live), {
+      cwd: m.cwd,
+      agentDir: this.agentDir,
+      sessionManager,
+    });
     live.runtime.setRebindSession(() => this.bind(live));
     await this.bind(live);
     this.live.set(id, live);
@@ -557,7 +695,11 @@ export class SessionHub {
       cwd: m.cwd,
       // Read fresh, so a folder linked on the Projects page applies to the next call.
       // Skills are read on the model's own initiative, so wherever the loaded ones live counts too (~/.agents/skills, an imported folder).
-      readable: () => [...(this.projects.workFolders().find((p) => p.path === m.projectPath)?.codeFolders ?? []), this.agentDir, ...this.skillFolders(id)],
+      readable: () => [
+        ...(this.projects.workFolders().find((p) => p.path === m.projectPath)?.codeFolders ?? []),
+        this.agentDir,
+        ...this.skillFolders(id),
+      ],
     };
   }
 
@@ -570,7 +712,10 @@ export class SessionHub {
       // pi installs missing packages as the session starts, and stumbles on a half-cloned one.
       customize.healPackages({ agentDir, project: cwd, projectTrusted, claudeSkillsDeclined: false });
       const services = await createAgentSessionServices({
-        cwd, agentDir, settingsManager, modelRuntime: this.models,
+        cwd,
+        agentDir,
+        settingsManager,
+        modelRuntime: this.models,
         resourceLoaderOptions: {
           extensionFactories: [
             createDesktopKit(this.kitHost(live)),
@@ -584,7 +729,9 @@ export class SessionHub {
         },
       });
       const created = await createAgentSessionFromServices({
-        services, sessionManager, sessionStartEvent,
+        services,
+        sessionManager,
+        sessionStartEvent,
         model: this.findModel(m.model),
         thinkingLevel: m.thinking ?? undefined,
         tools: EXTRA_TOOLS,
@@ -647,9 +794,11 @@ export class SessionHub {
         return {
           list: () => c.list(project),
           createSkill: (draft) => hub.afterChange('customize', () => c.createSkill(draft, project)),
-          setSkillDisabled: (file, disabled) => hub.afterChange('customize', () => c.setSkillDisabled(file, disabled, project)),
+          setSkillDisabled: (file, disabled) =>
+            hub.afterChange('customize', () => c.setSkillDisabled(file, disabled, project)),
           saveConnector: (draft) => hub.afterChange('customize', () => c.saveConnector(draft, project)),
-          setConnectorEnabled: (name, scope, enabled) => hub.afterChange('customize', () => c.setConnectorEnabled(name, scope, enabled, project)),
+          setConnectorEnabled: (name, scope, enabled) =>
+            hub.afterChange('customize', () => c.setConnectorEnabled(name, scope, enabled, project)),
           removeConnector: (name, scope) => hub.afterChange('customize', () => c.removeConnector(name, scope, project)),
           installPlugin: (source, scope) => hub.afterChange('customize', () => c.installPlugin(source, scope, project)),
           removePlugin: (source, scope) => hub.afterChange('customize', () => c.removePlugin(source, scope, project)),
@@ -722,13 +871,18 @@ export class SessionHub {
       commandContextActions: {
         waitForIdle: () => live.runtime.session.waitForIdle(),
         newSession: async (options) => live.runtime.newSession(options),
-        fork: async (entryId, forkOptions) => ({ cancelled: (await live.runtime.fork(entryId, forkOptions)).cancelled }),
-        navigateTree: async (targetId, options) => ({ cancelled: (await live.runtime.session.navigateTree(targetId, options)).cancelled }),
+        fork: async (entryId, forkOptions) => ({
+          cancelled: (await live.runtime.fork(entryId, forkOptions)).cancelled,
+        }),
+        navigateTree: async (targetId, options) => ({
+          cancelled: (await live.runtime.session.navigateTree(targetId, options)).cancelled,
+        }),
         switchSession: async (sessionPath, options) => live.runtime.switchSession(sessionPath, options),
         reload: async () => live.runtime.session.reload(),
       },
       shutdownHandler: () => {},
-      onError: (err) => this.emit({ type: 'extension_error', sessionId: live.id, error: `${err.extensionPath}: ${err.error}` }),
+      onError: (err) =>
+        this.emit({ type: 'extension_error', sessionId: live.id, error: `${err.extensionPath}: ${err.error}` }),
     });
     const m = this.meta(live.id);
     if (session.sessionFile && m.sessionFile !== session.sessionFile) {
@@ -800,22 +954,33 @@ export class SessionHub {
   respond(id: string, requestId: string, response: UiResponse) {
     const pending = this.live.get(id)?.pending.get(requestId);
     if (!pending) return;
-    const label = response.cancelled ? 'cancelled' : response.answers ? 'Answered' : response.value ?? (response.confirmed === undefined ? 'OK' : response.confirmed ? 'Yes' : 'No');
+    const label = response.cancelled
+      ? 'cancelled'
+      : response.answers
+        ? 'Answered'
+        : (response.value ?? (response.confirmed === undefined ? 'OK' : response.confirmed ? 'Yes' : 'No'));
     pending.done(response, label);
   }
 
   private cancelPending(live: Live) {
+    // A copy: done() removes the entry from `live.pending`.
+    // oxlint-disable-next-line unicorn/no-useless-spread
     for (const p of [...live.pending.values()]) p.done({ cancelled: true }, 'cancelled');
   }
 
   /** What ctx.ui means for pi extensions inside the desktop: dialogs become transcript cards. */
   private uiContext(live: Live): ExtensionUIContext {
     // Extensions sometimes style text through ctx.ui.theme; plain text is right for the desktop.
-    const theme = new Proxy({}, { get: (_t, prop) => (prop === 'name' ? 'pi-desktop' : (...args: unknown[]) => args[args.length - 1]) });
+    const theme = new Proxy(
+      {},
+      { get: (_t, prop) => (prop === 'name' ? 'pi-desktop' : (...args: unknown[]) => args[args.length - 1]) },
+    );
     const ui: Omit<Partial<ExtensionUIContext>, 'theme'> & { theme: unknown } = {
       theme,
-      select: async (title, options, opts) => (await this.ask(live, { kind: 'select', title, options }, opts?.signal)).value,
-      confirm: async (title, message, opts) => !!(await this.ask(live, { kind: 'confirm', title, message }, opts?.signal)).confirmed,
+      select: async (title, options, opts) =>
+        (await this.ask(live, { kind: 'select', title, options }, opts?.signal)).value,
+      confirm: async (title, message, opts) =>
+        !!(await this.ask(live, { kind: 'confirm', title, message }, opts?.signal)).confirmed,
       input: async (title, placeholder, opts) => {
         const r = await this.ask(live, { kind: 'input', title, placeholder }, opts?.signal);
         return r.cancelled ? undefined : r.value;
@@ -857,25 +1022,37 @@ export class SessionHub {
   /** Suggestions for an agent's tool allowlist. */
   toolOptions(): ToolOption[] {
     const tools = new Map<string, string>([
-      ['read', tr('ag.toolRead')], ['grep', tr('ag.toolGrep')], ['find', tr('ag.toolFind')], ['ls', tr('ag.toolLs')],
+      ['read', tr('ag.toolRead')],
+      ['grep', tr('ag.toolGrep')],
+      ['find', tr('ag.toolFind')],
+      ['ls', tr('ag.toolLs')],
       [process.platform === 'win32' ? 'powershell' : 'bash', tr('ag.toolShell')],
     ]);
     for (const live of this.live.values()) {
       for (const t of live.runtime.session.getAllTools()) {
-        if (!t.name.startsWith('pidesk_')) tools.set(t.name, tools.get(t.name) || (t.description ?? '').split('\n')[0].slice(0, 120));
+        if (!t.name.startsWith('pidesk_'))
+          tools.set(t.name, tools.get(t.name) || (t.description ?? '').split('\n')[0].slice(0, 120));
       }
     }
     return [...tools].map(([name, description]) => ({ name, description }));
   }
-  agentCatalog() { return agentCatalog(appAgentsDir(this.opts.dataDir)); }
-  saveAgent(draft: AgentDraft) { return saveAgent(appAgentsDir(this.opts.dataDir), draft); }
-  removeAgent(name: string) { return removeAgent(appAgentsDir(this.opts.dataDir), name); }
+  agentCatalog() {
+    return agentCatalog(appAgentsDir(this.opts.dataDir));
+  }
+  saveAgent(draft: AgentDraft) {
+    return saveAgent(appAgentsDir(this.opts.dataDir), draft);
+  }
+  removeAgent(name: string) {
+    return removeAgent(appAgentsDir(this.opts.dataDir), name);
+  }
 
   /** Where the Customize page reads and writes: pi's agent dir plus the selected project. */
   customizeEnv(project: string | null): customize.CustomizeEnv {
     const dir = project && fs.existsSync(project) ? project : null;
     return {
-      agentDir: this.agentDir, project: dir, projectTrusted: !!dir && (!hasTrustRequiringProjectResources(dir) || this.trust.get(dir) === true),
+      agentDir: this.agentDir,
+      project: dir,
+      projectTrusted: !!dir && (!hasTrustRequiringProjectResources(dir) || this.trust.get(dir) === true),
       claudeSkillsDeclined: this.store.get<boolean>(CLAUDE_SKILLS_DECLINED, false),
     };
   }
@@ -886,29 +1063,52 @@ export class SessionHub {
       this.store.set(CLAUDE_SKILLS_DECLINED, true);
       return customize.catalog(this.customizeEnv(project));
     },
-    setSkillDisabled: (file: string, disabled: boolean, project: string | null) => customize.setSkillDisabled(this.customizeEnv(project), file, disabled),
-    createSkill: (draft: SkillDraft, project: string | null) => customize.createSkill(this.customizeEnv(project), draft),
-    createPrompt: (draft: PromptDraft, project: string | null) => customize.createPrompt(this.customizeEnv(project), draft),
+    setSkillDisabled: (file: string, disabled: boolean, project: string | null) =>
+      customize.setSkillDisabled(this.customizeEnv(project), file, disabled),
+    createSkill: (draft: SkillDraft, project: string | null) =>
+      customize.createSkill(this.customizeEnv(project), draft),
+    createPrompt: (draft: PromptDraft, project: string | null) =>
+      customize.createPrompt(this.customizeEnv(project), draft),
     deletePrompt: (file: string, project: string | null) => customize.deletePrompt(this.customizeEnv(project), file),
-    saveConnector: (draft: ConnectorDraft, project: string | null) => customize.saveConnector(this.customizeEnv(project), draft),
-    setConnectorEnabled: (name: string, scope: 'user' | 'project', enabled: boolean, project: string | null) => customize.setConnectorEnabled(this.customizeEnv(project), name, scope, enabled),
-    removeConnector: (name: string, scope: 'user' | 'project', project: string | null) => customize.removeConnector(this.customizeEnv(project), name, scope),
+    saveConnector: (draft: ConnectorDraft, project: string | null) =>
+      customize.saveConnector(this.customizeEnv(project), draft),
+    setConnectorEnabled: (name: string, scope: 'user' | 'project', enabled: boolean, project: string | null) =>
+      customize.setConnectorEnabled(this.customizeEnv(project), name, scope, enabled),
+    removeConnector: (name: string, scope: 'user' | 'project', project: string | null) =>
+      customize.removeConnector(this.customizeEnv(project), name, scope),
     deleteSkill: (file: string, project: string | null) => customize.deleteSkill(this.customizeEnv(project), file),
-    removeSkillRepo: (repo: string, project: string | null) => customize.removeSkillRepo(this.customizeEnv(project), repo),
-    installSkillRepo: (repo: string, subdir: string, project: string | null) => customize.installSkillRepo(this.customizeEnv(project), repo, subdir),
-    installPlugin: (source: string, scope: 'user' | 'project', project: string | null) => customize.installPlugin(this.customizeEnv(project), source, scope),
-    removePlugin: (source: string, scope: 'user' | 'project', project: string | null) => customize.removePlugin(this.customizeEnv(project), source, scope),
-    updatePlugins: (source: string | null, project: string | null) => customize.updatePlugins(this.customizeEnv(project), source),
-    pluginResources: (source: string, scope: 'user' | 'project', project: string | null) => customize.pluginResources(this.customizeEnv(project), source, scope),
-    setPluginResource: (source: string, scope: 'user' | 'project', resource: PluginResource, enabled: boolean, project: string | null) =>
-      customize.setPluginResource(this.customizeEnv(project), source, scope, resource, enabled),
+    removeSkillRepo: (repo: string, project: string | null) =>
+      customize.removeSkillRepo(this.customizeEnv(project), repo),
+    installSkillRepo: (repo: string, subdir: string, project: string | null) =>
+      customize.installSkillRepo(this.customizeEnv(project), repo, subdir),
+    installPlugin: (source: string, scope: 'user' | 'project', project: string | null) =>
+      customize.installPlugin(this.customizeEnv(project), source, scope),
+    removePlugin: (source: string, scope: 'user' | 'project', project: string | null) =>
+      customize.removePlugin(this.customizeEnv(project), source, scope),
+    updatePlugins: (source: string | null, project: string | null) =>
+      customize.updatePlugins(this.customizeEnv(project), source),
+    pluginResources: (source: string, scope: 'user' | 'project', project: string | null) =>
+      customize.pluginResources(this.customizeEnv(project), source, scope),
+    setPluginResource: (
+      source: string,
+      scope: 'user' | 'project',
+      resource: PluginResource,
+      enabled: boolean,
+      project: string | null,
+    ) => customize.setPluginResource(this.customizeEnv(project), source, scope, resource, enabled),
   };
 
   /** A read-only, in-memory session with a fresh context (desktop-kit's `task` tool). */
   private async runSubagent(live: Live, run: SubagentRun) {
     const cwd = run.ctx.cwd;
     const stats = { commands: 0, reads: 0, searches: 0, failed: 0 };
-    const progress: SubagentProgress = { startedAt: Date.now(), tokens: 0, toolUses: 0, activity: 'Starting', steps: [] };
+    const progress: SubagentProgress = {
+      startedAt: Date.now(),
+      tokens: 0,
+      toolUses: 0,
+      activity: 'Starting',
+      steps: [],
+    };
     const report = () => run.onProgress({ ...stats }, { ...progress, steps: progress.steps.slice(-200) });
     // Stopped with the whole turn (run.signal) or on its own from the Background tasks panel.
     const stop = new AbortController();
@@ -920,16 +1120,21 @@ export class SessionHub {
       const agents = loadAgents(appAgentsDir(this.opts.dataDir));
       const agent = agents.find((a) => a.name === run.agent) ?? agents[0];
       const kit: KitState = { mode: 'plan', profile: live.kit.profile, outputStyle: 'default', allowed: new Set() };
-      const settingsManager = SettingsManager.create(cwd, this.agentDir, { projectTrusted: !hasTrustRequiringProjectResources(cwd) || this.trust.get(cwd) === true });
+      const settingsManager = SettingsManager.create(cwd, this.agentDir, {
+        projectTrusted: !hasTrustRequiringProjectResources(cwd) || this.trust.get(cwd) === true,
+      });
       const resourceLoader = new DefaultResourceLoader({
-        cwd, agentDir: this.agentDir, settingsManager,
+        cwd,
+        agentDir: this.agentDir,
+        settingsManager,
         // Questions and permission prompts surface in the parent session's transcript and the subagent
         // waits for the user. Plan approval has no meaning here (a subagent's mode never changes).
         extensionFactories: [
           createDesktopKit({
             state: kit,
             scope: this.workScope(live.id),
-            ask: async (request, signal) => (request.kind === 'plan' ? { cancelled: true } : this.ask(live, request, signal)),
+            ask: async (request, signal) =>
+              request.kind === 'plan' ? { cancelled: true } : this.ask(live, request, signal),
             setMode: () => {},
           }),
           createToolSearchExtension(),
@@ -939,11 +1144,21 @@ export class SessionHub {
       });
       await resourceLoader.reload();
       const { session } = await createAgentSession({
-        cwd, agentDir: this.agentDir, modelRuntime: this.models, model: (agent.model && this.findModel(agent.model)) || run.ctx.model, resourceLoader, settingsManager,
-        sessionManager: SessionManager.inMemory(cwd), tools: agent.tools ?? SUBAGENT_TOOLS,
+        cwd,
+        agentDir: this.agentDir,
+        modelRuntime: this.models,
+        model: (agent.model && this.findModel(agent.model)) || run.ctx.model,
+        resourceLoader,
+        settingsManager,
+        sessionManager: SessionManager.inMemory(cwd),
+        tools: agent.tools ?? SUBAGENT_TOOLS,
       });
       // Its requests carry its own session id; they are the subagent's, not the main session's.
-      this.requests.tagSession(session.sessionId, { origin: REQUEST_ORIGIN.subagent, subagent: agent.name, session: live.id });
+      this.requests.tagSession(session.sessionId, {
+        origin: REQUEST_ORIGIN.subagent,
+        subagent: agent.name,
+        session: live.id,
+      });
       const abortSession = () => void session.abort();
       stop.signal.addEventListener('abort', abortSession, { once: true });
       try {
@@ -968,7 +1183,10 @@ export class SessionHub {
           }
           if (event.type === 'message_end' && event.message?.role === 'assistant') {
             progress.tokens += Number(event.message.usage?.output) || 0;
-            const t = (event.message.content ?? []).filter((c: any) => c.type === 'text').map((c: any) => c.text).join('');
+            const t = (event.message.content ?? [])
+              .filter((c: any) => c.type === 'text')
+              .map((c: any) => c.text)
+              .join('');
             if (t) {
               text = t;
               progress.steps.push({ kind: 'text', text: t.length > 4000 ? `${t.slice(0, 4000)}…` : t });
@@ -992,7 +1210,8 @@ export class SessionHub {
     progress.endedAt = Date.now();
     progress.activity = stop.signal.aborted ? 'Stopped' : 'Done';
     report();
-    if (stop.signal.aborted && !run.signal?.aborted) throw new Error('The user stopped this subagent from the Background tasks panel.');
+    if (stop.signal.aborted && !run.signal?.aborted)
+      throw new Error('The user stopped this subagent from the Background tasks panel.');
     return text;
   }
 
@@ -1056,9 +1275,9 @@ export class SessionHub {
     }
     // SAFETY: the wire contract reads a subset of SDK messages; their content
     // blocks are structured-cloneable despite SDK interfaces lacking index signatures.
-    return session.messages.map((message) => message.role === 'user'
-      ? { ...message, entryId: ids.get(message.timestamp)?.shift() }
-      : message) as unknown as OpenSessionResult['messages'];
+    return session.messages.map((message) =>
+      message.role === 'user' ? { ...message, entryId: ids.get(message.timestamp)?.shift() } : message,
+    ) as unknown as OpenSessionResult['messages'];
   }
 
   async messageAction(id: string, entryId: string, action: 'rewind' | 'fork') {
@@ -1068,7 +1287,9 @@ export class SessionHub {
     if (live.historyBusy || live.status === 'running' || !session.isIdle || live.tasks.size) {
       throw new Error(tr('ag.waitTask'));
     }
-    const projected = session.sessionManager.buildSessionProjection().entries.find((item) => item.sourceEntry.id === entryId);
+    const projected = session.sessionManager
+      .buildSessionProjection()
+      .entries.find((item) => item.sourceEntry.id === entryId);
     const entry = projected?.sourceEntry;
     const message = projected?.messages.find((item) => item.role === 'user');
     if (entry?.type !== 'message' || entry.message.role !== 'user' || !message) throw new Error(tr('ag.messageGone'));
@@ -1094,9 +1315,16 @@ export class SessionHub {
       if (entry.parentId) manager.createBranchedSession(entry.parentId);
       else manager.newSession({ parentSession: sourceFile });
       const meta: SessionMeta = {
-        ...original, id: crypto.randomUUID(), title: tr('ag.branchSuffix', { title: original.title }),
-        autoName: false, titleLocked: true, autoNamed: false, nameAttempted: true,
-        sessionFile: manager.getSessionFile() ?? null, createdAt: Date.now(), updatedAt: Date.now(),
+        ...original,
+        id: crypto.randomUUID(),
+        title: tr('ag.branchSuffix', { title: original.title }),
+        autoName: false,
+        titleLocked: true,
+        autoNamed: false,
+        nameAttempted: true,
+        sessionFile: manager.getSessionFile() ?? null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
       };
       manager.appendSessionInfo(meta.title);
       this.metas.unshift(meta);
@@ -1121,10 +1349,15 @@ export class SessionHub {
     const expanded = expandUserCommand(built.message, live.runtime.session.promptTemplates);
     const message = expanded ? encodeUserCommandMessage(expanded.name, expanded.args, expanded.prompt) : built.message;
     // Image checks yield; never submit an old, in-flight message to a session that has since ended.
-    if (live.disposed || live.generation !== generation) throw new Error('The session closed while preparing this message. The draft has been retained; check history before retrying.');
+    if (live.disposed || live.generation !== generation)
+      throw new Error(
+        'The session closed while preparing this message. The draft has been retained; check history before retrying.',
+      );
     const session = live.runtime.session;
     if (images.length && !session.model?.input?.includes('image')) {
-      throw new Error('The selected model does not support image attachments. Choose an image-capable model or remove the images.');
+      throw new Error(
+        'The selected model does not support image attachments. Choose an image-capable model or remove the images.',
+      );
     }
     const busy = session.isStreaming || live.status === 'running';
     // A long gap means the prompt cache is gone: rebuild the context before this message instead of
@@ -1149,7 +1382,9 @@ export class SessionHub {
             resolve({ disposition });
           },
         })
-        .then(() => { if (!accepted) resolve({ disposition: 'handled' }); })
+        .then(() => {
+          if (!accepted) resolve({ disposition: 'handled' });
+        })
         .catch((err: Error) => {
           if (!accepted) reject(err);
           else this.emit({ type: 'notify', sessionId: id, message: err.message, level: 'error' });
@@ -1164,7 +1399,18 @@ export class SessionHub {
   private maybeNameFromPrompt(id: string, message: string) {
     const m = this.meta(id);
     const text = message.trim();
-    if (!m.autoName || m.titleLocked || m.nameAttempted || !text || text.startsWith('/') || isPeerMessage(text) || isPrEvent(text) || isCommandMessage(text) || isTaskMessage(text)) return;
+    if (
+      !m.autoName ||
+      m.titleLocked ||
+      m.nameAttempted ||
+      !text ||
+      text.startsWith('/') ||
+      isPeerMessage(text) ||
+      isPrEvent(text) ||
+      isCommandMessage(text) ||
+      isTaskMessage(text)
+    )
+      return;
     const placeholder = naming.titleFromPrompt(text);
     if (!placeholder) return;
     m.nameAttempted = true;
@@ -1192,16 +1438,24 @@ export class SessionHub {
     const timer = setTimeout(() => controller.abort(), naming.TIMEOUT_MS);
     let raw = '';
     try {
-      const reply = await this.complete(REQUEST_ORIGIN.naming, model, {
-        systemPrompt: naming.SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: prompt.slice(0, 2000), timestamp: Date.now() }],
-        // Room for a reasoning model to think before it writes the title.
-      }, { signal: controller.signal, maxTokens: 512, sessionId: id });
+      const reply = await this.complete(
+        REQUEST_ORIGIN.naming,
+        model,
+        {
+          systemPrompt: naming.SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: prompt.slice(0, 2000), timestamp: Date.now() }],
+          // Room for a reasoning model to think before it writes the title.
+        },
+        { signal: controller.signal, maxTokens: 512, sessionId: id },
+      );
       if (reply.stopReason === 'error' || reply.stopReason === 'aborted') {
         console.warn(`[naming] ${label} failed: ${(reply as any).errorMessage ?? reply.stopReason}`);
         return;
       }
-      raw = reply.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('');
+      raw = reply.content
+        .filter((c: any) => c.type === 'text')
+        .map((c: any) => c.text)
+        .join('');
     } finally {
       clearTimeout(timer);
       this.namers.delete(controller);
@@ -1243,10 +1497,17 @@ export class SessionHub {
     this.namers.add(controller);
     const timer = setTimeout(() => controller.abort(), workIdeas.TIMEOUT_MS);
     try {
-      const reply = await this.complete(REQUEST_ORIGIN.ideas, model, {
-        systemPrompt: workIdeas.SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: workIdeas.titlesText(recent.map((m) => m.title)), timestamp: Date.now() }],
-      }, { signal: controller.signal, maxTokens: 1024 });
+      const reply = await this.complete(
+        REQUEST_ORIGIN.ideas,
+        model,
+        {
+          systemPrompt: workIdeas.SYSTEM_PROMPT,
+          messages: [
+            { role: 'user', content: workIdeas.titlesText(recent.map((m) => m.title)), timestamp: Date.now() },
+          ],
+        },
+        { signal: controller.signal, maxTokens: 1024 },
+      );
       if (reply.stopReason === 'error' || reply.stopReason === 'aborted') return null;
       const ideas = workIdeas.parseIdeas(prediction.contentText(reply.content));
       if (ideas) this.store.set('workIdeas', { key, ideas });
@@ -1278,7 +1539,12 @@ export class SessionHub {
    * A model's verdict on a command that no rule settles. Null when review is off or the model failed or timed
    * out, which the kit treats as "ask the user"; the offline demo has no model to ask, so it is let through.
    */
-  private async reviewCommand(live: Live, command: string, cwd: string, signal?: AbortSignal): Promise<commandReview.CommandVerdict | null> {
+  private async reviewCommand(
+    live: Live,
+    command: string,
+    cwd: string,
+    signal?: AbortSignal,
+  ): Promise<commandReview.CommandVerdict | null> {
     const settings = this.storedSettings();
     if (!settings.autoReview) return null;
     const session = live.runtime.session;
@@ -1293,13 +1559,28 @@ export class SessionHub {
     const timer = setTimeout(stop, clampTimeout(settings.autoReviewTimeout) * 1000);
     try {
       // No `reasoning` option: the review runs with thinking off.
-      const reply = await this.complete(REQUEST_ORIGIN.review, model, {
-        systemPrompt: commandReview.SYSTEM_PROMPT,
-        messages: [{
-          role: 'user', timestamp: Date.now(),
-          content: commandReview.reviewRequest({ command, cwd, kind: this.meta(live.id).kind, request: commandReview.latestRequest(session.messages), history: commandReview.recentConversation(session.messages), steps: commandReview.recentSteps(session.messages) }),
-        }],
-      }, { signal: controller.signal, maxTokens: commandReview.REVIEW_MAX_TOKENS, sessionId: live.id });
+      const reply = await this.complete(
+        REQUEST_ORIGIN.review,
+        model,
+        {
+          systemPrompt: commandReview.SYSTEM_PROMPT,
+          messages: [
+            {
+              role: 'user',
+              timestamp: Date.now(),
+              content: commandReview.reviewRequest({
+                command,
+                cwd,
+                kind: this.meta(live.id).kind,
+                request: commandReview.latestRequest(session.messages),
+                history: commandReview.recentConversation(session.messages),
+                steps: commandReview.recentSteps(session.messages),
+              }),
+            },
+          ],
+        },
+        { signal: controller.signal, maxTokens: commandReview.REVIEW_MAX_TOKENS, sessionId: live.id },
+      );
       if (reply.stopReason === 'error' || reply.stopReason === 'aborted') return null;
       return commandReview.parseVerdict(prediction.contentText(reply.content));
     } catch {
@@ -1371,21 +1652,31 @@ export class SessionHub {
     const side = this.sideModel(current, options);
     // The cheap model comes first; if it fails or says nothing, the session's own model gets a turn.
     const own = current ? this.findModel(current) : null;
-    const candidates = [side, own && own.provider !== 'demo' && own !== side ? own : null].filter((m): m is NonNullable<typeof side> => !!m);
+    const candidates = [side, own && own.provider !== 'demo' && own !== side ? own : null].filter(
+      (m): m is NonNullable<typeof side> => !!m,
+    );
     if (!candidates.length) return null;
     const generation = live.generation;
     for (const model of candidates) {
-      const excerpt = prediction.transcriptExcerpt(session.messages, { context: options?.context, contextWindow: model.contextWindow });
+      const excerpt = prediction.transcriptExcerpt(session.messages, {
+        context: options?.context,
+        contextWindow: model.contextWindow,
+      });
       if (!excerpt) return null;
       const controller = new AbortController();
       this.suggesters.set(id, controller);
       const timeout = options?.context === 'all' ? prediction.FULL_TIMEOUT_MS : prediction.TIMEOUT_MS;
       const timer = setTimeout(() => controller.abort(), timeout);
       try {
-        const reply = await this.complete(REQUEST_ORIGIN.suggest, model, {
-          systemPrompt: prediction.SYSTEM_PROMPT,
-          messages: [{ role: 'user', content: excerpt.text, timestamp: Date.now() }],
-        }, { signal: controller.signal, maxTokens: 256, sessionId: id });
+        const reply = await this.complete(
+          REQUEST_ORIGIN.suggest,
+          model,
+          {
+            systemPrompt: prediction.SYSTEM_PROMPT,
+            messages: [{ role: 'user', content: excerpt.text, timestamp: Date.now() }],
+          },
+          { signal: controller.signal, maxTokens: 256, sessionId: id },
+        );
         // A new turn, a replaced session or a closed one makes the reply stale.
         const now = this.live.get(id);
         if (!now || now !== live || now.disposed || now.generation !== generation) return null;
@@ -1410,7 +1701,11 @@ export class SessionHub {
 
   private sideState(id: string): SideChat {
     let chat = this.sideChats.get(id);
-    if (!chat) this.sideChats.set(id, (chat = { sessionId: id, title: this.meta(id).title, turns: [], busy: false, quote: null }));
+    if (!chat)
+      this.sideChats.set(
+        id,
+        (chat = { sessionId: id, title: this.meta(id).title, turns: [], busy: false, quote: null }),
+      );
     chat.title = this.meta(id).title;
     return chat;
   }
@@ -1462,7 +1757,10 @@ export class SessionHub {
   /** The request behind one side question, from the model call to the `side` event that ends it. */
   private async answerSide(id: string, chat: SideChat, controller: AbortController) {
     let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, sideChat.SIDE_TIMEOUT_MS);
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, sideChat.SIDE_TIMEOUT_MS);
     try {
       const live = this.live.get(id);
       if (!live || live.disposed) throw new Error('Open the session before starting a side chat');
@@ -1470,9 +1768,17 @@ export class SessionHub {
       const current = session.model ? `${session.model.provider}/${session.model.id}` : this.meta(id).model;
       const model = (current ? this.findModel(current) : null) ?? this.autoSideModel(current);
       if (!model) throw new Error('No model is available for a side chat');
-      const messages = sideChat.sideMessages(sideChat.sideTranscript(session.messages, { contextWindow: model.contextWindow }), chat.turns);
+      const messages = sideChat.sideMessages(
+        sideChat.sideTranscript(session.messages, { contextWindow: model.contextWindow }),
+        chat.turns,
+      );
       if (!messages) throw new Error('Ask a question first');
-      const reply = await this.complete(REQUEST_ORIGIN.sideChat, model, { systemPrompt: sideChat.SIDE_SYSTEM_PROMPT, messages }, { signal: controller.signal, maxTokens: 4096, sessionId: id });
+      const reply = await this.complete(
+        REQUEST_ORIGIN.sideChat,
+        model,
+        { systemPrompt: sideChat.SIDE_SYSTEM_PROMPT, messages },
+        { signal: controller.signal, maxTokens: 4096, sessionId: id },
+      );
       if (this.sideChats.get(id) !== chat) return; // reset while waiting
       if (reply.stopReason === 'aborted') throw new Error(timedOut ? 'The side chat timed out' : 'Cancelled');
       if (reply.stopReason === 'error') throw new Error(reply.errorMessage || 'The model returned an error');
@@ -1524,7 +1830,16 @@ export class SessionHub {
     this.emitMeta(m);
   }
 
-  update(id: string, patch: { title?: string; pinned?: boolean; pr?: PrSummary | null; suggestion?: { key: string; state: 'here' | 'dismissed' }; prAuto?: { fixCi?: boolean; merge?: boolean; fixDone?: string; mergeDone?: number } }) {
+  update(
+    id: string,
+    patch: {
+      title?: string;
+      pinned?: boolean;
+      pr?: PrSummary | null;
+      suggestion?: { key: string; state: 'here' | 'dismissed' };
+      prAuto?: { fixCi?: boolean; merge?: boolean; fixDone?: string; mergeDone?: number };
+    },
+  ) {
     const m = this.meta(id);
     if (patch.pr !== undefined) m.pr = patch.pr;
     if (patch.pinned !== undefined) m.pinned = patch.pinned || undefined;
@@ -1533,10 +1848,15 @@ export class SessionHub {
       if (a.fixCi !== undefined) m.autoFixCi = a.fixCi;
       if (a.merge !== undefined) m.autoMerge = a.merge;
       if (a.fixDone || a.mergeDone) {
-        m.prAutoDone = { ...m.prAutoDone, ...(a.fixDone ? { fix: a.fixDone } : {}), ...(a.mergeDone ? { merge: a.mergeDone } : {}) };
+        m.prAutoDone = {
+          ...m.prAutoDone,
+          ...(a.fixDone ? { fix: a.fixDone } : {}),
+          ...(a.mergeDone ? { merge: a.mergeDone } : {}),
+        };
       }
     }
-    if (patch.suggestion) m.suggestions = { ...m.suggestions, [patch.suggestion.key]: { state: patch.suggestion.state } };
+    if (patch.suggestion)
+      m.suggestions = { ...m.suggestions, [patch.suggestion.key]: { state: patch.suggestion.state } };
     if (patch.prAuto || patch.pr !== undefined) this.kickPrWatch(id, 0);
     if (patch.title?.trim()) {
       // A title set by the user is final: stop the placeholder/auto-naming path.
@@ -1573,7 +1893,8 @@ export class SessionHub {
   async inspect(id: string): Promise<SessionCleanup> {
     const m = this.meta(id);
     if (!this.ownsWorktree(m)) return { worktree: null, branch: null, dirty: 0, unpushed: 0 };
-    let dirty = 0, unpushed = 0;
+    let dirty = 0,
+      unpushed = 0;
     if (fs.existsSync(m.cwd)) {
       dirty = (await git.workState(m.cwd)).dirty.length;
       unpushed = await git.unpushedCommits(m.cwd, 'HEAD', m.baseCommit);
@@ -1610,7 +1931,16 @@ export class SessionHub {
     if (!prompt) throw new Error('The task has no instructions');
     // Coding work found in a Work task runs as a Code session in one of the project's linked Code folders.
     const codeFolder = task.codeFolder;
-    if (codeFolder && !(from.kind === 'work' && this.projects.workFolders().find((p) => p.path === from.projectPath)?.codeFolders?.includes(codeFolder))) {
+    if (
+      codeFolder &&
+      !(
+        from.kind === 'work' &&
+        this.projects
+          .workFolders()
+          .find((p) => p.path === from.projectPath)
+          ?.codeFolders?.includes(codeFolder)
+      )
+    ) {
       throw new Error(`${codeFolder} is not a Code folder of this project`);
     }
     const meta = await this.create({
@@ -1619,7 +1949,10 @@ export class SessionHub {
       // Coding work assigned from Work gets its own worktree, so it never touches the folder's checkout.
       worktree: codeFolder ? true : from.kind === 'code' ? from.worktree : false,
       title: task.title.trim().slice(0, 80) || 'New session',
-      model: from.model, thinking: from.thinking, outputStyle: from.outputStyle, parentId: from.id,
+      model: from.model,
+      thinking: from.thinking,
+      outputStyle: from.outputStyle,
+      parentId: from.id,
       // A suggestion the user accepts must not silently inherit "bypass".
       mode: from.mode === 'bypass' ? 'auto' : from.mode,
     });
@@ -1629,8 +1962,11 @@ export class SessionHub {
       this.emitMeta(from);
     }
     this.emitMeta(meta);
-    void this.prompt(meta.id, { text: encodeTaskMessage(task.title, prompt), attachments: [], clientId: crypto.randomUUID() }, 'steer').catch((err: Error) =>
-      this.emit({ type: 'notify', sessionId: meta.id, message: err.message, level: 'error' }));
+    void this.prompt(
+      meta.id,
+      { text: encodeTaskMessage(task.title, prompt), attachments: [], clientId: crypto.randomUUID() },
+      'steer',
+    ).catch((err: Error) => this.emit({ type: 'notify', sessionId: meta.id, message: err.message, level: 'error' }));
     return { ...meta };
   }
 
@@ -1640,7 +1976,8 @@ export class SessionHub {
     const from = this.meta(fromId);
     const to = this.metas.find((x) => x.id === toId);
     if (!to || to.id === from.id) throw new Error(`No other session ${toId}. Use pidesk_list_sessions to see the ids.`);
-    if (to.kind !== from.kind || to.projectPath !== from.projectPath) throw new Error('That session belongs to a different project.');
+    if (to.kind !== from.kind || to.projectPath !== from.projectPath)
+      throw new Error('That session belongs to a different project.');
     if (to.archived) throw new Error('That session is archived.');
     return { from, to };
   }
@@ -1653,21 +1990,45 @@ export class SessionHub {
     const from = this.meta(fromId);
     const q = query.trim().toLowerCase();
     const pool = this.metas
-      .filter((m) => m.id !== from.id && !m.archived && (scope === 'all' || (m.kind === from.kind && m.projectPath === from.projectPath)))
+      .filter(
+        (m) =>
+          m.id !== from.id &&
+          !m.archived &&
+          (scope === 'all' || (m.kind === from.kind && m.projectPath === from.projectPath)),
+      )
       .sort((a, b) => b.updatedAt - a.updatedAt);
     // Titles and folders are cheap to match; only the most recent sessions have their files read.
     const said = (m: SessionMeta, i: number) =>
-      i < PEER_SEARCH_FILES && !!m.sessionFile && fs.existsSync(m.sessionFile) && readTranscript(m.sessionFile, PEER_SEARCH_MESSAGES).some((l) => l.text.toLowerCase().includes(q));
-    return (q ? pool.filter((m, i) => m.title.toLowerCase().includes(q) || m.projectPath.toLowerCase().includes(q) || said(m, i)) : pool)
+      i < PEER_SEARCH_FILES &&
+      !!m.sessionFile &&
+      fs.existsSync(m.sessionFile) &&
+      readTranscript(m.sessionFile, PEER_SEARCH_MESSAGES).some((l) => l.text.toLowerCase().includes(q));
+    return (
+      q
+        ? pool.filter(
+            (m, i) => m.title.toLowerCase().includes(q) || m.projectPath.toLowerCase().includes(q) || said(m, i),
+          )
+        : pool
+    )
       .slice(0, PEER_LIST_MAX)
-      .map((m) => ({ id: m.id, kind: m.kind, project: m.projectPath, title: m.title, status: this.live.get(m.id)?.status ?? 'idle', branch: m.branch, updatedAt: m.updatedAt }));
+      .map((m) => ({
+        id: m.id,
+        kind: m.kind,
+        project: m.projectPath,
+        title: m.title,
+        status: this.live.get(m.id)?.status ?? 'idle',
+        branch: m.branch,
+        updatedAt: m.updatedAt,
+      }));
   }
 
   /** The last few user and assistant messages of another session, of any project; reading changes nothing there. */
   peerRead(fromId: string, toId: string, limit = 10) {
     const to = this.metas.find((x) => x.id === toId);
     if (!to || to.id === fromId) throw new Error(`No other session ${toId}. Use pidesk_list_sessions to see the ids.`);
-    return to.sessionFile && fs.existsSync(to.sessionFile) ? readTranscript(to.sessionFile, Math.max(1, Math.min(limit, PEER_READ_MAX))) : [];
+    return to.sessionFile && fs.existsSync(to.sessionFile)
+      ? readTranscript(to.sessionFile, Math.max(1, Math.min(limit, PEER_READ_MAX)))
+      : [];
   }
 
   private peerSent = new Map<string, number[]>();
@@ -1679,10 +2040,19 @@ export class SessionHub {
     // Two sessions answering each other would never stop: cap what one session may send to another.
     const key = `${from.id}>${to.id}`;
     const recent = (this.peerSent.get(key) ?? []).filter((t) => Date.now() - t < 10 * 60_000);
-    if (recent.length >= 8) throw new Error('Too many messages to that session in a short time. Wait for it, or tell the user.');
+    if (recent.length >= 8)
+      throw new Error('Too many messages to that session in a short time. Wait for it, or tell the user.');
     this.peerSent.set(key, [...recent, Date.now()]);
     const queued = this.isRunning(to.id);
-    await this.prompt(to.id, { text: encodePeerMessage({ id: from.id, title: from.title }, body.slice(0, 20_000)), attachments: [], clientId: crypto.randomUUID() }, 'followUp');
+    await this.prompt(
+      to.id,
+      {
+        text: encodePeerMessage({ id: from.id, title: from.title }, body.slice(0, 20_000)),
+        attachments: [],
+        clientId: crypto.randomUUID(),
+      },
+      'followUp',
+    );
     return queued ? 'queued' : 'delivered';
   }
 
@@ -1741,7 +2111,11 @@ export class SessionHub {
     const model = session.model;
     if (!model) return;
     const m = this.meta(live.id);
-    const threshold = idleResetMinutes(this.storedSettings(), modelKey(model.provider, model.id), declaredCacheMinutes(model));
+    const threshold = idleResetMinutes(
+      this.storedSettings(),
+      modelKey(model.provider, model.id),
+      declaredCacheMinutes(model),
+    );
     const idleMinutes = (Date.now() - m.updatedAt) / MINUTE_MS;
     if (threshold <= 0 || idleMinutes < threshold) return;
     const measured = session.getContextUsage()?.tokens;
@@ -1788,8 +2162,16 @@ export class SessionHub {
       const usage = s.contextUsage as SessionStats['contextUsage'];
       const contextWindow = usage?.contextWindow || session.model?.contextWindow || 0;
       // pi reports no usage right after a compaction (the last response predates it); estimate it so the ring is not stale.
-      const contextUsage = usage?.percent == null && contextWindow > 0 ? this.estimatedContextUsage(session, contextWindow) : usage;
-      return { userMessages: s.userMessages, assistantMessages: s.assistantMessages, toolCalls: s.toolCalls, tokens: s.tokens, cost: s.cost, contextUsage };
+      const contextUsage =
+        usage?.percent == null && contextWindow > 0 ? this.estimatedContextUsage(session, contextWindow) : usage;
+      return {
+        userMessages: s.userMessages,
+        assistantMessages: s.assistantMessages,
+        toolCalls: s.toolCalls,
+        tokens: s.tokens,
+        cost: s.cost,
+        contextUsage,
+      };
     } catch {
       return null;
     }
@@ -1809,7 +2191,10 @@ export class SessionHub {
     if (!contextWindow) return null;
     const { items, sum, prompt, fixed } = this.contextFixed(session);
     const measured = usage?.tokens ?? null;
-    const used = measured != null ? Math.max(measured, fixed) : fixed + session.messages.reduce((n, m) => n + estimateTokens(m), 0);
+    const used =
+      measured != null
+        ? Math.max(measured, fixed)
+        : fixed + session.messages.reduce((n, m) => n + estimateTokens(m), 0);
     const stats = session.getSessionStats();
     const compaction = session.settingsManager.getCompactionSettings(session.model ?? undefined);
     const buffer = compaction.enabled ? Math.min(compaction.reserveTokens, Math.max(0, contextWindow - used)) : 0;
@@ -1841,15 +2226,25 @@ export class SessionHub {
     for (const tool of session.getAllTools()) {
       if (!active.has(tool.name)) continue;
       const where = tool.sourceInfo?.path ?? '';
-      const group = /\bmcp\b/i.test(`${where} ${tool.sourceInfo?.source ?? ''}`) ? 'mcp' : where.startsWith('builtin:') ? 'system' : 'extension';
-      const text = tool.name + (tool.description ?? '') + JSON.stringify(tool.parameters ?? {}) + (tool.promptGuidelines ?? []).join('\n');
+      const group = /\bmcp\b/i.test(`${where} ${tool.sourceInfo?.source ?? ''}`)
+        ? 'mcp'
+        : where.startsWith('builtin:')
+          ? 'system'
+          : 'extension';
+      const text =
+        tool.name +
+        (tool.description ?? '') +
+        JSON.stringify(tool.parameters ?? {}) +
+        (tool.promptGuidelines ?? []).join('\n');
       items.push({ group, name: tool.name, tokens: approxTokens(text) });
     }
     const loader = session.resourceLoader;
     for (const skill of loader.getSkills().skills) {
-      if (!skill.disableModelInvocation) items.push({ group: 'skills', name: skill.name, tokens: approxTokens(formatSkillsForPrompt([skill])) });
+      if (!skill.disableModelInvocation)
+        items.push({ group: 'skills', name: skill.name, tokens: approxTokens(formatSkillsForPrompt([skill])) });
     }
-    for (const file of loader.getAgentsFiles().agentsFiles) items.push({ group: 'memory', name: file.path, tokens: approxTokens(file.content) });
+    for (const file of loader.getAgentsFiles().agentsFiles)
+      items.push({ group: 'memory', name: file.path, tokens: approxTokens(file.content) });
     const sum = (group: string) => items.filter((i) => i.group === group).reduce((n, i) => n + i.tokens, 0);
     // Skills and memory files are part of the system prompt text; count them once.
     const prompt = Math.max(0, approxTokens(session.systemPrompt) - sum('skills') - sum('memory'));
@@ -1858,7 +2253,10 @@ export class SessionHub {
   }
 
   /** Post-compaction usage, estimated from the projected messages until the next response measures it. */
-  private estimatedContextUsage(session: AgentSession, contextWindow: number): NonNullable<SessionStats['contextUsage']> {
+  private estimatedContextUsage(
+    session: AgentSession,
+    contextWindow: number,
+  ): NonNullable<SessionStats['contextUsage']> {
     const { fixed } = this.contextFixed(session);
     const tokens = fixed + session.messages.reduce((n, m) => n + estimateTokens(m), 0);
     return { tokens, contextWindow, percent: (tokens / contextWindow) * 100 };
@@ -1885,7 +2283,10 @@ export class SessionHub {
     m.model = modelId;
     m.thinking = session.thinkingLevel as ThinkingLevel;
     this.save();
-    return { levels: session.getAvailableThinkingLevels() as ThinkingLevel[], thinking: session.thinkingLevel as ThinkingLevel };
+    return {
+      levels: session.getAvailableThinkingLevels() as ThinkingLevel[],
+      thinking: session.thinkingLevel as ThinkingLevel,
+    };
   }
   async setThinking(id: string, level: ThinkingLevel) {
     const live = await this.ensure(id);
@@ -1898,9 +2299,11 @@ export class SessionHub {
     const live = await this.ensure(id);
     const session = live.runtime.session;
     const out: SlashCommand[] = [];
-    for (const c of session.extensionRunner.getRegisteredCommands()) out.push({ name: c.invocationName, description: c.description, source: 'extension' });
+    for (const c of session.extensionRunner.getRegisteredCommands())
+      out.push({ name: c.invocationName, description: c.description, source: 'extension' });
     for (const t of session.promptTemplates) out.push({ name: t.name, description: t.description, source: 'prompt' });
-    for (const s of session.resourceLoader.getSkills().skills) out.push({ name: `skill:${s.name}`, description: s.description, source: 'skill' });
+    for (const s of session.resourceLoader.getSkills().skills)
+      out.push({ name: `skill:${s.name}`, description: s.description, source: 'skill' });
     return out;
   }
   // ------------------------------------------------------------ files / git
@@ -1912,7 +2315,11 @@ export class SessionHub {
     // Session-base diff for the Diff panel, plus live working-tree state for the branch bar.
     const base = await git.diffBase(m.cwd, m.baseCommit, m.baseBranch);
     const prBase = this.prBases.get(id);
-    const [files, state, root] = await Promise.all([git.changes(m.cwd, base), git.workState(m.cwd, prBase ?? m.baseBranch, !!prBase), git.repoRoot(m.cwd)]);
+    const [files, state, root] = await Promise.all([
+      git.changes(m.cwd, base),
+      git.workState(m.cwd, prBase ?? m.baseBranch, !!prBase),
+      git.repoRoot(m.cwd),
+    ]);
     return { repo: !!root, files, state };
   }
   /** Measure the session's changes from another branch: the diff, commit list and file contents all follow `baseBranch`. */
@@ -1956,7 +2363,11 @@ export class SessionHub {
   existing(id: string, paths: string[]) {
     const cwd = this.meta(id).cwd;
     return paths.filter((p) => {
-      try { return fs.statSync(path.resolve(cwd, p)).isFile(); } catch { return false; }
+      try {
+        return fs.statSync(path.resolve(cwd, p)).isFile();
+      } catch {
+        return false;
+      }
     });
   }
   files(id: string) {
@@ -2044,7 +2455,11 @@ export class SessionHub {
       entry.num = snapshot.status.num;
       entry.watcher.reset();
     }
-    const result = entry.watcher.observe(snapshot, { autoFixCi: m.autoFixCi, autoMerge: m.autoMerge, done: m.prAutoDone });
+    const result = entry.watcher.observe(snapshot, {
+      autoFixCi: m.autoFixCi,
+      autoMerge: m.autoMerge,
+      done: m.prAutoDone,
+    });
     this.publishPr(m, result.status);
     if (result.pending) void this.deliverPrEvent(id, entry, result.pending);
     if (result.done) return;
@@ -2064,7 +2479,9 @@ export class SessionHub {
    * Live sessions are left to their own watch.
    */
   private async lookIdlePrs() {
-    const idle = this.metas.filter((m) => m.kind === 'code' && !m.archived && m.branch && m.pr?.state === 'open' && !this.prWatches.has(m.id));
+    const idle = this.metas.filter(
+      (m) => m.kind === 'code' && !m.archived && m.branch && m.pr?.state === 'open' && !this.prWatches.has(m.id),
+    );
     try {
       for (const { id } of idle) {
         const m = this.metas.find((x) => x.id === id);
@@ -2075,7 +2492,8 @@ export class SessionHub {
         const snapshot = await read;
         this.idlePrRead = undefined;
         // Opened, archived or removed meanwhile: its own watch, or nobody, has the say now.
-        if (snapshot && this.metas.includes(m) && !m.archived && !this.prWatches.has(id)) this.publishPr(m, snapshot.status);
+        if (snapshot && this.metas.includes(m) && !m.archived && !this.prWatches.has(id))
+          this.publishPr(m, snapshot.status);
       }
     } catch {
       // One unreadable repository must not end the looks for the rest.
@@ -2094,7 +2512,8 @@ export class SessionHub {
     }
     // Only a live PR has a target worth following; a merged or closed one no longer asks for updates.
     const open = status && (status.state === 'open' || status.state === 'draft');
-    if (open && status.base) this.prBases.set(m.id, status.base); else this.prBases.delete(m.id);
+    if (open && status.base) this.prBases.set(m.id, status.base);
+    else this.prBases.delete(m.id);
     this.emit({ type: 'pr', sessionId: m.id, status });
   }
 
@@ -2112,7 +2531,12 @@ export class SessionHub {
     try {
       await this.prompt(id, { text: encodePrEvent(pending.event), attachments: [] }, 'followUp');
     } catch (err) {
-      this.emit({ type: 'notify', sessionId: id, message: tr('ag.prEventFail', { error: err instanceof Error ? err.message : String(err) }), level: 'warning' });
+      this.emit({
+        type: 'notify',
+        sessionId: id,
+        message: tr('ag.prEventFail', { error: err instanceof Error ? err.message : String(err) }),
+        level: 'warning',
+      });
     }
   }
 
@@ -2124,7 +2548,11 @@ export class SessionHub {
     const out: ImportableSession[] = [];
     const walk = (dir: string, depth: number) => {
       let entries: fs.Dirent[] = [];
-      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
       for (const e of entries) {
         const p = path.join(dir, e.name);
         if (e.isDirectory() && depth < 2) walk(p, depth + 1);
@@ -2148,12 +2576,27 @@ export class SessionHub {
     // On a feature branch the earlier work is what the diff should show: measure from where it left the default branch.
     const trunk = root && branch && branch !== 'HEAD' ? await git.defaultBranch(root) : null;
     const fork = trunk && trunk !== branch ? await git.mergeBase(root!, trunk) : null;
-    if (trunk && fork) { baseBranch = trunk; baseCommit = fork; }
+    if (trunk && fork) {
+      baseBranch = trunk;
+      baseCommit = fork;
+    }
     const meta: SessionMeta = {
-      id: crypto.randomUUID(), kind: 'code', ...this.titleState(info.name || info.firstPrompt?.slice(0, 60) || 'Imported session', false, 'Imported session'),
-      projectPath: info.cwd, cwd: info.cwd, branch, baseBranch,
-      baseCommit, worktree: false, mode: 'auto', outputStyle: 'default', sessionFile: file,
-      createdAt: info.mtime, updatedAt: info.mtime, pr: null, imported: true,
+      id: crypto.randomUUID(),
+      kind: 'code',
+      ...this.titleState(info.name || info.firstPrompt?.slice(0, 60) || 'Imported session', false, 'Imported session'),
+      projectPath: info.cwd,
+      cwd: info.cwd,
+      branch,
+      baseBranch,
+      baseCommit,
+      worktree: false,
+      mode: 'auto',
+      outputStyle: 'default',
+      sessionFile: file,
+      createdAt: info.mtime,
+      updatedAt: info.mtime,
+      pr: null,
+      imported: true,
     };
     this.metas.unshift(meta);
     this.save();
@@ -2174,7 +2617,13 @@ export class SessionHub {
 
 /** A message the user typed, as opposed to a slash command or one an app feature injected. */
 export function isPlainUserMessage(message: string): boolean {
-  return !!message.trim() && !isPeerMessage(message) && !isPrEvent(message) && !isCommandMessage(message) && !isTaskMessage(message);
+  return (
+    !!message.trim() &&
+    !isPeerMessage(message) &&
+    !isPrEvent(message) &&
+    !isCommandMessage(message) &&
+    !isTaskMessage(message)
+  );
 }
 
 export interface TranscriptLine {
@@ -2189,7 +2638,8 @@ const TOOL_RESULT_CHARS = 600;
 
 /** One line describing a tool call, including the argument that makes it findable again. */
 function describeToolCall(block: { name?: string; arguments?: unknown }): string {
-  const args = block.arguments && typeof block.arguments === 'object' ? (block.arguments as Record<string, unknown>) : {};
+  const args =
+    block.arguments && typeof block.arguments === 'object' ? (block.arguments as Record<string, unknown>) : {};
   const where = args.path ?? args.file_path ?? args.command ?? args.pattern ?? args.query;
   return `${block.name ?? 'tool'}(${typeof where === 'string' ? where : ''})`;
 }
@@ -2203,10 +2653,19 @@ function searchableText(message: { role: string; content?: unknown; toolName?: s
     return text.startsWith('[pi-desktop]') ? '' : text;
   }
   if (message.role === 'toolResult') {
-    const text = body || blocks.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+    const text =
+      body ||
+      blocks
+        .filter((b) => b.type === 'text')
+        .map((b) => b.text)
+        .join('\n');
     return `${message.toolName ?? 'tool'}: ${text.slice(0, TOOL_RESULT_CHARS)}`;
   }
-  return [body, ...blocks.filter((b) => b.type === 'text').map((b) => b.text), ...blocks.filter((b) => b.type === 'toolCall').map(describeToolCall)]
+  return [
+    body,
+    ...blocks.filter((b) => b.type === 'text').map((b) => b.text),
+    ...blocks.filter((b) => b.type === 'toolCall').map(describeToolCall),
+  ]
     .filter(Boolean)
     .join('\n');
 }
@@ -2214,7 +2673,10 @@ function searchableText(message: { role: string; content?: unknown; toolName?: s
 /** The text around a match, on one line, marked so the model knows it is an excerpt. */
 function snippet(text: string, at: number, length: number): string {
   const from = Math.max(0, at - SNIPPET_BEFORE);
-  const piece = text.slice(from, Math.min(text.length, at + length + SNIPPET_AFTER)).replace(/\s+/gu, ' ').trim();
+  const piece = text
+    .slice(from, Math.min(text.length, at + length + SNIPPET_AFTER))
+    .replace(/\s+/gu, ' ')
+    .trim();
   return `${from > 0 ? '…' : ''}${piece}${at + length + SNIPPET_AFTER < text.length ? '…' : ''}`;
 }
 
@@ -2255,7 +2717,13 @@ export function readTranscript(file: string, limit: number): TranscriptLine[] {
       const message = entry.type === 'message' ? entry.message : null;
       if (message?.role !== 'user' && message?.role !== 'assistant') continue;
       const blocks: any[] = Array.isArray(message.content) ? message.content : [];
-      let text = typeof message.content === 'string' ? message.content : blocks.filter((b) => b.type === 'text').map((b) => b.text).join('');
+      let text =
+        typeof message.content === 'string'
+          ? message.content
+          : blocks
+              .filter((b) => b.type === 'text')
+              .map((b) => b.text)
+              .join('');
       if (message.role === 'user') {
         text = decodeUserContent(message.content).text;
         if (text.startsWith('[pi-desktop]')) continue;
@@ -2286,13 +2754,20 @@ export function readSessionHeader(file: string): Omit<ImportableSession, 'file'>
     const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
     const header = JSON.parse(lines[0]);
     if (header.type !== 'session' || !header.cwd) return null;
-    let firstPrompt: string | null = null, name: string | null = null;
+    let firstPrompt: string | null = null,
+      name: string | null = null;
     for (const line of lines.slice(1, 400)) {
       const e = JSON.parse(line);
       if (e.type === 'session_info' && e.name) name = e.name;
       if (!firstPrompt && e.type === 'message' && e.message?.role === 'user') {
         const c = e.message.content;
-        firstPrompt = typeof c === 'string' ? c : (c || []).filter((x: any) => x.type === 'text').map((x: any) => x.text).join('');
+        firstPrompt =
+          typeof c === 'string'
+            ? c
+            : (c || [])
+                .filter((x: any) => x.type === 'text')
+                .map((x: any) => x.text)
+                .join('');
       }
     }
     return { cwd: header.cwd, id: header.id, name, firstPrompt, mtime: fs.statSync(file).mtimeMs };

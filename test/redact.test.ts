@@ -1,21 +1,31 @@
-import { createAssistantMessageEventStream, type AssistantMessage, type AssistantMessageEvent } from '@earendil-works/pi-ai';
+import {
+  createAssistantMessageEventStream,
+  type AssistantMessage,
+  type AssistantMessageEvent,
+} from '@earendil-works/pi-ai';
+import assert from 'node:assert/strict';
 import { describe, expect, it } from 'vitest';
 import { MaskBlocked, Redactor, previewMasking } from '../src/agent/request-hook/redact';
 import { restoreStream, splitOpenTail } from '../src/agent/request-hook/restore';
 import { DEFAULT_REDACT_SETTINGS, normalizeRedactSettings, type RedactSettings } from '../src/shared/request-log';
 
-const on = (over: Partial<RedactSettings> = {}): RedactSettings => normalizeRedactSettings({ ...DEFAULT_REDACT_SETTINGS, secrets: true, personal: true, ...over });
+const on = (over: Partial<RedactSettings> = {}): RedactSettings =>
+  normalizeRedactSettings({ ...DEFAULT_REDACT_SETTINGS, secrets: true, personal: true, ...over });
 const mask = (text: string, s = on()) => previewMasking(text, s);
 
 describe('secret rules', () => {
   it('masks keys by their shape', () => {
     const keys = [
-      'sk-ant-api03-abcdefghijklmnopqrstuvwx', 'ghp_abcdefghijklmnopqrstuvwxyz0123456789', 'AKIAABCDEFGHIJKLMNOP',
-      'xoxb-1234567890-abcdefghij', 'hf_abcdefghijklmnopqrstuvwxyz0123456789', 'npm_abcdefghijklmnopqrstuvwxyz0123456789',
+      'sk-ant-api03-abcdefghijklmnopqrstuvwx',
+      'ghp_abcdefghijklmnopqrstuvwxyz0123456789',
+      'AKIAABCDEFGHIJKLMNOP',
+      'xoxb-1234567890-abcdefghij',
+      'hf_abcdefghijklmnopqrstuvwxyz0123456789',
+      'npm_abcdefghijklmnopqrstuvwxyz0123456789',
     ];
     for (const key of keys) {
       const { text, masked } = mask(`use ${key} now`);
-      expect(text, key).toMatch(/^use \{\{API_KEY_[0-9a-f]{8}\}\} now$/);
+      assert.match(text, /^use \{\{API_KEY_[0-9a-f]{8}\}\} now$/, key);
       expect(masked.API_KEY).toBe(1);
     }
   });
@@ -55,7 +65,9 @@ describe('personal data rules', () => {
   });
 
   it('does nothing while the switches are off', () => {
-    expect(mask('a@b.com sk-ant-api03-abcdefghijklmnopqrstuvwx', on({ secrets: false, personal: false })).text).toContain('a@b.com');
+    expect(
+      mask('a@b.com sk-ant-api03-abcdefghijklmnopqrstuvwx', on({ secrets: false, personal: false })).text,
+    ).toContain('a@b.com');
   });
 });
 
@@ -66,7 +78,14 @@ describe('words, rules and actions', () => {
   });
 
   it('masks a custom prefix and a custom regex', () => {
-    const s = on({ secrets: false, personal: false, rules: [{ pattern: 'gw_', regex: false }, { pattern: 'ID-\\d{4}', regex: true }] });
+    const s = on({
+      secrets: false,
+      personal: false,
+      rules: [
+        { pattern: 'gw_', regex: false },
+        { pattern: 'ID-\\d{4}', regex: true },
+      ],
+    });
     expect(mask('k gw_abc123 and ID-4242', s).masked).toEqual({ CUSTOM: 2 });
   });
 
@@ -80,12 +99,15 @@ describe('words, rules and actions', () => {
     expect(mask('a@b.com', on({ actions: { EMAIL: 'block' } })).blocked).toBe('EMAIL');
     const pass = new Redactor().begin(on({ actions: { EMAIL: 'block' } }));
     expect(() => pass.maskText('a@b.com')).toThrow(MaskBlocked);
+    let error: Error | undefined;
     try {
       pass.maskText('a@b.com');
     } catch (e) {
-      expect((e as Error).message).toContain('7');
-      expect((e as Error).message).not.toContain('a@b.com');
+      error = e as Error;
     }
+    expect(error).toBeDefined();
+    expect(error?.message).toContain('7');
+    expect(error?.message).not.toContain('a@b.com');
   });
 
   it('ignores a custom regex that does not compile', () => {
@@ -123,10 +145,22 @@ describe('payload', () => {
     const payload = {
       model: 'claude-x',
       system: 'mail a@b.com',
-      tools: [{ name: 'a@b.com', description: 'send to a@b.com', input_schema: { properties: { to: { description: 'a@b.com' } } } }],
+      tools: [
+        {
+          name: 'a@b.com',
+          description: 'send to a@b.com',
+          input_schema: { properties: { to: { description: 'a@b.com' } } },
+        },
+      ],
       messages: [
         { role: 'user', content: [{ type: 'text', text: 'my key sk-ant-api03-abcdefghijklmnopqrstuvwx' }] },
-        { role: 'assistant', content: [{ type: 'thinking', thinking: 'a@b.com', signature: 'sig-a@b.com' }, { type: 'tool_use', id: 'toolu_1', name: 'write', input: { name: 'a@b.com' } }] },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'thinking', thinking: 'a@b.com', signature: 'sig-a@b.com' },
+            { type: 'tool_use', id: 'toolu_1', name: 'write', input: { name: 'a@b.com' } },
+          ],
+        },
       ],
     };
     const out = r.begin(on()).maskPayload(payload) as typeof payload;
@@ -137,7 +171,11 @@ describe('payload', () => {
     expect(out.tools[0].input_schema).toEqual(payload.tools[0].input_schema);
     expect(out.messages[0].content[0]).toMatchObject({ text: expect.stringMatching(/^my key \{\{API_KEY_/) });
     expect(out.messages[1].content[0]).toEqual(payload.messages[1].content[0]);
-    expect(out.messages[1].content[1]).toMatchObject({ id: 'toolu_1', name: 'write', input: { name: expect.stringMatching(/^\{\{EMAIL_/) } });
+    expect(out.messages[1].content[1]).toMatchObject({
+      id: 'toolu_1',
+      name: 'write',
+      input: { name: expect.stringMatching(/^\{\{EMAIL_/) },
+    });
     expect(payload.system).toBe('mail a@b.com'); // the original is untouched
   });
 
@@ -149,19 +187,34 @@ describe('payload', () => {
 
 describe('restoring a stream', () => {
   const msg = (content: AssistantMessage['content']): AssistantMessage =>
-    ({ role: 'assistant', content, api: 'x', provider: 'p', model: 'm', stopReason: 'stop', timestamp: 0, usage: {} }) as unknown as AssistantMessage;
+    ({
+      role: 'assistant',
+      content,
+      api: 'x',
+      provider: 'p',
+      model: 'm',
+      stopReason: 'stop',
+      timestamp: 0,
+      usage: {},
+    }) as unknown as AssistantMessage;
 
   async function run(deltas: string[], redactor: Redactor, active = true) {
     const source = createAssistantMessageEventStream();
     const full = deltas.join('');
     let text = '';
-    const events: AssistantMessageEvent[] = [{ type: 'start', partial: msg([]) }, { type: 'text_start', contentIndex: 0, partial: msg([{ type: 'text', text: '' }]) }];
+    const events: AssistantMessageEvent[] = [
+      { type: 'start', partial: msg([]) },
+      { type: 'text_start', contentIndex: 0, partial: msg([{ type: 'text', text: '' }]) },
+    ];
     for (const d of deltas) {
       text += d;
       events.push({ type: 'text_delta', contentIndex: 0, delta: d, partial: msg([{ type: 'text', text }]) });
     }
     const final = msg([{ type: 'text', text: full }]);
-    events.push({ type: 'text_end', contentIndex: 0, content: full, partial: final }, { type: 'done', reason: 'stop', message: final });
+    events.push(
+      { type: 'text_end', contentIndex: 0, content: full, partial: final },
+      { type: 'done', reason: 'stop', message: final },
+    );
     const out = restoreStream(source, redactor, () => active);
     for (const e of events) source.push(e);
     source.end();
@@ -170,7 +223,8 @@ describe('restoring a stream', () => {
     return { seen, result: await out.result() };
   }
 
-  const deltaText = (seen: AssistantMessageEvent[]) => seen.flatMap((e) => (e.type === 'text_delta' ? [e.delta] : [])).join('');
+  const deltaText = (seen: AssistantMessageEvent[]) =>
+    seen.flatMap((e) => (e.type === 'text_delta' ? [e.delta] : [])).join('');
 
   it('restores a placeholder however the chunks cut it', async () => {
     const r = new Redactor();

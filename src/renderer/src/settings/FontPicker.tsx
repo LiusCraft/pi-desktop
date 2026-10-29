@@ -10,9 +10,13 @@ import { useT } from '@/lib/i18n';
 import { fontFamilyCss } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
-interface LocalFont { family: string }
+interface LocalFont {
+  family: string;
+}
 declare global {
-  interface Window { queryLocalFonts?: () => Promise<LocalFont[]> }
+  interface Window {
+    queryLocalFonts?: () => Promise<LocalFont[]>;
+  }
 }
 
 let installed: Promise<string[]> | null = null;
@@ -27,7 +31,17 @@ function installedFonts(): Promise<string[]> {
   return installed;
 }
 
-export function FontPicker({ value, onChange, label, className }: { value: string | null; onChange: (font: string | null) => void; label: string; className?: string }) {
+export function FontPicker({
+  value,
+  onChange,
+  label,
+  className,
+}: {
+  value: string | null;
+  onChange: (font: string | null) => void;
+  label: string;
+  className?: string;
+}) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [fonts, setFonts] = useState<string[]>([]);
@@ -47,15 +61,27 @@ export function FontPicker({ value, onChange, label, className }: { value: strin
       }}
     >
       <PopoverTrigger asChild>
-        <Button variant="outline" role="combobox" aria-expanded={open} aria-label={label} className={cn('h-8 w-56 justify-between px-3 font-normal', className)}>
-          <span className={cn('truncate', !value && 'text-muted-foreground')} style={value ? { fontFamily: fontFamilyCss(value) } : undefined}>{value ?? t('settings.font.placeholder')}</span>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls="font-picker-list"
+          aria-label={label}
+          className={cn('h-8 w-56 justify-between px-3 font-normal', className)}
+        >
+          <span
+            className={cn('truncate', !value && 'text-muted-foreground')}
+            style={value ? { fontFamily: fontFamilyCss(value) } : undefined}
+          >
+            {value ?? t('settings.font.placeholder')}
+          </span>
           <ChevronDownIcon className="size-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 p-0">
         <Command>
           <CommandInput value={query} onValueChange={setQuery} placeholder={t('settings.font.search')} />
-          <CommandList>
+          <CommandList id="font-picker-list">
             <CommandEmpty>{t('settings.font.empty')}</CommandEmpty>
             <CommandGroup>
               <CommandItem value="__system__" keywords={[t('settings.font.placeholder')]} onSelect={() => pick(null)}>
@@ -69,7 +95,9 @@ export function FontPicker({ value, onChange, label, className }: { value: strin
               )}
               {fonts.map((f) => (
                 <CommandItem key={f} value={f} onSelect={() => pick(f)}>
-                  <span className="truncate" style={{ fontFamily: fontFamilyCss(f) }}>{f}</span>
+                  <span className="truncate" style={{ fontFamily: fontFamilyCss(f) }}>
+                    {f}
+                  </span>
                   {value === f && <CheckIcon className="ml-auto size-4" />}
                 </CommandItem>
               ))}

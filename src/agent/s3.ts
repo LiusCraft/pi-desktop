@@ -22,7 +22,8 @@ export const EMPTY_PAYLOAD_SHA256 = createHash('sha256').update('').digest('hex'
 const sha256 = (data: string | Buffer) => createHash('sha256').update(data).digest('hex');
 const hmac = (key: string | Buffer, data: string) => createHmac('sha256', key).update(data).digest();
 /** RFC 3986 encoding, which is what SigV4 wants (encodeURIComponent leaves ! ' ( ) * alone). */
-const encode = (s: string) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+const encode = (s: string) =>
+  encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 
 export interface SignInput {
   method: string;
@@ -44,7 +45,11 @@ export function signV4(i: SignInput): string {
   const names = Object.keys(headers).sort();
   const canonicalHeaders = names.map((n) => `${n}:${headers[n]}\n`).join('');
   const signedHeaders = names.join(';');
-  const canonicalUri = i.url.pathname.split('/').map((seg) => encode(decodeURIComponent(seg))).join('/') || '/';
+  const canonicalUri =
+    i.url.pathname
+      .split('/')
+      .map((seg) => encode(decodeURIComponent(seg)))
+      .join('/') || '/';
   const canonicalQuery = [...i.url.searchParams.entries()]
     .map(([k, v]) => [encode(k), encode(v)] as const)
     .sort((a, b) => (a[0] === b[0] ? (a[1] < b[1] ? -1 : 1) : a[0] < b[0] ? -1 : 1))
@@ -74,12 +79,25 @@ export function objectUrl(t: S3Target, key = ''): URL {
   return base;
 }
 
-async function request(t: S3Target, method: string, url: URL, body?: Buffer, extra: Record<string, string> = {}): Promise<Response> {
+async function request(
+  t: S3Target,
+  method: string,
+  url: URL,
+  body?: Buffer,
+  extra: Record<string, string> = {},
+): Promise<Response> {
   const payloadHash = body ? sha256(body) : EMPTY_PAYLOAD_SHA256;
   const amzDate = amzDateNow();
   const headers: Record<string, string> = { ...extra, 'x-amz-content-sha256': payloadHash, 'x-amz-date': amzDate };
   const authorization = signV4({
-    method, url, headers, payloadHash, region: t.region, accessKeyId: t.accessKeyId, secretAccessKey: t.secretAccessKey, amzDate,
+    method,
+    url,
+    headers,
+    payloadHash,
+    region: t.region,
+    accessKeyId: t.accessKeyId,
+    secretAccessKey: t.secretAccessKey,
+    amzDate,
   });
   const res = await fetch(url, {
     method,
@@ -117,12 +135,34 @@ export async function checkBucket(t: S3Target): Promise<void> {
 }
 
 const CONTENT_TYPES: Record<string, string> = {
-  html: 'text/html; charset=utf-8', htm: 'text/html; charset=utf-8', css: 'text/css; charset=utf-8',
-  js: 'text/javascript; charset=utf-8', mjs: 'text/javascript; charset=utf-8', json: 'application/json; charset=utf-8',
-  txt: 'text/plain; charset=utf-8', md: 'text/markdown; charset=utf-8', csv: 'text/csv; charset=utf-8', xml: 'application/xml; charset=utf-8',
-  svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
-  avif: 'image/avif', ico: 'image/x-icon', woff: 'font/woff', woff2: 'font/woff2', ttf: 'font/ttf', otf: 'font/otf',
-  mp3: 'audio/mpeg', wav: 'audio/wav', mp4: 'video/mp4', webm: 'video/webm', pdf: 'application/pdf', wasm: 'application/wasm',
+  html: 'text/html; charset=utf-8',
+  htm: 'text/html; charset=utf-8',
+  css: 'text/css; charset=utf-8',
+  js: 'text/javascript; charset=utf-8',
+  mjs: 'text/javascript; charset=utf-8',
+  json: 'application/json; charset=utf-8',
+  txt: 'text/plain; charset=utf-8',
+  md: 'text/markdown; charset=utf-8',
+  csv: 'text/csv; charset=utf-8',
+  xml: 'application/xml; charset=utf-8',
+  svg: 'image/svg+xml',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  avif: 'image/avif',
+  ico: 'image/x-icon',
+  woff: 'font/woff',
+  woff2: 'font/woff2',
+  ttf: 'font/ttf',
+  otf: 'font/otf',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  pdf: 'application/pdf',
+  wasm: 'application/wasm',
 };
 export function contentTypeFor(file: string): string {
   return CONTENT_TYPES[file.slice(file.lastIndexOf('.') + 1).toLowerCase()] ?? 'application/octet-stream';

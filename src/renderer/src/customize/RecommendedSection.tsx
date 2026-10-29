@@ -18,7 +18,12 @@ interface Props {
   onCatalog: (c: CustomizeCatalog) => void;
 }
 
-const KIND_ICON = { skill: SparklesIcon, skillRepo: SparklesIcon, plugin: PackageIcon, connector: PlugZapIcon } as const;
+const KIND_ICON = {
+  skill: SparklesIcon,
+  skillRepo: SparklesIcon,
+  plugin: PackageIcon,
+  connector: PlugZapIcon,
+} as const;
 
 /** Source without its `@version` suffix, as the Plugins tab compares it. */
 const bare = (source: string) => source.replace(/@[^@/]*$/, '');
@@ -35,7 +40,15 @@ export function RecommendedSection({ catalog, project, onCatalog }: Props) {
   };
   /** Take back what `install` put in place. */
   const uninstall = async (r: Recommended) => {
-    if (!(await dialogs.confirm(t('rec.uninstallTitle', { name: t(r.title) }), t('rec.uninstallBody'), t('rec.uninstall'), true))) return;
+    if (
+      !(await dialogs.confirm(
+        t('rec.uninstallTitle', { name: t(r.title) }),
+        t('rec.uninstallBody'),
+        t('rec.uninstall'),
+        true,
+      ))
+    )
+      return;
     setBusy(r.id);
     try {
       if (r.kind === 'skill') {
@@ -58,7 +71,14 @@ export function RecommendedSection({ catalog, project, onCatalog }: Props) {
   const install = async (r: Recommended) => {
     setBusy(r.id);
     try {
-      if (r.kind === 'skill') onCatalog(await call('customize:skillCreate', { name: r.name, description: t(r.skillDesc), body: t(r.body), scope: 'user', home: 'pi' }, project));
+      if (r.kind === 'skill')
+        onCatalog(
+          await call(
+            'customize:skillCreate',
+            { name: r.name, description: t(r.skillDesc), body: t(r.body), scope: 'user', home: 'pi' },
+            project,
+          ),
+        );
       else if (r.kind === 'skillRepo') onCatalog(await call('customize:skillsFromGit', r.repo, r.subdir, project));
       else if (r.kind === 'plugin') onCatalog(await call('customize:pluginInstall', r.source, 'user', project));
       else onCatalog(await call('customize:connectorSave', { ...r.connector, scope: 'user' }, project));
@@ -83,21 +103,45 @@ export function RecommendedSection({ catalog, project, onCatalog }: Props) {
                 const done = installed(r);
                 return (
                   <div key={r.id} className="flex items-center gap-3 px-4 py-3">
-                    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/40"><Icon className="size-4 text-muted-foreground" /></span>
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
+                      <Icon className="size-4 text-muted-foreground" />
+                    </span>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5"><span className="text-sm font-medium">{t(r.title)}</span><Badge variant="secondary">{t(`rec.kind.${r.kind}`)}</Badge></div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-medium">{t(r.title)}</span>
+                        <Badge variant="secondary">{t(`rec.kind.${r.kind}`)}</Badge>
+                      </div>
                       <div className="mt-0.5 text-xs text-muted-foreground">{t(r.desc)}</div>
                     </div>
                     {done ? (
                       <>
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground"><CheckIcon className="size-4" />{t('rec.installed')}</span>
-                        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" disabled={!!busy} onClick={() => void uninstall(r)}>
-                          {busy === r.id ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <Trash2Icon className="size-4" />}{t('rec.uninstall')}
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <CheckIcon className="size-4" />
+                          {t('rec.installed')}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-destructive hover:text-destructive"
+                          disabled={!!busy}
+                          onClick={() => void uninstall(r)}
+                        >
+                          {busy === r.id ? (
+                            <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                          ) : (
+                            <Trash2Icon className="size-4" />
+                          )}
+                          {t('rec.uninstall')}
                         </Button>
                       </>
                     ) : (
                       <Button size="sm" disabled={!!busy} onClick={() => void install(r)}>
-                        {busy === r.id ? <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <DownloadIcon className="size-4" />}{t('rec.install')}
+                        {busy === r.id ? (
+                          <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        ) : (
+                          <DownloadIcon className="size-4" />
+                        )}
+                        {t('rec.install')}
                       </Button>
                     )}
                   </div>

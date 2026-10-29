@@ -14,9 +14,15 @@ const saved = { global: process.env.GIT_CONFIG_GLOBAL, system: process.env.GIT_C
 
 /** Commits need an identity; no developer config is allowed to leak in. */
 const git = (cwd: string, ...args: string[]) =>
-  execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', ...args], {
-    cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  execFileSync(
+    'git',
+    ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', ...args],
+    {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
 const write = (rel: string, text: string) => fs.writeFileSync(path.join(repo, rel), text);
 
 describe('working-tree state', () => {
@@ -40,7 +46,14 @@ describe('working-tree state', () => {
   });
 
   it('reports a pushed, clean tree as in sync', async () => {
-    assert.deepEqual(await workState(repo), { dirty: [], ahead: 0, behind: 0, baseBehind: 0, base: null, upstream: 'origin/main' });
+    assert.deepEqual(await workState(repo), {
+      dirty: [],
+      ahead: 0,
+      behind: 0,
+      baseBehind: 0,
+      base: null,
+      upstream: 'origin/main',
+    });
   });
 
   it('lists modified and untracked paths, including names with spaces', async () => {

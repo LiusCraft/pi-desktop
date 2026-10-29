@@ -37,14 +37,26 @@ const isUrl = (text: string) => /^https?:\/\//i.test(text);
 function Scalar({ value }: { value: unknown }) {
   if (value === null || value === undefined) return <span className="text-muted-foreground/60">—</span>;
   if (typeof value === 'boolean') {
-    return <Badge variant="outline" className={cn('h-5 rounded-md px-1.5 font-mono text-[11px]', value ? 'text-success' : 'text-muted-foreground')}>{String(value)}</Badge>;
+    return (
+      <Badge
+        variant="outline"
+        className={cn('h-5 rounded-md px-1.5 font-mono text-[11px]', value ? 'text-success' : 'text-muted-foreground')}
+      >
+        {String(value)}
+      </Badge>
+    );
   }
   if (typeof value === 'number') return <span className="font-mono text-xs tabular-nums">{value}</span>;
   const text = String(value);
   if (!text) return <span className="text-muted-foreground/60">—</span>;
   if (!isUrl(text)) return <span className="break-words">{text}</span>;
   return (
-    <button type="button" className="flex max-w-full items-center gap-1 text-left text-primary hover:underline" title={text} onClick={() => void call('app:openExternal', text).catch(() => {})}>
+    <button
+      type="button"
+      className="flex max-w-full items-center gap-1 text-left text-primary hover:underline"
+      title={text}
+      onClick={() => void call('app:openExternal', text).catch(() => {})}
+    >
       <span className="truncate">{text}</span>
       <ExternalLinkIcon className="size-3 shrink-0" />
     </button>
@@ -70,11 +82,17 @@ function view(value: unknown, depth: number, cell: boolean): ReactNode {
       return (
         <div className="flex flex-wrap gap-1">
           {value.slice(0, MAX_CHIPS).map((item, i) => (
-            <Badge key={i} variant="secondary" className="max-w-full truncate px-1.5 py-0 font-mono text-[11px] font-normal">
+            <Badge
+              key={i}
+              variant="secondary"
+              className="max-w-full truncate px-1.5 py-0 font-mono text-[11px] font-normal"
+            >
               {String(item)}
             </Badge>
           ))}
-          {value.length > MAX_CHIPS && <span className="text-xs text-muted-foreground">+{value.length - MAX_CHIPS}</span>}
+          {value.length > MAX_CHIPS && (
+            <span className="text-xs text-muted-foreground">+{value.length - MAX_CHIPS}</span>
+          )}
         </div>
       );
     }
@@ -85,7 +103,9 @@ function view(value: unknown, depth: number, cell: boolean): ReactNode {
       <ol className="space-y-1">
         {value.map((item, i) => (
           <li key={i} className="flex gap-2">
-            <span className="w-5 shrink-0 pt-0.5 text-right font-mono text-[11px] text-muted-foreground/70">{i + 1}</span>
+            <span className="w-5 shrink-0 pt-0.5 text-right font-mono text-[11px] text-muted-foreground/70">
+              {i + 1}
+            </span>
             <div className="min-w-0 flex-1">{view(item, depth + 1, cell)}</div>
           </li>
         ))}
@@ -121,8 +141,15 @@ function Fields({ entries, depth }: { entries: [string, unknown][]; depth: numbe
       <TableBody>
         {entries.map(([key, value]) => (
           <TableRow key={key} className="hover:bg-transparent">
-            <TableCell className="max-w-56 truncate py-1 align-top font-mono text-[11px] text-muted-foreground" title={key}>{key}</TableCell>
-            <TableCell className="py-1 align-top break-words whitespace-normal">{view(value, depth + 1, false)}</TableCell>
+            <TableCell
+              className="max-w-56 truncate py-1 align-top font-mono text-[11px] text-muted-foreground"
+              title={key}
+            >
+              {key}
+            </TableCell>
+            <TableCell className="py-1 align-top break-words whitespace-normal">
+              {view(value, depth + 1, false)}
+            </TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -137,7 +164,9 @@ function Rows({ items, columns, depth }: { items: Record<string, unknown>[]; col
       <TableHeader>
         <TableRow className="hover:bg-transparent">
           {columns.map((column) => (
-            <TableHead key={column} className="h-7 px-2 font-mono text-[11px] font-medium text-muted-foreground">{column}</TableHead>
+            <TableHead key={column} className="h-7 px-2 font-mono text-[11px] font-medium text-muted-foreground">
+              {column}
+            </TableHead>
           ))}
         </TableRow>
       </TableHeader>
@@ -145,7 +174,9 @@ function Rows({ items, columns, depth }: { items: Record<string, unknown>[]; col
         {items.map((item, i) => (
           <TableRow key={i} className="hover:bg-transparent">
             {columns.map((column) => (
-              <TableCell key={column} className="px-2 py-1 align-top break-words whitespace-normal">{view(item[column], depth + 1, true)}</TableCell>
+              <TableCell key={column} className="px-2 py-1 align-top break-words whitespace-normal">
+                {view(item[column], depth + 1, true)}
+              </TableCell>
             ))}
           </TableRow>
         ))}
