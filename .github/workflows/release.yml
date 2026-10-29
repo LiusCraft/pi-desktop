@@ -75,6 +75,45 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" --repo "$repo" \
             dist/Pi-Desktop-*.dmg dist/SHA256SUMS.txt --clobber
 
+      # The cask points at the release assets, so it goes out after they exist: `brew install --cask
+      # liuscraft/tap/pi-desktop` is then the macOS upgrade path (`brew upgrade --cask`). Pushing needs a
+      # credential for another repository, and a deploy key with write access on homebrew-tap is the
+      # narrowest one there is: it reaches that repository and nothing else.
+      - name: Push the cask to the Homebrew tap
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          TAP_KEY: ${{ secrets.HOMEBREW_TAP_KEY }}
+        run: |
+          cask="$RUNNER_TEMP/pi-desktop.rb"
+          node scripts/cask.mjs --version="${GITHUB_REF_NAME#v}" --dist=dist --out="$cask"
+          cat "$cask"
+          if [ -z "$TAP_KEY" ]; then
+            echo "::warning::HOMEBREW_TAP_KEY is not set; the cask was not pushed to liuscraft/homebrew-tap."
+            exit 0
+          fi
+          key="$RUNNER_TEMP/tap_key"
+          printf '%s\n' "$TAP_KEY" > "$key"
+          chmod 600 "$key"
+          mkdir -p "$HOME/.ssh"
+          ssh-keyscan -t ed25519 github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes"
+          tap="$RUNNER_TEMP/tap"
+          git clone --depth=1 git@github.com:liuscraft/homebrew-tap.git "$tap" ||
+            { echo "::error::could not clone liuscraft/homebrew-tap with its deploy key: re-add the key and update HOMEBREW_TAP_KEY."; exit 1; }
+          mkdir -p "$tap/Casks"
+          cp "$cask" "$tap/Casks/pi-desktop.rb"
+          cd "$tap"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "::notice::the tap already carries $GITHUB_REF_NAME"
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "pi-desktop ${GITHUB_REF_NAME#v}"
+          # An empty tap has no upstream yet, so the first push is what creates its branch.
+          git push --set-upstream origin HEAD
+
       - name: Keep the dmgs as workflow artifacts too
         uses: actions/upload-artifact@v4
         with:
@@ -136,3 +175,35 @@ jobs:
           name: windows-installer
           path: dist/*-setup.exe
           if-no-files-found: error
+
+  plugin:
+    # pi-remote is built from the same source as the app (`npm run build:plugin` → plugin/pi-remote/
+    # index.js) and takes its version from the same tag, so `pi install npm:@liuscraft/pi-remote`
+    # never drifts from the dmg. It waits for the dmg: a plugin whose protocol moved on is useless
+    # until the Pi Desktop that speaks it is actually downloadable.
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: mac
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # provenance: the tarball is tied to this commit and workflow
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      # Trusted publishing (OIDC, no long-lived token) needs npm 11.5.1 or newer.
+      - run: npm install --global npm@^11.5.1
+
+      # Only the plugin bundle is built here; Electron's binary is not, so skip its download.
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+
+      - run: npm run build:plugin
+
+      - name: Publish to npm
+        run: node scripts/publish-plugin.mjs --version="${GITHUB_REF_NAME#v}"

@@ -22,7 +22,7 @@ DMG := $(DIST)/Pi-Desktop-$(CURRENT_VERSION)-$(ARCH).dmg
 
 .DEFAULT_GOAL := help
 .PHONY: help check-darwin install dev demo test icon app run dmg dist \
-	release publish clean distclean
+	release publish cask clean distclean
 
 help: ## Show this help
 	@node scripts/make-help.mjs $(MAKEFILE_LIST)
@@ -60,6 +60,9 @@ dmg: check-darwin ## Build a dmg for the host architecture
 dist: check-darwin ## Build dmgs for both arm64 and x64
 	$(NPM) run dist:mac -- --arm64 --x64
 	@ls -lh $(DIST)/Pi-Desktop-*.dmg
+
+cask: ## Print the Homebrew cask for the dmgs in dist/ (CI pushes the same file to the tap)
+	@node scripts/cask.mjs --version="$(CURRENT_VERSION)" --dist="$(DIST)"
 
 win-app: ## Build an unpacked Windows app (dist/win-unpacked)
 	$(NPM) run pack:win

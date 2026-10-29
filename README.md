@@ -61,6 +61,8 @@
 
 ## 快速开始
 
+正常使用不用构建：macOS 上 `brew tap liuscraft/tap && brew install --cask pi-desktop`（升级 `brew upgrade --cask pi-desktop`），Windows 用 Release 里的 `Pi-Desktop-<版本>-win-x64-setup.exe`。从源码跑：
+
 ```bash
 npm install
 npm run dev        # electron-vite 开发模式（界面热更新）
@@ -290,11 +292,11 @@ pi 默认每条命令起一个进程，一条命令里的 `cd` 到下一条就�
 一台电脑上的 Pi Desktop 可以遥控另一台电脑上的会话，会话始终在**被遥控的那台**运行（文件、shell、模型凭据都在那边），这边只是界面。有两种被遥控的对象，对 Desktop 客户端来说协议完全相同：
 
 - **另一台 Pi Desktop**：设置 → 远程 →「共享这台电脑」开启，把地址和访问令牌告诉对方。
-- **只装了 pi 命令行的电脑**：安装 `pi-remote` 插件（`pi install npm:@liuscraft/pi-remote`，设置 → 远程 里有现成命令；开发时可 `pi install` 仓库里的 `plugin/pi-remote` 目录），在 pi 里执行 `/remote start [--lan] [--port N]`，或用 `pi --remote` 启动即自动开启；`/remote status | token | rotate | stop`。插件在 pi 进程内跑一个无头的 session hub（共用 pi 的登录与模型配置，状态放 `~/.pi-remote`，`PI_REMOTE_HOME` 可改），pi 退出服务即停止。
+- **只装了 pi 命令行的电脑**：安装 `pi-remote` 插件（`pi install npm:@liuscraft/pi-remote`，设置 → 远程 里有现成命令；开发时可 `pi install` 仓库里的 `plugin/pi-remote` 目录），在 pi 里执行 `/remote start [--lan] [--port N]`，或用 `pi --remote` 启动即自动开启；`/remote status | token | rotate | stop`。插件在 pi 进程内跑一个无头的 session hub（共用 pi 的登录与模型配置，状态放 `~/.pi-remote`，`PI_REMOTE_HOME` 可改），pi 退出服务即停止。插件和 App 由同一个 tag 发布（见「发布一个版本」），所以 npm 上的版本和 dmg 对齐。
 
 连接端：设置 → 远程 →「连接到远程」添加地址 + 令牌并点「连接」，主窗口整体切换为对方的项目与会话（侧边栏底部显示连接状态与「断开」）；断开后回到本机。断线会自动重连，重连后重新读取对方的会话状态。
 
-协议（`src/shared/remote.ts`，实现在 `src/agent/remote/`）：不引入新依赖，纯 HTTP —— `POST /v1/rpc {method,args}` 对应 agent host 的一次调用，`GET /v1/events` 是 SSE 事件流（即 `HostEvent`），`GET /v1/ping` 免令牌用于识别。凭 `Authorization: Bearer <令牌>` 鉴权。服务端只放行 `HOST_CHANNELS`、项目/文件夹列表与 `remote:browse`；浏览器登录类调用（`models:login*`）因需要对方本机界面而不开放。`ProjectBook` 保存对方的项目列表，所以远程添加项目是在对方的目录树里选。
+协议（`src/shared/remote.ts`，实现在 `src/agent/remote/`）：不引入新依赖，纯 HTTP —— `POST /v1/rpc {method,args}` 对应 agent host 的一次调用，`GET /v1/events` 是 SSE 事件流（即 `HostEvent`），`GET /v1/ping` 免令牌用于识别。`ping` 带 `version`（`REMOTE_API_VERSION`），两边对不上时连接直接失败并说明该更新哪一边，不会连上去才在某个调用上莫名其妙地报错。凭 `Authorization: Bearer <令牌>` 鉴权。服务端只放行 `HOST_CHANNELS`、项目/文件夹列表与 `remote:browse`；浏览器登录类调用（`models:login*`）因需要对方本机界面而不开放。`ProjectBook` 保存对方的项目列表，所以远程添加项目是在对方的目录树里选。
 
 跨网络连接：Pi Desktop 的远程功能**默认关闭**（不监听任何端口）。要从外网连，开启「通过 Cloudflare Tunnel 公开」（插件用 `/remote start --tunnel`）：本机用 `cloudflared tunnel --url` 起一个免账号的 `https://xxx.trycloudflare.com` 快速隧道，设置页显示该地址，对方当作连接地址填入即可（HTTPS，无需端口映射）。需先安装 `cloudflared`；地址每次启动都会变。隧道对公网可达，所以令牌就是唯一的门，别泄露。
 
@@ -423,6 +425,16 @@ make release DRY_RUN=1         # 只打印要打的 tag，不真的打、不 pus
 
 不想走 tag 的话，本地直接 `GH_TOKEN=… make publish` 也能上传。
 
+同一个 tag 还会发两样东西，各靠一个仓库 secret（没配时该步骤报警告或失败，不影响 dmg / exe）：
+
+- **pi-remote 插件**（`plugin` job）：`npm run build:plugin` 之后 `scripts/publish-plugin.mjs` 用 tag 版本发布到 npm（`npm publish --access public --provenance`）。认证走 npm 的 **trusted publishing**：workflow 里的 `id-token: write` 换一张一次性 token，仓库里不存任何 npm 凭据（需要 npm 上一次性配好，见下）。版本已在 npm 上就跳过，重跑同一次 release 不失败；比 npm 上的 `latest` 还旧则直接报错（npm 会把 `latest` 移到最后发布的那版，力推旧 tag 会把大家的插件降级）。provenance 把 tarball 绑到这个 commit 和这次 workflow 上。
+- **Homebrew cask**（mac job 的最后一步）：`scripts/cask.mjs` 按两个 dmg 的 sha256 生成 `Casks/pi-desktop.rb`，推到 `liuscraft/homebrew-tap`。凭据是那个仓库上的一把 **deploy key**（只写那一个仓库，别的什么都碰不到），私钥存为 `HOMEBREW_TAP_KEY`；没配时只打印生成的 cask。本地可以 `make cask` 看同一份内容。
+
+两个发布目标各自的一次性配置（都在网页上，只能做一次）：
+
+- npmjs.com → `@liuscraft/pi-remote` → Settings → **Trusted Publisher** → GitHub Actions：Organization `LiusCraft`、Repository `pi-desktop`、Workflow `release.yml`，并允许直接 `npm publish`。不配的话 `plugin` job 会以 `ENEEDAUTH` 失败（dmg/exe 不受影响）。
+- `liuscraft/homebrew-tap` → Settings → Deploy keys：需要一把 write 权限的 key（当前这把的私钥在 `HOMEBREW_TAP_KEY` 里）；丢了就重新生成一对，把公钥加回去、私钥覆盖这个 secret。
+
 `.github/workflows/build.yml` 是 PR 上的打包冒烟测试：跑 `--dir` 打包，然后断言 `Resources/app/node_modules/@earendil-works/pi-coding-agent` 和两个扩展真的进了包。
 
 ### 未签名产物怎么打开
@@ -451,4 +463,4 @@ README 里的界面图由 `npm run build && node scripts/screenshots.mjs` 用离
 - **PR / CI 状态**依赖 `gh`（GitHub）或 `glab`（GitLab，含自建实例）CLI 已登录。按 `origin` 的域名判断用哪个；域名里没有 github/gitlab 字样的自建主机会依次尝试两者。
 - **预览**面板只允许 `localhost` 地址。
 - React 重写版已在 Windows 11 上用真实窗口跑通离线 demo（Code 修 bug + Diff 面板、Work 整理收件箱 + 权限确认），并加载了用户自己的 pi 扩展；macOS 打包版尚未在重写后重新验证。旧版的 Playwright 界面测试（`test/ui-*.js`）随旧界面一起移除，界面自动化测试待补。
-- 没有自动更新：升级靠重新下载 dmg。要接 `electron-updater` 得再产一个 `zip` target（dmg 不能做增量更新），并加一个设置项。
+- 没有自动更新：Homebrew 装的用 `brew upgrade --cask pi-desktop` 升级，其余重新下载 dmg。要接 `electron-updater` 得再产一个 `zip` target（dmg 不能做增量更新），并加一个设置项。
