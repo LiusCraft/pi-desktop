@@ -8,7 +8,13 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import * as pty from 'node-pty';
-import { TERMINAL_DEFAULT_LINES, TERMINAL_MAX_LINES, type TerminalAttach, type TerminalInfo, type TerminalShell } from '@shared/protocol';
+import {
+  TERMINAL_DEFAULT_LINES,
+  TERMINAL_MAX_LINES,
+  type TerminalAttach,
+  type TerminalInfo,
+  type TerminalShell,
+} from '@shared/protocol';
 import { childEnv, realBashDir } from '../agent/env';
 import { plainText } from './terminal-text';
 
@@ -22,12 +28,18 @@ const DEFAULT_ROWS = 24;
 // ------------------------------------------------------------ shells
 
 const exists = (file: string) => {
-  try { return fs.statSync(file).isFile(); } catch { return false; }
+  try {
+    return fs.statSync(file).isFile();
+  } catch {
+    return false;
+  }
 };
 
 function onPath(name: string): string | undefined {
   const exts = isWin ? ['.exe', '.cmd'] : [''];
-  for (const dir of String(childEnv().PATH || '').split(path.delimiter).filter(Boolean)) {
+  for (const dir of String(childEnv().PATH || '')
+    .split(path.delimiter)
+    .filter(Boolean)) {
     for (const ext of exts) {
       const file = path.join(dir, name + ext);
       if (exists(file)) return file;
@@ -86,7 +98,11 @@ function ensureSpawnHelper() {
   helperChecked = true;
   try {
     const root = path.dirname(createRequire(import.meta.url).resolve('node-pty/package.json'));
-    for (const dir of [path.join(root, 'build', 'Release'), path.join(root, 'build', 'Debug'), path.join(root, 'prebuilds', `${process.platform}-${process.arch}`)]) {
+    for (const dir of [
+      path.join(root, 'build', 'Release'),
+      path.join(root, 'build', 'Debug'),
+      path.join(root, 'prebuilds', `${process.platform}-${process.arch}`),
+    ]) {
       const helper = path.join(dir, 'spawn-helper');
       if (exists(helper)) fs.chmodSync(helper, 0o755);
     }
@@ -95,7 +111,6 @@ function ensureSpawnHelper() {
 
 /** Login shell on unix so a GUI launch gets the profile's PATH, as in Terminal.app. */
 const shellArgs = (file: string) => (isWin || !/(^|\/)(bash|zsh|fish|sh)$/.test(file) ? [] : ['-l']);
-
 
 // ------------------------------------------------------------ terminals
 
@@ -135,7 +150,14 @@ export class Terminals {
       cwd,
       env: childEnv({ TERM_PROGRAM: 'pi-desktop', COLORTERM: 'truecolor' }) as Record<string, string>,
     });
-    const term: Term = { id: randomUUID(), sessionId, title: `${path.basename(file, path.extname(file))} ${n}`, proc, backlog: '', exited: false };
+    const term: Term = {
+      id: randomUUID(),
+      sessionId,
+      title: `${path.basename(file, path.extname(file))} ${n}`,
+      proc,
+      backlog: '',
+      exited: false,
+    };
     this.terms.set(term.id, term);
     proc.onData((data) => {
       term.backlog = (term.backlog + data).slice(-BACKLOG_CHARS);
@@ -167,14 +189,19 @@ export class Terminals {
   resize(id: string, cols: number, rows: number) {
     const t = this.terms.get(id);
     if (!t || t.exited || cols < 1 || rows < 1) return;
-    try { t.proc.resize(Math.floor(cols), Math.floor(rows)); } catch {}
+    try {
+      t.proc.resize(Math.floor(cols), Math.floor(rows));
+    } catch {}
   }
 
   close(id: string) {
     const t = this.terms.get(id);
     if (!t) return;
     this.terms.delete(id);
-    if (!t.exited) try { t.proc.kill(); } catch {}
+    if (!t.exited)
+      try {
+        t.proc.kill();
+      } catch {}
   }
 
   /** A deleted session leaves no shell behind. */
@@ -184,6 +211,8 @@ export class Terminals {
   }
 
   closeAll() {
+    // A copy: close() removes from `this.terms`.
+    // oxlint-disable-next-line unicorn/no-useless-spread
     for (const id of [...this.terms.keys()]) this.close(id);
   }
 

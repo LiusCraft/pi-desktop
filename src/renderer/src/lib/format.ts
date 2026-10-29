@@ -34,7 +34,8 @@ export function fmtCost(cost: number) {
   return `$${cost > 0 ? cost.toPrecision(2) : '0.00'}`;
 }
 
-export const sizeLabel = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+export const sizeLabel = (n: number) =>
+  n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
 
 /** A tool path relative to the session folder (tools may report absolute paths). */
 export function relPath(cwd: string, p: string) {

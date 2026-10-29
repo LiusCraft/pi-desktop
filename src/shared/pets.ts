@@ -42,11 +42,51 @@ export const BUILTIN_PETS: readonly PetDef[] = [
     id: 'clawd',
     label: 'Clawd',
     sounds: {
-      done: { wave: 'triangle', gain: 0.2, notes: [{ freq: 523, at: 0, len: 0.1 }, { freq: 784, at: 0.09, len: 0.1 }, { freq: 1047, at: 0.18, len: 0.2 }] },
-      error: { wave: 'triangle', gain: 0.2, notes: [{ freq: 392, at: 0, len: 0.12 }, { freq: 294, at: 0.12, len: 0.12 }, { freq: 220, at: 0.24, len: 0.22 }] },
-      ask: { wave: 'triangle', gain: 0.2, notes: [{ freq: 698, at: 0, len: 0.09 }, { freq: 698, at: 0.15, len: 0.09 }, { freq: 880, at: 0.3, len: 0.14 }] },
-      pet: { wave: 'triangle', gain: 0.14, notes: [{ freq: 784, at: 0, len: 0.06 }, { freq: 1047, at: 0.06, len: 0.1 }] },
-      speak: { wave: 'triangle', gain: 0.16, notes: [{ freq: 392, at: 0, len: 0.07 }, { freq: 587, at: 0.08, len: 0.07 }, { freq: 494, at: 0.16, len: 0.07 }, { freq: 740, at: 0.24, len: 0.14 }] },
+      done: {
+        wave: 'triangle',
+        gain: 0.2,
+        notes: [
+          { freq: 523, at: 0, len: 0.1 },
+          { freq: 784, at: 0.09, len: 0.1 },
+          { freq: 1047, at: 0.18, len: 0.2 },
+        ],
+      },
+      error: {
+        wave: 'triangle',
+        gain: 0.2,
+        notes: [
+          { freq: 392, at: 0, len: 0.12 },
+          { freq: 294, at: 0.12, len: 0.12 },
+          { freq: 220, at: 0.24, len: 0.22 },
+        ],
+      },
+      ask: {
+        wave: 'triangle',
+        gain: 0.2,
+        notes: [
+          { freq: 698, at: 0, len: 0.09 },
+          { freq: 698, at: 0.15, len: 0.09 },
+          { freq: 880, at: 0.3, len: 0.14 },
+        ],
+      },
+      pet: {
+        wave: 'triangle',
+        gain: 0.14,
+        notes: [
+          { freq: 784, at: 0, len: 0.06 },
+          { freq: 1047, at: 0.06, len: 0.1 },
+        ],
+      },
+      speak: {
+        wave: 'triangle',
+        gain: 0.16,
+        notes: [
+          { freq: 392, at: 0, len: 0.07 },
+          { freq: 587, at: 0.08, len: 0.07 },
+          { freq: 494, at: 0.16, len: 0.07 },
+          { freq: 740, at: 0.24, len: 0.14 },
+        ],
+      },
     },
     shapes: [
       {
@@ -61,7 +101,14 @@ export const BUILTIN_PETS: readonly PetDef[] = [
           { x: 3, y: 0, w: 16, h: 10 },
         ],
       },
-      { fill: '#141413', part: 'eyes', rects: [{ x: 6, y: 3, w: 2, h: 2 }, { x: 14, y: 3, w: 2, h: 2 }] },
+      {
+        fill: '#141413',
+        part: 'eyes',
+        rects: [
+          { x: 6, y: 3, w: 2, h: 2 },
+          { x: 14, y: 3, w: 2, h: 2 },
+        ],
+      },
       { fill: '#141413', rects: [{ x: 10, y: 7, w: 2, h: 1, part: 'mouth' }] },
     ],
   },
@@ -69,11 +116,55 @@ export const BUILTIN_PETS: readonly PetDef[] = [
     id: 'cat',
     label: '像素猫',
     sounds: {
-      done: { wave: 'sine', gain: 0.2, notes: [{ freq: 880, at: 0, len: 0.1 }, { freq: 1175, at: 0.1, len: 0.18 }] },
-      error: { wave: 'sawtooth', gain: 0.08, notes: [{ freq: 300, at: 0, len: 0.2 }, { freq: 200, at: 0.2, len: 0.3 }] },
-      ask: { wave: 'sine', gain: 0.2, notes: [{ freq: 700, at: 0, len: 0.1 }, { freq: 950, at: 0.08, len: 0.14 }, { freq: 700, at: 0.3, len: 0.1 }, { freq: 950, at: 0.38, len: 0.14 }] },
-      pet: { wave: 'triangle', gain: 0.2, notes: [{ freq: 110, at: 0, len: 0.08 }, { freq: 130, at: 0.07, len: 0.08 }, { freq: 110, at: 0.14, len: 0.08 }, { freq: 130, at: 0.21, len: 0.08 }, { freq: 110, at: 0.28, len: 0.08 }, { freq: 130, at: 0.35, len: 0.1 }] },
-      speak: { wave: 'sine', gain: 0.2, notes: [{ freq: 600, at: 0, len: 0.08 }, { freq: 800, at: 0.07, len: 0.1 }, { freq: 950, at: 0.16, len: 0.1 }, { freq: 750, at: 0.26, len: 0.1 }, { freq: 550, at: 0.35, len: 0.14 }] },
+      done: {
+        wave: 'sine',
+        gain: 0.2,
+        notes: [
+          { freq: 880, at: 0, len: 0.1 },
+          { freq: 1175, at: 0.1, len: 0.18 },
+        ],
+      },
+      error: {
+        wave: 'sawtooth',
+        gain: 0.08,
+        notes: [
+          { freq: 300, at: 0, len: 0.2 },
+          { freq: 200, at: 0.2, len: 0.3 },
+        ],
+      },
+      ask: {
+        wave: 'sine',
+        gain: 0.2,
+        notes: [
+          { freq: 700, at: 0, len: 0.1 },
+          { freq: 950, at: 0.08, len: 0.14 },
+          { freq: 700, at: 0.3, len: 0.1 },
+          { freq: 950, at: 0.38, len: 0.14 },
+        ],
+      },
+      pet: {
+        wave: 'triangle',
+        gain: 0.2,
+        notes: [
+          { freq: 110, at: 0, len: 0.08 },
+          { freq: 130, at: 0.07, len: 0.08 },
+          { freq: 110, at: 0.14, len: 0.08 },
+          { freq: 130, at: 0.21, len: 0.08 },
+          { freq: 110, at: 0.28, len: 0.08 },
+          { freq: 130, at: 0.35, len: 0.1 },
+        ],
+      },
+      speak: {
+        wave: 'sine',
+        gain: 0.2,
+        notes: [
+          { freq: 600, at: 0, len: 0.08 },
+          { freq: 800, at: 0.07, len: 0.1 },
+          { freq: 950, at: 0.16, len: 0.1 },
+          { freq: 750, at: 0.26, len: 0.1 },
+          { freq: 550, at: 0.35, len: 0.14 },
+        ],
+      },
     },
     shapes: [
       {
@@ -90,9 +181,30 @@ export const BUILTIN_PETS: readonly PetDef[] = [
           { x: 16, y: -2, w: 3, h: 3 },
         ],
       },
-      { fill: '#f2b8b0', rects: [{ x: 4, y: -1, w: 1, h: 2 }, { x: 17, y: -1, w: 1, h: 2 }, { x: 10, y: 5, w: 2, h: 1 }] },
-      { fill: '#b9763a', rects: [{ x: 7, y: 0, w: 1, h: 2 }, { x: 10, y: 0, w: 2, h: 1 }, { x: 14, y: 0, w: 1, h: 2 }] },
-      { fill: '#141413', part: 'eyes', rects: [{ x: 6, y: 3, w: 2, h: 2 }, { x: 14, y: 3, w: 2, h: 2 }] },
+      {
+        fill: '#f2b8b0',
+        rects: [
+          { x: 4, y: -1, w: 1, h: 2 },
+          { x: 17, y: -1, w: 1, h: 2 },
+          { x: 10, y: 5, w: 2, h: 1 },
+        ],
+      },
+      {
+        fill: '#b9763a',
+        rects: [
+          { x: 7, y: 0, w: 1, h: 2 },
+          { x: 10, y: 0, w: 2, h: 1 },
+          { x: 14, y: 0, w: 1, h: 2 },
+        ],
+      },
+      {
+        fill: '#141413',
+        part: 'eyes',
+        rects: [
+          { x: 6, y: 3, w: 2, h: 2 },
+          { x: 14, y: 3, w: 2, h: 2 },
+        ],
+      },
       { fill: '#141413', rects: [{ x: 10, y: 7, w: 2, h: 1, part: 'mouth' }] },
     ],
   },
@@ -100,11 +212,53 @@ export const BUILTIN_PETS: readonly PetDef[] = [
     id: 'robot',
     label: '机器人',
     sounds: {
-      done: { wave: 'square', gain: 0.08, notes: [{ freq: 880, at: 0, len: 0.07 }, { freq: 1320, at: 0.08, len: 0.07 }, { freq: 1760, at: 0.16, len: 0.14 }] },
-      error: { wave: 'sawtooth', gain: 0.1, notes: [{ freq: 220, at: 0, len: 0.12 }, { freq: 165, at: 0.14, len: 0.12 }, { freq: 110, at: 0.28, len: 0.2 }] },
-      ask: { wave: 'square', gain: 0.08, notes: [{ freq: 1000, at: 0, len: 0.06 }, { freq: 1000, at: 0.12, len: 0.06 }, { freq: 1000, at: 0.24, len: 0.06 }] },
-      pet: { wave: 'square', gain: 0.07, notes: [{ freq: 1200, at: 0, len: 0.04 }, { freq: 900, at: 0.05, len: 0.04 }, { freq: 1500, at: 0.1, len: 0.06 }] },
-      speak: { wave: 'square', gain: 0.07, notes: [{ freq: 440, at: 0, len: 0.05 }, { freq: 660, at: 0.06, len: 0.05 }, { freq: 550, at: 0.12, len: 0.05 }, { freq: 880, at: 0.18, len: 0.05 }, { freq: 660, at: 0.24, len: 0.1 }] },
+      done: {
+        wave: 'square',
+        gain: 0.08,
+        notes: [
+          { freq: 880, at: 0, len: 0.07 },
+          { freq: 1320, at: 0.08, len: 0.07 },
+          { freq: 1760, at: 0.16, len: 0.14 },
+        ],
+      },
+      error: {
+        wave: 'sawtooth',
+        gain: 0.1,
+        notes: [
+          { freq: 220, at: 0, len: 0.12 },
+          { freq: 165, at: 0.14, len: 0.12 },
+          { freq: 110, at: 0.28, len: 0.2 },
+        ],
+      },
+      ask: {
+        wave: 'square',
+        gain: 0.08,
+        notes: [
+          { freq: 1000, at: 0, len: 0.06 },
+          { freq: 1000, at: 0.12, len: 0.06 },
+          { freq: 1000, at: 0.24, len: 0.06 },
+        ],
+      },
+      pet: {
+        wave: 'square',
+        gain: 0.07,
+        notes: [
+          { freq: 1200, at: 0, len: 0.04 },
+          { freq: 900, at: 0.05, len: 0.04 },
+          { freq: 1500, at: 0.1, len: 0.06 },
+        ],
+      },
+      speak: {
+        wave: 'square',
+        gain: 0.07,
+        notes: [
+          { freq: 440, at: 0, len: 0.05 },
+          { freq: 660, at: 0.06, len: 0.05 },
+          { freq: 550, at: 0.12, len: 0.05 },
+          { freq: 880, at: 0.18, len: 0.05 },
+          { freq: 660, at: 0.24, len: 0.1 },
+        ],
+      },
     },
     shapes: [
       {
@@ -122,7 +276,14 @@ export const BUILTIN_PETS: readonly PetDef[] = [
       },
       { fill: '#e5675a', rects: [{ x: 9, y: -4, w: 4, h: 2 }] },
       { fill: '#1f2a37', rects: [{ x: 5, y: 2, w: 12, h: 6 }] },
-      { fill: '#7ee0b0', part: 'eyes', rects: [{ x: 6, y: 3, w: 2, h: 2 }, { x: 14, y: 3, w: 2, h: 2 }] },
+      {
+        fill: '#7ee0b0',
+        part: 'eyes',
+        rects: [
+          { x: 6, y: 3, w: 2, h: 2 },
+          { x: 14, y: 3, w: 2, h: 2 },
+        ],
+      },
       { fill: '#7ee0b0', rects: [{ x: 9, y: 6, w: 4, h: 1, part: 'mouth' }] },
     ],
   },
@@ -150,7 +311,8 @@ function parseRect(v: unknown, where: string): PetRect {
   });
   if (w < 1 || h < 1) fail(`${where}: w and h must be at least 1`);
   const { minX, maxX, minY, maxY } = PET_GRID;
-  if (x < minX || y < minY || x + w > maxX || y + h > maxY) fail(`${where}: must stay inside x ${minX}..${maxX}, y ${minY}..${maxY}`);
+  if (x < minX || y < minY || x + w > maxX || y + h > maxY)
+    fail(`${where}: must stay inside x ${minX}..${maxX}, y ${minY}..${maxY}`);
   const part = parsePart(v.part, where);
   return part ? { x, y, w, h, part } : { x, y, w, h };
 }
@@ -159,9 +321,12 @@ function parseRect(v: unknown, where: string): PetRect {
 export function parsePetDef(raw: unknown): PetDef {
   if (!isObj(raw)) return fail('A pet must be a JSON object {id, label, shapes}');
   const { id, label, shapes, sounds } = raw;
-  if (typeof id !== 'string' || !PET_ID.test(id)) fail('id must be lowercase letters, digits and - (1-32 chars, not starting with -)');
-  if (typeof label !== 'string' || !label.trim() || label.trim().length > PET_LIMITS.label) fail(`label must be 1-${PET_LIMITS.label} characters`);
-  if (!Array.isArray(shapes) || !shapes.length || shapes.length > PET_LIMITS.shapes) fail(`shapes must be a list of 1-${PET_LIMITS.shapes} shapes`);
+  if (typeof id !== 'string' || !PET_ID.test(id))
+    fail('id must be lowercase letters, digits and - (1-32 chars, not starting with -)');
+  if (typeof label !== 'string' || !label.trim() || label.trim().length > PET_LIMITS.label)
+    fail(`label must be 1-${PET_LIMITS.label} characters`);
+  if (!Array.isArray(shapes) || !shapes.length || shapes.length > PET_LIMITS.shapes)
+    fail(`shapes must be a list of 1-${PET_LIMITS.shapes} shapes`);
   let total = 0;
   const clean = (shapes as unknown[]).map((s, i): PetShape => {
     const where = `shapes[${i}]`;

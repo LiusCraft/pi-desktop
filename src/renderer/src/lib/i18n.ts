@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import type { SettingsPayload } from '@shared/protocol';
 import { DEFAULT_LOCALE, matchLocale, translate, type Locale, type MessageKey, type MessageParams } from '@shared/i18n';
 import { activeLocale, setActiveLocale, tr } from '@shared/i18n/runtime';
@@ -15,7 +15,9 @@ function setLocale(next: Locale) {
 }
 
 // The main process resolves "system" to a concrete locale; windows boot with it and follow `settings:changed`.
-setActiveLocale(bridge?.boot?.settings?.locale ?? matchLocale(typeof navigator === 'undefined' ? null : navigator.language));
+setActiveLocale(
+  bridge?.boot?.settings?.locale ?? matchLocale(typeof navigator === 'undefined' ? null : navigator.language),
+);
 if (typeof document !== 'undefined') document.documentElement.lang = activeLocale();
 bridge?.on?.('settings:changed', (s: Partial<SettingsPayload>) => setLocale(s?.locale ?? DEFAULT_LOCALE));
 
@@ -32,5 +34,5 @@ export function useLocale(): Locale {
 }
 export function useT() {
   const locale = useLocale();
-  return (key: MessageKey, params?: MessageParams) => translate(locale, key, params);
+  return useCallback((key: MessageKey, params?: MessageParams) => translate(locale, key, params), [locale]);
 }

@@ -10,7 +10,8 @@ const queue: (() => void)[] = [];
 let running = 0;
 const listeners = new Set<() => void>();
 
-const keyOf = (sid: string, hash: string | null, file: FileChange) => `${sid}\u0000${hash ?? ''}\u0000${file.path}\u0000${file.rev}`;
+const keyOf = (sid: string, hash: string | null, file: FileChange) =>
+  `${sid}\u0000${hash ?? ''}\u0000${file.path}\u0000${file.rev}`;
 
 /** The contents if they are in already. */
 export function contentOf(sid: string, hash: string | null, file: FileChange): FileContent | undefined {

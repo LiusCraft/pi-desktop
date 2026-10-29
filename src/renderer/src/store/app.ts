@@ -1,7 +1,18 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type {
-  AppInfo, ImportableSession, ModelInfo, OutputStyle, PermissionMode, Project, SessionKind, SettingsPayload, SyncStrategy, ThinkingLevel, WorkProject, WorktreeInfo,
+  AppInfo,
+  ImportableSession,
+  ModelInfo,
+  OutputStyle,
+  PermissionMode,
+  Project,
+  SessionKind,
+  SettingsPayload,
+  SyncStrategy,
+  ThinkingLevel,
+  WorkProject,
+  WorktreeInfo,
 } from '@shared/protocol';
 import type { RemoteActive } from '@shared/remote';
 import type { ScheduledTask } from '@shared/schedule';
@@ -11,7 +22,7 @@ import type { SessionView } from './types';
 
 // ------------------------------------------------------------ local preferences
 
-export const read = <T,>(key: string, fallback: T): T => {
+export const read = <T>(key: string, fallback: T): T => {
   try {
     const v = localStorage.getItem(key);
     return v === null ? fallback : (JSON.parse(v) as T);
@@ -42,8 +53,16 @@ export interface Prefs {
 }
 
 const PREF_KEYS: Record<keyof Prefs, string> = {
-  project: 'pd_project', worktree: 'pd_worktree', mode: 'pd_mode', model: 'pd_model', effort: 'pd_effort',
-  viewMode: 'pd_view_mode', outputStyle: 'pd_output_style', workFolder: 'pd_work_folder', previewUrl: 'pd_preview', syncStrategy: 'pd_sync_strategy',
+  project: 'pd_project',
+  worktree: 'pd_worktree',
+  mode: 'pd_mode',
+  model: 'pd_model',
+  effort: 'pd_effort',
+  viewMode: 'pd_view_mode',
+  outputStyle: 'pd_output_style',
+  workFolder: 'pd_work_folder',
+  previewUrl: 'pd_preview',
+  syncStrategy: 'pd_sync_strategy',
 };
 
 function loadPrefs(): Prefs {

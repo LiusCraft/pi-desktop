@@ -57,7 +57,11 @@ interface Exchange {
 }
 
 const exists = (file: string) => {
-  try { return fs.statSync(file).isFile(); } catch { return false; }
+  try {
+    return fs.statSync(file).isFile();
+  } catch {
+    return false;
+  }
 };
 
 /** A path a POSIX shell can open, also from Git Bash on Windows (`C:\x` reads as an escape). */
@@ -91,7 +95,8 @@ export function resolveBash(shellPathSetting?: string): string | null {
     const dir = realBashDir();
     return dir ? path.join(dir, 'bash.exe') : null;
   }
-  for (const file of ['/bin/bash', '/usr/bin/bash', '/usr/local/bin/bash', '/opt/homebrew/bin/bash']) if (exists(file)) return file;
+  for (const file of ['/bin/bash', '/usr/bin/bash', '/usr/local/bin/bash', '/opt/homebrew/bin/bash'])
+    if (exists(file)) return file;
   return exists('/bin/sh') ? '/bin/sh' : null;
 }
 
@@ -124,11 +129,18 @@ export class SharedShell {
         const done = await this.send(this.invoke(script, id), id, options);
         return { exitCode: done.exitCode };
       } finally {
-        try { fs.unlinkSync(script); } catch { /* already gone: nothing to clean up */ }
+        try {
+          fs.unlinkSync(script);
+        } catch {
+          /* already gone: nothing to clean up */
+        }
       }
     });
     // A failed command must not take the queue down with it.
-    this.queue = task.then(() => {}, () => {});
+    this.queue = task.then(
+      () => {},
+      () => {},
+    );
     return task;
   }
 
@@ -136,7 +148,11 @@ export class SharedShell {
     this.closed = true;
     this.stop(new Error('The shell was closed'));
     if (this.scripts) {
-      try { fs.rmSync(this.scripts, { recursive: true, force: true }); } catch { /* temp files: nothing to report if they are already gone */ }
+      try {
+        fs.rmSync(this.scripts, { recursive: true, force: true });
+      } catch {
+        /* temp files: nothing to report if they are already gone */
+      }
       this.scripts = undefined;
     }
   }
@@ -148,7 +164,9 @@ export class SharedShell {
     if (this.child && !this.dead) return;
     // A shell that died (a timeout, `exit`) is replaced where the last marker left off, not back
     // in the session folder: the model's `cd` should outlive a command that hung.
-    this.starting ??= this.start(this.folder ?? cwd, env ?? process.env).finally(() => { this.starting = undefined; });
+    this.starting ??= this.start(this.folder ?? cwd, env ?? process.env).finally(() => {
+      this.starting = undefined;
+    });
     await this.starting;
   }
 
@@ -180,7 +198,11 @@ export class SharedShell {
       const run = this.current;
       // A command that ran `exit` ends its shell on purpose: that is its exit code, not a crash.
       if (run && code !== null) {
-        run.onData(Buffer.from(`\n[The shell ended here (exit ${code}); the next command starts a new one in ${this.folder}.]\n`));
+        run.onData(
+          Buffer.from(
+            `\n[The shell ended here (exit ${code}); the next command starts a new one in ${this.folder}.]\n`,
+          ),
+        );
         this.finish(run, code, undefined);
         return;
       }
@@ -188,14 +210,19 @@ export class SharedShell {
     });
 
     try {
-      const ready = await this.send(`printf '\\n${MARKER}ready 0 %s\\n' "$PWD"`, 'ready', { onData: () => {}, timeoutMs: START_TIMEOUT_MS });
+      const ready = await this.send(`printf '\\n${MARKER}ready 0 %s\\n' "$PWD"`, 'ready', {
+        onData: () => {},
+        timeoutMs: START_TIMEOUT_MS,
+      });
       // A shell that leaves while it is being started (a wrapper that is not a shell at all) answered
       // nothing: that is a start failure, not a command that ended.
       if (this.dead) throw new ShellStartError(`The shell exited while starting (${ready.exitCode}).`);
       if (ready.cwd) this.folder = inWindowsSpelling(ready.cwd);
     } catch (err) {
       this.stop(err instanceof Error ? err : new Error(String(err)));
-      throw err instanceof ShellStartError ? err : new ShellStartError(`The shell did not answer (${(err as Error).message}).`);
+      throw err instanceof ShellStartError
+        ? err
+        : new ShellStartError(`The shell did not answer (${(err as Error).message}).`);
     }
   }
 
@@ -211,9 +238,25 @@ export class SharedShell {
     if (process.platform === 'win32') {
       // Synchronous on purpose: a shell that still holds its folder makes deleting a worktree
       // fail with EBUSY, so dispose must not return before the tree is gone.
-      try { spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore', timeout: KILL_TIMEOUT_MS }); } catch { /* already gone */ }
+      try {
+        spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+          windowsHide: true,
+          stdio: 'ignore',
+          timeout: KILL_TIMEOUT_MS,
+        });
+      } catch {
+        /* already gone */
+      }
     } else {
-      try { process.kill(-child.pid, 'SIGKILL'); } catch { try { child.kill('SIGKILL'); } catch { /* already gone */ } }
+      try {
+        process.kill(-child.pid, 'SIGKILL');
+      } catch {
+        try {
+          child.kill('SIGKILL');
+        } catch {
+          /* already gone */
+        }
+      }
     }
   }
 
@@ -221,9 +264,16 @@ export class SharedShell {
 
   private send(line: string, id: string, options: ShellRun): Promise<{ exitCode: number; cwd?: string }> {
     // Not a start failure: the shell was fine and died between two commands, so the next one gets a new one.
-    if (this.dead || !this.child) return Promise.reject(new Error('The shell exited before this command ran. Run it again.'));
+    if (this.dead || !this.child)
+      return Promise.reject(new Error('The shell exited before this command ran. Run it again.'));
     return new Promise((resolve, reject) => {
-      const run: Exchange = { marker: Buffer.from(`\n${MARKER}${id} `), onData: options.onData, pending: Buffer.alloc(0), resolve, reject };
+      const run: Exchange = {
+        marker: Buffer.from(`\n${MARKER}${id} `),
+        onData: options.onData,
+        pending: Buffer.alloc(0),
+        resolve,
+        reject,
+      };
       this.current = run;
 
       if (options.timeoutMs !== undefined) {
@@ -390,7 +440,9 @@ export class ShellCommands {
 
   private fallback(): BashOperations {
     // The same bash the shared shell would use: left to PATH, Windows may find the WSL launcher first.
-    this.local ??= createLocalBashOperations({ shellPath: resolveBash(this.options.shellPath?.()) ?? this.options.shellPath?.() });
+    this.local ??= createLocalBashOperations({
+      shellPath: resolveBash(this.options.shellPath?.()) ?? this.options.shellPath?.(),
+    });
     return this.local;
   }
 

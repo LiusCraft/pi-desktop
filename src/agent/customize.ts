@@ -10,12 +10,25 @@ import os from 'node:os';
 import path from 'node:path';
 import spawn from 'cross-spawn';
 import {
-  DefaultPackageManager, DefaultResourceLoader, parseFrontmatter, SettingsManager,
+  DefaultPackageManager,
+  DefaultResourceLoader,
+  parseFrontmatter,
+  SettingsManager,
 } from '@earendil-works/pi-coding-agent';
 import { DEFAULT_MCP_EXPOSURE, MCP_EXPOSURES } from '@shared/protocol';
 import { PLUGIN_RESOURCE_KINDS } from '@shared/protocol';
 import type {
-  ConnectorDraft, ConnectorInfo, CustomizeCatalog, CustomizeScope, PluginInfo, PluginResource, PluginResourceKind, PromptDraft, PromptInfo, SkillDraft, SkillInfo,
+  ConnectorDraft,
+  ConnectorInfo,
+  CustomizeCatalog,
+  CustomizeScope,
+  PluginInfo,
+  PluginResource,
+  PluginResourceKind,
+  PromptDraft,
+  PromptInfo,
+  SkillDraft,
+  SkillInfo,
 } from '@shared/protocol';
 
 type PackageEntry = { source: string } & Partial<Record<PluginResourceKind, string[]>> & { autoload?: boolean };
@@ -33,7 +46,8 @@ export interface CustomizeEnv {
 /** Same home folder pi uses to find `~/.agents/skills`. */
 const homeDir = () => process.env.HOME || os.homedir();
 const agentsSkillsDir = () => path.join(homeDir(), '.agents', 'skills');
-const claudeSkillsDir = () => path.join(process.env.CLAUDE_CONFIG_DIR?.trim() || path.join(homeDir(), '.claude'), 'skills');
+const claudeSkillsDir = () =>
+  path.join(process.env.CLAUDE_CONFIG_DIR?.trim() || path.join(homeDir(), '.claude'), 'skills');
 
 const NAME = /^[a-z0-9][a-z0-9_-]*$/i;
 const userSettings = (env: CustomizeEnv) => path.join(env.agentDir, 'settings.json');
@@ -73,7 +87,10 @@ function disabledSkillFiles(settingsFile: string | null, baseDir: string): strin
 function describeSkillFile(file: string): { name: string; description: string; manualOnly: boolean } | null {
   try {
     const { frontmatter: fm } = parseFrontmatter<Record<string, unknown>>(fs.readFileSync(file, 'utf8'));
-    const base = path.basename(file).toLowerCase() === 'skill.md' ? path.basename(path.dirname(file)) : path.basename(file, path.extname(file));
+    const base =
+      path.basename(file).toLowerCase() === 'skill.md'
+        ? path.basename(path.dirname(file))
+        : path.basename(file, path.extname(file));
     return {
       name: String(fm.name ?? base),
       description: String(fm.description ?? ''),
@@ -85,14 +102,20 @@ function describeSkillFile(file: string): { name: string; description: string; m
 }
 
 /** Resources that came out of a package are `package`, whatever scope installed the package. */
-const scopeOf = (info: { scope?: string; origin?: string }): CustomizeScope => (info.origin === 'package' ? 'package' : info.scope === 'project' ? 'project' : 'user');
+const scopeOf = (info: { scope?: string; origin?: string }): CustomizeScope =>
+  info.origin === 'package' ? 'package' : info.scope === 'project' ? 'project' : 'user';
 const norm = (p: string) => path.resolve(p).toLowerCase();
 
 async function loadResources(env: CustomizeEnv) {
   const cwd = env.project ?? env.agentDir;
   const settingsManager = SettingsManager.create(cwd, env.agentDir, { projectTrusted: env.projectTrusted });
   const loader = new DefaultResourceLoader({
-    cwd, agentDir: env.agentDir, settingsManager, noExtensions: true, noThemes: true, noContextFiles: true,
+    cwd,
+    agentDir: env.agentDir,
+    settingsManager,
+    noExtensions: true,
+    noThemes: true,
+    noContextFiles: true,
   });
   await loader.reload();
   return { loader, settingsManager };
@@ -111,7 +134,10 @@ function collectSkills(env: CustomizeEnv, loaded: ReturnType<DefaultResourceLoad
   const seen = new Set(out.map((s) => norm(s.file)));
   const off: [string, CustomizeScope][] = [
     ...disabledSkillFiles(userSettings(env), env.agentDir).map((f): [string, CustomizeScope] => [f, 'user']),
-    ...disabledSkillFiles(env.projectTrusted ? projectSettings(env) : null, env.project ? path.join(env.project, '.pi') : '').map((f): [string, CustomizeScope] => [f, 'project']),
+    ...disabledSkillFiles(
+      env.projectTrusted ? projectSettings(env) : null,
+      env.project ? path.join(env.project, '.pi') : '',
+    ).map((f): [string, CustomizeScope] => [f, 'project']),
   ];
   for (const [given, scope] of off) {
     const file = fs.existsSync(given) && fs.statSync(given).isDirectory() ? path.join(given, 'SKILL.md') : given;
@@ -126,7 +152,8 @@ function collectSkills(env: CustomizeEnv, loaded: ReturnType<DefaultResourceLoad
 
 /** The settings file and base folder that own a skill's on/off switch. */
 function skillSwitchTarget(env: CustomizeEnv, file: string) {
-  const inside = (root: string | null) => !!root && (norm(file) === norm(root) || norm(file).startsWith(`${norm(root)}${path.sep}`));
+  const inside = (root: string | null) =>
+    !!root && (norm(file) === norm(root) || norm(file).startsWith(`${norm(root)}${path.sep}`));
   if (inside(env.project) && projectSettings(env)) return projectSettings(env)!;
   return userSettings(env);
 }
@@ -134,7 +161,9 @@ function skillSwitchTarget(env: CustomizeEnv, file: string) {
 export async function setSkillDisabled(env: CustomizeEnv, file: string, disabled: boolean) {
   const target = skillSwitchTarget(env, file);
   const settings = readJson(target);
-  const list: string[] = Array.isArray(settings.skills) ? settings.skills.filter((e: unknown) => typeof e === 'string') : [];
+  const list: string[] = Array.isArray(settings.skills)
+    ? settings.skills.filter((e: unknown) => typeof e === 'string')
+    : [];
   const base = target === userSettings(env) ? env.agentDir : path.join(env.project!, '.pi');
   const same = (entry: string) => entry.startsWith('-') && norm(path.resolve(base, entry.slice(1))) === norm(file);
   const next = list.filter((e) => !same(e));
@@ -153,24 +182,37 @@ export async function createSkill(env: CustomizeEnv, draft: SkillDraft) {
   if (!description) throw new Error(tr('ag.skillNeedDescription'));
   if (!body) throw new Error(tr('ag.skillNeedBody'));
   if (draft.scope === 'project' && !env.project) throw new Error(tr('ag.needProjectShort'));
-  const root = draft.home === 'agents'
-    ? (draft.scope === 'project' ? path.join(env.project!, '.agents', 'skills') : agentsSkillsDir())
-    : (draft.scope === 'project' ? path.join(env.project!, '.pi', 'skills') : path.join(env.agentDir, 'skills'));
+  const root =
+    draft.home === 'agents'
+      ? draft.scope === 'project'
+        ? path.join(env.project!, '.agents', 'skills')
+        : agentsSkillsDir()
+      : draft.scope === 'project'
+        ? path.join(env.project!, '.pi', 'skills')
+        : path.join(env.agentDir, 'skills');
   const dir = path.join(root, name);
   if (fs.existsSync(dir)) throw new Error(tr('ag.skillExists', { name }));
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${JSON.stringify(name)}\ndescription: ${JSON.stringify(description)}\n---\n\n${body}\n`, 'utf8');
+  fs.writeFileSync(
+    path.join(dir, 'SKILL.md'),
+    `---\nname: ${JSON.stringify(name)}\ndescription: ${JSON.stringify(description)}\n---\n\n${body}\n`,
+    'utf8',
+  );
   return catalog(env);
 }
 
 /** Prompt files the user may change: the ones directly in pi's prompts folder or the project's `.pi/prompts`. */
 function promptDirs(env: CustomizeEnv) {
-  return { user: path.join(env.agentDir, 'prompts'), project: env.project ? path.join(env.project, '.pi', 'prompts') : null };
+  return {
+    user: path.join(env.agentDir, 'prompts'),
+    project: env.project ? path.join(env.project, '.pi', 'prompts') : null,
+  };
 }
 function ownPromptFile(env: CustomizeEnv, file: string) {
   const dirs = promptDirs(env);
   const here = norm(path.dirname(file));
-  if (!/\.md$/i.test(file) || ![dirs.user, dirs.project].some((d) => d && norm(d) === here)) throw new Error(tr('ag.promptNotOwn'));
+  if (!/\.md$/i.test(file) || ![dirs.user, dirs.project].some((d) => d && norm(d) === here))
+    throw new Error(tr('ag.promptNotOwn'));
 }
 
 /** Creates a command, or with `draft.file` rewrites that one (renaming the file when the name changed). */
@@ -194,7 +236,11 @@ export async function createPrompt(env: CustomizeEnv, draft: PromptDraft) {
 
 /** Folders a skill may be deleted from: the personal and project skill folders, never a linked folder or a package. */
 function skillRoots(env: CustomizeEnv) {
-  return [path.join(env.agentDir, 'skills'), agentsSkillsDir(), ...(env.project ? [path.join(env.project, '.pi', 'skills'), path.join(env.project, '.agents', 'skills')] : [])];
+  return [
+    path.join(env.agentDir, 'skills'),
+    agentsSkillsDir(),
+    ...(env.project ? [path.join(env.project, '.pi', 'skills'), path.join(env.project, '.agents', 'skills')] : []),
+  ];
 }
 
 /** Delete a personal or project skill: its folder, or the single Markdown file it is. */
@@ -243,9 +289,14 @@ function claudeSkillsOffer(env: CustomizeEnv): { dir: string; count: number } | 
   const dir = claudeSkillsDir();
   const settings = readJson(userSettings(env));
   const paths: unknown[] = Array.isArray(settings.skills) ? settings.skills : [];
-  if (paths.some((e) => typeof e === 'string' && !e.startsWith('-') && norm(path.resolve(env.agentDir, e)) === norm(dir))) return null;
+  if (
+    paths.some((e) => typeof e === 'string' && !e.startsWith('-') && norm(path.resolve(env.agentDir, e)) === norm(dir))
+  )
+    return null;
   try {
-    const count = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory() && fs.existsSync(path.join(dir, e.name, 'SKILL.md'))).length;
+    const count = fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && fs.existsSync(path.join(dir, e.name, 'SKILL.md'))).length;
     return count ? { dir, count } : null;
   } catch {
     return null;
@@ -285,17 +336,23 @@ function collectConnectors(env: CustomizeEnv): ConnectorInfo[] {
       // A project entry without command/url only overrides a user entry; it is not a server of its own.
       if (!http && !stdio) continue;
       out.push({
-        name, scope,
+        name,
+        scope,
         transport: http ? 'http' : 'stdio',
         target: http ? raw.url : [raw.command, ...(Array.isArray(raw.args) ? raw.args : [])].join(' '),
         command: stdio ? raw.command : undefined,
         args: stdio && Array.isArray(raw.args) ? raw.args.map(String) : undefined,
         url: http ? raw.url : undefined,
-        pairs: Object.entries<any>((http ? raw.headers : raw.env) ?? {}).map(([k, v]) => `${k}${http ? ': ' : '='}${v}`),
+        pairs: Object.entries<any>((http ? raw.headers : raw.env) ?? {}).map(
+          ([k, v]) => `${k}${http ? ': ' : '='}${v}`,
+        ),
         description: typeof raw.description === 'string' ? raw.description : undefined,
         enabled: raw.enabled !== false,
         exposure: MCP_EXPOSURES.includes(raw.exposure) ? raw.exposure : DEFAULT_MCP_EXPOSURE,
-        tools: (cache[name]?.tools ?? []).map((t: any) => ({ name: String(t.name), description: String(t.description ?? '') })),
+        tools: (cache[name]?.tools ?? []).map((t: any) => ({
+          name: String(t.name),
+          description: String(t.description ?? ''),
+        })),
       });
     }
   }
@@ -312,7 +369,8 @@ export function saveConnector(env: CustomizeEnv, draft: ConnectorDraft) {
   if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new Error(tr('ag.nameRuleShort'));
   const file = mcpFile(env, draft.scope);
   const config = readJson(file);
-  const servers: Record<string, any> = config.mcpServers && typeof config.mcpServers === 'object' ? config.mcpServers : {};
+  const servers: Record<string, any> =
+    config.mcpServers && typeof config.mcpServers === 'object' ? config.mcpServers : {};
   const key = (n: string) => n.replace(/-/g, '_').toLowerCase();
   const clash = Object.keys(servers).find((n) => key(n) === key(name) && n !== (draft.originalName ?? ''));
   if (clash) throw new Error(tr('ag.connectorExists', { name: clash }));
@@ -322,7 +380,9 @@ export function saveConnector(env: CustomizeEnv, draft: ConnectorDraft) {
     const url = draft.url?.trim() ?? '';
     if (!/^https?:\/\//i.test(url)) throw new Error(tr('ag.needHttpUrl'));
     entry.url = url;
-    const headers = Object.fromEntries((draft.pairs ?? []).map((l) => splitPair(l, ':')).filter((p): p is [string, string] => !!p));
+    const headers = Object.fromEntries(
+      (draft.pairs ?? []).map((l) => splitPair(l, ':')).filter((p): p is [string, string] => !!p),
+    );
     if (Object.keys(headers).length) entry.headers = headers;
     // Keep what the form does not edit (OAuth settings and the like).
     for (const k of ['auth', 'oauth']) if (previous?.[k]) entry[k] = previous[k];
@@ -331,7 +391,9 @@ export function saveConnector(env: CustomizeEnv, draft: ConnectorDraft) {
     if (!command) throw new Error(tr('ag.needCommand'));
     entry.command = command;
     if (draft.args?.length) entry.args = draft.args;
-    const env_ = Object.fromEntries((draft.pairs ?? []).map((l) => splitPair(l, '=')).filter((p): p is [string, string] => !!p));
+    const env_ = Object.fromEntries(
+      (draft.pairs ?? []).map((l) => splitPair(l, '=')).filter((p): p is [string, string] => !!p),
+    );
     if (Object.keys(env_).length) entry.env = env_;
     if (previous?.cwd) entry.cwd = previous.cwd;
   }
@@ -374,10 +436,19 @@ export function removeConnector(env: CustomizeEnv, name: string, scope: 'user' |
 function hideChildWindows(pm: DefaultPackageManager) {
   const patch = pm as unknown as {
     spawnCommand: (command: string, args: string[], options?: { cwd?: string }) => ReturnType<typeof spawn>;
-    spawnCaptureCommand: (command: string, args: string[], options?: { cwd?: string; env?: NodeJS.ProcessEnv }) => ReturnType<typeof spawn>;
+    spawnCaptureCommand: (
+      command: string,
+      args: string[],
+      options?: { cwd?: string; env?: NodeJS.ProcessEnv },
+    ) => ReturnType<typeof spawn>;
   };
   const hidden = (command: string, args: string[], options?: { cwd?: string; env?: NodeJS.ProcessEnv }) =>
-    spawn(command, args, { cwd: options?.cwd, env: { ...process.env, ...options?.env }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    spawn(command, args, {
+      cwd: options?.cwd,
+      env: { ...process.env, ...options?.env },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
   patch.spawnCommand = (command, args, options) => {
     const child = hidden(command, args, options);
     child.stdout?.resume();
@@ -432,7 +503,11 @@ function removeTree(dir: string) {
       else fs.chmodSync(child, 0o666);
     }
   };
-  try { writable(dir); } catch { /* removed below or reported by rmSync */ }
+  try {
+    writable(dir);
+  } catch {
+    /* removed below or reported by rmSync */
+  }
   fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 }
 
@@ -441,11 +516,19 @@ const SOURCE_MARK = '.pi-desktop-source';
 
 function gitClone(repo: string, dest: string) {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn('git', ['clone', '--depth', '1', repo, dest], { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+    const child = spawn('git', ['clone', '--depth', '1', repo, dest], {
+      stdio: ['ignore', 'ignore', 'pipe'],
+      windowsHide: true,
+    });
     let stderr = '';
-    child.stderr?.on('data', (d) => { stderr += d; });
+    child.stderr?.on('data', (d) => {
+      stderr += d;
+    });
     const timer = setTimeout(() => child.kill(), CLONE_TIMEOUT_MS);
-    child.on('error', (err) => { clearTimeout(timer); reject(err); });
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
     child.on('close', (code) => {
       clearTimeout(timer);
       if (code === 0) resolve();
@@ -466,7 +549,10 @@ export async function installSkillRepo(env: CustomizeEnv, repo: string, subdir: 
     await gitClone(repo, clone);
     const root = path.join(clone, subdir);
     const names = fs.existsSync(root)
-      ? fs.readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory() && fs.existsSync(path.join(root, e.name, 'SKILL.md'))).map((e) => e.name)
+      ? fs
+          .readdirSync(root, { withFileTypes: true })
+          .filter((e) => e.isDirectory() && fs.existsSync(path.join(root, e.name, 'SKILL.md')))
+          .map((e) => e.name)
       : [];
     if (!names.length) throw new Error(tr('ag.noSkillsInRepo', { repo }));
     const dest = path.join(env.agentDir, 'skills');
@@ -477,7 +563,11 @@ export async function installSkillRepo(env: CustomizeEnv, repo: string, subdir: 
       fs.writeFileSync(path.join(dest, name, SOURCE_MARK), repo, 'utf8');
     }
   } finally {
-    try { removeTree(tmp); } catch { /* the temp folder is cleared by the system eventually */ }
+    try {
+      removeTree(tmp);
+    } catch {
+      /* the temp folder is cleared by the system eventually */
+    }
   }
   return catalog(env);
 }
@@ -493,7 +583,10 @@ export function healPackages(env: CustomizeEnv) {
 
 export async function removePlugin(env: CustomizeEnv, source: string, scope: 'user' | 'project') {
   const removed = await packageManager(env).removeAndPersist(source, { local: scope === 'project' });
-  if (!removed) throw new Error(tr('ag.pluginNotIn', { source, scope: tr(scope === 'project' ? 'ag.scopeProject' : 'ag.scopeGlobal') }));
+  if (!removed)
+    throw new Error(
+      tr('ag.pluginNotIn', { source, scope: tr(scope === 'project' ? 'ag.scopeProject' : 'ag.scopeGlobal') }),
+    );
   return catalog(env);
 }
 
@@ -504,7 +597,11 @@ export async function updatePlugins(env: CustomizeEnv, source: string | null) {
 }
 
 /** Every file a package brings, with whether the entry's filters leave it on. */
-export async function pluginResources(env: CustomizeEnv, source: string, scope: 'user' | 'project'): Promise<PluginResource[]> {
+export async function pluginResources(
+  env: CustomizeEnv,
+  source: string,
+  scope: 'user' | 'project',
+): Promise<PluginResource[]> {
   const resolved = await packageManager(env).resolve(async () => 'skip');
   const out: PluginResource[] = [];
   for (const kind of PLUGIN_RESOURCE_KINDS) {
@@ -521,7 +618,13 @@ const posix = (p: string) => p.split(path.sep).join('/');
 const packageRelative = (root: string | undefined, file: string) => posix(root ? path.relative(root, file) : file);
 
 /** Writes `-<file>` (force exclude) or removes it on the package entry; empty filter lists are dropped since `[]` means "none". */
-export async function setPluginResource(env: CustomizeEnv, source: string, scope: 'user' | 'project', resource: PluginResource, enabled: boolean) {
+export async function setPluginResource(
+  env: CustomizeEnv,
+  source: string,
+  scope: 'user' | 'project',
+  resource: PluginResource,
+  enabled: boolean,
+) {
   const sm = SettingsManager.create(env.project ?? env.agentDir, env.agentDir, { projectTrusted: env.projectTrusted });
   const project = scope === 'project';
   const list = [...((project ? sm.getProjectSettings() : sm.getGlobalSettings()).packages ?? [])];
@@ -529,7 +632,7 @@ export async function setPluginResource(env: CustomizeEnv, source: string, scope
   if (at < 0) throw new Error(tr('ag.pluginNotFound', { source }));
   const root = packageManager(env).getInstalledPath(source, scope);
   const rel = packageRelative(root, resource.path);
-  const entry = typeof list[at] === 'string' ? { source } : { ...(list[at] as object) } as PackageEntry;
+  const entry = typeof list[at] === 'string' ? { source } : ({ ...(list[at] as object) } as PackageEntry);
   const patterns = (entry[resource.kind] ?? []).filter((p) => p !== `-${rel}` && p !== `+${rel}`);
   if (!enabled) patterns.push(`-${rel}`);
   if (patterns.length) entry[resource.kind] = patterns;
@@ -546,11 +649,19 @@ export async function setPluginResource(env: CustomizeEnv, source: string, scope
 
 export async function catalog(env: CustomizeEnv): Promise<CustomizeCatalog> {
   const { loader } = await loadResources(env);
-  const plugins: PluginInfo[] = packageManager(env).listConfiguredPackages().map((p) => ({
-    source: p.source, scope: p.scope, installedPath: p.installedPath, filtered: p.filtered,
-  }));
+  const plugins: PluginInfo[] = packageManager(env)
+    .listConfiguredPackages()
+    .map((p) => ({
+      source: p.source,
+      scope: p.scope,
+      installedPath: p.installedPath,
+      filtered: p.filtered,
+    }));
   const prompts: PromptInfo[] = loader.getPrompts().prompts.map((p) => ({
-    name: p.name, description: p.description, file: p.filePath, scope: scopeOf(p.sourceInfo),
+    name: p.name,
+    description: p.description,
+    file: p.filePath,
+    scope: scopeOf(p.sourceInfo),
   }));
   return {
     skills: collectSkills(env, loader.getSkills()),

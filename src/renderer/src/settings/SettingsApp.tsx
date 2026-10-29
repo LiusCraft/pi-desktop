@@ -1,11 +1,44 @@
 // Settings window. Every value comes from the main process (single source of
 // truth), so the main window and this one can never disagree.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { BrainIcon, ChevronRightIcon, BriefcaseIcon, CodeIcon, DatabaseIcon, FolderIcon, InfoIcon, MonitorSmartphoneIcon, MoonIcon, PlusIcon, SettingsIcon, ShieldCheckIcon, Trash2Icon, Volume2Icon } from 'lucide-react';
+import {
+  BrainIcon,
+  ChevronRightIcon,
+  BriefcaseIcon,
+  CodeIcon,
+  DatabaseIcon,
+  FolderIcon,
+  InfoIcon,
+  MonitorSmartphoneIcon,
+  MoonIcon,
+  PlusIcon,
+  SettingsIcon,
+  ShieldCheckIcon,
+  Trash2Icon,
+  Volume2Icon,
+} from 'lucide-react';
 import { toast } from 'sonner';
-import type { AppInfo, Palette, Project, Settings, SettingsPayload, SuggestionModelMode, TerminalShell, WorkIdeasModelMode } from '@shared/protocol';
+import type {
+  AppInfo,
+  Palette,
+  Project,
+  Settings,
+  SettingsPayload,
+  SuggestionModelMode,
+  TerminalShell,
+  WorkIdeasModelMode,
+} from '@shared/protocol';
 import { LOCALES, LOCALE_NAMES, type LanguageSetting, type MessageKey } from '@shared/i18n';
-import { PALETTES, AUTO_REVIEW_DEFAULT_TIMEOUT, AUTO_REVIEW_MAX_TIMEOUT, AUTO_REVIEW_MIN_TIMEOUT, SUGGESTION_DEFAULT_CONTEXT, SUGGESTION_MAX_CONTEXT, TERMINAL_DEFAULT_LINES, TERMINAL_MAX_LINES } from '@shared/protocol';
+import {
+  PALETTES,
+  AUTO_REVIEW_DEFAULT_TIMEOUT,
+  AUTO_REVIEW_MAX_TIMEOUT,
+  AUTO_REVIEW_MIN_TIMEOUT,
+  SUGGESTION_DEFAULT_CONTEXT,
+  SUGGESTION_MAX_CONTEXT,
+  TERMINAL_DEFAULT_LINES,
+  TERMINAL_MAX_LINES,
+} from '@shared/protocol';
 import { BUILTIN_PETS, BUILTIN_PET_IDS, DEFAULT_PET_ID } from '@shared/pets';
 import { PET_SOUND_EVENTS, SOUND_EVENTS } from '@shared/sounds';
 import { useCopy } from '@/components/common/Copy';
@@ -37,7 +70,17 @@ import { UpdateSection } from './UpdateSection';
 import { WebSearchSection } from './WebSearchSection';
 import { Group, Heading, Panel, Row, groupDomId } from './ui';
 
-type Section = 'appearance' | 'general' | 'work' | 'code' | 'models' | 'projects' | 'privacy' | 'remote' | 'storage' | 'about';
+type Section =
+  | 'appearance'
+  | 'general'
+  | 'work'
+  | 'code'
+  | 'models'
+  | 'projects'
+  | 'privacy'
+  | 'remote'
+  | 'storage'
+  | 'about';
 /** A group inside a section: a leaf of the sidebar tree that scrolls to the group's DOM id (`group-<id>`). */
 interface GroupNode {
   id: string;
@@ -100,20 +143,50 @@ interface Swatch<T extends string> {
 }
 
 /** Pick one of a few previews, each a labelled tile (theme, pet skin). */
-function SwatchGroup<T extends string>({ value, onChange, options }: { value: T; onChange: (id: T) => void; options: readonly Swatch<T>[] }) {
+function SwatchGroup<T extends string>({
+  value,
+  onChange,
+  options,
+}: {
+  value: T;
+  onChange: (id: T) => void;
+  options: readonly Swatch<T>[];
+}) {
   return (
-    <ToggleGroup type="single" value={value} onValueChange={(id) => onChange((id || value) as T)} spacing={1} className="gap-4">
+    <ToggleGroup
+      type="single"
+      value={value}
+      onValueChange={(id) => onChange((id || value) as T)}
+      spacing={1}
+      className="gap-4"
+    >
       {options.map((o) => (
-        <ToggleGroupItem key={o.id} value={o.id} className="group/swatch h-auto flex-col gap-2 p-0 font-normal focus-visible:border-transparent focus-visible:ring-0 hover:bg-transparent data-[state=on]:bg-transparent">
-          <span className={cn('flex h-16 w-24 items-center justify-center rounded-lg border-2 border-border group-data-[state=on]/swatch:border-primary', o.tile)}>{o.preview}</span>
-          <span className="text-xs text-muted-foreground group-data-[state=on]/swatch:font-medium group-data-[state=on]/swatch:text-foreground">{o.label}</span>
+        <ToggleGroupItem
+          key={o.id}
+          value={o.id}
+          className="group/swatch h-auto flex-col gap-2 p-0 font-normal hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 data-[state=on]:bg-transparent"
+        >
+          <span
+            className={cn(
+              'flex h-16 w-24 items-center justify-center rounded-lg border-2 border-border group-data-[state=on]/swatch:border-primary',
+              o.tile,
+            )}
+          >
+            {o.preview}
+          </span>
+          <span className="text-xs text-muted-foreground group-data-[state=on]/swatch:font-medium group-data-[state=on]/swatch:text-foreground">
+            {o.label}
+          </span>
         </ToggleGroupItem>
       ))}
     </ToggleGroup>
   );
 }
 
-const PALETTE_LABELS: Record<Palette, MessageKey> = { default: 'settings.paletteDefault', vscode: 'settings.paletteVscode' };
+const PALETTE_LABELS: Record<Palette, MessageKey> = {
+  default: 'settings.paletteDefault',
+  vscode: 'settings.paletteVscode',
+};
 const THEMES: readonly { id: 'light' | 'dark' | 'system'; label: MessageKey; tile: string }[] = [
   { id: 'light', label: 'settings.themeLight', tile: 'bg-[#faf9f5]' },
   { id: 'dark', label: 'settings.themeDark', tile: 'bg-[#262624]' },
@@ -121,7 +194,21 @@ const THEMES: readonly { id: 'light' | 'dark' | 'system'; label: MessageKey; til
 ];
 
 /** Number input that commits on blur or Enter, so a half-typed count is never saved. */
-function CountInput({ value, disabled, min = 1, max = SUGGESTION_MAX_CONTEXT, label, onCommit }: { value: number; disabled?: boolean; min?: number; max?: number; label?: string; onCommit: (value: number) => void }) {
+function CountInput({
+  value,
+  disabled,
+  min = 1,
+  max = SUGGESTION_MAX_CONTEXT,
+  label,
+  onCommit,
+}: {
+  value: number;
+  disabled?: boolean;
+  min?: number;
+  max?: number;
+  label?: string;
+  onCommit: (value: number) => void;
+}) {
   const t = useT();
   const [text, setText] = useState(String(value));
   useEffect(() => setText(String(value)), [value]);
@@ -140,7 +227,9 @@ function CountInput({ value, disabled, min = 1, max = SUGGESTION_MAX_CONTEXT, la
       aria-label={label ?? t('settings.predictCountLabel')}
       onChange={(e) => setText(e.target.value)}
       onBlur={commit}
-      onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') commit();
+      }}
       className="h-8 w-16 text-center"
     />
   );
@@ -166,16 +255,43 @@ function AddPet({ onSave }: { onSave: (pet: unknown) => Promise<void> }) {
       setError(errText(err));
     }
   };
-  if (!open) return <Button variant="outline" size="sm" onClick={() => setOpen(true)}><PlusIcon className="size-4" />{t('settings.addPet')}</Button>;
+  if (!open)
+    return (
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+        <PlusIcon className="size-4" />
+        {t('settings.addPet')}
+      </Button>
+    );
   return (
-    <div className="w-full space-y-2">
-      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">{t('settings.petFormat')}<Tip>{t('settings.petFormat.tip')}</Tip></p>
-      <Textarea value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} className="h-56 font-mono text-xs" />
+    <div className="space-y-2 w-full">
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        {t('settings.petFormat')}
+        <Tip>{t('settings.petFormat.tip')}</Tip>
+      </p>
+      <Textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        spellCheck={false}
+        className="h-56 font-mono text-xs"
+      />
       {error && <p className="text-xs text-destructive">{error}</p>}
       <div className="flex gap-2">
-        <Button size="sm" onClick={() => void save()}>{t('settings.save')}</Button>
-        <Button variant="ghost" size="sm" onClick={() => { setOpen(false); setError(''); }}>{t('settings.cancel')}</Button>
-        <Button variant="ghost" size="sm" onClick={() => copy(template)}>{t('settings.copyTemplate')}</Button>
+        <Button size="sm" onClick={() => void save()}>
+          {t('settings.save')}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setOpen(false);
+            setError('');
+          }}
+        >
+          {t('settings.cancel')}
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => copy(template)}>
+          {t('settings.copyTemplate')}
+        </Button>
       </div>
     </div>
   );
@@ -184,9 +300,13 @@ function AddPet({ onSave }: { onSave: (pet: unknown) => Promise<void> }) {
 export function SettingsApp() {
   const t = useT();
   const locale = useLocale();
-  useEffect(() => { document.title = t('settings.title'); }, [locale]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    document.title = t('settings.title');
+  }, [locale]); // eslint-disable-line react-hooks/exhaustive-deps
   const [settings, setSettings] = useState<Partial<SettingsPayload>>(bridge.boot.settings ?? {});
-  const [section, setSection] = useState<Section>(() => (isSection(location.hash.slice(1)) ? normalizeSection(location.hash.slice(1)) : 'appearance'));
+  const [section, setSection] = useState<Section>(() =>
+    isSection(location.hash.slice(1)) ? normalizeSection(location.hash.slice(1)) : 'appearance',
+  );
   /** Sections whose group list the user folded away; the rest show their groups. */
   const [folded, setFolded] = useState<ReadonlySet<Section>>(new Set());
   /** A group to scroll to once its section has rendered; a fresh object each click so the same group can be hit twice. */
@@ -201,26 +321,34 @@ export function SettingsApp() {
   const { copied, copy } = useCopy();
 
   useEffect(() => {
-    call('terminal:shells').then(setShells).catch(() => {});
+    call('terminal:shells')
+      .then(setShells)
+      .catch(() => {});
   }, []);
   // Host-owned data reaches this window as `changed` events; the sections that show it subscribe to the bus,
   // exactly as the main window's pages do.
-  useEffect(() => bridge.on('host:event', (ev) => {
-    if (ev.type === 'changed') notifyResource(ev.resource);
-  }), []);
+  useEffect(
+    () =>
+      bridge.on('host:event', (ev) => {
+        if (ev.type === 'changed') notifyResource(ev.resource);
+      }),
+    [],
+  );
   useEffect(() => {
     const offChanged = bridge.on('settings:changed', (s) => {
       setSettings(s);
       applyTheme(s);
     });
     const offSection = bridge.on('settings:section', (s) => isSection(s) && setSection(normalizeSection(s)));
-    void Promise.all([call('settings:get'), call('app:info'), call('projects:list'), call('work:folders')]).then(([s, i, p, f]) => {
-      setSettings(s);
-      applyTheme(s);
-      setInfo(i);
-      setProjects(p);
-      setFolders(f);
-    });
+    void Promise.all([call('settings:get'), call('app:info'), call('projects:list'), call('work:folders')]).then(
+      ([s, i, p, f]) => {
+        setSettings(s);
+        applyTheme(s);
+        setInfo(i);
+        setProjects(p);
+        setFolders(f);
+      },
+    );
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && void call('settings:close');
     window.addEventListener('keydown', esc);
     return () => {
@@ -259,11 +387,12 @@ export function SettingsApp() {
     setSection(id);
     mainRef.current?.scrollTo({ top: 0 });
   };
-  const toggleFold = (id: Section) => setFolded((prev) => {
-    const next = new Set(prev);
-    if (!next.delete(id)) next.add(id);
-    return next;
-  });
+  const toggleFold = (id: Section) =>
+    setFolded((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
 
   const patch = async (values: Partial<Settings>) => {
     try {
@@ -312,40 +441,79 @@ export function SettingsApp() {
         <Heading title={t('settings.section.appearance')} sub={t('settings.appearance.sub')} />
         <Panel>
           <Row title={t('settings.language')} tip={t('settings.language.tip')}>
-            <Select value={settings.language ?? 'system'} onValueChange={(v) => void patch({ language: v as LanguageSetting })}>
-              <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
-              <SelectContent><SelectGroup>
-                <SelectItem value="system">{t('settings.language.system')}</SelectItem>
-                {LOCALES.map((l) => <SelectItem key={l} value={l}>{LOCALE_NAMES[l]}</SelectItem>)}
-              </SelectGroup></SelectContent>
+            <Select
+              value={settings.language ?? 'system'}
+              onValueChange={(v) => void patch({ language: v as LanguageSetting })}
+            >
+              <SelectTrigger className="w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="system">{t('settings.language.system')}</SelectItem>
+                  {LOCALES.map((l) => (
+                    <SelectItem key={l} value={l}>
+                      {LOCALE_NAMES[l]}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
             </Select>
           </Row>
           <Row title={t('settings.theme')} col>
-            <SwatchGroup value={theme} onChange={(id) => void patch({ theme: id })} options={THEMES.map((o) => ({ ...o, label: t(o.label) }))} />
+            <SwatchGroup
+              value={theme}
+              onChange={(id) => void patch({ theme: id })}
+              options={THEMES.map((o) => ({ ...o, label: t(o.label) }))}
+            />
           </Row>
           <Row title={t('settings.palette')}>
             <Select value={settings.palette} onValueChange={(v) => void patch({ palette: v as Palette })}>
-              <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
-              <SelectContent><SelectGroup>
-                {PALETTES.map((p) => <SelectItem key={p} value={p}>{t(PALETTE_LABELS[p])}</SelectItem>)}
-              </SelectGroup></SelectContent>
+              <SelectTrigger className="w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {PALETTES.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {t(PALETTE_LABELS[p])}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
             </Select>
           </Row>
           <Row title={t('settings.uiFont')}>
-            <FontPicker value={settings.uiFont ?? null} label={t('settings.uiFont')} onChange={(v) => void patch({ uiFont: v })} />
+            <FontPicker
+              value={settings.uiFont ?? null}
+              label={t('settings.uiFont')}
+              onChange={(v) => void patch({ uiFont: v })}
+            />
           </Row>
           <Row title={t('settings.codeFont')}>
-            <FontPicker value={settings.codeFont ?? null} label={t('settings.codeFont')} onChange={(v) => void patch({ codeFont: v })} />
+            <FontPicker
+              value={settings.codeFont ?? null}
+              label={t('settings.codeFont')}
+              onChange={(v) => void patch({ codeFont: v })}
+            />
           </Row>
           <Row title={t('settings.sidebar')}>
-            <Switch checked={!!settings.sidebarCollapsed} onCheckedChange={(v) => void patch({ sidebarCollapsed: v })} />
+            <Switch
+              checked={!!settings.sidebarCollapsed}
+              onCheckedChange={(v) => void patch({ sidebarCollapsed: v })}
+            />
           </Row>
           <Row title={t('settings.pet')} hint={t('settings.pet.hint')}>
             <Switch checked={settings.pet !== false} onCheckedChange={(v) => void patch({ pet: v })} />
           </Row>
           {settings.pet !== false && (
             <Row title={t('settings.petSound')} hint={t('settings.petSound.hint')}>
-              <Button variant="ghost" size="icon" aria-label={t('settings.sound.preview')} onClick={() => previewSound('speak', petVoices(settings.petSkin, settings.pets))}>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t('settings.sound.preview')}
+                onClick={() => previewSound('speak', petVoices(settings.petSkin, settings.pets))}
+              >
                 <Volume2Icon className="size-4" />
               </Button>
               <Switch
@@ -362,15 +530,29 @@ export function SettingsApp() {
               <SwatchGroup
                 value={settings.petSkin ?? DEFAULT_PET_ID}
                 onChange={(id) => void patch({ petSkin: id })}
-                options={allPets(settings.pets).map((p) => ({ id: p.id, label: PET_LABEL_KEY[p.id] ? t(PET_LABEL_KEY[p.id]) : p.label, tile: 'bg-muted/50', preview: <PetSprite pet={p} size={1.1} /> }))}
+                options={allPets(settings.pets).map((p) => ({
+                  id: p.id,
+                  label: PET_LABEL_KEY[p.id] ? t(PET_LABEL_KEY[p.id]) : p.label,
+                  tile: 'bg-muted/50',
+                  preview: <PetSprite pet={p} size={1.1} />,
+                }))}
               />
               <div className="mt-3 flex flex-wrap items-start gap-2">
                 <AddPet onSave={savePet} />
-                {(settings.pets ?? []).filter((p) => !BUILTIN_PET_IDS.includes(p.id)).map((p) => (
-                  <Button key={p.id} variant="ghost" size="sm" onClick={() => void removePet(p.id)} title={t('settings.deletePet', { name: p.label })}>
-                    <Trash2Icon className="size-3.5" />{p.label}
-                  </Button>
-                ))}
+                {(settings.pets ?? [])
+                  .filter((p) => !BUILTIN_PET_IDS.includes(p.id))
+                  .map((p) => (
+                    <Button
+                      key={p.id}
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void removePet(p.id)}
+                      title={t('settings.deletePet', { name: p.label })}
+                    >
+                      <Trash2Icon className="size-3.5" />
+                      {p.label}
+                    </Button>
+                  ))}
               </div>
             </Row>
           )}
@@ -394,7 +576,12 @@ export function SettingsApp() {
                 SOUND_EVENTS.filter((e) => !PET_SOUND_EVENTS.includes(e)).map((e) => {
                   return (
                     <Row key={e} title={t(`settings.sound.${e}`)}>
-                      <Button variant="ghost" size="icon" aria-label={t('settings.sound.preview')} onClick={() => previewSound(e, petVoices(settings.petSkin, settings.pets))}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t('settings.sound.preview')}
+                        onClick={() => previewSound(e, petVoices(settings.petSkin, settings.pets))}
+                      >
                         <Volume2Icon className="size-4" />
                       </Button>
                       <Switch
@@ -407,46 +594,94 @@ export function SettingsApp() {
               <Row title={t('settings.defaultMode')} tip={t('settings.defaultMode.tip')}>
                 <Segmented
                   value={settings.defaultMode ?? 'code'}
-                  options={[{ id: 'code', label: 'Code' }, { id: 'work', label: 'Work' }]}
+                  options={[
+                    { id: 'code', label: 'Code' },
+                    { id: 'work', label: 'Work' },
+                  ]}
                   onChange={(m) => void patch({ defaultMode: m })}
                 />
               </Row>
-              <Row title={t('settings.shellSession')} hint={t('settings.shellSession.hint')} tip={t('settings.shellSession.tip')}>
+              <Row
+                title={t('settings.shellSession')}
+                hint={t('settings.shellSession.hint')}
+                tip={t('settings.shellSession.tip')}
+              >
                 <Segmented
                   value={settings.shellSession ?? 'session'}
-                  options={[{ id: 'session', label: t('settings.shellSession.shared') }, { id: 'command', label: t('settings.shellSession.each') }]}
+                  options={[
+                    { id: 'session', label: t('settings.shellSession.shared') },
+                    { id: 'command', label: t('settings.shellSession.each') },
+                  ]}
                   onChange={(m) => void patch({ shellSession: m })}
                 />
               </Row>
             </Panel>
           </Group>
 
-          <Group id="aiTools" title={t('settings.aiTools')} sub={t('settings.aiTools.sub')} tip={t('settings.aiTools.tip')}>
+          <Group
+            id="aiTools"
+            title={t('settings.aiTools')}
+            sub={t('settings.aiTools.sub')}
+            tip={t('settings.aiTools.tip')}
+          >
             <Panel>
               <Row title={t('settings.aiSchedule')} hint={t('settings.aiSchedule.hint')}>
-                <Switch checked={settings.aiSchedule !== false} onCheckedChange={(v) => void patch({ aiSchedule: v })} />
+                <Switch
+                  checked={settings.aiSchedule !== false}
+                  onCheckedChange={(v) => void patch({ aiSchedule: v })}
+                />
               </Row>
-              <Row title={t('settings.aiCustomize')} hint={t('settings.aiCustomize.hint')} tip={t('settings.aiCustomize.tip')}>
-                <Switch checked={settings.aiCustomize !== false} onCheckedChange={(v) => void patch({ aiCustomize: v })} />
+              <Row
+                title={t('settings.aiCustomize')}
+                hint={t('settings.aiCustomize.hint')}
+                tip={t('settings.aiCustomize.tip')}
+              >
+                <Switch
+                  checked={settings.aiCustomize !== false}
+                  onCheckedChange={(v) => void patch({ aiCustomize: v })}
+                />
               </Row>
-              <Row title={t('settings.aiSettings')} hint={t('settings.aiSettings.hint')} tip={t('settings.aiSettings.tip')}>
-                <Switch checked={settings.aiSettings !== false} onCheckedChange={(v) => void patch({ aiSettings: v })} />
+              <Row
+                title={t('settings.aiSettings')}
+                hint={t('settings.aiSettings.hint')}
+                tip={t('settings.aiSettings.tip')}
+              >
+                <Switch
+                  checked={settings.aiSettings !== false}
+                  onCheckedChange={(v) => void patch({ aiSettings: v })}
+                />
               </Row>
-              <Row title={t('settings.aiProject')} hint={t('settings.aiProject.hint')} tip={t('settings.aiProject.tip')}>
+              <Row
+                title={t('settings.aiProject')}
+                hint={t('settings.aiProject.hint')}
+                tip={t('settings.aiProject.tip')}
+              >
                 <Switch checked={settings.aiProject !== false} onCheckedChange={(v) => void patch({ aiProject: v })} />
               </Row>
             </Panel>
           </Group>
 
-          <Group id="autoReview" title={t('settings.autoReview')} sub={t('settings.autoReview.sub')} tip={t('settings.autoReview.tip')}>
+          <Group
+            id="autoReview"
+            title={t('settings.autoReview')}
+            sub={t('settings.autoReview.sub')}
+            tip={t('settings.autoReview.tip')}
+          >
             <Panel>
               <Row title={t('settings.autoReview.enable')}>
-                <Switch checked={settings.autoReview !== false} onCheckedChange={(v) => void patch({ autoReview: v })} />
+                <Switch
+                  checked={settings.autoReview !== false}
+                  onCheckedChange={(v) => void patch({ autoReview: v })}
+                />
               </Row>
               {settings.autoReview !== false && (
                 <>
                   <Row title={t('settings.autoReview.model')} tip={t('settings.autoReview.model.tip')}>
-                    <Segmented value={settings.autoReviewModel ?? 'session'} options={modeOptions} onChange={(m) => void patch({ autoReviewModel: m })} />
+                    <Segmented
+                      value={settings.autoReviewModel ?? 'session'}
+                      options={modeOptions}
+                      onChange={(m) => void patch({ autoReviewModel: m })}
+                    />
                   </Row>
                   <Row title={t('settings.autoReview.timeout')} tip={t('settings.autoReview.timeout.tip')}>
                     <div className="flex shrink-0 items-center gap-2">
@@ -462,7 +697,13 @@ export function SettingsApp() {
                   </Row>
                   {(settings.autoReviewModel ?? 'session') === 'fixed' && (
                     <Row title={t('settings.fixedModelRow')} tip={t('settings.fixedModelRow.tip')}>
-                      <ModelPicker value={settings.autoReviewModelId ?? null} onChange={(id) => void patch({ autoReviewModelId: id })} emptyLabel={unspecified} label={t('settings.autoReview.pickerLabel')} className="w-64 shrink-0" />
+                      <ModelPicker
+                        value={settings.autoReviewModelId ?? null}
+                        onChange={(id) => void patch({ autoReviewModelId: id })}
+                        emptyLabel={unspecified}
+                        label={t('settings.autoReview.pickerLabel')}
+                        className="w-64 shrink-0"
+                      />
                     </Row>
                   )}
                 </>
@@ -470,40 +711,67 @@ export function SettingsApp() {
             </Panel>
           </Group>
 
-          <Group id="replyRendering"title={t('settings.replyRendering')}>
+          <Group id="replyRendering" title={t('settings.replyRendering')}>
             <Panel>
               <Row title={t('settings.mermaid')} hint={t('settings.mermaid.hint')} tip={t('settings.mermaid.tip')}>
-                <Switch checked={settings.renderMermaid !== false} onCheckedChange={(v) => void patch({ renderMermaid: v })} />
+                <Switch
+                  checked={settings.renderMermaid !== false}
+                  onCheckedChange={(v) => void patch({ renderMermaid: v })}
+                />
               </Row>
             </Panel>
           </Group>
 
-          <Group id="prediction" title={t('settings.prediction')} sub={t('settings.prediction.sub')} tip={t('settings.prediction.tip')}>
+          <Group
+            id="prediction"
+            title={t('settings.prediction')}
+            sub={t('settings.prediction.sub')}
+            tip={t('settings.prediction.tip')}
+          >
             <Panel>
               <Row title={t('settings.prediction.enable')}>
-                <Switch checked={settings.suggestions !== false} onCheckedChange={(v) => void patch({ suggestions: v })} />
+                <Switch
+                  checked={settings.suggestions !== false}
+                  onCheckedChange={(v) => void patch({ suggestions: v })}
+                />
               </Row>
               {settings.suggestions !== false && (
                 <>
                   <Row title={t('settings.prediction.model')} tip={t('settings.prediction.model.tip')}>
-                    <Segmented value={settings.suggestionModel ?? 'session'} options={modeOptions} onChange={(m) => void patch({ suggestionModel: m })} />
+                    <Segmented
+                      value={settings.suggestionModel ?? 'session'}
+                      options={modeOptions}
+                      onChange={(m) => void patch({ suggestionModel: m })}
+                    />
                   </Row>
                   {(settings.suggestionModel ?? 'session') === 'fixed' && (
                     <Row title={t('settings.fixedModelRow')} tip={t('settings.fixedModelRow.tip')}>
-                      <ModelPicker value={settings.suggestionModelId ?? null} onChange={(id) => void patch({ suggestionModelId: id })} emptyLabel={unspecified} label={t('settings.prediction.pickerLabel')} className="w-64 shrink-0" />
+                      <ModelPicker
+                        value={settings.suggestionModelId ?? null}
+                        onChange={(id) => void patch({ suggestionModelId: id })}
+                        emptyLabel={unspecified}
+                        label={t('settings.prediction.pickerLabel')}
+                        className="w-64 shrink-0"
+                      />
                     </Row>
                   )}
                   <Row title={t('settings.prediction.context')} tip={t('settings.prediction.context.tip')}>
                     <div className="flex shrink-0 items-center gap-2">
                       {!settings.suggestionFullContext && (
                         <>
-                          <CountInput value={settings.suggestionContext ?? SUGGESTION_DEFAULT_CONTEXT} onCommit={(n) => void patch({ suggestionContext: n })} />
+                          <CountInput
+                            value={settings.suggestionContext ?? SUGGESTION_DEFAULT_CONTEXT}
+                            onCommit={(n) => void patch({ suggestionContext: n })}
+                          />
                           <span className="text-sm text-muted-foreground">{t('settings.messagesUnit')}</span>
                         </>
                       )}
                       <Segmented
                         value={settings.suggestionFullContext ? 'all' : 'recent'}
-                        options={[{ id: 'recent', label: t('settings.recent') }, { id: 'all', label: t('settings.wholeConversation') }]}
+                        options={[
+                          { id: 'recent', label: t('settings.recent') },
+                          { id: 'all', label: t('settings.wholeConversation') },
+                        ]}
                         onChange={(m) => void patch({ suggestionFullContext: m === 'all' })}
                       />
                     </div>
@@ -513,8 +781,12 @@ export function SettingsApp() {
             </Panel>
           </Group>
 
-          <div id={groupDomId('idleContext')} className="scroll-mt-2"><ContextSection settings={settings} patch={(v) => void patch(v)} /></div>
-          <div id={groupDomId('webSearch')} className="scroll-mt-2"><WebSearchSection /></div>
+          <div id={groupDomId('idleContext')} className="scroll-mt-2">
+            <ContextSection settings={settings} patch={(v) => void patch(v)} />
+          </div>
+          <div id={groupDomId('webSearch')} className="scroll-mt-2">
+            <WebSearchSection />
+          </div>
         </div>
       </>
     );
@@ -523,7 +795,12 @@ export function SettingsApp() {
       <>
         <Heading title="Work" sub={t('settings.work.sub')} />
         <div>
-          <Group id="ideas" title={t('settings.work.ideas')} sub={t('settings.work.ideas.sub')} tip={t('settings.work.ideas.tip')}>
+          <Group
+            id="ideas"
+            title={t('settings.work.ideas')}
+            sub={t('settings.work.ideas.sub')}
+            tip={t('settings.work.ideas.tip')}
+          >
             <Panel>
               <Row title={t('settings.work.recommend')}>
                 <Switch checked={settings.workIdeas !== false} onCheckedChange={(v) => void patch({ workIdeas: v })} />
@@ -531,11 +808,21 @@ export function SettingsApp() {
               {settings.workIdeas !== false && (
                 <>
                   <Row title={t('settings.work.model')} tip={t('settings.work.model.tip')}>
-                    <Segmented value={settings.workIdeasModel ?? 'session'} options={modeOptions} onChange={(m) => void patch({ workIdeasModel: m })} />
+                    <Segmented
+                      value={settings.workIdeasModel ?? 'session'}
+                      options={modeOptions}
+                      onChange={(m) => void patch({ workIdeasModel: m })}
+                    />
                   </Row>
                   {(settings.workIdeasModel ?? 'session') === 'fixed' && (
                     <Row title={t('settings.fixedModelRow')} tip={t('settings.fixedModelRow.tip')}>
-                      <ModelPicker value={settings.workIdeasModelId ?? null} onChange={(id) => void patch({ workIdeasModelId: id })} emptyLabel={unspecified} label={t('settings.work.pickerLabel')} className="w-64 shrink-0" />
+                      <ModelPicker
+                        value={settings.workIdeasModelId ?? null}
+                        onChange={(id) => void patch({ workIdeasModelId: id })}
+                        emptyLabel={unspecified}
+                        label={t('settings.work.pickerLabel')}
+                        className="w-64 shrink-0"
+                      />
                     </Row>
                   )}
                 </>
@@ -553,15 +840,28 @@ export function SettingsApp() {
           <Group id="terminal" title={t('settings.terminal')}>
             <Panel>
               <Row title={t('settings.terminal.default')} hint={t('settings.terminal.default.hint')}>
-                <Select value={settings.terminalShell ?? SYSTEM_SHELL} onValueChange={(v) => void patch({ terminalShell: v === SYSTEM_SHELL ? null : v })}>
-                  <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectGroup>
-                    <SelectItem value={SYSTEM_SHELL}>{t('settings.systemDefault')}</SelectItem>
-                    {shells.map((sh) => <SelectItem key={sh.file} value={sh.file}>{sh.label}</SelectItem>)}
-                    {settings.terminalShell && !shells.some((sh) => sh.file === settings.terminalShell) && (
-                      <SelectItem value={settings.terminalShell}>{t('settings.notFound', { name: settings.terminalShell })}</SelectItem>
-                    )}
-                  </SelectGroup></SelectContent>
+                <Select
+                  value={settings.terminalShell ?? SYSTEM_SHELL}
+                  onValueChange={(v) => void patch({ terminalShell: v === SYSTEM_SHELL ? null : v })}
+                >
+                  <SelectTrigger className="w-56">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value={SYSTEM_SHELL}>{t('settings.systemDefault')}</SelectItem>
+                      {shells.map((sh) => (
+                        <SelectItem key={sh.file} value={sh.file}>
+                          {sh.label}
+                        </SelectItem>
+                      ))}
+                      {settings.terminalShell && !shells.some((sh) => sh.file === settings.terminalShell) && (
+                        <SelectItem value={settings.terminalShell}>
+                          {t('settings.notFound', { name: settings.terminalShell })}
+                        </SelectItem>
+                      )}
+                    </SelectGroup>
+                  </SelectContent>
                 </Select>
               </Row>
               <Row title={t('settings.terminal.lines')} hint={t('settings.terminal.lines.hint')}>
@@ -599,26 +899,40 @@ export function SettingsApp() {
     };
     const list = (items: Project[], kind: 'project' | 'folder') => (
       <Panel>
-        {items.length ? items.map((p) => (
-          <div key={p.path} className="flex items-center gap-2 px-4 py-3">
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium">{p.name}</div>
-              <div className="truncate font-mono text-xs text-muted-foreground" title={p.path}>{p.path}</div>
+        {items.length ? (
+          items.map((p) => (
+            <div key={p.path} className="flex items-center gap-2 px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium">{p.name}</div>
+                <div className="truncate font-mono text-xs text-muted-foreground" title={p.path}>
+                  {p.path}
+                </div>
+              </div>
+              {!isRemote && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => call('app:revealPath', p.path).catch((e) => toast.error(errText(e)))}
+                >
+                  {t(revealKey)}
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive"
+                onClick={async () => {
+                  await (kind === 'project' ? call('projects:remove', p.path) : call('work:removeFolder', p.path));
+                  await reloadLists();
+                }}
+              >
+                {t('settings.remove')}
+              </Button>
             </div>
-            {!isRemote && <Button size="sm" variant="outline" onClick={() => call('app:revealPath', p.path).catch((e) => toast.error(errText(e)))}>{t(revealKey)}</Button>}
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-destructive"
-              onClick={async () => {
-                await (kind === 'project' ? call('projects:remove', p.path) : call('work:removeFolder', p.path));
-                await reloadLists();
-              }}
-            >
-              {t('settings.remove')}
-            </Button>
-          </div>
-        )) : <div className="px-4 py-3 text-sm text-muted-foreground">{t('settings.nothingAdded')}</div>}
+          ))
+        ) : (
+          <div className="px-4 py-3 text-sm text-muted-foreground">{t('settings.nothingAdded')}</div>
+        )}
       </Panel>
     );
     const add = async (kind: 'project' | 'folder') => {
@@ -635,127 +949,203 @@ export function SettingsApp() {
       <>
         <Heading title={t('settings.section.projects')} sub={t('settings.projects.sub')} />
         <div id={groupDomId('worktree')} className="scroll-mt-2">
-        <div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">{t('settings.worktreeLocation')}</h3></div>
-        <Panel>
-          <Row
-            title={t('settings.worktreeRoot')}
-            hint={<span className="break-all font-mono">{worktreePath}{settings.worktreeDir ? '' : t('settings.defaultSuffix')}</span>}
-          >
-            <Button size="sm" variant="outline" onClick={() => void pickWorktree()}>{t('settings.change')}</Button>
-            {settings.worktreeDir && (
-              <Button size="sm" variant="ghost" onClick={() => void patch({ worktreeDir: null })}>{t('settings.restoreDefault')}</Button>
-            )}
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!worktreePath}
-              onClick={() => worktreePath && call('app:revealPath', worktreePath).catch((e) => toast.error(errText(e)))}
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold">{t('settings.worktreeLocation')}</h3>
+          </div>
+          <Panel>
+            <Row
+              title={t('settings.worktreeRoot')}
+              hint={
+                <span className="font-mono break-all">
+                  {worktreePath}
+                  {settings.worktreeDir ? '' : t('settings.defaultSuffix')}
+                </span>
+              }
             >
-              {t('settings.open')}
-            </Button>
-          </Row>
-        </Panel>
+              <Button size="sm" variant="outline" onClick={() => void pickWorktree()}>
+                {t('settings.change')}
+              </Button>
+              {settings.worktreeDir && (
+                <Button size="sm" variant="ghost" onClick={() => void patch({ worktreeDir: null })}>
+                  {t('settings.restoreDefault')}
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!worktreePath}
+                onClick={() =>
+                  worktreePath && call('app:revealPath', worktreePath).catch((e) => toast.error(errText(e)))
+                }
+              >
+                {t('settings.open')}
+              </Button>
+            </Row>
+          </Panel>
         </div>
         <div id={groupDomId('codeProjects')} className="scroll-mt-2">
-        <div className="mt-6 mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">{t('settings.codeProjects')}</h3>{!isRemote && <Button size="sm" variant="outline" onClick={() => void add('project')}>{t('settings.add')}</Button>}</div>
-        {list(projects, 'project')}
+          <div className="mt-6 mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold">{t('settings.codeProjects')}</h3>
+            {!isRemote && (
+              <Button size="sm" variant="outline" onClick={() => void add('project')}>
+                {t('settings.add')}
+              </Button>
+            )}
+          </div>
+          {list(projects, 'project')}
         </div>
         <div id={groupDomId('workFolders')} className="scroll-mt-2">
-        <div className="mt-6 mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">{t('settings.workFolders')}</h3>{!isRemote && <Button size="sm" variant="outline" onClick={() => void add('folder')}>{t('settings.add')}</Button>}</div>
-        {list(folders, 'folder')}
+          <div className="mt-6 mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold">{t('settings.workFolders')}</h3>
+            {!isRemote && (
+              <Button size="sm" variant="outline" onClick={() => void add('folder')}>
+                {t('settings.add')}
+              </Button>
+            )}
+          </div>
+          {list(folders, 'folder')}
         </div>
       </>
     );
   } else {
     const v = info?.versions ?? {};
-    const ver = [info?.version && `v${info.version}`, v.electron && `Electron ${v.electron}`, v.chrome && `Chromium ${v.chrome}`, v.node && `Node ${v.node}`].filter(Boolean).join(' · ');
+    const ver = [
+      info?.version && `v${info.version}`,
+      v.electron && `Electron ${v.electron}`,
+      v.chrome && `Chromium ${v.chrome}`,
+      v.node && `Node ${v.node}`,
+    ]
+      .filter(Boolean)
+      .join(' · ');
     body = (
       <>
         <Heading title={t('settings.section.about')} sub={t('settings.about.sub')} />
         <Panel>
           <Row title={`Pi Desktop${info?.demo ? t('settings.about.demo') : ''}`} hint={ver} />
-          <Row title={t('settings.about.dataDir')} hint={<span className="break-all font-mono">{info?.dataDir}</span>}>
-            <Button size="sm" variant="outline" onClick={() => info && call('app:revealPath', info.dataDir).catch((e) => toast.error(errText(e)))}>{t('settings.open')}</Button>
-            <Button size="sm" variant="outline" onClick={() => copy(info?.dataDir ?? '')}>{copied ? t('settings.copied') : t('settings.copyPath')}</Button>
+          <Row title={t('settings.about.dataDir')} hint={<span className="font-mono break-all">{info?.dataDir}</span>}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => info && call('app:revealPath', info.dataDir).catch((e) => toast.error(errText(e)))}
+            >
+              {t('settings.open')}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => copy(info?.dataDir ?? '')}>
+              {copied ? t('settings.copied') : t('settings.copyPath')}
+            </Button>
           </Row>
-          <Row title={t('settings.about.extensionsDir')} hint={<span className="break-all font-mono">{info?.extensionsDir}</span>}>
-            <Button size="sm" variant="outline" onClick={() => info && call('app:revealPath', info.extensionsDir).catch((e) => toast.error(errText(e)))}>{t('settings.open')}</Button>
-            <Button size="sm" variant="outline" onClick={() => copy(info?.extensionsDir ?? '')}>{copied ? t('settings.copied') : t('settings.copyPath')}</Button>
+          <Row
+            title={t('settings.about.extensionsDir')}
+            hint={<span className="font-mono break-all">{info?.extensionsDir}</span>}
+          >
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => info && call('app:revealPath', info.extensionsDir).catch((e) => toast.error(errText(e)))}
+            >
+              {t('settings.open')}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => copy(info?.extensionsDir ?? '')}>
+              {copied ? t('settings.copied') : t('settings.copyPath')}
+            </Button>
           </Row>
-          <Row title={t('settings.about.agentDir')} hint={<span className="break-all font-mono">{info?.agentDir}</span>}>
-            <Button size="sm" variant="outline" onClick={() => info && call('app:revealPath', info.agentDir).catch((e) => toast.error(errText(e)))}>{t('settings.open')}</Button>
-            <Button size="sm" variant="outline" onClick={() => copy(info?.agentDir ?? '')}>{copied ? t('settings.copied') : t('settings.copyPath')}</Button>
+          <Row
+            title={t('settings.about.agentDir')}
+            hint={<span className="font-mono break-all">{info?.agentDir}</span>}
+          >
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => info && call('app:revealPath', info.agentDir).catch((e) => toast.error(errText(e)))}
+            >
+              {t('settings.open')}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => copy(info?.agentDir ?? '')}>
+              {copied ? t('settings.copied') : t('settings.copyPath')}
+            </Button>
           </Row>
         </Panel>
-        <div className="mt-6"><UpdateSection version={info?.version ?? ''} settings={settings} onPatch={(v) => void patch(v)} /></div>
+        <div className="mt-6">
+          <UpdateSection version={info?.version ?? ''} settings={settings} onPatch={(v) => void patch(v)} />
+        </div>
       </>
     );
   }
 
   return (
     <TooltipProvider delayDuration={300}>
-    <div className="flex h-screen flex-col bg-background" data-platform={bridge.platform}>
-      <header className="app-drag titlebar-inset flex h-12 shrink-0 items-center justify-center border-b text-sm font-medium">{t('settings.title')}</header>
-      <div className="flex min-h-0 flex-1">
-        <nav className="w-56 shrink-0 overflow-y-auto border-r bg-sidebar p-3">
-          <ul className="flex flex-col gap-0.5">
-            {SECTIONS.map((s) => {
-              const active = section === s.id;
-              const open = !!s.groups && !folded.has(s.id);
-              return (
-                <li key={s.id}>
-                  <div
-                    className={cn(
-                      'flex h-8 items-center rounded-lg text-sm text-sidebar-foreground hover:bg-sidebar-accent/60',
-                      active && 'bg-sidebar-accent font-medium',
-                    )}
-                  >
-                    <button
-                      type="button"
-                      tabIndex={s.groups ? 0 : -1}
-                      disabled={!s.groups}
-                      onClick={() => toggleFold(s.id)}
-                      className="flex size-6 shrink-0 cursor-pointer items-center justify-center text-muted-foreground disabled:invisible"
+      <div className="flex h-screen flex-col bg-background" data-platform={bridge.platform}>
+        <header className="app-drag titlebar-inset flex h-12 shrink-0 items-center justify-center border-b text-sm font-medium">
+          {t('settings.title')}
+        </header>
+        <div className="flex min-h-0 flex-1">
+          <nav className="w-56 shrink-0 overflow-y-auto border-r bg-sidebar p-3">
+            <ul className="flex flex-col gap-0.5">
+              {SECTIONS.map((s) => {
+                const active = section === s.id;
+                const open = !!s.groups && !folded.has(s.id);
+                return (
+                  <li key={s.id}>
+                    <div
+                      className={cn(
+                        'flex h-8 items-center rounded-lg text-sm text-sidebar-foreground hover:bg-sidebar-accent/60',
+                        active && 'bg-sidebar-accent font-medium',
+                      )}
                     >
-                      <ChevronRightIcon className={cn('size-3.5 transition-transform', open && 'rotate-90')} />
-                    </button>
-                    <button type="button" onClick={() => openSection(s.id)} className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2.5 pr-2.5 text-left">
-                      <span className="text-muted-foreground">{s.icon}</span>
-                      <span className="truncate">{s.label ? t(s.label) : s.id === 'work' ? 'Work' : 'Code'}</span>
-                    </button>
-                  </div>
-                  {open && (
-                    <ul className="mt-0.5 ml-[22px] flex flex-col gap-0.5 border-l pl-2">
-                      {s.groups!.map((g) => (
-                        <li key={g.id}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!active) setSection(s.id);
-                              setJump({ group: g.id });
-                            }}
-                            className={cn(
-                              'h-7 w-full cursor-pointer truncate rounded-lg px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground',
-                              active && activeGroup === g.id && 'bg-sidebar-accent/60 font-medium text-sidebar-foreground',
-                            )}
-                          >
-                            {t(g.label)}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
-        <main ref={mainRef} onScroll={syncActiveGroup} className="min-w-0 flex-1 overflow-y-auto p-8">
-          <div key={section} className="mx-auto max-w-3xl animate-in duration-200 fade-in-0 slide-in-from-bottom-1">{body}</div>
-        </main>
+                      <button
+                        type="button"
+                        tabIndex={s.groups ? 0 : -1}
+                        disabled={!s.groups}
+                        onClick={() => toggleFold(s.id)}
+                        className="flex size-6 shrink-0 cursor-pointer items-center justify-center text-muted-foreground disabled:invisible"
+                      >
+                        <ChevronRightIcon className={cn('size-3.5 transition-transform', open && 'rotate-90')} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openSection(s.id)}
+                        className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2.5 pr-2.5 text-left"
+                      >
+                        <span className="text-muted-foreground">{s.icon}</span>
+                        <span className="truncate">{s.label ? t(s.label) : s.id === 'work' ? 'Work' : 'Code'}</span>
+                      </button>
+                    </div>
+                    {open && (
+                      <ul className="mt-0.5 ml-[22px] flex flex-col gap-0.5 border-l pl-2">
+                        {s.groups!.map((g) => (
+                          <li key={g.id}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!active) setSection(s.id);
+                                setJump({ group: g.id });
+                              }}
+                              className={cn(
+                                'h-7 w-full cursor-pointer truncate rounded-lg px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground',
+                                active &&
+                                  activeGroup === g.id &&
+                                  'bg-sidebar-accent/60 font-medium text-sidebar-foreground',
+                              )}
+                            >
+                              {t(g.label)}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+          <main ref={mainRef} onScroll={syncActiveGroup} className="min-w-0 flex-1 overflow-y-auto p-8">
+            <div key={section} className="mx-auto max-w-3xl animate-in duration-200 fade-in-0 slide-in-from-bottom-1">
+              {body}
+            </div>
+          </main>
+        </div>
+        <Toaster position="bottom-right" theme={settings.resolvedTheme ?? 'light'} />
       </div>
-      <Toaster position="bottom-right" theme={settings.resolvedTheme ?? 'light'} />
-    </div>
     </TooltipProvider>
   );
 }

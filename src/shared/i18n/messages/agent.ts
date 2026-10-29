@@ -2,31 +2,64 @@ import { defineMessages } from '../define';
 
 /** Texts the agent host writes: errors shown in toasts and forms, and the prompts it sends the model on the user's behalf. */
 export const agent = defineMessages({
-  'ag.nameRule': { en: 'The name may only contain letters, digits, - and _, and must start with a letter or digit', zh: '名称只能包含字母、数字、- 和 _，且以字母或数字开头' },
-  'ag.nameRuleShort': { en: 'The name may only contain letters, digits, - and _', zh: '名称只能包含字母、数字、- 和 _' },
-  'ag.agentNeedDescription': { en: 'Enter a description: the model uses it to decide when to pick this subagent', zh: '请填写描述：模型靠它判断什么时候用这个子代理' },
+  'ag.nameRule': {
+    en: 'The name may only contain letters, digits, - and _, and must start with a letter or digit',
+    zh: '名称只能包含字母、数字、- 和 _，且以字母或数字开头',
+  },
+  'ag.nameRuleShort': {
+    en: 'The name may only contain letters, digits, - and _',
+    zh: '名称只能包含字母、数字、- 和 _',
+  },
+  'ag.agentNeedDescription': {
+    en: 'Enter a description: the model uses it to decide when to pick this subagent',
+    zh: '请填写描述：模型靠它判断什么时候用这个子代理',
+  },
   'ag.agentNeedPrompt': { en: 'Enter a system prompt', zh: '请填写系统提示' },
   'ag.agentExists': { en: 'A subagent named {name} already exists', zh: '已经有名为 {name} 的子代理' },
-  'ag.agentBuiltin': { en: '{name} is a built-in subagent with no custom file to delete', zh: '{name} 是内置子代理，没有可删除的自定义文件' },
-  'ag.needProject': { en: 'Choose a project first; project-level settings live in the project’s .pi folder', zh: '请先选择一个项目，项目级的配置保存在项目的 .pi 文件夹里' },
+  'ag.agentBuiltin': {
+    en: '{name} is a built-in subagent with no custom file to delete',
+    zh: '{name} 是内置子代理，没有可删除的自定义文件',
+  },
+  'ag.needProject': {
+    en: 'Choose a project first; project-level settings live in the project’s .pi folder',
+    zh: '请先选择一个项目，项目级的配置保存在项目的 .pi 文件夹里',
+  },
   'ag.needProjectShort': { en: 'Choose a project first', zh: '请先选择一个项目' },
-  'ag.skillNeedDescription': { en: 'Enter a description: the model uses it to decide when to use this skill', zh: '请填写描述：模型靠它判断什么时候用这个技能' },
+  'ag.skillNeedDescription': {
+    en: 'Enter a description: the model uses it to decide when to use this skill',
+    zh: '请填写描述：模型靠它判断什么时候用这个技能',
+  },
   'ag.skillNeedBody': { en: 'Enter the content of the skill', zh: '请填写技能的内容' },
   'ag.promptNeedBody': { en: 'Enter the content of the command', zh: '请填写命令的内容' },
-  'ag.promptNotOwn': { en: 'Only commands in your prompts folders can be changed', zh: '只能修改个人或项目 prompts 文件夹里的命令' },
+  'ag.promptNotOwn': {
+    en: 'Only commands in your prompts folders can be changed',
+    zh: '只能修改个人或项目 prompts 文件夹里的命令',
+  },
   'ag.promptExists': { en: 'A command named {name} already exists', zh: '已经有名为 {name} 的命令' },
   'ag.noSkillsInRepo': { en: 'No skills found in {repo}', zh: '{repo} 里没有找到技能' },
-  'ag.nothingToRemove': { en: 'Nothing to remove: no skills installed from this source were found. Delete them from the Skills tab.', zh: '没有可移除的内容：找不到从这个来源安装的技能。请到“技能”页逐个删除。' },
-  'ag.skillNotDeletable': { en: 'Only skills in your skills folders can be deleted. Remove a plugin to drop its skills.', zh: '只能删除个人或项目技能文件夹里的技能。插件带来的技能请移除插件。' },
+  'ag.nothingToRemove': {
+    en: 'Nothing to remove: no skills installed from this source were found. Delete them from the Skills tab.',
+    zh: '没有可移除的内容：找不到从这个来源安装的技能。请到“技能”页逐个删除。',
+  },
+  'ag.skillNotDeletable': {
+    en: 'Only skills in your skills folders can be deleted. Remove a plugin to drop its skills.',
+    zh: '只能删除个人或项目技能文件夹里的技能。插件带来的技能请移除插件。',
+  },
   'ag.skillExists': { en: 'A skill named {name} already exists', zh: '已经有名为 {name} 的技能' },
   'ag.onlyMdJson': { en: 'Only Markdown or JSON files can be viewed', zh: '只能查看 Markdown 或 JSON 文件' },
   'ag.truncated': { en: '…(truncated)', zh: '…（已截断）' },
   'ag.connectorExists': { en: 'A connector named {name} already exists', zh: '已经有名为 {name} 的连接器' },
-  'ag.needHttpUrl': { en: 'Enter an address starting with http:// or https://', zh: '请填写以 http:// 或 https:// 开头的地址' },
+  'ag.needHttpUrl': {
+    en: 'Enter an address starting with http:// or https://',
+    zh: '请填写以 http:// 或 https:// 开头的地址',
+  },
   'ag.needCommand': { en: 'Enter the command to run', zh: '请填写要运行的命令' },
   'ag.connectorMissing': { en: 'Connector {name} not found', zh: '找不到连接器 {name}' },
   'ag.pluginNotFound': { en: 'Plugin not found: {source}', zh: '找不到插件：{source}' },
-  'ag.needPackage': { en: 'Enter a package name or address, such as npm:pi-web-access or git:github.com/user/repo', zh: '请填写包名或地址，例如 npm:pi-web-access 或 git:github.com/user/repo' },
+  'ag.needPackage': {
+    en: 'Enter a package name or address, such as npm:pi-web-access or git:github.com/user/repo',
+    zh: '请填写包名或地址，例如 npm:pi-web-access 或 git:github.com/user/repo',
+  },
   'ag.pluginNotIn': { en: '{source} is not in the {scope} settings', zh: '{source} 不在{scope}配置里' },
   'ag.scopeProject': { en: 'project', zh: '项目' },
   'ag.scopeGlobal': { en: 'global', zh: '全局' },
@@ -35,11 +68,23 @@ export const agent = defineMessages({
   'ag.modelsTopLevel': { en: 'The top level must be an object', zh: '顶层必须是对象' },
   'ag.modelsProviders': { en: '"providers" must be an object', zh: '"providers" 必须是对象' },
   'ag.modelsFormat': { en: 'models.json is malformed: {error}', zh: 'models.json 格式错误：{error}' },
-  'ag.providerId': { en: 'The Provider ID may only contain lowercase letters, digits, dots, underscores and hyphens', zh: 'Provider ID 只能包含小写字母、数字、点、下划线和短横线' },
+  'ag.providerId': {
+    en: 'The Provider ID may only contain lowercase letters, digits, dots, underscores and hyphens',
+    zh: 'Provider ID 只能包含小写字母、数字、点、下划线和短横线',
+  },
   'ag.apiUrl': { en: 'The API URL must start with http:// or https://', zh: 'API 地址需要以 http:// 或 https:// 开头' },
-  'ag.fixFirst': { en: '{error}. Fix the file by hand first; it will not be overwritten here.', zh: '{error}。请先手动修复该文件，这里不会覆盖它。' },
-  'ag.modelPositive': { en: '{key} of model {id} must be above 0, or empty to use the default', zh: '模型 {id} 的 {key} 必须大于 0，或留空使用默认值' },
-  'ag.modelPrice': { en: 'The price {key} of model {id} must be a number that is 0 or more', zh: '模型 {id} 的价格 {key} 必须是大于或等于 0 的数字' },
+  'ag.fixFirst': {
+    en: '{error}. Fix the file by hand first; it will not be overwritten here.',
+    zh: '{error}。请先手动修复该文件，这里不会覆盖它。',
+  },
+  'ag.modelPositive': {
+    en: '{key} of model {id} must be above 0, or empty to use the default',
+    zh: '模型 {id} 的 {key} 必须大于 0，或留空使用默认值',
+  },
+  'ag.modelPrice': {
+    en: 'The price {key} of model {id} must be a number that is 0 or more',
+    zh: '模型 {id} 的价格 {key} 必须是大于或等于 0 的数字',
+  },
   'ag.needApiUrl': { en: 'Enter the API URL first', zh: '请先填写 API 地址' },
   'ag.noModels': { en: 'no models', zh: '没有模型' },
   'ag.discoverFail': { en: 'Cannot fetch the model list: {failures}', zh: '无法获取模型列表：{failures}' },
@@ -47,11 +92,17 @@ export const agent = defineMessages({
 
   'ag.gitNoMr': { en: 'No Merge Request found for the current branch', zh: '找不到当前分支的 Merge Request' },
   'ag.gitNoThread': { en: 'Cannot find the review thread of this comment', zh: '找不到这条评论所在的 review thread' },
-  'ag.inlineOnly': { en: '(inline comments only, state {state}: use gh pr view {num} --comments to read them)', zh: '（只有行内评论，状态 {state}：用 gh pr view {num} --comments 查看）' },
+  'ag.inlineOnly': {
+    en: '(inline comments only, state {state}: use gh pr view {num} --comments to read them)',
+    zh: '（只有行内评论，状态 {state}：用 gh pr view {num} --comments 查看）',
+  },
 
   'ag.scopeRead': { en: 'Read outside the working folder: {path}', zh: '读取工作目录之外：{path}' },
   'ag.scopeWrite': { en: 'Write outside the working folder: {path}', zh: '写入工作目录之外：{path}' },
-  'ag.scopeRun': { en: 'Run {command} (uses {path}, outside the working folder)', zh: '运行 {command}（用到工作目录之外的 {path}）' },
+  'ag.scopeRun': {
+    en: 'Run {command} (uses {path}, outside the working folder)',
+    zh: '运行 {command}（用到工作目录之外的 {path}）',
+  },
   'ag.reviewAsk': { en: 'Run {command} (review: {reason})', zh: '运行 {command}（审查：{reason}）' },
   'ag.stepWorktree': { en: 'Creating the git worktree ({branch})', zh: '创建 git worktree（{branch}）' },
   'ag.stepAgent': { en: 'Starting the agent, loading extensions and tools', zh: '启动 Agent，加载扩展与工具' },
@@ -60,8 +111,14 @@ export const agent = defineMessages({
   'ag.toolFind': { en: 'Find by file name', zh: '按文件名查找' },
   'ag.toolLs': { en: 'List a directory', zh: '列出目录' },
   'ag.toolShell': { en: 'Run commands (read-only inside subagents)', zh: '运行命令（子代理里只读）' },
-  'ag.waitTask': { en: 'Wait for the current task to finish before changing the conversation history', zh: '请等待当前任务完成后再调整对话历史' },
-  'ag.messageGone': { en: 'This message is no longer in the conversation; reopen the session', zh: '这条用户消息已不在当前对话中，请重新打开会话' },
+  'ag.waitTask': {
+    en: 'Wait for the current task to finish before changing the conversation history',
+    zh: '请等待当前任务完成后再调整对话历史',
+  },
+  'ag.messageGone': {
+    en: 'This message is no longer in the conversation; reopen the session',
+    zh: '这条用户消息已不在当前对话中，请重新打开会话',
+  },
   'ag.rewindCancelled': { en: 'The rewind was cancelled', zh: '回退已取消' },
   'ag.waitSaved': { en: 'Wait for this message to be saved before branching', zh: '请等待这条消息保存后再创建分支' },
   'ag.branchSuffix': { en: '{title} · branch', zh: '{title} · 分支' },
@@ -71,10 +128,16 @@ export const agent = defineMessages({
   'ag.login': { en: 'Signing in to {name}…', zh: '正在登录 {name}…' },
   'ag.noOauth': { en: '{name} does not support account login', zh: '{name} 不支持账号登录' },
   'ag.noApiKey': { en: '{name} does not support API keys', zh: '{name} 不支持 API 密钥' },
-  'ag.keyFromEnv': { en: 'The credentials of {name} come from environment variables or the cloud platform; no login is needed here', zh: '{name} 的凭据来自环境变量或云平台，不需要在这里登录' },
+  'ag.keyFromEnv': {
+    en: 'The credentials of {name} come from environment variables or the cloud platform; no login is needed here',
+    zh: '{name} 的凭据来自环境变量或云平台，不需要在这里登录',
+  },
   'ag.pickApiType': { en: 'Choose an API type', zh: '请选择 API 类型' },
   'ag.addModel': { en: 'Add at least one model', zh: '请至少添加一个模型' },
-  'ag.builtinKey': { en: 'Set the key of a built-in provider under "Accounts & keys"', zh: '内置 provider 的密钥请在“账号与密钥”里设置' },
+  'ag.builtinKey': {
+    en: 'Set the key of a built-in provider under "Accounts & keys"',
+    zh: '内置 provider 的密钥请在“账号与密钥”里设置',
+  },
   'ag.notLoaded': { en: 'pi did not load this endpoint: {errors}', zh: 'pi 没有加载这个端点：{errors}' },
   'ag.notAccepted': { en: 'models.json was not accepted', zh: 'models.json 未被接受' },
 
@@ -85,14 +148,29 @@ export const agent = defineMessages({
   'ag.taskExists': { en: 'A task named “{name}” already exists', zh: '已经有一个叫“{name}”的任务' },
   'ag.taskStarting': { en: 'This task is starting', zh: '这个任务正在启动' },
   'ag.taskStillRunning': { en: 'The previous run has not finished', zh: '上一次运行还没结束' },
-  'ag.taskCatchUp': { en: 'Catch-up run: missed while the computer slept or the app was closed', zh: '补跑：电脑休眠或应用没开时错过了' },
+  'ag.taskCatchUp': {
+    en: 'Catch-up run: missed while the computer slept or the app was closed',
+    zh: '补跑：电脑休眠或应用没开时错过了',
+  },
 
   'ag.prFailedNamed': { en: '{names} failed', zh: '{names} 失败' },
   'ag.prCiFailed': { en: 'CI failed', zh: 'CI 失败' },
   'ag.prNewComments': { en: '{n} new comments', zh: '{n} 条新评论' },
   'ag.prNamesSep': { en: ', ', zh: '、' },
-  'ag.prFixCi': { en: "Use {checks} to read why it failed, fix the code, then commit and push to the current branch; also handle the unresolved review comments on {noun} #{num}. Finish after pushing: the PR watcher keeps watching and starts a new turn if CI still fails.", zh: '用 {checks} 读出失败原因，修好代码后提交并推送到当前分支；{noun} #{num} 上未解决的评审意见也一并处理。推送后就结束这一轮：PR 监听会继续盯着，检查再失败时会自动起新的一轮。' },
-  'ag.prNotes': { en: 'Use {comments} to read each comment (inline comments: {inline}), fix them, commit and push to the current branch, reply to each resolved comment, then tell me which ones still need a human.', zh: '用 {comments} 读清每条意见（行内评论用 {inline}），改完提交并推送到当前分支，把已解决的评论逐条回复，再告诉我还剩哪些需要人来确认。' },
-  'ag.prReady': { en: 'Checks are all green and there are no conflicts: ready to merge', zh: '检查全绿、没有冲突，可以合并了' },
-  'ag.prMerge': { en: 'Use {merge} to turn on auto-merge (merge directly if the repo does not allow auto-merge). Do not delete the branch, and tell me the result afterwards.', zh: '用 {merge} 开启自动合并（仓库不允许自动合并就直接合并），不要删除分支，合并后把结果告诉我。' },
+  'ag.prFixCi': {
+    en: 'Use {checks} to read why it failed, fix the code, then commit and push to the current branch; also handle the unresolved review comments on {noun} #{num}. Finish after pushing: the PR watcher keeps watching and starts a new turn if CI still fails.',
+    zh: '用 {checks} 读出失败原因，修好代码后提交并推送到当前分支；{noun} #{num} 上未解决的评审意见也一并处理。推送后就结束这一轮：PR 监听会继续盯着，检查再失败时会自动起新的一轮。',
+  },
+  'ag.prNotes': {
+    en: 'Use {comments} to read each comment (inline comments: {inline}), fix them, commit and push to the current branch, reply to each resolved comment, then tell me which ones still need a human.',
+    zh: '用 {comments} 读清每条意见（行内评论用 {inline}），改完提交并推送到当前分支，把已解决的评论逐条回复，再告诉我还剩哪些需要人来确认。',
+  },
+  'ag.prReady': {
+    en: 'Checks are all green and there are no conflicts: ready to merge',
+    zh: '检查全绿、没有冲突，可以合并了',
+  },
+  'ag.prMerge': {
+    en: 'Use {merge} to turn on auto-merge (merge directly if the repo does not allow auto-merge). Do not delete the branch, and tell me the result afterwards.',
+    zh: '用 {merge} 开启自动合并（仓库不允许自动合并就直接合并），不要删除分支，合并后把结果告诉我。',
+  },
 });

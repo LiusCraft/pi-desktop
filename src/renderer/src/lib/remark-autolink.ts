@@ -44,7 +44,11 @@ export function remarkTrimAutolinks() {
       }
       const text: string = child.children[0].value;
       const removed = text.length - at;
-      out.push({ ...child, url: child.url.slice(0, child.url.length - removed), children: [{ ...child.children[0], value: text.slice(0, at) }] });
+      out.push({
+        ...child,
+        url: child.url.slice(0, child.url.length - removed),
+        children: [{ ...child.children[0], value: text.slice(0, at) }],
+      });
       out.push(...tailNodes(text.slice(at)));
     }
     node.children = out;

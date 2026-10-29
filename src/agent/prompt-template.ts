@@ -16,7 +16,11 @@ function parseArgs(text: string): string[] {
       quote = ch;
       started = true;
     } else if (/\s/.test(ch)) {
-      if (started) { args.push(current); current = ''; started = false; }
+      if (started) {
+        args.push(current);
+        current = '';
+        started = false;
+      }
     } else {
       current += ch;
       started = true;
@@ -29,22 +33,28 @@ function parseArgs(text: string): string[] {
 /** $1.., $@ / $ARGUMENTS, ${N:-default}, ${@:N} and ${@:N:L}. */
 function substitute(content: string, args: string[]): string {
   const all = args.join(' ');
-  return content.replace(/\$\{(\d+|ARGUMENTS|@):-([^}]*)\}|\$\{@:(\d+)(?::(\d+))?\}|\$(ARGUMENTS|@|\d+)/g, (_m, target, fallback, from, length, simple) => {
-    if (target) {
-      const value = target === '@' || target === 'ARGUMENTS' ? all : args[parseInt(target, 10) - 1];
-      return value || fallback;
-    }
-    if (from) {
-      const start = Math.max(parseInt(from, 10) - 1, 0);
-      return args.slice(start, length ? start + parseInt(length, 10) : undefined).join(' ');
-    }
-    if (simple === 'ARGUMENTS' || simple === '@') return all;
-    return args[parseInt(simple, 10) - 1] ?? '';
-  });
+  return content.replace(
+    /\$\{(\d+|ARGUMENTS|@):-([^}]*)\}|\$\{@:(\d+)(?::(\d+))?\}|\$(ARGUMENTS|@|\d+)/g,
+    (_m, target, fallback, from, length, simple) => {
+      if (target) {
+        const value = target === '@' || target === 'ARGUMENTS' ? all : args[parseInt(target, 10) - 1];
+        return value || fallback;
+      }
+      if (from) {
+        const start = Math.max(parseInt(from, 10) - 1, 0);
+        return args.slice(start, length ? start + parseInt(length, 10) : undefined).join(' ');
+      }
+      if (simple === 'ARGUMENTS' || simple === '@') return all;
+      return args[parseInt(simple, 10) - 1] ?? '';
+    },
+  );
 }
 
 /** The template a message such as `/review src/a.ts` calls, with its arguments filled in; null when it calls none. */
-export function expandUserCommand(message: string, templates: ReadonlyArray<PromptTemplate>): { name: string; args: string; prompt: string } | null {
+export function expandUserCommand(
+  message: string,
+  templates: ReadonlyArray<PromptTemplate>,
+): { name: string; args: string; prompt: string } | null {
   const m = /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(message);
   const template = m && templates.find((t) => t.name === m[1]);
   if (!m || !template) return null;

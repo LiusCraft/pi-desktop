@@ -5,10 +5,28 @@ import { generatedKind, isGeneratedFile } from '@shared/generated';
 describe('generated file detection', () => {
   it('recognizes lockfiles from every ecosystem', () => {
     const cases = [
-      'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lockb', 'deno.lock',
-      'go.sum', 'Cargo.lock', 'poetry.lock', 'Pipfile.lock', 'uv.lock', 'composer.lock', 'Gemfile.lock',
-      'Podfile.lock', 'pubspec.lock', 'mix.lock', 'flake.lock', 'Package.resolved', 'packages.lock.json',
-      'gradle.lockfile', 'shard.lock', 'MODULE.bazel.lock',
+      'package-lock.json',
+      'npm-shrinkwrap.json',
+      'yarn.lock',
+      'pnpm-lock.yaml',
+      'bun.lockb',
+      'deno.lock',
+      'go.sum',
+      'Cargo.lock',
+      'poetry.lock',
+      'Pipfile.lock',
+      'uv.lock',
+      'composer.lock',
+      'Gemfile.lock',
+      'Podfile.lock',
+      'pubspec.lock',
+      'mix.lock',
+      'flake.lock',
+      'Package.resolved',
+      'packages.lock.json',
+      'gradle.lockfile',
+      'shard.lock',
+      'MODULE.bazel.lock',
     ];
     for (const path of cases) assert.equal(generatedKind(path), 'lockfile', path);
   });
@@ -31,7 +49,16 @@ describe('generated file detection', () => {
   });
 
   it('leaves ordinary source that merely mentions lock or min alone', () => {
-    for (const path of ['src/lock.ts', 'src/unlock.js', 'src/blocked.ts', 'go.mod', 'package.json', 'README.md', 'src/lock/index.ts', 'notes.lock.md']) {
+    for (const path of [
+      'src/lock.ts',
+      'src/unlock.js',
+      'src/blocked.ts',
+      'go.mod',
+      'package.json',
+      'README.md',
+      'src/lock/index.ts',
+      'notes.lock.md',
+    ]) {
       assert.equal(isGeneratedFile(path), false, path);
     }
     assert.equal(isGeneratedFile(''), false);

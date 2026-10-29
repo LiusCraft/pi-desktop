@@ -13,9 +13,28 @@ const FETCH_TIMEOUT_MS = 30_000;
 
 /** Official catalogs win over resellers/gateways when the same model id appears twice. */
 const PRIORITY = [
-  'anthropic', 'openai', 'google', 'google-vertex', 'azure', 'amazon-bedrock',
-  'deepseek', 'mistral', 'xai', 'meta', 'moonshotai', 'moonshotai-cn', 'minimax', 'minimax-cn',
-  'zai', 'zai-coding-cn', 'qwen', 'alibaba', 'nvidia', 'groq', 'cerebras', 'cohere',
+  'anthropic',
+  'openai',
+  'google',
+  'google-vertex',
+  'azure',
+  'amazon-bedrock',
+  'deepseek',
+  'mistral',
+  'xai',
+  'meta',
+  'moonshotai',
+  'moonshotai-cn',
+  'minimax',
+  'minimax-cn',
+  'zai',
+  'zai-coding-cn',
+  'qwen',
+  'alibaba',
+  'nvidia',
+  'groq',
+  'cerebras',
+  'cohere',
 ];
 
 interface RawModel {

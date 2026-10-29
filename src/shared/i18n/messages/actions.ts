@@ -1,7 +1,10 @@
 import { defineMessages } from '../define';
 
 export const actions = defineMessages({
-  'act.hostExit': { en: 'The agent process exited ({code}); the next message restarts it automatically.', zh: 'Agent 进程退出（{code}），下一条消息会自动重启。' },
+  'act.hostExit': {
+    en: 'The agent process exited ({code}); the next message restarts it automatically.',
+    zh: 'Agent 进程退出（{code}），下一条消息会自动重启。',
+  },
   'act.extensionError': { en: 'Extension error: {error}', zh: '扩展出错：{error}' },
   'act.needsApproval': { en: '“{title}” needs your confirmation', zh: '“{title}” 需要你的确认' },
   'act.stepAgent': { en: 'Starting the agent, loading extensions and tools', zh: '启动 Agent，加载扩展与工具' },
@@ -18,10 +21,19 @@ export const actions = defineMessages({
   'act.waitCompaction': { en: 'Wait for compaction to finish before sending', zh: '等待压缩完成后再发送' },
   'act.exported': { en: 'Exported to {path}', zh: '已导出到 {path}' },
   'act.waitAttachments': { en: 'Wait for the attachments to finish before sending', zh: '等待附件处理完成后再发送' },
-  'act.slashNoAttach': { en: 'Slash commands cannot carry attachments or context; remove them or send a normal message', zh: '斜杠命令不能携带附件或上下文；请先移除或使用普通消息' },
+  'act.slashNoAttach': {
+    en: 'Slash commands cannot carry attachments or context; remove them or send a normal message',
+    zh: '斜杠命令不能携带附件或上下文；请先移除或使用普通消息',
+  },
   'act.pickProjectFirst': { en: 'Choose a project first', zh: '先选择一个项目' },
-  'act.exitedUnconfirmed': { en: 'The process exited and delivery is unconfirmed; the draft was kept, so check the history before sending again', zh: '进程已退出，发送状态未确认；草稿已保留，请核对历史后再发送' },
-  'act.unconfirmed': { en: 'Delivery is unconfirmed; check the session before retrying to avoid sending twice', zh: '发送状态未确认，请核对会话后再重试，避免重复发送' },
+  'act.exitedUnconfirmed': {
+    en: 'The process exited and delivery is unconfirmed; the draft was kept, so check the history before sending again',
+    zh: '进程已退出，发送状态未确认；草稿已保留，请核对历史后再发送',
+  },
+  'act.unconfirmed': {
+    en: 'Delivery is unconfirmed; check the session before retrying to avoid sending twice',
+    zh: '发送状态未确认，请核对会话后再重试，避免重复发送',
+  },
   'act.stopping': { en: 'Stopping…', zh: '正在停止…' },
   'act.archived': { en: 'Archived “{title}”', zh: '已归档“{title}”' },
   'act.archivedMany': { en: 'Archived {n} sessions', zh: '已归档 {n} 个会话' },
@@ -29,12 +41,24 @@ export const actions = defineMessages({
   'act.deleteWorktrees': { en: '{n} git worktrees are deleted too.', zh: '其中 {n} 个 git worktree 也会被删除。' },
   'act.undo': { en: 'Undo', zh: '撤销' },
   'act.deleteTitle': { en: 'Delete “{title}”?', zh: '删除“{title}”？' },
-  'act.deleteLine': { en: 'The conversation is deleted; files in the project are untouched.', zh: '对话记录会被删除；项目里的文件不受影响。' },
+  'act.deleteLine': {
+    en: 'The conversation is deleted; files in the project are untouched.',
+    zh: '对话记录会被删除；项目里的文件不受影响。',
+  },
   'act.deleteWorktree': { en: 'Its git worktree is deleted too: {path}', zh: '它的 git worktree 也会被删除：{path}' },
-  'act.deleteDirty': { en: '{n} files in it have uncommitted changes that are lost with it.', zh: '其中 {n} 个文件有未提交的改动，会一并丢失。' },
-  'act.deleteUnpushed': { en: 'Branch {branch} has {n} unpushed commits; the branch is kept, so the commits are not lost.', zh: '分支 {branch} 上有 {n} 个未推送的提交；分支会保留，提交不会丢。' },
+  'act.deleteDirty': {
+    en: '{n} files in it have uncommitted changes that are lost with it.',
+    zh: '其中 {n} 个文件有未提交的改动，会一并丢失。',
+  },
+  'act.deleteUnpushed': {
+    en: 'Branch {branch} has {n} unpushed commits; the branch is kept, so the commits are not lost.',
+    zh: '分支 {branch} 上有 {n} 个未推送的提交；分支会保留，提交不会丢。',
+  },
   'act.delete': { en: 'Delete', zh: '删除' },
-  'act.branchKept': { en: 'Branch {branch} was kept; it holds commits that exist nowhere else', zh: '分支 {branch} 已保留，里面有只存在于它的提交' },
+  'act.branchKept': {
+    en: 'Branch {branch} was kept; it holds commits that exist nowhere else',
+    zh: '分支 {branch} 已保留，里面有只存在于它的提交',
+  },
   'act.rewoundMessage': { en: 'Rewound message', zh: '回退的消息' },
   'act.branchStart': { en: 'Branch start', zh: '分支起点' },
   'act.taskFinished': { en: 'This task has already finished', zh: '这个任务已经结束' },
@@ -49,18 +73,30 @@ export const actions = defineMessages({
   'act.choose': { en: 'Choose', zh: '选择' },
   'act.isWorktree': { en: '“{name}” is a worktree of {main}', zh: '“{name}”是 {main} 的 worktree' },
   'act.asSession': { en: 'Open as a new session under {main}', zh: '作为 {main} 项目下的新会话' },
-  'act.asSessionHint': { en: 'Work directly in this worktree ({branch}) without creating another one', zh: '直接在这个 worktree（{branch}）里工作，不再另建 worktree' },
+  'act.asSessionHint': {
+    en: 'Work directly in this worktree ({branch}) without creating another one',
+    zh: '直接在这个 worktree（{branch}）里工作，不再另建 worktree',
+  },
   'act.asSessionAdd': { en: '; {main} is added as a project too', zh: '；同时把 {main} 添加为项目' },
   'act.detached': { en: 'detached HEAD', zh: '游离 HEAD' },
   'act.asProject': { en: 'Add as a separate project', zh: '作为独立项目添加' },
   'act.asProjectHint': { en: 'Treat this folder as a project of its own', zh: '把这个文件夹当成一个单独的项目' },
   'act.removeProjectTitle': { en: 'Remove “{name}” from Pi Desktop?', zh: '从 Pi Desktop 移除“{name}”？' },
-  'act.removeProjectBody': { en: 'Neither the folder nor the files in it are deleted.', zh: '文件夹和里面的文件都不会被删除。' },
-  'act.removeProjectNote': { en: ' Its {n} sessions are archived and can be found again under Archived sessions.', zh: '它的 {n} 个会话会被归档，之后可以在「已归档的会话」里找回。' },
+  'act.removeProjectBody': {
+    en: 'Neither the folder nor the files in it are deleted.',
+    zh: '文件夹和里面的文件都不会被删除。',
+  },
+  'act.removeProjectNote': {
+    en: ' Its {n} sessions are archived and can be found again under Archived sessions.',
+    zh: '它的 {n} 个会话会被归档，之后可以在「已归档的会话」里找回。',
+  },
   'act.remove': { en: 'Remove', zh: '移除' },
   'act.startedIn': { en: 'Started in a new session: {title}', zh: '已在新会话中开始：{title}' },
   'act.open': { en: 'Open', zh: '打开' },
   'act.importTitle': { en: 'Import a pi CLI session', zh: '导入 pi CLI 会话' },
 
-  'draft.contextLimit': { en: 'At most {n} context items, and no more than {chars} characters in total', zh: '最多附加 {n} 项上下文，总内容不能超过 {chars} 个字符' },
+  'draft.contextLimit': {
+    en: 'At most {n} context items, and no more than {chars} characters in total',
+    zh: '最多附加 {n} 项上下文，总内容不能超过 {chars} 个字符',
+  },
 });

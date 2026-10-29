@@ -33,7 +33,14 @@ export function openCards(s: SessionView): Arrangement {
 
 function defaultCards(s: SessionView): Arrangement {
   if (s.meta.kind === 'work') {
-    return { primary: [...(s.panels.progress ? (['progress'] as const) : []), ...(s.panels.tasks ? (['tasks'] as const) : []), ...(s.detail ? (['detail'] as const) : [])], secondary: [] };
+    return {
+      primary: [
+        ...(s.panels.progress ? (['progress'] as const) : []),
+        ...(s.panels.tasks ? (['tasks'] as const) : []),
+        ...(s.detail ? (['detail'] as const) : []),
+      ],
+      secondary: [],
+    };
   }
   const primary: CardId[] = [];
   if (s.panels.tasks) primary.push('tasks');
@@ -49,22 +56,46 @@ function defaultCards(s: SessionView): Arrangement {
 
 function renderCard(id: CardId, s: SessionView, card: CardProps): ReactNode {
   switch (id) {
-    case 'progress': return <WorkPanel s={s} {...card} />;
-    case 'tasks': return <TasksPanel s={s} {...card} />;
-    case 'diff': return <DiffPanel s={s} {...card} />;
-    case 'preview': return <PreviewPanel s={s} {...card} />;
-    case 'detail': return <DetailPanel s={s} {...card} />;
-    case 'files': return <FilesPanel s={s} {...card} />;
-    case 'terminal': return <TerminalPanel s={s} {...card} />;
+    case 'progress':
+      return <WorkPanel s={s} {...card} />;
+    case 'tasks':
+      return <TasksPanel s={s} {...card} />;
+    case 'diff':
+      return <DiffPanel s={s} {...card} />;
+    case 'preview':
+      return <PreviewPanel s={s} {...card} />;
+    case 'detail':
+      return <DetailPanel s={s} {...card} />;
+    case 'files':
+      return <FilesPanel s={s} {...card} />;
+    case 'terminal':
+      return <TerminalPanel s={s} {...card} />;
   }
 }
 
-function Column({ ids, s, columns, expanded, toggleExpand }: { ids: CardId[]; s: SessionView; columns: Arrangement; expanded: CardId | null; toggleExpand: (id: CardId, wide: boolean) => void }) {
+function Column({
+  ids,
+  s,
+  columns,
+  expanded,
+  toggleExpand,
+}: {
+  ids: CardId[];
+  s: SessionView;
+  columns: Arrangement;
+  expanded: CardId | null;
+  toggleExpand: (id: CardId, wide: boolean) => void;
+}) {
   // Each session keeps its own split for every combination of open cards.
   const key = ids.join('+');
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({ id: `${s.meta.id}:col:${key}` });
   return (
-    <ResizablePanelGroup orientation="vertical" id={`${s.meta.id}:col:${key}`} defaultLayout={defaultLayout} onLayoutChanged={onLayoutChanged}>
+    <ResizablePanelGroup
+      orientation="vertical"
+      id={`${s.meta.id}:col:${key}`}
+      defaultLayout={defaultLayout}
+      onLayoutChanged={onLayoutChanged}
+    >
       {ids.map((id, i) => (
         <Fragment key={id}>
           {i > 0 && <ResizableHandle className="my-0.5 bg-transparent" />}
@@ -103,11 +134,26 @@ export function Workspace({ s }: { s: SessionView }) {
   };
   const solo = soloCard(s);
   if (solo) {
-    return <div className="h-full p-1">{renderCard(solo, s, { expanded: true, onExpand: (wide) => toggleExpand(solo, wide) })}</div>;
+    return (
+      <div className="h-full p-1">
+        {renderCard(solo, s, { expanded: true, onExpand: (wide) => toggleExpand(solo, wide) })}
+      </div>
+    );
   }
-  if (!primary.length || !secondary.length) return <div className="h-full px-1"><Column ids={all} s={s} columns={layout} expanded={expanded} toggleExpand={toggleExpand} /></div>;
+  if (!primary.length || !secondary.length)
+    return (
+      <div className="h-full px-1">
+        <Column ids={all} s={s} columns={layout} expanded={expanded} toggleExpand={toggleExpand} />
+      </div>
+    );
   return (
-    <ResizablePanelGroup orientation="horizontal" id={`${s.meta.id}:columns`} defaultLayout={columns.defaultLayout} onLayoutChanged={columns.onLayoutChanged} className="px-1">
+    <ResizablePanelGroup
+      orientation="horizontal"
+      id={`${s.meta.id}:columns`}
+      defaultLayout={columns.defaultLayout}
+      onLayoutChanged={columns.onLayoutChanged}
+      className="px-1"
+    >
       <ResizablePanel id="primary" minSize={220}>
         <Column ids={primary} s={s} columns={layout} expanded={expanded} toggleExpand={toggleExpand} />
       </ResizablePanel>

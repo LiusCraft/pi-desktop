@@ -4,9 +4,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import { cleanTitle, titleFromPrompt } from '../src/agent/naming';
 
-
 describe('titleFromPrompt', () => {
-  it('uses the user\'s words, dropping @mentions and code', () => {
+  it("uses the user's words, dropping @mentions and code", () => {
     assert.equal(
       titleFromPrompt('看看 @src/app.js 里 `formatDate` 的 ```js\nconst x = 1\n``` 问题'),
       '看看 里 formatDate 的 问题',

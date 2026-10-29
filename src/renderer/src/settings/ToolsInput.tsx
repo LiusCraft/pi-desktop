@@ -9,7 +9,14 @@ import { call } from '@/lib/api';
 import { t as tr, useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
-const globToRegex = (glob: string) => new RegExp(`^${glob.split('*').map((p) => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`, 'i');
+const globToRegex = (glob: string) =>
+  new RegExp(
+    `^${glob
+      .split('*')
+      .map((p) => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+      .join('.*')}$`,
+    'i',
+  );
 
 interface Row {
   name: string;
@@ -18,7 +25,15 @@ interface Row {
   custom?: boolean;
 }
 
-export function ToolsInput({ value, onChange, placeholder }: { value: string[]; onChange: (tools: string[]) => void; placeholder?: string }) {
+export function ToolsInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string[];
+  onChange: (tools: string[]) => void;
+  placeholder?: string;
+}) {
   const t = useT();
   const [options, setOptions] = useState<ToolOption[]>([]);
   const [text, setText] = useState('');
@@ -29,16 +44,20 @@ export function ToolsInput({ value, onChange, placeholder }: { value: string[]; 
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    void call('agents:tools').then(setOptions).catch(() => {});
+    void call('agents:tools')
+      .then(setOptions)
+      .catch(() => {});
   }, []);
 
   const rows = useMemo<Row[]>(() => {
     const q = text.trim();
     const match = q.includes('*')
       ? (o: ToolOption) => globToRegex(q).test(o.name)
-      : (o: ToolOption) => !q || o.name.toLowerCase().includes(q.toLowerCase()) || o.description.toLowerCase().includes(q.toLowerCase());
+      : (o: ToolOption) =>
+          !q || o.name.toLowerCase().includes(q.toLowerCase()) || o.description.toLowerCase().includes(q.toLowerCase());
     const list: Row[] = options.filter((o) => !value.includes(o.name) && match(o));
-    if (q && !value.includes(q) && !options.some((o) => o.name === q)) list.push({ name: q, description: tr(q.includes('*') ? 'tools.byPattern' : 'tools.manual'), custom: true });
+    if (q && !value.includes(q) && !options.some((o) => o.name === q))
+      list.push({ name: q, description: tr(q.includes('*') ? 'tools.byPattern' : 'tools.manual'), custom: true });
     return list;
   }, [options, text, value]);
 
@@ -70,17 +89,33 @@ export function ToolsInput({ value, onChange, placeholder }: { value: string[]; 
   return (
     <Popover open={open && rows.length > 0} onOpenChange={setOpen}>
       <PopoverAnchor asChild>
+        {/* Clicking the shell focuses the input inside, which is keyboard accessible on its own. */}
+        {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
         <div
           onClick={() => input.current?.focus()}
           className="flex min-h-9 w-full cursor-text flex-wrap items-center gap-1.5 rounded-md border border-input bg-transparent px-2 py-1.5 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 dark:bg-input/30"
         >
           {value.map((name) => (
-            <span key={name} className="flex h-6 items-center gap-1 rounded-md border border-foreground/15 bg-secondary pr-1 pl-2 font-mono text-xs text-secondary-foreground shadow-xs">
+            <span
+              key={name}
+              className="flex h-6 items-center gap-1 rounded-md border border-foreground/15 bg-secondary pr-1 pl-2 font-mono text-xs text-secondary-foreground shadow-xs"
+            >
               {name}
-              <button type="button" aria-label={t('tools.remove', { name })} onClick={(e) => { e.stopPropagation(); onChange(value.filter((v) => v !== name)); }} onMouseEnter={() => setHot(name)}
+              <button
+                type="button"
+                aria-label={t('tools.remove', { name })}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onChange(value.filter((v) => v !== name));
+                }}
+                onMouseEnter={() => setHot(name)}
                 onMouseLeave={() => setHot(null)}
                 onBlur={() => setHot(null)}
-                className={cn('rounded-sm p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring/60', hot === name ? 'bg-destructive/15 text-destructive' : 'text-muted-foreground')}>
+                className={cn(
+                  'rounded-sm p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
+                  hot === name ? 'bg-destructive/15 text-destructive' : 'text-muted-foreground',
+                )}
+              >
                 <XIcon className="size-3" />
               </button>
             </span>
@@ -88,7 +123,10 @@ export function ToolsInput({ value, onChange, placeholder }: { value: string[]; 
           <input
             ref={input}
             value={text}
-            onChange={(e) => { setText(e.target.value); setOpen(true); }}
+            onChange={(e) => {
+              setText(e.target.value);
+              setOpen(true);
+            }}
             onFocus={() => setOpen(true)}
             onKeyDown={onKeyDown}
             placeholder={value.length ? '' : placeholder}
@@ -105,7 +143,9 @@ export function ToolsInput({ value, onChange, placeholder }: { value: string[]; 
         onOpenAutoFocus={(e) => e.preventDefault()}
         onCloseAutoFocus={(e) => e.preventDefault()}
         // The field itself is inside the popover's anchor: clicking it must not count as "outside".
-        onInteractOutside={(e) => { if ((e.target as HTMLElement).closest('[data-slot="popover-anchor"], input')) e.preventDefault(); }}
+        onInteractOutside={(e) => {
+          if ((e.target as HTMLElement).closest('[data-slot="popover-anchor"], input')) e.preventDefault();
+        }}
       >
         {rows.map((row, i) => (
           <button
@@ -115,7 +155,10 @@ export function ToolsInput({ value, onChange, placeholder }: { value: string[]; 
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => add(row.name)}
             onMouseEnter={() => setActive(i)}
-            className={cn('flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm', i === active && 'bg-accent text-accent-foreground')}
+            className={cn(
+              'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm',
+              i === active && 'bg-accent text-accent-foreground',
+            )}
           >
             <span className="min-w-0 flex-1">
               <span className="font-mono">{row.custom ? t('tools.add', { name: row.name }) : row.name}</span>

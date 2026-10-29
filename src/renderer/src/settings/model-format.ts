@@ -44,9 +44,17 @@ function reasoningLabel(model: EndpointModel): string | undefined {
 
 /** The capability/pricing summary under a model id. */
 export function modelMetaLine(model: EndpointModel): string {
-  const hasMeta = Boolean(model.contextWindow || model.maxTokens || costLabel(model.cost) || reasoningLabel(model) || model.input?.includes('image'));
+  const hasMeta = Boolean(
+    model.contextWindow ||
+    model.maxTokens ||
+    costLabel(model.cost) ||
+    reasoningLabel(model) ||
+    model.input?.includes('image'),
+  );
   if (!hasMeta) return t('fmt.noMeta');
-  const parts = [model.contextWindow ? t('fmt.context', { size: tokensLabel(model.contextWindow) }) : t('fmt.defaultContext')];
+  const parts = [
+    model.contextWindow ? t('fmt.context', { size: tokensLabel(model.contextWindow) }) : t('fmt.defaultContext'),
+  ];
   if (model.maxTokens) parts.push(t('fmt.output', { size: tokensLabel(model.maxTokens) }));
   const cost = costLabel(model.cost);
   if (cost) parts.push(cost);

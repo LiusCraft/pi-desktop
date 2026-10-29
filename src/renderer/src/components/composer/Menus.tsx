@@ -7,7 +7,12 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tip } from '@/components/common/Tip';
 import { call } from '@/lib/api';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { levelLabel, MODES } from '@/lib/constants';
 import { useT } from '@/lib/i18n';
@@ -24,13 +29,29 @@ function useMenu(name: 'model' | 'mode' | 'context') {
 
 export function FootButton({ children, className, ...props }: React.ComponentProps<'button'>) {
   return (
-    <button {...props} className={cn('flex h-8 max-w-56 items-center gap-1.5 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground data-[state=open]:bg-accent', className)}>
+    <button
+      {...props}
+      className={cn(
+        'flex h-8 max-w-56 items-center gap-1.5 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground data-[state=open]:bg-accent',
+        className,
+      )}
+    >
       {children}
     </button>
   );
 }
 
-function Option({ active, title, hint, onSelect }: { active: boolean; title: ReactNode; hint?: ReactNode; onSelect: () => void }) {
+function Option({
+  active,
+  title,
+  hint,
+  onSelect,
+}: {
+  active: boolean;
+  title: ReactNode;
+  hint?: ReactNode;
+  onSelect: () => void;
+}) {
   return (
     <DropdownMenuItem onSelect={onSelect} className="items-start gap-2 py-1.5">
       <CheckIcon className={cn('mt-0.5 size-3.5 shrink-0', !active && 'invisible')} />
@@ -42,7 +63,15 @@ function Option({ active, title, hint, onSelect }: { active: boolean; title: Rea
   );
 }
 
-export function ModelMenu({ model, trigger, align = 'end' }: { model: string | null; trigger: ReactNode; align?: 'start' | 'end' }) {
+export function ModelMenu({
+  model,
+  trigger,
+  align = 'end',
+}: {
+  model: string | null;
+  trigger: ReactNode;
+  align?: 'start' | 'end';
+}) {
   const t = useT();
   const models = useApp((s) => s.models);
   const menu = useMenu('model');
@@ -63,7 +92,12 @@ export function ModelMenu({ model, trigger, align = 'end' }: { model: string | n
                   key={id}
                   active={id === model}
                   title={m.name || m.id}
-                  hint={[m.contextWindow ? t('menu.contextWindowUsed', { size: fmtTok(m.contextWindow) }) : '', m.reasoning ? t('menu.reasoning') : ''].filter(Boolean).join(' · ')}
+                  hint={[
+                    m.contextWindow ? t('menu.contextWindowUsed', { size: fmtTok(m.contextWindow) }) : '',
+                    m.reasoning ? t('menu.reasoning') : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                   onSelect={() => void chooseModel(id)}
                 />
               );
@@ -87,7 +121,9 @@ export function EffortMenu({ levels, effort }: { levels: ThinkingLevel[]; effort
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" side="top" className="w-44">
         <DropdownMenuLabel className="text-xs text-muted-foreground">{t('menu.thinkingEffort')}</DropdownMenuLabel>
-        {levels.map((l) => <Option key={l} active={l === effort} title={levelLabel(l)} onSelect={() => void chooseEffort(l)} />)}
+        {levels.map((l) => (
+          <Option key={l} active={l === effort} title={levelLabel(l)} onSelect={() => void chooseEffort(l)} />
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -106,11 +142,15 @@ export function ModeMenu({ mode }: { mode: PermissionMode }) {
   return (
     <DropdownMenu {...menu}>
       <DropdownMenuTrigger asChild>
-        <FootButton title={`${t('menu.mode')}  Shift+Tab`} className={MODE_TONE[mode]}>{current.name}</FootButton>
+        <FootButton title={`${t('menu.mode')}  Shift+Tab`} className={MODE_TONE[mode]}>
+          {current.name}
+        </FootButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="top" className="w-80">
         <DropdownMenuLabel className="text-xs text-muted-foreground">{t('menu.modeLabel')}</DropdownMenuLabel>
-        {MODES.map((m) => <Option key={m.id} active={m.id === mode} title={m.name} hint={m.desc} onSelect={() => setPermMode(m.id)} />)}
+        {MODES.map((m) => (
+          <Option key={m.id} active={m.id === mode} title={m.name} hint={m.desc} onSelect={() => setPermMode(m.id)} />
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -135,7 +175,19 @@ const GROUPS: Group[] = ['mcp', 'extension', 'system', 'skills', 'memory'];
 const pctOf = (n: number, of: number) => `${of ? ((n / of) * 100).toFixed(1) : '0.0'}%`;
 
 /** The context ring; click it for where the window goes (messages, tools, skills, system prompt, buffer). */
-export function ContextRing({ pct, cacheRate, cost, busy, sid }: { pct: number | null; cacheRate?: number | null; cost?: number | null; busy?: boolean; sid?: string }) {
+export function ContextRing({
+  pct,
+  cacheRate,
+  cost,
+  busy,
+  sid,
+}: {
+  pct: number | null;
+  cacheRate?: number | null;
+  cost?: number | null;
+  busy?: boolean;
+  sid?: string;
+}) {
   const t = useT();
   const p = Math.max(0, Math.min(100, pct ?? 0));
   const cachePct = cacheRate == null ? null : Math.round(cacheRate * 100);
@@ -148,19 +200,41 @@ export function ContextRing({ pct, cacheRate, cost, busy, sid }: { pct: number |
   useEffect(() => {
     if (!open || !sid) return;
     let live = true;
-    call('sessions:context', sid).then((d) => live && setData(d), () => live && setData(null));
+    call('sessions:context', sid).then(
+      (d) => live && setData(d),
+      () => live && setData(null),
+    );
     return () => void (live = false);
   }, [open, sid, pct, busy]);
   const ringTitle = [
     pct == null ? t('menu.context') : t('menu.contextUsed', { pct: Math.round(p) }),
     cachePct == null ? '' : t('menu.cacheRatePct', { pct: cachePct }),
     spent == null ? '' : t('menu.spendLine', { cost: spent }),
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
   const ring = (
-    <span className={cn('flex size-7 items-center justify-center rounded-md text-muted-foreground', sid && 'hover:bg-accent', busy && 'animate-pulse')} title={ringTitle}>
+    <span
+      className={cn(
+        'flex size-7 items-center justify-center rounded-md text-muted-foreground',
+        sid && 'hover:bg-accent',
+        busy && 'animate-pulse',
+      )}
+      title={ringTitle}
+    >
       <svg viewBox="0 0 20 20" className="size-[17px]">
         <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeOpacity=".35" strokeWidth="1.6" />
-        <circle cx="10" cy="10" r="7" fill="none" stroke="var(--info)" strokeWidth="2" strokeDasharray={`${((p / 100) * 44).toFixed(1)} 44`} strokeLinecap="round" transform="rotate(-90 10 10)" />
+        <circle
+          cx="10"
+          cy="10"
+          r="7"
+          fill="none"
+          stroke="var(--info)"
+          strokeWidth="2"
+          strokeDasharray={`${((p / 100) * 44).toFixed(1)} 44`}
+          strokeLinecap="round"
+          transform="rotate(-90 10 10)"
+        />
       </svg>
     </span>
   );
@@ -168,23 +242,33 @@ export function ContextRing({ pct, cacheRate, cost, busy, sid }: { pct: number |
   const shown = data?.categories.filter((c) => c.tokens > 0 || c.key === 'messages' || c.key === 'free') ?? [];
   return (
     <Popover open={open} onOpenChange={menu.onOpenChange}>
-      <PopoverTrigger asChild><button aria-label={t('menu.contextUsage')}>{ring}</button></PopoverTrigger>
+      <PopoverTrigger asChild>
+        <button aria-label={t('menu.contextUsage')}>{ring}</button>
+      </PopoverTrigger>
       <PopoverContent side="top" align="end" className="w-[23rem] p-0">
-        {data === undefined ? <div className="p-4 text-sm text-muted-foreground">{t('menu.measuring')}</div> : !data ? (
+        {data === undefined ? (
+          <div className="p-4 text-sm text-muted-foreground">{t('menu.measuring')}</div>
+        ) : !data ? (
           <div className="p-4 text-sm text-muted-foreground">{t('menu.contextNeedsModel')}</div>
         ) : (
           <div className="text-sm">
             <div className="flex items-baseline justify-between px-4 pt-3.5 pb-2">
               <span className="text-muted-foreground">{t('menu.contextWindow')}</span>
               <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                {fmtTok(data.used)} / {fmtTok(data.contextWindow)} ({Math.round((data.used / data.contextWindow) * 100)}%)
+                {fmtTok(data.used)} / {fmtTok(data.contextWindow)} ({Math.round((data.used / data.contextWindow) * 100)}
+                %)
               </span>
             </div>
             {cache != null && (
               <div className="flex items-center justify-between px-4 pb-2 text-muted-foreground">
                 <span className="flex items-center gap-1">
                   {t('menu.cacheRate')}
-                  <Tip>{t('menu.cacheRateTip', { cached: fmtTok(data.cache.cacheRead), total: fmtTok(data.cache.input + data.cache.cacheRead + data.cache.cacheWrite) })}</Tip>
+                  <Tip>
+                    {t('menu.cacheRateTip', {
+                      cached: fmtTok(data.cache.cacheRead),
+                      total: fmtTok(data.cache.input + data.cache.cacheRead + data.cache.cacheWrite),
+                    })}
+                  </Tip>
                 </span>
                 <span className="font-mono text-xs tabular-nums">{(cache * 100).toFixed(1)}%</span>
               </div>
@@ -197,19 +281,37 @@ export function ContextRing({ pct, cacheRate, cost, busy, sid }: { pct: number |
               <span className="font-mono text-xs tabular-nums">{fmtCost(data.cost)}</span>
             </div>
             <div className="mx-4 flex h-1.5 gap-px overflow-hidden rounded-full bg-muted">
-              {shown.filter((c) => c.key !== 'free' && c.tokens > 0).map((c) => (
-                <span key={c.key} className="h-full" style={{ width: pctOf(c.tokens, data.contextWindow), background: CATEGORY_COLOR[c.key], minWidth: 2 }} />
-              ))}
+              {shown
+                .filter((c) => c.key !== 'free' && c.tokens > 0)
+                .map((c) => (
+                  <span
+                    key={c.key}
+                    className="h-full"
+                    style={{
+                      width: pctOf(c.tokens, data.contextWindow),
+                      background: CATEGORY_COLOR[c.key],
+                      minWidth: 2,
+                    }}
+                  />
+                ))}
             </div>
             <div className="space-y-0.5 px-4 pt-2.5 pb-2">
               {shown.map((c) => (
                 <div key={c.key} className="grid grid-cols-[1fr_auto_3.5rem] items-center gap-3">
                   <span className="flex min-w-0 items-center gap-2">
-                    <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: CATEGORY_COLOR[c.key], outline: c.key === 'free' ? '1px solid var(--border)' : undefined }} />
+                    <span
+                      className="size-2.5 shrink-0 rounded-[3px]"
+                      style={{
+                        background: CATEGORY_COLOR[c.key],
+                        outline: c.key === 'free' ? '1px solid var(--border)' : undefined,
+                      }}
+                    />
                     <span className="truncate">{c.label}</span>
                   </span>
                   <span className="font-mono text-xs text-muted-foreground tabular-nums">{fmtTok(c.tokens)}</span>
-                  <span className="text-right font-mono text-xs text-muted-foreground tabular-nums">{pctOf(c.tokens, data.contextWindow)}</span>
+                  <span className="text-right font-mono text-xs text-muted-foreground tabular-nums">
+                    {pctOf(c.tokens, data.contextWindow)}
+                  </span>
                 </div>
               ))}
             </div>
@@ -222,29 +324,58 @@ export function ContextRing({ pct, cacheRate, cost, busy, sid }: { pct: number |
                 const isOpen = expanded === g;
                 return (
                   <div key={g}>
-                    <button className="grid w-full grid-cols-[1fr_auto_3.5rem] items-center gap-3 rounded-md px-2 py-1 text-left hover:bg-accent" aria-expanded={isOpen} onClick={() => setExpanded(isOpen ? null : g)}>
+                    <button
+                      className="grid w-full grid-cols-[1fr_auto_3.5rem] items-center gap-3 rounded-md px-2 py-1 text-left hover:bg-accent"
+                      aria-expanded={isOpen}
+                      onClick={() => setExpanded(isOpen ? null : g)}
+                    >
                       <span className="flex items-center gap-1.5">
-                        {isOpen ? <ChevronDownIcon className="size-3.5 text-muted-foreground" /> : <ChevronRightIcon className="size-3.5 text-muted-foreground" />}{label}
+                        {isOpen ? (
+                          <ChevronDownIcon className="size-3.5 text-muted-foreground" />
+                        ) : (
+                          <ChevronRightIcon className="size-3.5 text-muted-foreground" />
+                        )}
+                        {label}
                       </span>
                       <span className="font-mono text-xs text-muted-foreground tabular-nums">{fmtTok(total)}</span>
-                      <span className="text-right font-mono text-xs text-muted-foreground tabular-nums">{items.length}</span>
+                      <span className="text-right font-mono text-xs text-muted-foreground tabular-nums">
+                        {items.length}
+                      </span>
                     </button>
-                    {isOpen && items.map((i) => (
-                      <div key={i.name} className="grid grid-cols-[1fr_auto_3.5rem] gap-3 py-0.5 pr-2 pl-7 text-xs text-muted-foreground" title={i.name}>
-                        <span className="truncate">{g === 'memory' ? fname(i.name) : i.name.replace('__', ' · ')}</span>
-                        <span className="font-mono tabular-nums">{fmtTok(i.tokens)}</span>
-                        <span />
-                      </div>
-                    ))}
+                    {isOpen &&
+                      items.map((i) => (
+                        <div
+                          key={i.name}
+                          className="grid grid-cols-[1fr_auto_3.5rem] gap-3 py-0.5 pr-2 pl-7 text-xs text-muted-foreground"
+                          title={i.name}
+                        >
+                          <span className="truncate">
+                            {g === 'memory' ? fname(i.name) : i.name.replace('__', ' · ')}
+                          </span>
+                          <span className="font-mono tabular-nums">{fmtTok(i.tokens)}</span>
+                          <span />
+                        </div>
+                      ))}
                   </div>
                 );
               })}
             </div>
             <div className="flex items-center gap-2 border-t px-4 py-2.5">
-              <Button size="sm" variant="secondary" className="h-7 text-xs" disabled={busy} onClick={() => { menu.onOpenChange(false); void compactSession(sid).catch(fail); }}>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-7 text-xs"
+                disabled={busy}
+                onClick={() => {
+                  menu.onOpenChange(false);
+                  void compactSession(sid).catch(fail);
+                }}
+              >
                 {t('menu.compactNow')}
               </Button>
-              <span className="text-xs text-muted-foreground">{t(data.estimated ? 'menu.allEstimated' : 'menu.partlyEstimated')}</span>
+              <span className="text-xs text-muted-foreground">
+                {t(data.estimated ? 'menu.allEstimated' : 'menu.partlyEstimated')}
+              </span>
             </div>
           </div>
         )}

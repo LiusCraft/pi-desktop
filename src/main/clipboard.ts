@@ -45,24 +45,39 @@ export function clipboardPaths(format: string, bytes: Buffer, platform: NodeJS.P
     const xml = bytes.toString('utf8');
     // Never evaluate a plist or resolve its external DTD. Finder's XML string
     // array is all that is needed; unsupported binary plists remain untrusted.
-    if (/<plist[\s>]/i.test(xml) && /<array[\s>]/i.test(xml)) values = [...xml.matchAll(/<string(?:\s[^>]*)?>([\s\S]*?)<\/string>/gi)].map((m) => xmlText(m[1]));
+    if (/<plist[\s>]/i.test(xml) && /<array[\s>]/i.test(xml))
+      values = [...xml.matchAll(/<string(?:\s[^>]*)?>([\s\S]*?)<\/string>/gi)].map((m) => xmlText(m[1]));
   } else if (name === 'filenamew' || name === 'cf_hdrop') {
-    let offset = 0, wide = true;
+    let offset = 0,
+      wide = true;
     if (name === 'cf_hdrop') {
       if (bytes.length < 20) return [];
       offset = bytes.readUInt32LE(0);
       wide = bytes.readUInt32LE(16) !== 0;
       if (offset < 20 || offset >= bytes.length || (wide && offset % 2)) return [];
     }
-    values = bytes.subarray(offset).toString(wide ? 'utf16le' : 'latin1').split('\0');
+    values = bytes
+      .subarray(offset)
+      .toString(wide ? 'utf16le' : 'latin1')
+      .split('\0');
   } else if (['public.file-url', 'text/uri-list', 'x-special/gnome-copied-files'].includes(name)) {
-    values = bytes.toString('utf8').split(/[\r\n\0]+/).filter((v) => v && !v.startsWith('#') && !/^(copy|cut)$/.test(v));
+    values = bytes
+      .toString('utf8')
+      .split(/[\r\n\0]+/)
+      .filter((v) => v && !v.startsWith('#') && !/^(copy|cut)$/.test(v));
   }
   return values.map((value) => pathFromClipboard(value, platform)).filter((p): p is string => !!p);
 }
 
 function isPathFormat(type: string) {
-  return ['public.file-url', 'nsfilenamespboardtype', 'filenamew', 'cf_hdrop', 'text/uri-list', 'x-special/gnome-copied-files'].includes(nativeFormat(type));
+  return [
+    'public.file-url',
+    'nsfilenamespboardtype',
+    'filenamew',
+    'cf_hdrop',
+    'text/uri-list',
+    'x-special/gnome-copied-files',
+  ].includes(nativeFormat(type));
 }
 
 export interface ClipboardItemLike {
@@ -72,7 +87,8 @@ export interface ClipboardItemLike {
 
 async function clipboardBytes(item: ClipboardItemLike, type: string, maxBytes: number = LIMITS.fileBytes) {
   const blob = await item.getType(type);
-  if (!blob || typeof blob.arrayBuffer !== 'function' || (typeof blob.size === 'number' && blob.size > maxBytes)) throw new Error('Clipboard data exceeds the attachment size limit.');
+  if (!blob || typeof blob.arrayBuffer !== 'function' || (typeof blob.size === 'number' && blob.size > maxBytes))
+    throw new Error('Clipboard data exceeds the attachment size limit.');
   const bytes = Buffer.from(await blob.arrayBuffer());
   if (bytes.length > maxBytes) throw new Error('Clipboard data exceeds the attachment size limit.');
   return bytes;
@@ -93,7 +109,8 @@ export async function clipboardAttachments(
         try {
           const bytes = await clipboardBytes(item, type, 1024 * 1024);
           const format = nativeFormat(type);
-          hasFiles ||= format !== 'text/uri-list' || /(?:^|[\r\n])(?:file:|\/|[A-Za-z]:[\\/])/i.test(bytes.toString('utf8'));
+          hasFiles ||=
+            format !== 'text/uri-list' || /(?:^|[\r\n])(?:file:|\/|[A-Za-z]:[\\/])/i.test(bytes.toString('utf8'));
           paths.push(...clipboardPaths(type, bytes));
         } catch (error) {
           hasFiles ||= nativeFormat(type) !== 'text/uri-list';
@@ -110,7 +127,11 @@ export async function clipboardAttachments(
   // even if one fails to import, rather than silently substituting that preview.
   if (hasFiles || paths.length) {
     const result = await importSources([...new Set(paths)].map((p) => ({ path: p })));
-    if (!paths.length && !errors.length) errors.push({ name: 'Clipboard files', message: 'No supported local file paths were found. Network files and remote URLs cannot be attached.' });
+    if (!paths.length && !errors.length)
+      errors.push({
+        name: 'Clipboard files',
+        message: 'No supported local file paths were found. Network files and remote URLs cannot be attached.',
+      });
     return { ...result, hasFiles: true, errors: [...errors, ...result.errors], ...(text ? { text } : {}) };
   }
   const sources: AttachmentSource[] = [];

@@ -4,12 +4,26 @@ import { describe, it } from 'vitest';
 import { gitActions, type BranchWork } from '../src/renderer/src/components/composer/pr-actions';
 import { setActiveLocale } from '../src/shared/i18n/runtime';
 
-const state = (p: Partial<{ dirty: string[]; ahead: number; behind: number; baseBehind: number; base: string | null; upstream: string | null }> = {}) =>
-  ({ dirty: [], ahead: 0, behind: 0, baseBehind: 0, base: 'main', upstream: 'origin/feature', ...p });
+const state = (
+  p: Partial<{
+    dirty: string[];
+    ahead: number;
+    behind: number;
+    baseBehind: number;
+    base: string | null;
+    upstream: string | null;
+  }> = {},
+) => ({ dirty: [], ahead: 0, behind: 0, baseBehind: 0, base: 'main', upstream: 'origin/feature', ...p });
 const work = (p: Partial<BranchWork> = {}): BranchWork => ({
-  branch: 'feature', baseBranch: 'main', st: state(), pr: null, strategy: 'merge', ...p,
+  branch: 'feature',
+  baseBranch: 'main',
+  st: state(),
+  pr: null,
+  strategy: 'merge',
+  ...p,
 });
-const action = (w: BranchWork, act: 'pr' | 'commit' | 'push' | 'sync') => gitActions(w).actions.find((a) => a.act === act)!;
+const action = (w: BranchWork, act: 'pr' | 'commit' | 'push' | 'sync') =>
+  gitActions(w).actions.find((a) => a.act === act)!;
 
 describe('branch bar actions', () => {
   it('offers to merge a base branch that moved on, or rebase when chosen, without making it the default', () => {
@@ -22,7 +36,10 @@ describe('branch bar actions', () => {
   });
 
   it('has no sync action on the base branch itself', () => {
-    assert.equal(gitActions(work({ branch: 'main' })).actions.some((a) => a.act === 'sync'), false);
+    assert.equal(
+      gitActions(work({ branch: 'main' })).actions.some((a) => a.act === 'sync'),
+      false,
+    );
   });
 
   it('submits the PR by default on a branch of its own', () => {

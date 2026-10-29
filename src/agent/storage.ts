@@ -7,8 +7,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  EMPTY_STORAGE, STORAGE_NOT_CONFIGURED, missingStorageField, storageUrl,
-  type ObjectStorageConfig, type ObjectStorageDraft, type ObjectStorageInfo,
+  EMPTY_STORAGE,
+  STORAGE_NOT_CONFIGURED,
+  missingStorageField,
+  storageUrl,
+  type ObjectStorageConfig,
+  type ObjectStorageDraft,
+  type ObjectStorageInfo,
 } from '@shared/storage';
 import { appObjectStorageFile } from './app-paths';
 import { checkBucket, contentTypeFor, deleteObject, putObject, type S3Target } from './s3';
@@ -20,7 +25,9 @@ export class ObjectStorage {
 
   private read(): { config: ObjectStorageConfig; secret: string } {
     try {
-      const { secretAccessKey, ...rest } = JSON.parse(fs.readFileSync(appObjectStorageFile(this.dataDir), 'utf8')) as Stored;
+      const { secretAccessKey, ...rest } = JSON.parse(
+        fs.readFileSync(appObjectStorageFile(this.dataDir), 'utf8'),
+      ) as Stored;
       return { config: { ...EMPTY_STORAGE, ...rest }, secret: secretAccessKey ?? '' };
     } catch {
       return { config: { ...EMPTY_STORAGE }, secret: '' };
@@ -43,19 +50,28 @@ export class ObjectStorage {
       prefix: draft.prefix.trim().replace(/^\/+|\/+$/g, ''),
       pathStyle: !!draft.pathStyle,
     };
-    for (const [name, value] of [['endpoint', config.endpoint], ['publicBaseUrl', config.publicBaseUrl]] as const) {
+    for (const [name, value] of [
+      ['endpoint', config.endpoint],
+      ['publicBaseUrl', config.publicBaseUrl],
+    ] as const) {
       if (value && !/^https?:\/\//i.test(value)) throw new Error(`${name} must start with http:// or https://`);
     }
     const file = appObjectStorageFile(this.dataDir);
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, JSON.stringify({ ...config, secretAccessKey: draft.secretAccessKey.trim() || saved }, null, 2), { mode: 0o600 });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ ...config, secretAccessKey: draft.secretAccessKey.trim() || saved }, null, 2),
+      { mode: 0o600 },
+    );
     return this.info();
   }
 
   /** Sign a one-key listing with the saved settings (or an unsaved draft); resolves when the bucket answers. */
   async test(draft?: ObjectStorageDraft): Promise<void> {
     const saved = this.read();
-    const target = draft ? { ...draft, secretAccessKey: draft.secretAccessKey.trim() || saved.secret } : { ...saved.config, secretAccessKey: saved.secret };
+    const target = draft
+      ? { ...draft, secretAccessKey: draft.secretAccessKey.trim() || saved.secret }
+      : { ...saved.config, secretAccessKey: saved.secret };
     const missing = missingStorageField(target, !!target.secretAccessKey);
     // The public URL is not used by the test, so it may still be empty here.
     if (missing && missing !== 'publicBaseUrl') throw new Error(`Fill in ${missing} first`);
@@ -63,7 +79,14 @@ export class ObjectStorage {
   }
 
   private target(c: ObjectStorageConfig, secretAccessKey: string): S3Target {
-    return { endpoint: c.endpoint, region: c.region, bucket: c.bucket, accessKeyId: c.accessKeyId, secretAccessKey, pathStyle: c.pathStyle };
+    return {
+      endpoint: c.endpoint,
+      region: c.region,
+      bucket: c.bucket,
+      accessKeyId: c.accessKeyId,
+      secretAccessKey,
+      pathStyle: c.pathStyle,
+    };
   }
 
   /** The configuration to use, or the message that says how to get one. */

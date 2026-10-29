@@ -10,7 +10,10 @@ document.addEventListener(
     if (!el) return;
     if (!el.hasAttribute('data-scrolling')) el.setAttribute('data-scrolling', '');
     clearTimeout(timers.get(el));
-    timers.set(el, setTimeout(() => el.removeAttribute('data-scrolling'), HIDE_AFTER));
+    timers.set(
+      el,
+      setTimeout(() => el.removeAttribute('data-scrolling'), HIDE_AFTER),
+    );
   },
   { capture: true, passive: true },
 );

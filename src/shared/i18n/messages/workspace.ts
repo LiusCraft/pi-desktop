@@ -16,8 +16,14 @@ export const workspace = defineMessages({
   'panel.collapseAll': { en: 'Collapse all', zh: '全部折叠' },
   'panel.hideChangedFiles': { en: 'Hide changed files', zh: '隐藏改动文件' },
   'panel.showChangedFiles': { en: 'Show changed files', zh: '显示改动文件' },
-  'panel.notGit': { en: 'This project is not a git repository\nInitialize git to see what Pi Desktop changes', zh: '这个项目不是 git 仓库\n初始化 git 后即可查看 Pi Desktop 的改动' },
-  'panel.noChanges': { en: 'No changes yet\nFiles Pi Desktop modifies show up here', zh: '还没有改动\nPi Desktop 修改的文件会出现在这里' },
+  'panel.notGit': {
+    en: 'This project is not a git repository\nInitialize git to see what Pi Desktop changes',
+    zh: '这个项目不是 git 仓库\n初始化 git 后即可查看 Pi Desktop 的改动',
+  },
+  'panel.noChanges': {
+    en: 'No changes yet\nFiles Pi Desktop modifies show up here',
+    zh: '还没有改动\nPi Desktop 修改的文件会出现在这里',
+  },
   'panel.findInChangesPh': { en: 'Find in changes', zh: '在改动中查找' },
   'panel.commits': { en: 'Commits', zh: '提交' },
   'panel.allChanges': { en: 'All changes', zh: '全部改动' },
@@ -43,11 +49,17 @@ export const workspace = defineMessages({
   'panel.searchAllPh': { en: 'Search in all files', zh: '在所有文件中搜索' },
   'panel.searchFilePh': { en: 'Find in the current file', zh: '在当前文件中查找' },
   'panel.closeTab': { en: 'Close {name}', zh: '关闭 {name}' },
-  'panel.pickFile': { en: 'Pick a file on the left to preview\nDouble-click to keep the tab', zh: '选择左侧的文件来预览\n双击保留标签页' },
+  'panel.pickFile': {
+    en: 'Pick a file on the left to preview\nDouble-click to keep the tab',
+    zh: '选择左侧的文件来预览\n双击保留标签页',
+  },
 
   'tasks.title': { en: 'Background tasks', zh: '后台任务' },
   'tasks.clear': { en: 'Clear finished tasks', zh: '清除已结束的任务' },
-  'tasks.empty': { en: 'No background tasks\nSubagents and shell commands Pi Desktop runs in the background show up here', zh: '没有后台任务\nPi Desktop 在后台运行的子代理和 shell 命令会显示在这里' },
+  'tasks.empty': {
+    en: 'No background tasks\nSubagents and shell commands Pi Desktop runs in the background show up here',
+    zh: '没有后台任务\nPi Desktop 在后台运行的子代理和 shell 命令会显示在这里',
+  },
   'tasks.running': { en: 'Running', zh: '运行中' },
   'tasks.finished': { en: 'Finished', zh: '已结束' },
   'tasks.shell': { en: 'Shell', zh: 'Shell' },
@@ -72,7 +84,10 @@ export const workspace = defineMessages({
   'plan.title': { en: 'Plan', zh: '计划' },
   'plan.copied': { en: 'Copied', zh: '已复制' },
   'plan.copy': { en: 'Copy plan', zh: '复制计划' },
-  'plan.review': { en: 'Review the plan. Approve it to let Pi Desktop start, or keep planning and reply with changes.', zh: '请审阅计划。批准后 Pi Desktop 开始动手，或者继续规划并回复修改意见。' },
+  'plan.review': {
+    en: 'Review the plan. Approve it to let Pi Desktop start, or keep planning and reply with changes.',
+    zh: '请审阅计划。批准后 Pi Desktop 开始动手，或者继续规划并回复修改意见。',
+  },
   'plan.waiting': { en: '_Waiting for the plan…_', zh: '_等待计划…_' },
 
   'file.viewRendered': { en: 'View rendered', zh: '查看渲染效果' },
@@ -80,9 +95,18 @@ export const workspace = defineMessages({
   'file.diff': { en: 'Diff', zh: 'Diff' },
   'file.loading': { en: 'Loading current file…', zh: '正在加载当前文件…' },
   'file.unable': { en: 'Unable to open current file.', zh: '无法打开当前文件。' },
-  'file.noMedia': { en: 'Playback unavailable\nNot a supported audio or video file, outside the session folder, or larger than 50 MiB', zh: '无法播放\n不是支持的音频或视频、不在会话文件夹内，或超过 50 MiB' },
-  'file.noImage': { en: 'Image preview unavailable\nNot a supported image, outside the session folder, or larger than 20 MiB', zh: '无法预览图片\n不是支持的图片、不在会话文件夹内，或超过 20 MiB' },
-  'file.noPreview': { en: 'File preview unavailable\nBinary, non-text, or larger than 1 MiB', zh: '无法预览文件\n二进制、非文本，或超过 1 MiB' },
+  'file.noMedia': {
+    en: 'Playback unavailable\nNot a supported audio or video file, outside the session folder, or larger than 50 MiB',
+    zh: '无法播放\n不是支持的音频或视频、不在会话文件夹内，或超过 50 MiB',
+  },
+  'file.noImage': {
+    en: 'Image preview unavailable\nNot a supported image, outside the session folder, or larger than 20 MiB',
+    zh: '无法预览图片\n不是支持的图片、不在会话文件夹内，或超过 20 MiB',
+  },
+  'file.noPreview': {
+    en: 'File preview unavailable\nBinary, non-text, or larger than 1 MiB',
+    zh: '无法预览文件\n二进制、非文本，或超过 1 MiB',
+  },
 
   'progress.title': { en: 'Progress', zh: '进度' },
   'progress.learning': { en: 'Getting to know the task…', zh: '正在了解任务…' },

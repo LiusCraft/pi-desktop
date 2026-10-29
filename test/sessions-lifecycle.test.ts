@@ -17,7 +17,11 @@ const agentDir = path.join(tmp, 'agent');
 process.env.PI_CODING_AGENT_DIR = agentDir;
 
 const run = (cwd: string, ...args: string[]) =>
-  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', ...args], { cwd, stdio: 'pipe', encoding: 'utf8' });
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', ...args], {
+    cwd,
+    stdio: 'pipe',
+    encoding: 'utf8',
+  });
 
 function makeProject(name: string) {
   const dir = path.join(tmp, name);
@@ -34,10 +38,13 @@ const settled = new Map<string, number>();
 
 beforeAll(async () => {
   hub = new SessionHub({
-    dataDir: path.join(tmp, 'data'), agentDir, demoModel: true,
+    dataDir: path.join(tmp, 'data'),
+    agentDir,
+    demoModel: true,
     emit: (e) => {
       events.push(e);
-      if (e.type === 'pi' && e.event.type === 'agent_settled') settled.set(e.sessionId, (settled.get(e.sessionId) ?? 0) + 1);
+      if (e.type === 'pi' && e.event.type === 'agent_settled')
+        settled.set(e.sessionId, (settled.get(e.sessionId) ?? 0) + 1);
     },
   });
   await hub.init();
@@ -55,7 +62,15 @@ const waitSettled = async (id: string, turns = 1) => {
   }
 };
 const code = (projectPath: string, extra: Partial<Parameters<SessionHub['create']>[0]> = {}) =>
-  hub.create({ kind: 'code', projectPath, model: 'demo/demo-coder', mode: 'auto', title: 'test', autoName: false, ...extra });
+  hub.create({
+    kind: 'code',
+    projectPath,
+    model: 'demo/demo-coder',
+    mode: 'auto',
+    title: 'test',
+    autoName: false,
+    ...extra,
+  });
 
 describe('creating a session', { timeout: 120_000 }, () => {
   it('returns before the worktree exists, then builds it while the session starts', async () => {
@@ -67,7 +82,9 @@ describe('creating a session', { timeout: 120_000 }, () => {
     expect(fs.existsSync(path.join(meta.cwd, '.git'))).toBe(true);
     expect(hub.meta(meta.id).worktreeSetup).toBeUndefined();
 
-    const steps = events.filter((e): e is Extract<HostEvent, { type: 'setup' }> => e.type === 'setup' && e.sessionId === meta.id);
+    const steps = events.filter(
+      (e): e is Extract<HostEvent, { type: 'setup' }> => e.type === 'setup' && e.sessionId === meta.id,
+    );
     expect(steps[0].steps?.map((s) => s.id)).toEqual(['worktree', 'agent']);
     expect(steps.some((e) => e.steps?.some((s) => s.id === 'worktree' && s.state === 'done'))).toBe(true);
     expect(steps.at(-1)!.steps).toBeNull();
@@ -78,7 +95,7 @@ describe('creating a session', { timeout: 120_000 }, () => {
     const meta = await code(project, { worktree: true });
     await hub.open(meta.id);
     await hub.archive(meta.id);
-      fs.rmSync(meta.cwd, { recursive: true, force: true });
+    fs.rmSync(meta.cwd, { recursive: true, force: true });
     hub.unarchive(meta.id);
     await expect(hub.open(meta.id)).rejects.toThrow(/no longer exists/);
   });
@@ -102,7 +119,12 @@ describe('archive and delete', { timeout: 120_000 }, () => {
     const meta = await code(project, { worktree: true });
     await hub.open(meta.id);
     const file = hub.meta(meta.id).sessionFile;
-    expect(await hub.inspect(meta.id)).toMatchObject({ worktree: meta.cwd, branch: meta.branch, dirty: 0, unpushed: 0 });
+    expect(await hub.inspect(meta.id)).toMatchObject({
+      worktree: meta.cwd,
+      branch: meta.branch,
+      dirty: 0,
+      unpushed: 0,
+    });
     fs.writeFileSync(path.join(meta.cwd, 'scratch.txt'), 'x');
     expect((await hub.inspect(meta.id)).dirty).toBe(1);
 
@@ -111,7 +133,7 @@ describe('archive and delete', { timeout: 120_000 }, () => {
     expect(fs.existsSync(meta.cwd)).toBe(false);
     expect(run(project, 'branch', '--list', meta.branch!).trim()).toBe('');
     expect(hub.list().some((s) => s.id === meta.id)).toBe(false);
-    if (file) expect(fs.existsSync(file)).toBe(false);
+    expect(file ? fs.existsSync(file) : false).toBe(false);
     expect(fs.existsSync(path.join(project, 'package.json')), 'the project itself is untouched').toBe(true);
   });
 
@@ -177,10 +199,22 @@ describe('suggested tasks', { timeout: 120_000 }, () => {
     const project = makeProject('spawn');
     const from = await code(project, { worktree: false });
     const child = await hub.spawn(from.id, { title: 'Tidy the date helper', prompt: '你好' }, 'call-1:0');
-    expect(child).toMatchObject({ kind: 'code', projectPath: project, parentId: from.id, title: 'Tidy the date helper', titleLocked: true });
+    expect(child).toMatchObject({
+      kind: 'code',
+      projectPath: project,
+      parentId: from.id,
+      title: 'Tidy the date helper',
+      titleLocked: true,
+    });
     expect(hub.meta(from.id).suggestions?.['call-1:0']).toEqual({ state: 'started', sessionId: child.id });
     await waitSettled(child.id);
-    const sent = events.find((e) => e.type === 'pi' && e.sessionId === child.id && e.event.type === 'message_end' && e.event.message.role === 'user');
+    const sent = events.find(
+      (e) =>
+        e.type === 'pi' &&
+        e.sessionId === child.id &&
+        e.event.type === 'message_end' &&
+        e.event.message.role === 'user',
+    );
     expect(JSON.stringify(sent)).toContain('你好');
   });
 
@@ -230,7 +264,10 @@ describe('sessions talking to each other', { timeout: 120_000 }, () => {
     const b = await code(project, { worktree: false, title: 'Receiver' });
     expect(await hub.peerSend(a.id, b.id, '请检查一下日期格式')).toBe('delivered');
     await waitSettled(b.id);
-    const received = events.find((e) => e.type === 'pi' && e.sessionId === b.id && e.event.type === 'message_end' && e.event.message.role === 'user');
+    const received = events.find(
+      (e) =>
+        e.type === 'pi' && e.sessionId === b.id && e.event.type === 'message_end' && e.event.message.role === 'user',
+    );
     const text = (received as Extract<HostEvent, { type: 'pi' }>).event.message.content;
     const peer = decodePeerMessage(typeof text === 'string' ? text : text.map((c: any) => c.text).join(''));
     expect(peer).toEqual({ fromId: a.id, fromTitle: 'Sender', text: '请检查一下日期格式' });

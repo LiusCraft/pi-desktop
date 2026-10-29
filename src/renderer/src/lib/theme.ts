@@ -6,7 +6,8 @@ import { bridge } from './api';
 export const fontFamilyCss = (font: string) => (/[,"']/.test(font) ? font : `"${font}"`);
 
 /** The custom font (if any) leading `fallback`, a CSS font list. */
-export const fontStack = (font: string | null | undefined, fallback: string) => (font?.trim() ? `${fontFamilyCss(font.trim())}, ${fallback}` : fallback);
+export const fontStack = (font: string | null | undefined, fallback: string) =>
+  font?.trim() ? `${fontFamilyCss(font.trim())}, ${fallback}` : fallback;
 
 function applyFont(name: string, font: string | null | undefined, system: string) {
   const style = document.documentElement.style;

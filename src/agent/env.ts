@@ -53,7 +53,11 @@ export interface ShellProbe {
 const isWslLauncher = (bash: string, systemRoot: string) => {
   const dir = path.win32.dirname(bash).toLowerCase();
   const root = (systemRoot || 'C:\\Windows').toLowerCase();
-  return dir === path.win32.join(root, 'system32') || dir === path.win32.join(root, 'sysnative') || /[\\/]windowsapps$/.test(dir);
+  return (
+    dir === path.win32.join(root, 'system32') ||
+    dir === path.win32.join(root, 'sysnative') ||
+    /[\\/]windowsapps$/.test(dir)
+  );
 };
 
 /**
@@ -86,13 +90,20 @@ export function findBashDir(probe: ShellProbe): string | null {
 
 export function realBashDir(): string | null {
   try {
-    const programFiles = [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], path.join(os.homedir(), 'AppData', 'Local', 'Programs')];
+    const programFiles = [
+      process.env.ProgramFiles,
+      process.env['ProgramFiles(x86)'],
+      path.join(os.homedir(), 'AppData', 'Local', 'Programs'),
+    ];
     return findBashDir({
       exists: (file) => fs.existsSync(file),
       gitExes: () => {
         try {
           const out = execFileSync('where', ['git.exe'], { encoding: 'utf8', windowsHide: true, timeout: 5000 });
-          return out.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+          return out
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean);
         } catch {
           return [];
         }

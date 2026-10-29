@@ -22,7 +22,8 @@ const THEMES: Record<'light' | 'dark', ITheme> = {
   light: { background: '#f5f4ef', foreground: '#29261b', cursor: '#29261b', selectionBackground: '#d9d6c9' },
   dark: { background: '#1f1e1d', foreground: '#e5e3dc', cursor: '#e5e3dc', selectionBackground: '#4a4842' },
 };
-const termTheme = (palette = document.documentElement.dataset.palette, mode: 'light' | 'dark' = resolvedTheme()) => (palette === 'vscode' ? VSCODE_THEMES : THEMES)[mode];
+const termTheme = (palette = document.documentElement.dataset.palette, mode: 'light' | 'dark' = resolvedTheme()) =>
+  (palette === 'vscode' ? VSCODE_THEMES : THEMES)[mode];
 const FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
 const exitNotice = () => `\r\n\x1b[2m${tr('terminal.exited')}\x1b[0m\r\n`;
 
@@ -31,7 +32,13 @@ function TermView({ id, active }: { id: string; active: boolean }) {
   const fit = useRef<() => void>(() => {});
 
   useEffect(() => {
-    const term = new Terminal({ fontFamily: fontStack(getApp().settings.codeFont, FONT), fontSize: 12, cursorBlink: true, scrollback: 5000, theme: termTheme() });
+    const term = new Terminal({
+      fontFamily: fontStack(getApp().settings.codeFont, FONT),
+      fontSize: 12,
+      cursorBlink: true,
+      scrollback: 5000,
+      theme: termTheme(),
+    });
     const fitter = new FitAddon();
     term.loadAddon(fitter);
     term.open(host.current!);
@@ -63,14 +70,16 @@ function TermView({ id, active }: { id: string; active: boolean }) {
     term.onData((data) => void call('terminal:write', id, data).catch(() => {}));
 
     let disposed = false;
-    call('terminal:attach', id).then((r) => {
-      if (disposed) return;
-      term.write(r.backlog);
-      for (const chunk of queue ?? []) term.write(chunk);
-      queue = null;
-      if (r.exited) term.write(exitNotice());
-      refit();
-    }).catch(fail);
+    call('terminal:attach', id)
+      .then((r) => {
+        if (disposed) return;
+        term.write(r.backlog);
+        for (const chunk of queue ?? []) term.write(chunk);
+        queue = null;
+        if (r.exited) term.write(exitNotice());
+        refit();
+      })
+      .catch(fail);
 
     const ro = new ResizeObserver(refit);
     ro.observe(host.current!);
@@ -112,13 +121,17 @@ export function TerminalPanel({ s, ...card }: CardProps & { s: SessionView }) {
     let cancelled = false;
     setTabs([]);
     setActive(null);
-    call('terminal:list', sessionId).then((list) => {
-      if (cancelled) return;
-      if (!list.length) return void add();
-      setTabs(list);
-      setActive(list[0].id);
-    }).catch(fail);
-    return () => { cancelled = true; };
+    call('terminal:list', sessionId)
+      .then((list) => {
+        if (cancelled) return;
+        if (!list.length) return void add();
+        setTabs(list);
+        setActive(list[0].id);
+      })
+      .catch(fail);
+    return () => {
+      cancelled = true;
+    };
   }, [sessionId, add]);
 
   const close = (id: string) => {
@@ -137,21 +150,35 @@ export function TerminalPanel({ s, ...card }: CardProps & { s: SessionView }) {
           {tabs.map((t) => (
             <div
               key={t.id}
-              className={cn('group flex h-7 shrink-0 items-center gap-1 rounded-md pl-2 pr-1 text-xs', t.id === active ? 'bg-accent text-foreground' : 'font-normal text-muted-foreground hover:bg-accent/50')}
+              className={cn(
+                'group flex h-7 shrink-0 items-center gap-1 rounded-md pr-1 pl-2 text-xs',
+                t.id === active ? 'bg-accent text-foreground' : 'font-normal text-muted-foreground hover:bg-accent/50',
+              )}
             >
-              <button type="button" onClick={() => setActive(t.id)} className="max-w-32 truncate">{t.title}</button>
-              <button type="button" aria-label={tx('terminal.close')} onClick={() => close(t.id)} className="flex size-4 items-center justify-center rounded hover:bg-muted">
+              <button type="button" onClick={() => setActive(t.id)} className="max-w-32 truncate">
+                {t.title}
+              </button>
+              <button
+                type="button"
+                aria-label={tx('terminal.close')}
+                onClick={() => close(t.id)}
+                className="flex size-4 items-center justify-center rounded hover:bg-muted"
+              >
                 <XIcon className="size-3" />
               </button>
             </div>
           ))}
-          <IconBtn title={tx('terminal.new')} onClick={() => void add()}><PlusIcon className="size-3.5" /></IconBtn>
+          <IconBtn title={tx('terminal.new')} onClick={() => void add()}>
+            <PlusIcon className="size-3.5" />
+          </IconBtn>
         </div>
       }
       onClose={() => togglePanel(sessionId, 'terminal', false)}
       bodyClass="relative overflow-hidden bg-code"
     >
-      {tabs.map((t) => <TermView key={t.id} id={t.id} active={t.id === active} />)}
+      {tabs.map((t) => (
+        <TermView key={t.id} id={t.id} active={t.id === active} />
+      ))}
     </Card>
   );
 }

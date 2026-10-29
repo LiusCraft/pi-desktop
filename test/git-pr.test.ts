@@ -7,7 +7,12 @@ let responses: unknown[] = [];
 let remote = 'https://github.com/example/repo.git';
 vi.mock('node:child_process', async (orig) => ({
   ...(await orig<typeof import('node:child_process')>()),
-  execFile: (cmd: string, args: string[], options: { cwd: string }, cb: (err: Error | null, out: string, errOut: string) => void) => {
+  execFile: (
+    cmd: string,
+    args: string[],
+    options: { cwd: string },
+    cb: (err: Error | null, out: string, errOut: string) => void,
+  ) => {
     calls.push({ cmd, args, cwd: options.cwd });
     if (cmd === 'git') return cb(null, remote, '');
     const response = responses.shift();
@@ -23,13 +28,30 @@ describe('GitHub PR status', () => {
     remote = 'https://github.com/example/repo.git';
   });
   it('maps PR identity, the card fields, draft state, comments and pending CI', async () => {
-    responses = [{
-      number: 1, url: 'https://github.com/example/repo/pull/1', state: 'OPEN', isDraft: true,
-      title: 'feat: add tool previews', author: { login: 'LiusCraft' }, additions: 2504, deletions: 132, changedFiles: 21,
-      mergeable: 'CONFLICTING', reviewDecision: 'CHANGES_REQUESTED', headRefOid: 'abc123', updatedAt: '2026-01-02T03:04:05Z',
-      statusCheckRollup: [{ name: 'build', status: 'IN_PROGRESS', conclusion: '' }, { context: 'lint', state: 'SUCCESS' }],
-      comments: [{}], reviews: [{ body: 'review' }, { body: '' }],
-    }, 3];
+    responses = [
+      {
+        number: 1,
+        url: 'https://github.com/example/repo/pull/1',
+        state: 'OPEN',
+        isDraft: true,
+        title: 'feat: add tool previews',
+        author: { login: 'LiusCraft' },
+        additions: 2504,
+        deletions: 132,
+        changedFiles: 21,
+        mergeable: 'CONFLICTING',
+        reviewDecision: 'CHANGES_REQUESTED',
+        headRefOid: 'abc123',
+        updatedAt: '2026-01-02T03:04:05Z',
+        statusCheckRollup: [
+          { name: 'build', status: 'IN_PROGRESS', conclusion: '' },
+          { context: 'lint', state: 'SUCCESS' },
+        ],
+        comments: [{}],
+        reviews: [{ body: 'review' }, { body: '' }],
+      },
+      3,
+    ];
     const pr = (await prStatus('project'))!;
     assert.equal(pr.num, 1);
     assert.equal(pr.state, 'open');
@@ -38,7 +60,10 @@ describe('GitHub PR status', () => {
     assert.equal(pr.comments, 5);
     assert.ok(calls.some((c) => c.args.includes('repos/{owner}/{repo}/pulls/1/comments')));
     assert.equal(pr.ci, 'pending');
-    assert.deepEqual(pr.checks.map((c) => c.st), ['pending', 'pass']);
+    assert.deepEqual(
+      pr.checks.map((c) => c.st),
+      ['pending', 'pass'],
+    );
     assert.equal(pr.title, 'feat: add tool previews');
     assert.equal(pr.author, 'LiusCraft');
     assert.deepEqual([pr.additions, pr.deletions, pr.files], [2504, 132, 21]);
@@ -50,38 +75,107 @@ describe('GitHub PR status', () => {
     assert.equal(pr.forge, 'github');
   });
   it('keeps only the newest run of a re-run check', async () => {
-    responses = [{
-      number: 5, url: 'https://github.com/example/repo/pull/5', state: 'OPEN', isDraft: false,
-      statusCheckRollup: [
-        { __typename: 'CheckRun', name: 'build', workflowName: 'ci', status: 'COMPLETED', conclusion: 'FAILURE', startedAt: '2026-01-02T03:00:00Z', completedAt: '2026-01-02T03:04:00Z' },
-        { __typename: 'CheckRun', name: 'build', workflowName: 'ci', status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: '2026-01-02T03:10:00Z', completedAt: '2026-01-02T03:12:00Z' },
-        { __typename: 'StatusContext', context: 'lint', state: 'SUCCESS' },
-      ],
-    }];
+    responses = [
+      {
+        number: 5,
+        url: 'https://github.com/example/repo/pull/5',
+        state: 'OPEN',
+        isDraft: false,
+        statusCheckRollup: [
+          {
+            __typename: 'CheckRun',
+            name: 'build',
+            workflowName: 'ci',
+            status: 'COMPLETED',
+            conclusion: 'FAILURE',
+            startedAt: '2026-01-02T03:00:00Z',
+            completedAt: '2026-01-02T03:04:00Z',
+          },
+          {
+            __typename: 'CheckRun',
+            name: 'build',
+            workflowName: 'ci',
+            status: 'COMPLETED',
+            conclusion: 'SUCCESS',
+            startedAt: '2026-01-02T03:10:00Z',
+            completedAt: '2026-01-02T03:12:00Z',
+          },
+          { __typename: 'StatusContext', context: 'lint', state: 'SUCCESS' },
+        ],
+      },
+    ];
     const pr = (await prStatus('project'))!;
-    assert.deepEqual(pr.checks.map((c) => [c.n, c.st]), [['build', 'pass'], ['lint', 'pass']]);
+    assert.deepEqual(
+      pr.checks.map((c) => [c.n, c.st]),
+      [
+        ['build', 'pass'],
+        ['lint', 'pass'],
+      ],
+    );
     assert.equal(pr.ci, 'pass');
   });
   it('treats an unfinished re-run as current even before it has a start time', async () => {
-    responses = [{
-      number: 6, url: 'https://github.com/example/repo/pull/6', state: 'OPEN', isDraft: false,
-      statusCheckRollup: [
-        { __typename: 'CheckRun', name: 'build', workflowName: 'ci', status: 'COMPLETED', conclusion: 'FAILURE', startedAt: '2026-01-02T03:00:00Z' },
-        { __typename: 'CheckRun', name: 'build', workflowName: 'ci', status: 'QUEUED', conclusion: '', startedAt: null, completedAt: null },
-      ],
-    }];
+    responses = [
+      {
+        number: 6,
+        url: 'https://github.com/example/repo/pull/6',
+        state: 'OPEN',
+        isDraft: false,
+        statusCheckRollup: [
+          {
+            __typename: 'CheckRun',
+            name: 'build',
+            workflowName: 'ci',
+            status: 'COMPLETED',
+            conclusion: 'FAILURE',
+            startedAt: '2026-01-02T03:00:00Z',
+          },
+          {
+            __typename: 'CheckRun',
+            name: 'build',
+            workflowName: 'ci',
+            status: 'QUEUED',
+            conclusion: '',
+            startedAt: null,
+            completedAt: null,
+          },
+        ],
+      },
+    ];
     const pr = (await prStatus('project'))!;
-    assert.deepEqual(pr.checks.map((c) => [c.n, c.st]), [['build', 'pending']]);
+    assert.deepEqual(
+      pr.checks.map((c) => [c.n, c.st]),
+      [['build', 'pending']],
+    );
     assert.equal(pr.ci, 'pending');
   });
   it('does not collapse checks that only share a name across workflows', async () => {
-    responses = [{
-      number: 7, url: 'u', state: 'OPEN', isDraft: false,
-      statusCheckRollup: [
-        { __typename: 'CheckRun', name: 'test', workflowName: 'ci', status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: '2026-01-02T03:00:00Z' },
-        { __typename: 'CheckRun', name: 'test', workflowName: 'nightly', status: 'COMPLETED', conclusion: 'FAILURE', startedAt: '2026-01-02T03:00:00Z' },
-      ],
-    }];
+    responses = [
+      {
+        number: 7,
+        url: 'u',
+        state: 'OPEN',
+        isDraft: false,
+        statusCheckRollup: [
+          {
+            __typename: 'CheckRun',
+            name: 'test',
+            workflowName: 'ci',
+            status: 'COMPLETED',
+            conclusion: 'SUCCESS',
+            startedAt: '2026-01-02T03:00:00Z',
+          },
+          {
+            __typename: 'CheckRun',
+            name: 'test',
+            workflowName: 'nightly',
+            status: 'COMPLETED',
+            conclusion: 'FAILURE',
+            startedAt: '2026-01-02T03:00:00Z',
+          },
+        ],
+      },
+    ];
     const pr = (await prStatus('project'))!;
     assert.equal(pr.checks.length, 2);
     assert.equal(pr.ci, 'fail');
@@ -96,7 +190,14 @@ describe('GitHub PR status', () => {
   it('drops the card fields when gh rejects them, keeping identity and CI', async () => {
     responses = [
       new Error('Unknown JSON field: changedFiles'),
-      { number: 2, url: 'https://github.com/example/repo/pull/2', state: 'MERGED', isDraft: false, title: 'merged work', author: { login: 'me' } },
+      {
+        number: 2,
+        url: 'https://github.com/example/repo/pull/2',
+        state: 'MERGED',
+        isDraft: false,
+        title: 'merged work',
+        author: { login: 'me' },
+      },
     ];
     const pr = (await prStatus('project'))!;
     assert.equal(pr.num, 2);
@@ -109,7 +210,11 @@ describe('GitHub PR status', () => {
     assert.equal(calls[2].args.at(-1), 'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author');
   });
   it('falls back to PR identity when CI/review fields are inaccessible', async () => {
-    responses = [new Error('Resource not accessible'), new Error('Resource not accessible'), { number: 2, url: 'https://github.com/example/repo/pull/2', state: 'MERGED', isDraft: false }];
+    responses = [
+      new Error('Resource not accessible'),
+      new Error('Resource not accessible'),
+      { number: 2, url: 'https://github.com/example/repo/pull/2', state: 'MERGED', isDraft: false },
+    ];
     const pr = (await prStatus('project'))!;
     assert.equal(pr.num, 2);
     assert.equal(pr.state, 'merged');
@@ -131,29 +236,59 @@ describe('GitLab merge request status', () => {
     remote = 'git@gitlab.com:group/sub/repo.git';
   });
   const mr = {
-    iid: 7, web_url: 'https://gitlab.com/group/sub/repo/-/merge_requests/7', state: 'opened', draft: false, project_id: 42,
-    title: 'fix: retry', author: { username: 'me' }, changes_count: '3', has_conflicts: false, detailed_merge_status: 'ci_still_running',
-    sha: 'abc', updated_at: '2026-01-02T03:04:05Z', head_pipeline: { id: 9, status: 'running' },
+    iid: 7,
+    web_url: 'https://gitlab.com/group/sub/repo/-/merge_requests/7',
+    state: 'opened',
+    draft: false,
+    project_id: 42,
+    title: 'fix: retry',
+    author: { username: 'me' },
+    changes_count: '3',
+    has_conflicts: false,
+    detailed_merge_status: 'ci_still_running',
+    sha: 'abc',
+    updated_at: '2026-01-02T03:04:05Z',
+    head_pipeline: { id: 9, status: 'running' },
   };
   it('maps the merge request, its jobs and who wrote the notes', async () => {
     responses = [
       mr,
-      [{ name: 'build', status: 'running', web_url: 'j1' }, { name: 'lint', status: 'success' }, { name: 'flaky', status: 'failed', allow_failure: true }],
-      [{ id: 1, body: 'looks off', author: { username: 'bob' } }, { id: 2, body: 'merged main', system: true, author: { username: 'bob' } }, { id: 3, body: 'done', author: { username: 'me' } }],
+      [
+        { name: 'build', status: 'running', web_url: 'j1' },
+        { name: 'lint', status: 'success' },
+        { name: 'flaky', status: 'failed', allow_failure: true },
+      ],
+      [
+        { id: 1, body: 'looks off', author: { username: 'bob' } },
+        { id: 2, body: 'merged main', system: true, author: { username: 'bob' } },
+        { id: 3, body: 'done', author: { username: 'me' } },
+      ],
       { username: 'me' },
     ];
     const snap = (await readPr('project'))!;
-    assert.deepEqual(calls.filter((c) => c.cmd === 'glab').map((c) => c.args[0]), ['mr', 'api', 'api', 'api']);
+    assert.deepEqual(
+      calls.filter((c) => c.cmd === 'glab').map((c) => c.args[0]),
+      ['mr', 'api', 'api', 'api'],
+    );
     assert.equal(snap.status.forge, 'gitlab');
     assert.equal(snap.status.num, 7);
     assert.equal(snap.status.state, 'open');
     assert.equal(snap.status.ci, 'pending');
-    assert.deepEqual(snap.status.checks.map((c) => c.st), ['pending', 'pass', 'pass']);
+    assert.deepEqual(
+      snap.status.checks.map((c) => c.st),
+      ['pending', 'pass', 'pass'],
+    );
     assert.equal(snap.status.mergeable, 'clean');
     assert.equal(snap.status.files, 3);
     assert.equal(snap.status.head, 'abc');
     assert.equal(snap.status.comments, 2);
-    assert.deepEqual(snap.notes.map((n) => [n.id, n.author, n.self]), [['n1', 'bob', false], ['n3', 'me', true]]);
+    assert.deepEqual(
+      snap.notes.map((n) => [n.id, n.author, n.self]),
+      [
+        ['n1', 'bob', false],
+        ['n3', 'me', true],
+      ],
+    );
   });
   it('reports conflicts, unresolved threads and failed jobs', async () => {
     responses = [
@@ -170,14 +305,30 @@ describe('GitLab merge request status', () => {
   it('falls back to the pipeline when its jobs are unreadable, and never asks gh', async () => {
     responses = [mr, new Error('403'), new Error('403')];
     const { status } = (await readPr('project'))!;
-    assert.deepEqual(status.checks.map((c) => c.n), ['pipeline']);
-    assert.equal(calls.some((c) => c.cmd === 'gh'), false);
+    assert.deepEqual(
+      status.checks.map((c) => c.n),
+      ['pipeline'],
+    );
+    assert.equal(
+      calls.some((c) => c.cmd === 'gh'),
+      false,
+    );
   });
   it('tries gh then glab when the host name does not say', async () => {
     remote = 'https://git.example.com/team/repo.git';
-    responses = [new Error('not a github repo'), new Error('not a github repo'), new Error('not a github repo'), mr, [], []];
+    responses = [
+      new Error('not a github repo'),
+      new Error('not a github repo'),
+      new Error('not a github repo'),
+      mr,
+      [],
+      [],
+    ];
     const { status } = (await readPr('project'))!;
     assert.equal(status.forge, 'gitlab');
-    assert.equal(calls.some((c) => c.cmd === 'gh'), true);
+    assert.equal(
+      calls.some((c) => c.cmd === 'gh'),
+      true,
+    );
   });
 });

@@ -44,13 +44,15 @@ export const agentPrompt = (agent: AgentType) => `${SHARED}\n\n${agent.body}`;
 export const AGENT_TYPES: AgentType[] = [
   {
     name: 'explore',
-    description: 'Fast read-only research: find files, trace code paths, answer questions about the codebase, search the web when a search tool is available.',
+    description:
+      'Fast read-only research: find files, trace code paths, answer questions about the codebase, search the web when a search tool is available.',
     body: '# Role: Explore\nSearch widely and quickly, then report what you found. Cite file paths with line numbers. Prefer several parallel searches over one careful one. Do not propose a design unless asked.',
     source: 'builtin',
   },
   {
     name: 'plan',
-    description: 'Read-only software architect: study the code and return a step-by-step implementation plan with the files to change and the trade-offs.',
+    description:
+      'Read-only software architect: study the code and return a step-by-step implementation plan with the files to change and the trade-offs.',
     body: '# Role: Plan\nExplore only as much as you need, then return an implementation plan: context, an ordered list of changes naming the files and functions involved, risks and trade-offs, and how to verify the result. Recommend one approach instead of listing every option.',
     source: 'builtin',
   },
@@ -60,7 +62,9 @@ export const DEFAULT_AGENT = 'explore';
 
 const NAME = /^[a-z0-9][a-z0-9_-]*$/i;
 const clean = (list: unknown): string[] | undefined => {
-  const items = (Array.isArray(list) ? list : typeof list === 'string' ? list.split(',') : []).map((t) => String(t).trim()).filter(Boolean);
+  const items = (Array.isArray(list) ? list : typeof list === 'string' ? list.split(',') : [])
+    .map((t) => String(t).trim())
+    .filter(Boolean);
   return items.length ? items : undefined;
 };
 
@@ -69,18 +73,29 @@ export function loadAgents(dir: string | undefined): AgentType[] {
   const found = new Map(AGENT_TYPES.map((a) => [a.name, a]));
   let files: string[] = [];
   try {
-    files = dir ? fs.readdirSync(dir).filter((f) => f.toLowerCase().endsWith('.md')).sort() : [];
+    files = dir
+      ? fs
+          .readdirSync(dir)
+          .filter((f) => f.toLowerCase().endsWith('.md'))
+          .sort()
+      : [];
   } catch {
     // No agents folder yet.
   }
   for (const file of files) {
     try {
-      const { frontmatter: fm, body } = parseFrontmatter<Record<string, unknown>>(fs.readFileSync(path.join(dir!, file), 'utf8'));
+      const { frontmatter: fm, body } = parseFrontmatter<Record<string, unknown>>(
+        fs.readFileSync(path.join(dir!, file), 'utf8'),
+      );
       const name = String(fm.name ?? path.basename(file, path.extname(file))).trim();
       const description = String(fm.description ?? '').trim();
       if (!NAME.test(name) || !description || !body.trim()) continue;
       found.set(name, {
-        name, description, body: body.trim(), source: 'user', file: path.join(dir!, file),
+        name,
+        description,
+        body: body.trim(),
+        source: 'user',
+        file: path.join(dir!, file),
         model: typeof fm.model === 'string' && fm.model.trim() ? fm.model.trim() : undefined,
         tools: clean(fm.tools),
       });
@@ -95,7 +110,12 @@ export function loadAgents(dir: string | undefined): AgentType[] {
 export function agentCatalog(dir: string): AgentCatalog {
   const builtin = new Set(AGENT_TYPES.map((a) => a.name));
   const agents: AgentConfig[] = loadAgents(dir).map((a) => ({
-    name: a.name, description: a.description, body: a.body, model: a.model, tools: a.tools, source: a.source,
+    name: a.name,
+    description: a.description,
+    body: a.body,
+    model: a.model,
+    tools: a.tools,
+    source: a.source,
     overrides: a.source === 'user' && builtin.has(a.name),
   }));
   return { agents, dir };
@@ -113,8 +133,10 @@ export function saveAgent(dir: string, draft: AgentDraft): AgentCatalog {
   if (!description) throw new Error(tr('ag.agentNeedDescription'));
   if (!body) throw new Error(tr('ag.agentNeedPrompt'));
   const existing = loadAgents(dir);
-  const original = draft.originalName && draft.originalName !== name ? existing.find((a) => a.name === draft.originalName) : undefined;
-  if (existing.some((a) => a.name === name && a.source === 'user' && name !== draft.originalName)) throw new Error(tr('ag.agentExists', { name }));
+  const original =
+    draft.originalName && draft.originalName !== name ? existing.find((a) => a.name === draft.originalName) : undefined;
+  if (existing.some((a) => a.name === name && a.source === 'user' && name !== draft.originalName))
+    throw new Error(tr('ag.agentExists', { name }));
   fs.mkdirSync(dir, { recursive: true });
   const same = existing.find((a) => a.name === name && a.file);
   const file = same?.file ?? path.join(dir, `${name}.md`);

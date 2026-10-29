@@ -16,7 +16,10 @@ function writeSession(lines: unknown[]): string {
 }
 
 const message = (role: string, content: unknown, extra: Record<string, unknown> = {}) => ({
-  type: 'message', id: `e${Math.random()}`, parentId: null, timestamp: new Date().toISOString(),
+  type: 'message',
+  id: `e${Math.random()}`,
+  parentId: null,
+  timestamp: new Date().toISOString(),
   message: { role, content, ...extra },
 });
 
@@ -28,8 +31,14 @@ describe('searchTranscript', () => {
   it('finds a file name inside a tool call, not only in the prose', () => {
     const file = writeSession([
       message('user', 'please fix the parser'),
-      message('assistant', [{ type: 'text', text: 'Looking at it.' }, { type: 'toolCall', id: 't1', name: 'edit', arguments: { path: 'src/parser.ts' } }]),
-      message('toolResult', [{ type: 'text', text: 'edited src/parser.ts · +3 −1' }], { toolCallId: 't1', toolName: 'edit' }),
+      message('assistant', [
+        { type: 'text', text: 'Looking at it.' },
+        { type: 'toolCall', id: 't1', name: 'edit', arguments: { path: 'src/parser.ts' } },
+      ]),
+      message('toolResult', [{ type: 'text', text: 'edited src/parser.ts · +3 −1' }], {
+        toolCallId: 't1',
+        toolName: 'edit',
+      }),
     ]);
     const found = searchTranscript(file, 'parser.ts', 8);
     assert.equal(found.length, 2);
@@ -41,7 +50,10 @@ describe('searchTranscript', () => {
   it('matches case-insensitively and keeps command output', () => {
     const file = writeSession([
       message('assistant', [{ type: 'toolCall', id: 'b1', name: 'bash', arguments: { command: 'npm test' } }]),
-      message('toolResult', [{ type: 'text', text: 'FAIL src/parser.test.ts > rejects EOF' }], { toolCallId: 'b1', toolName: 'bash' }),
+      message('toolResult', [{ type: 'text', text: 'FAIL src/parser.test.ts > rejects EOF' }], {
+        toolCallId: 'b1',
+        toolName: 'bash',
+      }),
     ]);
     const found = searchTranscript(file, 'fail', 8);
     assert.equal(found.length, 1);

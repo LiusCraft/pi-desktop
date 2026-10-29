@@ -24,12 +24,24 @@ export function ArchivedPage() {
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium">{s.meta.title}</div>
                 <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                  {s.meta.kind === 'work' ? 'Work' : 'Code'} · {s.meta.scratch ? t('archived.tempWorkspace') : fname(s.meta.projectPath)}
+                  {s.meta.kind === 'work' ? 'Work' : 'Code'} ·{' '}
+                  {s.meta.scratch ? t('archived.tempWorkspace') : fname(s.meta.projectPath)}
                   {s.meta.branch ? ` · ${s.meta.branch}` : ''} · {ago(s.meta.updatedAt || Date.now(), true)}
                 </div>
               </div>
-              <Button size="sm" variant="outline" onClick={() => void unarchiveSession(s.meta.id)}><ArchiveRestoreIcon className="size-4" />{t('archived.unarchive')}</Button>
-              <Button size="sm" variant="ghost" className="text-destructive" onClick={() => void deleteSession(s.meta.id)}><Trash2Icon className="size-4" />{t('archived.delete')}</Button>
+              <Button size="sm" variant="outline" onClick={() => void unarchiveSession(s.meta.id)}>
+                <ArchiveRestoreIcon className="size-4" />
+                {t('archived.unarchive')}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive"
+                onClick={() => void deleteSession(s.meta.id)}
+              >
+                <Trash2Icon className="size-4" />
+                {t('archived.delete')}
+              </Button>
             </div>
           ))}
           {!list.length && <Empty>{t('archived.empty')}</Empty>}

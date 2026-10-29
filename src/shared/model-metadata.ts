@@ -1,4 +1,11 @@
-import { THINKING_LEVELS, type EndpointModel, type ModelCost, type ModelMeta, type ThinkingLevel, type ThinkingLevelMap } from './protocol';
+import {
+  THINKING_LEVELS,
+  type EndpointModel,
+  type ModelCost,
+  type ModelMeta,
+  type ThinkingLevel,
+  type ThinkingLevelMap,
+} from './protocol';
 
 export const COST_FIELDS = ['input', 'output', 'cacheRead', 'cacheWrite'] as const;
 
@@ -28,7 +35,10 @@ export function levelSupported(thinkingLevelMap: ThinkingLevelMap | undefined, l
 }
 
 /** The levels the thinking-level picker offers for this model, as pi computes them. */
-export function supportedThinkingLevels(model: { reasoning?: boolean; thinkingLevelMap?: ThinkingLevelMap }): ThinkingLevel[] {
+export function supportedThinkingLevels(model: {
+  reasoning?: boolean;
+  thinkingLevelMap?: ThinkingLevelMap;
+}): ThinkingLevel[] {
   if (!model.reasoning) return ['off'];
   return THINKING_LEVELS.filter((level) => levelSupported(model.thinkingLevelMap, level));
 }
@@ -41,8 +51,13 @@ export function alignModel(model: EndpointModel, meta: ModelMeta | undefined): E
     const value = model.cost?.[key] ?? nonNegativePrice(meta.cost?.[key]);
     if (value !== undefined) cost[key] = value;
   }
-  const hasOwnMeta = model.name !== undefined || model.contextWindow !== undefined || model.maxTokens !== undefined ||
-    model.reasoning !== undefined || model.thinkingLevelMap !== undefined || model.input !== undefined ||
+  const hasOwnMeta =
+    model.name !== undefined ||
+    model.contextWindow !== undefined ||
+    model.maxTokens !== undefined ||
+    model.reasoning !== undefined ||
+    model.thinkingLevelMap !== undefined ||
+    model.input !== undefined ||
     COST_FIELDS.some((key) => model.cost?.[key] !== undefined);
   return {
     ...model,

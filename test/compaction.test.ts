@@ -2,7 +2,14 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { setActiveLocale } from '../src/shared/i18n/runtime';
 import type { SessionMeta } from '../src/shared/protocol';
-import { applyPiEvent, collapsedItems, emptySession, newKey, replay, transcriptItems } from '../src/renderer/src/store/transcript';
+import {
+  applyPiEvent,
+  collapsedItems,
+  emptySession,
+  newKey,
+  replay,
+  transcriptItems,
+} from '../src/renderer/src/store/transcript';
 import type { Item } from '../src/renderer/src/store/types';
 
 const meta = { id: 's1', title: 'Main', kind: 'code', projectPath: '/p', cwd: '/p' } as SessionMeta;
@@ -19,17 +26,43 @@ describe('compaction in the transcript', () => {
     expect(s.compacting).toBe(true);
     expect(s.statusText).toBe('Compacting context…');
 
-    const fx = applyPiEvent(s, { type: 'compaction_end', reason: 'manual', result: { summary: 'What happened', tokensBefore: 120_000, estimatedTokensAfter: 12_000 }, aborted: false }, 'normal');
+    const fx = applyPiEvent(
+      s,
+      {
+        type: 'compaction_end',
+        reason: 'manual',
+        result: { summary: 'What happened', tokensBefore: 120_000, estimatedTokensAfter: 12_000 },
+        aborted: false,
+      },
+      'normal',
+    );
     expect(s.compacting).toBe(false);
     expect(fx.refreshStats).toBe(true);
-    expect(cards(s.items)).toEqual([expect.objectContaining({ summary: 'What happened', tokensBefore: 120_000, tokensAfter: 12_000, open: false, openSummary: true })]);
+    expect(cards(s.items)).toEqual([
+      expect.objectContaining({
+        summary: 'What happened',
+        tokensBefore: 120_000,
+        tokensAfter: 12_000,
+        open: false,
+        openSummary: true,
+      }),
+    ]);
     expect(notes(s.items)).toEqual([]);
   });
 
   it('keeps the SDK failure text, without piling up its prefix', () => {
     const s = emptySession(meta);
     applyPiEvent(s, { type: 'compaction_start', reason: 'threshold' }, 'normal');
-    applyPiEvent(s, { type: 'compaction_end', reason: 'threshold', aborted: false, errorMessage: 'Compaction failed: Nothing to compact (session too small)' }, 'normal');
+    applyPiEvent(
+      s,
+      {
+        type: 'compaction_end',
+        reason: 'threshold',
+        aborted: false,
+        errorMessage: 'Compaction failed: Nothing to compact (session too small)',
+      },
+      'normal',
+    );
     expect(s.compacting).toBe(false);
     expect(notes(s.items)).toEqual(['Compaction failed: Nothing to compact (session too small)']);
     expect(cards(s.items)).toEqual([]);
@@ -45,10 +78,14 @@ describe('compaction in the transcript', () => {
 
   it('rebuilds the summary as a card when a reopened session replays it', () => {
     const s = emptySession(meta);
-    replay(s, [
-      { role: 'compactionSummary', summary: 'The work so far', tokensBefore: 1000, timestamp: 1 },
-      { role: 'user', content: 'carry on', timestamp: 2, entryId: 'e1' },
-    ] as any, 'normal');
+    replay(
+      s,
+      [
+        { role: 'compactionSummary', summary: 'The work so far', tokensBefore: 1000, timestamp: 1 },
+        { role: 'user', content: 'carry on', timestamp: 2, entryId: 'e1' },
+      ] as any,
+      'normal',
+    );
     expect(cards(s.items)[0]).toMatchObject({ summary: 'The work so far', tokensBefore: 1000, open: false });
     expect(s.items.some((i) => i.kind === 'user')).toBe(true);
   });
@@ -74,10 +111,14 @@ describe('compaction in the transcript', () => {
   });
 
   it('loads older messages already expanded, with their own summaries folded', () => {
-    const items = transcriptItems(meta, [
-      { role: 'compactionSummary', summary: 'older summary', tokensBefore: 10, timestamp: 1 },
-      { role: 'user', content: 'an old message', timestamp: 2 },
-    ] as any, 'normal');
+    const items = transcriptItems(
+      meta,
+      [
+        { role: 'compactionSummary', summary: 'older summary', tokensBefore: 10, timestamp: 1 },
+        { role: 'user', content: 'an old message', timestamp: 2 },
+      ] as any,
+      'normal',
+    );
     expect(cards(items)[0]).toMatchObject({ summary: 'older summary', open: true, openSummary: false, hidden: 0 });
   });
 });

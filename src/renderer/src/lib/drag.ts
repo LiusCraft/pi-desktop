@@ -28,6 +28,12 @@ export function useDrag() {
 
   return {
     style: { transform: `translate(${offset.x}px, ${offset.y}px)` },
-    handle: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel: onPointerUp, className: 'cursor-grab touch-none select-none active:cursor-grabbing' },
+    handle: {
+      onPointerDown,
+      onPointerMove,
+      onPointerUp,
+      onPointerCancel: onPointerUp,
+      className: 'cursor-grab touch-none select-none active:cursor-grabbing',
+    },
   };
 }

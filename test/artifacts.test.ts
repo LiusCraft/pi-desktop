@@ -29,7 +29,14 @@ describe('signV4', () => {
 });
 
 describe('objectUrl', () => {
-  const t = { endpoint: 'https://s3.example.com', region: 'r', bucket: 'b', accessKeyId: 'a', secretAccessKey: 's', pathStyle: true };
+  const t = {
+    endpoint: 'https://s3.example.com',
+    region: 'r',
+    bucket: 'b',
+    accessKeyId: 'a',
+    secretAccessKey: 's',
+    pathStyle: true,
+  };
   it('builds path-style and virtual-hosted URLs and encodes the key', () => {
     expect(objectUrl(t, 'a b/c.html').href).toBe('https://s3.example.com/b/a%20b/c.html');
     expect(objectUrl({ ...t, pathStyle: false }, 'x/y.html').href).toBe('https://b.s3.example.com/x/y.html');
@@ -38,12 +45,15 @@ describe('objectUrl', () => {
 
 describe('storageUrl / artifactKey / publishState', () => {
   it('joins base, prefix and an encoded key', () => {
-    expect(storageUrl({ publicBaseUrl: 'https://cdn.example.com/', prefix: '/pd/' }, artifactKey('demo-1', 'a b/index.html'))).toBe(
-      'https://cdn.example.com/pd/artifacts/demo-1/a%20b/index.html',
-    );
-    expect(storageUrl({ publicBaseUrl: 'https://cdn.example.com', prefix: '' }, artifactKey('demo-1', 'index.html'))).toBe(
-      'https://cdn.example.com/artifacts/demo-1/index.html',
-    );
+    expect(
+      storageUrl(
+        { publicBaseUrl: 'https://cdn.example.com/', prefix: '/pd/' },
+        artifactKey('demo-1', 'a b/index.html'),
+      ),
+    ).toBe('https://cdn.example.com/pd/artifacts/demo-1/a%20b/index.html');
+    expect(
+      storageUrl({ publicBaseUrl: 'https://cdn.example.com', prefix: '' }, artifactKey('demo-1', 'index.html')),
+    ).toBe('https://cdn.example.com/artifacts/demo-1/index.html');
   });
   it('tells draft, published and outdated apart', () => {
     expect(publishState({ version: 1, publishedVersion: null })).toBe('draft');
@@ -114,16 +124,31 @@ describe('ArtifactService', () => {
         req.on('data', (c) => chunks.push(c));
         req.on('end', () => {
           const key = decodeURIComponent(req.url!.split('?')[0]);
-          if (req.method === 'PUT') objects.set(key, { body: Buffer.concat(chunks).toString(), type: String(req.headers['content-type']), auth: String(req.headers.authorization) });
+          if (req.method === 'PUT')
+            objects.set(key, {
+              body: Buffer.concat(chunks).toString(),
+              type: String(req.headers['content-type']),
+              auth: String(req.headers.authorization),
+            });
           else if (req.method === 'DELETE') objects.delete(key);
           res.statusCode = req.headers.authorization ? 200 : 403;
-          res.end(req.headers.authorization ? '<ListBucketResult/>' : '<Error><Code>AccessDenied</Code><Message>no auth</Message></Error>');
+          res.end(
+            req.headers.authorization
+              ? '<ListBucketResult/>'
+              : '<Error><Code>AccessDenied</Code><Message>no auth</Message></Error>',
+          );
         });
       });
       await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
       storage.save({
-        endpoint: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, region: 'auto', bucket: 'bkt', accessKeyId: 'AK',
-        secretAccessKey: 'SK', publicBaseUrl: 'https://cdn.example.com', prefix: 'pub', pathStyle: true,
+        endpoint: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+        region: 'auto',
+        bucket: 'bkt',
+        accessKeyId: 'AK',
+        secretAccessKey: 'SK',
+        publicBaseUrl: 'https://cdn.example.com',
+        prefix: 'pub',
+        pathStyle: true,
       });
     });
     afterEach(() => new Promise<void>((r) => server.close(() => r())));

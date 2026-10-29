@@ -26,16 +26,45 @@ interface EditorSpec {
   jetbrains?: { dir: string; exe: string };
 }
 
-const jb = (id: EditorId, cli: string, dir: string, exe: string, mac = dir): EditorSpec =>
-  ({ id, cli: [cli], mac: [mac, `${mac} CE`], exe, jetbrains: { dir, exe } });
+const jb = (id: EditorId, cli: string, dir: string, exe: string, mac = dir): EditorSpec => ({
+  id,
+  cli: [cli],
+  mac: [mac, `${mac} CE`],
+  exe,
+  jetbrains: { dir, exe },
+});
 
 const EDITORS: EditorSpec[] = [
-  { id: 'vscode', exe: 'Code.exe', cli: ['code'], mac: ['Visual Studio Code'], win: ['Microsoft VS Code/bin/code.cmd'] },
-  { id: 'vscode-insiders', exe: 'Code - Insiders.exe', cli: ['code-insiders'], mac: ['Visual Studio Code - Insiders'], win: ['Microsoft VS Code Insiders/bin/code-insiders.cmd'] },
-  { id: 'cursor', exe: 'Cursor.exe', cli: ['cursor'], mac: ['Cursor'], win: ['cursor/resources/app/bin/cursor.cmd', 'Cursor/resources/app/bin/cursor.cmd'] },
+  {
+    id: 'vscode',
+    exe: 'Code.exe',
+    cli: ['code'],
+    mac: ['Visual Studio Code'],
+    win: ['Microsoft VS Code/bin/code.cmd'],
+  },
+  {
+    id: 'vscode-insiders',
+    exe: 'Code - Insiders.exe',
+    cli: ['code-insiders'],
+    mac: ['Visual Studio Code - Insiders'],
+    win: ['Microsoft VS Code Insiders/bin/code-insiders.cmd'],
+  },
+  {
+    id: 'cursor',
+    exe: 'Cursor.exe',
+    cli: ['cursor'],
+    mac: ['Cursor'],
+    win: ['cursor/resources/app/bin/cursor.cmd', 'Cursor/resources/app/bin/cursor.cmd'],
+  },
   { id: 'windsurf', exe: 'Windsurf.exe', cli: ['windsurf'], mac: ['Windsurf'], win: ['Windsurf/bin/windsurf.cmd'] },
   { id: 'trae', exe: 'Trae.exe', cli: ['trae'], mac: ['Trae'], win: ['Trae/bin/trae.cmd'] },
-  { id: 'antigravity', exe: 'Antigravity.exe', cli: ['antigravity'], mac: ['Antigravity'], win: ['Antigravity/bin/antigravity.cmd'] },
+  {
+    id: 'antigravity',
+    exe: 'Antigravity.exe',
+    cli: ['antigravity'],
+    mac: ['Antigravity'],
+    win: ['Antigravity/bin/antigravity.cmd'],
+  },
   { id: 'vscodium', exe: 'VSCodium.exe', cli: ['codium'], mac: ['VSCodium'], win: ['VSCodium/bin/codium.cmd'] },
   { id: 'zed', exe: 'zed.exe', cli: ['zed'], mac: ['Zed'], win: ['Zed/zed.exe'] },
   { id: 'sublime', exe: 'sublime_text.exe', cli: ['subl'], mac: ['Sublime Text'], win: ['Sublime Text/subl.exe'] },
@@ -55,16 +84,23 @@ const isWin = process.platform === 'win32';
 const isMac = process.platform === 'darwin';
 
 const exists = (p: string) => {
-  try { return fs.statSync(p).isFile(); } catch { return false; }
+  try {
+    return fs.statSync(p).isFile();
+  } catch {
+    return false;
+  }
 };
 
 function onPath(name: string): string | undefined {
   const exts = isWin ? (process.env.PATHEXT || '.EXE;.CMD;.BAT').split(';') : [''];
-  const dirs = String(childEnv().PATH || '').split(path.delimiter).filter(Boolean);
-  for (const dir of dirs) for (const ext of exts) {
-    const file = path.join(dir, name + ext.toLowerCase());
-    if (exists(file)) return file;
-  }
+  const dirs = String(childEnv().PATH || '')
+    .split(path.delimiter)
+    .filter(Boolean);
+  for (const dir of dirs)
+    for (const ext of exts) {
+      const file = path.join(dir, name + ext.toLowerCase());
+      if (exists(file)) return file;
+    }
 }
 
 function winRoots() {
@@ -76,14 +112,18 @@ function winRoots() {
 }
 
 function findJetBrains(dir: string, exe: string): string | undefined {
-  const bases = [
-    ...winRoots().map((r) => path.join(r, 'JetBrains')),
-    ...winRoots(),
-  ];
+  const bases = [...winRoots().map((r) => path.join(r, 'JetBrains')), ...winRoots()];
   for (const base of bases) {
     let names: string[] = [];
-    try { names = fs.readdirSync(base); } catch { continue; }
-    for (const name of names.filter((n) => n.startsWith(dir)).sort().reverse()) {
+    try {
+      names = fs.readdirSync(base);
+    } catch {
+      continue;
+    }
+    for (const name of names
+      .filter((n) => n.startsWith(dir))
+      .sort()
+      .reverse()) {
       const file = path.join(base, name, 'bin', exe);
       if (exists(file)) return file;
     }
@@ -92,9 +132,10 @@ function findJetBrains(dir: string, exe: string): string | undefined {
 
 function macApp(names: string[]): string | undefined {
   const roots = ['/Applications', path.join(os.homedir(), 'Applications')];
-  for (const name of names) for (const root of roots) {
-    if (fs.existsSync(path.join(root, `${name}.app`))) return name;
-  }
+  for (const name of names)
+    for (const root of roots) {
+      if (fs.existsSync(path.join(root, `${name}.app`))) return name;
+    }
 }
 
 function locate(spec: EditorSpec): Launcher | undefined {
@@ -105,10 +146,11 @@ function locate(spec: EditorSpec): Launcher | undefined {
     return app ? { app } : undefined;
   }
   if (isWin) {
-    for (const rel of spec.win ?? []) for (const root of winRoots()) {
-      const file = path.join(root, ...rel.split('/'));
-      if (exists(file)) return { file };
-    }
+    for (const rel of spec.win ?? [])
+      for (const root of winRoots()) {
+        const file = path.join(root, ...rel.split('/'));
+        if (exists(file)) return { file };
+      }
     if (spec.jetbrains) {
       const file = findJetBrains(spec.jetbrains.dir, spec.jetbrains.exe);
       if (file) return { file };
@@ -128,7 +170,9 @@ function iconSource(spec: EditorSpec, launcher: Launcher): string | undefined {
   if (isMac) {
     const name = 'app' in launcher ? launcher.app : macApp(spec.mac ?? []);
     if (!name) return;
-    return ['/Applications', path.join(os.homedir(), 'Applications')].map((r) => path.join(r, `${name}.app`)).find((p) => fs.existsSync(p));
+    return ['/Applications', path.join(os.homedir(), 'Applications')]
+      .map((r) => path.join(r, `${name}.app`))
+      .find((p) => fs.existsSync(p));
   }
   if (!isWin || 'app' in launcher) return;
   if (launcher.file.toLowerCase().endsWith('.exe')) return launcher.file;
@@ -145,7 +189,11 @@ let cache: { at: number; entries: Promise<OpenTargetEntry[]>; found: Map<EditorI
 
 async function iconOf(file: string | undefined) {
   if (!file) return undefined;
-  try { return (await app.getFileIcon(file, { size: 'normal' })).toDataURL(); } catch { return undefined; }
+  try {
+    return (await app.getFileIcon(file, { size: 'normal' })).toDataURL();
+  } catch {
+    return undefined;
+  }
 }
 
 function detect() {
@@ -156,9 +204,12 @@ function detect() {
     if (launcher) found.set(spec.id, launcher);
   }
   const editors = EDITORS.filter((e) => found.has(e.id));
-  const entries = Promise.all(editors.map(async (e): Promise<OpenTargetEntry> => ({
-    id: e.id, icon: await iconOf(iconSource(e, found.get(e.id)!)),
-  }))).then((list) => [...list, { id: 'terminal' as const }, { id: 'folder' as const }]);
+  const entries = Promise.all(
+    editors.map(async (e): Promise<OpenTargetEntry> => ({
+      id: e.id,
+      icon: await iconOf(iconSource(e, found.get(e.id)!)),
+    })),
+  ).then((list) => [...list, { id: 'terminal' as const }, { id: 'folder' as const }]);
   return (cache = { at: Date.now(), entries, found });
 }
 
@@ -177,19 +228,24 @@ export function openIn(target: OpenTarget, cwd: string, resource = cwd) {
       // .cmd shims only run through the command processor; wrapping the whole
       // line in one more pair of quotes keeps paths with spaces intact.
       const line = [launcher.file, ...args].map(winQuote).join(' ');
-      p = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${line}"`], { ...base, windowsVerbatimArguments: true });
+      p = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${line}"`], {
+        ...base,
+        windowsVerbatimArguments: true,
+      });
     } else p = spawn(launcher.file, args, base);
     p.on('error', () => {});
     p.unref();
   };
 
   switch (target) {
-    case 'folder': return void shell.openPath(resource);
+    case 'folder':
+      return void shell.openPath(resource);
     case 'terminal': {
       const launcher = locateTerminal();
       if (launcher) return run(launcher, 'app' in launcher ? [cwd] : isWin ? ['-d', cwd] : []);
       // No Windows Terminal: a plain console window in the folder.
-      if (isWin) return run({ file: process.env.ComSpec || 'cmd.exe' }, ['/c', 'start', '', 'cmd.exe'], { windowsHide: false });
+      if (isWin)
+        return run({ file: process.env.ComSpec || 'cmd.exe' }, ['/c', 'start', '', 'cmd.exe'], { windowsHide: false });
       return;
     }
     default: {

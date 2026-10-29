@@ -4,8 +4,14 @@
 // and the conversation (and the vendor's prompt cache) reads the same turn after turn.
 import { createHmac, randomBytes } from 'node:crypto';
 import {
-  MASK_ACTION, MASK_KIND, PERSONAL_KINDS, SECRET_KINDS,
-  type MaskCounts, type MaskKind, type RedactPreview, type RedactSettings,
+  MASK_ACTION,
+  MASK_KIND,
+  PERSONAL_KINDS,
+  SECRET_KINDS,
+  type MaskCounts,
+  type MaskKind,
+  type RedactPreview,
+  type RedactSettings,
 } from '@shared/request-log';
 import { tr } from '@shared/i18n/runtime';
 
@@ -17,7 +23,10 @@ const ID_LENGTH = 8;
 const MIN_KNOWN_LENGTH = 8;
 
 export class MaskBlocked extends Error {
-  constructor(readonly kind: MaskKind, length: number) {
+  constructor(
+    readonly kind: MaskKind,
+    length: number,
+  ) {
     super(tr('privacy.blocked', { kind, length }));
   }
 }
@@ -32,14 +41,27 @@ interface Rule {
 }
 
 const KEY_PREFIXES = [
-  'sk-[A-Za-z0-9_-]{20,}', '(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{30,}', 'github_pat_[A-Za-z0-9_]{40,}', 'glpat-[A-Za-z0-9_-]{20,}',
-  'AIza[0-9A-Za-z_-]{35}', 'xox[abprs]-[A-Za-z0-9-]{10,}', 'sk_live_[A-Za-z0-9]{16,}', '(?:AKIA|ASIA)[A-Z0-9]{16}', 'hf_[A-Za-z0-9]{30,}',
-  'gsk_[A-Za-z0-9]{40,}', 'xai-[A-Za-z0-9]{40,}', 'npm_[A-Za-z0-9]{36}', 'pypi-[A-Za-z0-9_-]{50,}', 'dop_v1_[a-f0-9]{64}',
-  'SG\\.[A-Za-z0-9_-]{16,}\\.[A-Za-z0-9_-]{16,}', 'oc_sk_[A-Za-z0-9_-]{16,}',
+  'sk-[A-Za-z0-9_-]{20,}',
+  '(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{30,}',
+  'github_pat_[A-Za-z0-9_]{40,}',
+  'glpat-[A-Za-z0-9_-]{20,}',
+  'AIza[0-9A-Za-z_-]{35}',
+  'xox[abprs]-[A-Za-z0-9-]{10,}',
+  'sk_live_[A-Za-z0-9]{16,}',
+  '(?:AKIA|ASIA)[A-Z0-9]{16}',
+  'hf_[A-Za-z0-9]{30,}',
+  'gsk_[A-Za-z0-9]{40,}',
+  'xai-[A-Za-z0-9]{40,}',
+  'npm_[A-Za-z0-9]{36}',
+  'pypi-[A-Za-z0-9_-]{50,}',
+  'dop_v1_[a-f0-9]{64}',
+  'SG\\.[A-Za-z0-9_-]{16,}\\.[A-Za-z0-9_-]{16,}',
+  'oc_sk_[A-Za-z0-9_-]{16,}',
 ];
 
 /** Words in a field's name that make its value a secret: `DB_PASSWORD=`, `api_key:`, `"client_secret":`. */
-const SECRET_FIELD = '[A-Za-z0-9_.-]*(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|credential|access[_-]?key|private[_-]?key)[A-Za-z0-9_.-]*';
+const SECRET_FIELD =
+  '[A-Za-z0-9_.-]*(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|credential|access[_-]?key|private[_-]?key)[A-Za-z0-9_.-]*';
 const SECRET_VALUE_MIN = 8;
 
 /** Text before an 11-digit number that says it is an id, not a phone. */
@@ -101,13 +123,19 @@ export function compileRules(settings: RedactSettings): Rule[] {
   if (settings.personal) rules.push(...PERSONAL_RULES);
   for (const r of settings.rules) {
     try {
-      rules.push({ kind: MASK_KIND.custom, re: new RegExp(r.regex ? r.pattern : `${escapeRegex(r.pattern)}\\S*`, 'g') });
+      rules.push({
+        kind: MASK_KIND.custom,
+        re: new RegExp(r.regex ? r.pattern : `${escapeRegex(r.pattern)}\\S*`, 'g'),
+      });
     } catch {
       // checked when the settings are saved
     }
   }
   if (settings.words.length) {
-    const alternatives = [...settings.words].sort((a, b) => b.length - a.length).map(escapeRegex).join('|');
+    const alternatives = [...settings.words]
+      .sort((a, b) => b.length - a.length)
+      .map(escapeRegex)
+      .join('|');
     rules.push({ kind: MASK_KIND.term, re: new RegExp(alternatives, 'gi') });
   }
   return rules;
@@ -123,16 +151,43 @@ function activeKinds(settings: RedactSettings): Set<MaskKind> {
   return kinds;
 }
 
-export const redactionWanted = (s: RedactSettings) => s.secrets || s.personal || s.words.length > 0 || s.rules.length > 0;
+export const redactionWanted = (s: RedactSettings) =>
+  s.secrets || s.personal || s.words.length > 0 || s.rules.length > 0;
 
 /** Fields whose values are the vendor's, not the user's: ids, names, types, signed or encrypted content, binary data. */
 const KEEP_KEYS = new Set([
-  'id', 'call_id', 'tool_call_id', 'tool_use_id', 'toolUseId', 'name', 'type', 'role', 'model', 'object', 'finish_reason', 'stop_reason',
-  'signature', 'thoughtSignature', 'thought_signature', 'encrypted_content', 'data', 'mime_type', 'mimeType', 'media_type',
+  'id',
+  'call_id',
+  'tool_call_id',
+  'tool_use_id',
+  'toolUseId',
+  'name',
+  'type',
+  'role',
+  'model',
+  'object',
+  'finish_reason',
+  'stop_reason',
+  'signature',
+  'thoughtSignature',
+  'thought_signature',
+  'encrypted_content',
+  'data',
+  'mime_type',
+  'mimeType',
+  'media_type',
   // Reasoning goes back as the vendor wrote it: it is signed.
-  'thinking', 'reasoning', 'reasoning_content', 'reasoning_text', 'reasoning_details',
+  'thinking',
+  'reasoning',
+  'reasoning_content',
+  'reasoning_text',
+  'reasoning_details',
   // Tool schemas are the tool's, not the conversation's.
-  'parameters', 'input_schema', 'inputSchema', 'schema', 'json_schema',
+  'parameters',
+  'input_schema',
+  'inputSchema',
+  'schema',
+  'json_schema',
 ]);
 /** What a tool was called with or answered: its own fields are free text, so a field called "name" is masked too. */
 const FREE_KEYS = new Set(['input', 'arguments', 'args', 'functionCall', 'functionResponse', 'response', 'output']);
@@ -167,7 +222,8 @@ export class Redactor {
     const entry = { kind, value, placeholder };
     this.values.set(id, entry);
     this.byPlaceholder.set(placeholder, entry);
-    if (value.length >= MIN_KNOWN_LENGTH) this.known = [...this.known, entry].sort((a, b) => b.value.length - a.value.length);
+    if (value.length >= MIN_KNOWN_LENGTH)
+      this.known = [...this.known, entry].sort((a, b) => b.value.length - a.value.length);
     return placeholder;
   }
 
@@ -189,7 +245,8 @@ export class Redactor {
   restoreDeep<T>(value: T): T {
     if (typeof value === 'string') return this.restore(value) as T;
     if (Array.isArray(value)) return value.map((v) => this.restoreDeep(v)) as T;
-    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, this.restoreDeep(v)])) as T;
+    if (value && typeof value === 'object')
+      return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, this.restoreDeep(v)])) as T;
     return value;
   }
 }
@@ -203,7 +260,11 @@ export class MaskPass {
   private readonly kinds: Set<MaskKind>;
   private readonly allow: Set<string>;
 
-  constructor(private readonly redactor: Redactor, private readonly settings: RedactSettings, private readonly dryRun: boolean) {
+  constructor(
+    private readonly redactor: Redactor,
+    private readonly settings: RedactSettings,
+    private readonly dryRun: boolean,
+  ) {
     this.rules = compileRules(settings);
     this.kinds = activeKinds(settings);
     this.allow = new Set(settings.allow);
@@ -234,7 +295,9 @@ export class MaskPass {
     let out = '';
     let last = 0;
     for (const m of segment.matchAll(new RegExp(rule.re.source, `${rule.re.flags.replace('d', '')}d`))) {
-      const range = rule.group ? (m as RegExpMatchArray & { indices: [number, number][] }).indices[rule.group] : [m.index!, m.index! + m[0].length];
+      const range = rule.group
+        ? (m as RegExpMatchArray & { indices: [number, number][] }).indices[rule.group]
+        : [m.index!, m.index! + m[0].length];
       if (!range) continue;
       const [from, to] = range;
       const value = segment.slice(from, to);
@@ -258,7 +321,10 @@ export class MaskPass {
     if (!text) return text;
     // Placeholders made earlier in this text are left alone, and no rule matches across one.
     const outside = (s: string, fn: (segment: string) => string) =>
-      s.split(PLACEHOLDER_SPLIT).map((part, i) => (i % 2 ? part : fn(part))).join('');
+      s
+        .split(PLACEHOLDER_SPLIT)
+        .map((part, i) => (i % 2 ? part : fn(part)))
+        .join('');
     let out = text;
     for (const rule of this.rules) out = outside(out, (seg) => this.applyRule(seg, rule));
     return this.kinds.size ? outside(out, (seg) => this.applyKnown(seg)) : out;

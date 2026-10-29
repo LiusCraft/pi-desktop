@@ -20,7 +20,8 @@ const CSP = [
 const csp: Plugin = {
   name: 'pi-desktop-csp',
   apply: 'build',
-  transformIndexHtml: (html) => html.replace('<head>', `<head>\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`),
+  transformIndexHtml: (html) =>
+    html.replace('<head>', `<head>\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`),
 };
 
 export default defineConfig({

@@ -25,7 +25,10 @@ function toolCalls(content: unknown) {
   if (!Array.isArray(content)) return '';
   return content
     .filter((block) => block?.type === 'toolCall')
-    .map((block) => `[tool call: ${block.name}${block.arguments ? ` ${clip(JSON.stringify(block.arguments), MAX_TOOL_ARG_CHARS)}` : ''}]`)
+    .map(
+      (block) =>
+        `[tool call: ${block.name}${block.arguments ? ` ${clip(JSON.stringify(block.arguments), MAX_TOOL_ARG_CHARS)}` : ''}]`,
+    )
     .join('\n');
 }
 
@@ -70,7 +73,12 @@ export function sideTranscript(messages: readonly MessageLike[], options: { cont
 /** The user's message of one side turn: the quoted passage (if any) goes first. */
 export function sideUserText(turn: SideTurn) {
   const quote = turn.quote?.trim();
-  return quote ? `${quote.split('\n').map((line) => `> ${line}`).join('\n')}\n\n${turn.text}` : turn.text;
+  return quote
+    ? `${quote
+        .split('\n')
+        .map((line) => `> ${line}`)
+        .join('\n')}\n\n${turn.text}`
+    : turn.text;
 }
 
 /**
@@ -80,10 +88,12 @@ export function sideUserText(turn: SideTurn) {
 export function sideMessages(transcript: string, turns: readonly SideTurn[], now = Date.now()) {
   const history = turns.filter((turn) => turn.text.trim() || turn.quote?.trim());
   if (!history.length || history.at(-1)!.role !== 'user') return null;
-  const dialogue = history.map((turn) => {
-    const text = turn.role === 'user' ? sideUserText(turn) : turn.text;
-    return `<${turn.role}>${text}</${turn.role}>`;
-  }).join('\n');
+  const dialogue = history
+    .map((turn) => {
+      const text = turn.role === 'user' ? sideUserText(turn) : turn.text;
+      return `<${turn.role}>${text}</${turn.role}>`;
+    })
+    .join('\n');
   const content = `<conversation>\n${transcript || '(the conversation is empty)'}\n</conversation>\n\n<side_chat>\n${dialogue}\n</side_chat>\n\nReply to the last <user> message of the side chat.`;
   return [{ role: 'user' as const, content, timestamp: now }];
 }

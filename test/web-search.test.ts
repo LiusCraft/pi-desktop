@@ -7,8 +7,13 @@ import { fetchPage, htmlToText, isPrivateAddress } from '../src/agent/web-fetch'
 import { WebSearch } from '../src/agent/web-search';
 
 let dir: string;
-beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pidesk-web-')); });
-afterEach(() => { vi.unstubAllGlobals(); fs.rmSync(dir, { recursive: true, force: true }); });
+beforeEach(() => {
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pidesk-web-'));
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 const q = { query: 'pi desktop', maxResults: 3 };
@@ -18,11 +23,14 @@ describe('WebSearch', () => {
     const web = new WebSearch(dir);
     web.save({ engine: 'auto', keys: { exa: 'e', brave: 'b' } });
     const calls: string[] = [];
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      calls.push(new URL(String(url)).hostname);
-      if (String(url).includes('exa.ai')) return json({ error: 'out of credits' }, 402);
-      return json({ web: { results: [{ title: 'T', url: 'https://x.test', description: 'D' }] } });
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        calls.push(new URL(String(url)).hostname);
+        if (String(url).includes('exa.ai')) return json({ error: 'out of credits' }, 402);
+        return json({ web: { results: [{ title: 'T', url: 'https://x.test', description: 'D' }] } });
+      }),
+    );
 
     const first = await web.search(q);
     expect(first.engine).toBe('brave');
@@ -37,7 +45,7 @@ describe('WebSearch', () => {
   it('uses a fixed engine alone, and says when everything failed', async () => {
     const web = new WebSearch(dir);
     web.save({ engine: 'exa', keys: { exa: 'e', brave: 'b' } });
-    const fetchMock = vi.fn(async () => json({}, 429));
+    const fetchMock = vi.fn<typeof fetch>(async () => json({}, 429));
     vi.stubGlobal('fetch', fetchMock);
     await expect(web.search(q)).rejects.toThrow(/Exa: HTTP 429/);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -45,8 +53,12 @@ describe('WebSearch', () => {
 
   it('searches Exa without a key and parses its text results', async () => {
     const web = new WebSearch(dir);
-    const text = 'Title: A\nURL: https://a.test\nPublished: 2026-01-02T00:00:00Z\nAuthor: N/A\nHighlights:\nfirst\n\n---\n\nTitle: B\nURL: https://b.test\nPublished: N/A\nHighlights:\nsecond';
-    const fetchMock = vi.fn(async (_url: string) => new Response(`event: message\ndata: ${JSON.stringify({ result: { content: [{ type: 'text', text }] } })}\n\n`));
+    const text =
+      'Title: A\nURL: https://a.test\nPublished: 2026-01-02T00:00:00Z\nAuthor: N/A\nHighlights:\nfirst\n\n---\n\nTitle: B\nURL: https://b.test\nPublished: N/A\nHighlights:\nsecond';
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(`event: message\ndata: ${JSON.stringify({ result: { content: [{ type: 'text', text }] } })}\n\n`),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const out = await web.search(q);
     expect(out.engine).toBe('exa');
@@ -69,13 +81,17 @@ describe('WebSearch', () => {
 
 describe('web fetch', () => {
   it('turns html into readable text with absolute links', () => {
-    const { title, text } = htmlToText('<html><head><title>Hi &amp; bye</title><style>x{}</style></head><body><h1>Head</h1><p>One <a href="/a">link</a></p><script>x()</script><ul><li>a</li></ul></body></html>', 'https://e.test/p/');
+    const { title, text } = htmlToText(
+      '<html><head><title>Hi &amp; bye</title><style>x{}</style></head><body><h1>Head</h1><p>One <a href="/a">link</a></p><script>x()</script><ul><li>a</li></ul></body></html>',
+      'https://e.test/p/',
+    );
     expect(title).toBe('Hi & bye');
     expect(text).toBe('# Head\n\nOne [link](https://e.test/a)\n\n- a');
   });
 
   it('refuses private addresses', async () => {
-    for (const ip of ['127.0.0.1', '10.1.2.3', '192.168.0.9', '169.254.169.254', '::1', 'fd00::1', '::ffff:127.0.0.1']) expect(isPrivateAddress(ip)).toBe(true);
+    for (const ip of ['127.0.0.1', '10.1.2.3', '192.168.0.9', '169.254.169.254', '::1', 'fd00::1', '::ffff:127.0.0.1'])
+      expect(isPrivateAddress(ip)).toBe(true);
     expect(isPrivateAddress('8.8.8.8')).toBe(false);
     await expect(fetchPage('http://127.0.0.1:8080/')).rejects.toThrow(/not a public address/);
     await expect(fetchPage('file:///etc/passwd')).rejects.toThrow(/Only http/);

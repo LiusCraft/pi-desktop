@@ -3,11 +3,15 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import { fmtLines, prBadge, prCiLine, prFixKey, prReady, prRepo, prSize } from '../src/shared/pr-status';
 
-const pr = (p: Record<string, unknown> = {}) => ({ num: 4, state: 'open', draft: false, ci: 'pass', mergeable: 'clean', ...p }) as never;
+const pr = (p: Record<string, unknown> = {}) =>
+  ({ num: 4, state: 'open', draft: false, ci: 'pass', mergeable: 'clean', ...p }) as never;
 
 describe('PR bar badge', () => {
   it('calls out a merge conflict before anything else', () => {
-    assert.deepEqual(prBadge(pr({ mergeable: 'conflicting', ci: 'fail' })), { label: 'Merge conflicts', tone: 'conflict' });
+    assert.deepEqual(prBadge(pr({ mergeable: 'conflicting', ci: 'fail' })), {
+      label: 'Merge conflicts',
+      tone: 'conflict',
+    });
   });
 
   it('reports CI before the plain open state', () => {
@@ -61,12 +65,25 @@ describe('CI line', () => {
   });
 
   it('counts the failing checks rather than all of them', () => {
-    const checks = [{ n: 'a', st: 'fail' as const }, { n: 'b', st: 'pass' as const }, { n: 'c', st: 'pass' as const }];
+    const checks = [
+      { n: 'a', st: 'fail' as const },
+      { n: 'b', st: 'pass' as const },
+      { n: 'c', st: 'pass' as const },
+    ];
     assert.equal(prCiLine({ ci: 'fail', checks }), '1 of 3 checks failing');
   });
 
   it('describes running and passing runs', () => {
-    assert.equal(prCiLine({ ci: 'pending', checks: [{ n: 'a', st: 'pending' }, { n: 'b', st: 'pass' }] }), '1 check running…');
+    assert.equal(
+      prCiLine({
+        ci: 'pending',
+        checks: [
+          { n: 'a', st: 'pending' },
+          { n: 'b', st: 'pass' },
+        ],
+      }),
+      '1 check running…',
+    );
     assert.equal(prCiLine({ ci: 'pass', checks: [{ n: 'a', st: 'pass' }] }), 'All 1 check passed');
   });
 });

@@ -4,7 +4,14 @@
 import type { Arrangement, CardId, Column, Panels } from './types';
 
 /** A brand new session opens with nothing but Work's progress card. */
-export const DEFAULT_PANELS: Panels = { diff: false, preview: false, files: false, terminal: false, progress: true, tasks: false };
+export const DEFAULT_PANELS: Panels = {
+  diff: false,
+  preview: false,
+  files: false,
+  terminal: false,
+  progress: true,
+  tasks: false,
+};
 
 /** localStorage, or an in-memory stand-in when it is missing (tests, private modes). */
 type KeyValue = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;

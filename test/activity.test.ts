@@ -27,7 +27,13 @@ describe('activity recorder', () => {
 
 describe('activity summary', () => {
   it('keeps the current streak alive while today is still empty', () => {
-    const log: ActivityLog = { '2026-10-24': day(1), '2026-10-25': day(2), '2026-10-26': day(1), '2026-10-20': day(1), '2026-10-21': day(1) };
+    const log: ActivityLog = {
+      '2026-10-24': day(1),
+      '2026-10-25': day(2),
+      '2026-10-26': day(1),
+      '2026-10-20': day(1),
+      '2026-10-21': day(1),
+    };
     expect(summarize(log, new Date(2026, 9, 27))).toEqual({ activeDays: 5, currentStreak: 3, longestStreak: 3 });
     expect(summarize(log, new Date(2026, 9, 29)).currentStreak).toBe(0);
   });
@@ -36,7 +42,7 @@ describe('activity summary', () => {
     expect(dayKey(new Date(2026, 0, 5, 0, 1))).toBe('2026-01-05');
   });
 
-  it('spreads levels over the user\'s own non-zero days', () => {
+  it("spreads levels over the user's own non-zero days", () => {
     const log: ActivityLog = {};
     [1, 2, 3, 4, 5, 6, 7, 8].forEach((n, i) => (log[`2026-10-0${i + 1}`] = day(n)));
     const level = activityLevels(log);
@@ -56,7 +62,10 @@ describe('range stats', () => {
     rec.recordPrompt('code', 'c', '/p/old', new Date(2026, 8, 1, 10).getTime());
     const s = rangeStats(rec.get(), new Date(2026, 9, 27), 7);
     expect(s).toMatchObject({ prompts: 4, code: 3, work: 1, activeDays: 2, busiest: { key: '2026-10-26', total: 3 } });
-    expect(s.projects).toEqual([{ path: '/p/app', count: 3 }, { path: '', count: 1 }]);
+    expect(s.projects).toEqual([
+      { path: '/p/app', count: 3 },
+      { path: '', count: 1 },
+    ]);
     expect(s.hours[21]).toBe(2);
   });
 });

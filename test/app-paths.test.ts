@@ -2,7 +2,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  appWorkDir, appDataDir, appExtensionsDir, defaultWorktreeDir, expandHome, piAgentDir, worktreeDir,
+  appWorkDir,
+  appDataDir,
+  appExtensionsDir,
+  defaultWorktreeDir,
+  expandHome,
+  piAgentDir,
+  worktreeDir,
 } from '../src/agent/app-paths';
 
 const ENV_KEYS = ['PI_DESKTOP_HOME', 'PI_CODING_AGENT_DIR'] as const;

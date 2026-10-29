@@ -12,12 +12,22 @@ const MAX_FILE = 512 * 1024;
 /** How much of the base commit's hash tells one base from another in a file's revision. */
 const REV_BASE = 12;
 
-function run(cmd: string, args: string[], cwd: string, { allowFail = false, timeout = 0, env = {} as Record<string, string> } = {}): Promise<string | null> {
+function run(
+  cmd: string,
+  args: string[],
+  cwd: string,
+  { allowFail = false, timeout = 0, env = {} as Record<string, string> } = {},
+): Promise<string | null> {
   return new Promise((resolve, reject) => {
-    execFile(cmd, args, { cwd, env: childEnv(env), timeout, maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
-      if (err && !allowFail) return reject(Object.assign(err, { stderr: String(stderr) }));
-      resolve(err ? null : String(stdout));
-    });
+    execFile(
+      cmd,
+      args,
+      { cwd, env: childEnv(env), timeout, maxBuffer: 32 * 1024 * 1024, windowsHide: true },
+      (err, stdout, stderr) => {
+        if (err && !allowFail) return reject(Object.assign(err, { stderr: String(stderr) }));
+        resolve(err ? null : String(stdout));
+      },
+    );
   });
 }
 export const git = (cwd: string, ...args: string[]) => run('git', args, cwd);
@@ -39,7 +49,11 @@ export async function fetchIfDue(cwd: string): Promise<boolean> {
   if (Date.now() - (lastFetch.get(key) ?? 0) < FETCH_INTERVAL_MS) return false;
   // Marked before the fetch: an offline or failing remote is not retried on every refresh.
   lastFetch.set(key, Date.now());
-  const out = await run('git', ['fetch', '--quiet'], cwd, { allowFail: true, timeout: FETCH_TIMEOUT_MS, env: { GIT_TERMINAL_PROMPT: '0' } });
+  const out = await run('git', ['fetch', '--quiet'], cwd, {
+    allowFail: true,
+    timeout: FETCH_TIMEOUT_MS,
+    env: { GIT_TERMINAL_PROMPT: '0' },
+  });
   return out !== null;
 }
 
@@ -59,9 +73,14 @@ export async function currentBranch(dir: string) {
 /** Local branches first, then remote-tracking ones (without the remote's HEAD alias). */
 export async function branches(dir: string) {
   const out = await gitSafe(dir, 'for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes');
-  const refs = (out ?? '').split('\n').map((x) => x.trim()).filter(Boolean);
+  const refs = (out ?? '')
+    .split('\n')
+    .map((x) => x.trim())
+    .filter(Boolean);
   const local = refs.filter((r) => r.startsWith('refs/heads/')).map((r) => r.slice('refs/heads/'.length));
-  const remote = refs.filter((r) => r.startsWith('refs/remotes/') && !r.endsWith('/HEAD')).map((r) => r.slice('refs/remotes/'.length));
+  const remote = refs
+    .filter((r) => r.startsWith('refs/remotes/') && !r.endsWith('/HEAD'))
+    .map((r) => r.slice('refs/remotes/'.length));
   return [...local, ...remote.filter((r) => !local.includes(r.slice(r.indexOf('/') + 1)))];
 }
 /** The commit a branch or ref points at, or null when it does not exist. */
@@ -76,7 +95,8 @@ export async function addWorktree(repo: string, dest: string, branch: string, ba
 }
 
 const samePath = (a: string, b: string) => {
-  const x = path.resolve(a), y = path.resolve(b);
+  const x = path.resolve(a),
+    y = path.resolve(b);
   return process.platform === 'win32' || process.platform === 'darwin' ? x.toLowerCase() === y.toLowerCase() : x === y;
 };
 
@@ -137,7 +157,8 @@ export async function diffBase(cwd: string, base: string | null, baseBranch: str
     for (const ref of [baseBranch, `origin/${baseBranch}`]) {
       if (!(await resolveRef(cwd, ref))) continue;
       const candidate = await mergeBase(cwd, ref);
-      if (candidate && (!fork || (await gitSafe(cwd, 'merge-base', '--is-ancestor', fork, candidate)) !== null)) fork = candidate;
+      if (candidate && (!fork || (await gitSafe(cwd, 'merge-base', '--is-ancestor', fork, candidate)) !== null))
+        fork = candidate;
     }
     if (fork) return (await squashMerged(cwd, fork, baseBranch)) ? head(cwd) : fork;
   } else if (baseBranch) {
@@ -184,11 +205,15 @@ export async function changes(cwd: string, base: string | null): Promise<FileCha
 /** Commits on the current branch since `base`, newest first. */
 export async function commits(cwd: string, base: string | null): Promise<CommitInfo[]> {
   if (!base) return [];
-  const out = (await gitSafe(cwd, 'log', `--format=%H${FIELD}%h${FIELD}%s${FIELD}%an${FIELD}%aI`, `${base}..HEAD`)) || '';
-  return out.split('\n').filter(Boolean).map((line) => {
-    const [hash, short, subject, author, date] = line.split(FIELD);
-    return { hash, short, subject, author, date };
-  });
+  const out =
+    (await gitSafe(cwd, 'log', `--format=%H${FIELD}%h${FIELD}%s${FIELD}%an${FIELD}%aI`, `${base}..HEAD`)) || '';
+  return out
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const [hash, short, subject, author, date] = line.split(FIELD);
+      return { hash, short, subject, author, date };
+    });
 }
 
 /** The commit a commit is measured against: its first parent, or nothing for a root commit. */
@@ -231,7 +256,13 @@ function workingRev(root: string, file: string) {
 }
 
 /** What the Diff panel lists for `files` (path → A/M/D) without reading any of their contents. */
-async function listChanges(root: string, files: Map<string, string>, range: string[], baseRev: string, revOf: (file: string) => string): Promise<FileChange[]> {
+async function listChanges(
+  root: string,
+  files: Map<string, string>,
+  range: string[],
+  baseRev: string,
+  revOf: (file: string) => string,
+): Promise<FileChange[]> {
   const counts = await lineCounts(root, range);
   const out: FileChange[] = [];
   for (const [file, st] of [...files].sort()) {
@@ -244,12 +275,23 @@ async function listChanges(root: string, files: Map<string, string>, range: stri
         if (fs.statSync(abs).size > MAX_FILE) own = { add: 0, del: 0, binary: true };
         else {
           const buf = fs.readFileSync(abs);
-          own = buf.includes(0) ? { add: 0, del: 0, binary: true } : { add: lineCount(buf.toString('utf8')), del: 0, binary: false };
+          own = buf.includes(0)
+            ? { add: 0, del: 0, binary: true }
+            : { add: lineCount(buf.toString('utf8')), del: 0, binary: false };
         }
-      } catch { /* vanished since the listing */ }
+      } catch {
+        /* vanished since the listing */
+      }
     }
     const { add, del, binary } = own ?? { add: 0, del: 0, binary: false };
-    out.push({ path: file, status, binary, add: binary ? 0 : add, del: binary ? 0 : del, rev: `${baseRev}:${status}:${revOf(file)}` });
+    out.push({
+      path: file,
+      status,
+      binary,
+      add: binary ? 0 : add,
+      del: binary ? 0 : del,
+      rev: `${baseRev}:${status}:${revOf(file)}`,
+    });
   }
   return out;
 }
@@ -257,10 +299,17 @@ async function listChanges(root: string, files: Map<string, string>, range: stri
 const lineCount = (text: string) => (text ? text.split('\n').length - (text.endsWith('\n') ? 1 : 0) : 0);
 
 /** Both sides of one changed file (`hash`: a commit's change, else the working tree against `base`). `binary` when a side is too big to show. */
-export async function changeContent(cwd: string, base: string | null, file: string, hash: string | null): Promise<FileContent> {
+export async function changeContent(
+  cwd: string,
+  base: string | null,
+  file: string,
+  hash: string | null,
+): Promise<FileContent> {
   const root = await repoRoot(cwd);
-  if (!root || (!hash && !base) || (hash && !/^[0-9a-f]{7,64}$/i.test(hash))) return { before: null, after: null, binary: false };
-  if (path.relative(root, path.resolve(root, file)).startsWith('..')) return { before: null, after: null, binary: false };
+  if (!root || (!hash && !base) || (hash && !/^[0-9a-f]{7,64}$/i.test(hash)))
+    return { before: null, after: null, binary: false };
+  if (path.relative(root, path.resolve(root, file)).startsWith('..'))
+    return { before: null, after: null, binary: false };
   const from = hash ? await parentOf(root, hash) : base!;
   let before = from === EMPTY_TREE ? null : await gitSafe(root, 'show', `${from}:${file}`);
   let after: string | null = null;
@@ -283,13 +332,19 @@ export async function workState(cwd: string, baseBranch: string | null = null, r
   const dirty: string[] = [];
   for (const entry of status.split('\0')) if (entry.length > 3) dirty.push(entry.slice(3));
   const upstream = (await gitSafe(cwd, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'))?.trim() || null;
-  const count = async (range: string) => (upstream ? Number((await gitSafe(cwd, 'rev-list', '--count', range))?.trim()) || 0 : 0);
+  const count = async (range: string) =>
+    upstream ? Number((await gitSafe(cwd, 'rev-list', '--count', range))?.trim()) || 0 : 0;
   const [ahead, behind] = await Promise.all([count('@{u}..HEAD'), count('HEAD..@{u}')]);
   // The base only matters when the session sits on another branch and the base ref still exists.
   const onBase = !baseBranch || baseBranch === (await currentBranch(cwd));
   // A PR's target is judged by the remote's copy: that is what the PR will be merged into.
   let base: string | null = null;
-  if (!onBase) for (const ref of remoteBase ? [`origin/${baseBranch}`, baseBranch!] : [baseBranch!]) if (await resolveRef(cwd, ref)) { base = ref; break; }
+  if (!onBase)
+    for (const ref of remoteBase ? [`origin/${baseBranch}`, baseBranch!] : [baseBranch!])
+      if (await resolveRef(cwd, ref)) {
+        base = ref;
+        break;
+      }
   const baseBehind = base ? Number((await gitSafe(cwd, 'rev-list', '--count', `HEAD..${base}`))?.trim()) || 0 : 0;
   const forge = await originForge(cwd);
   return { dirty, ahead, behind, baseBehind, base, upstream, ...(forge ? { forge } : {}) };
@@ -334,10 +389,16 @@ export interface PrSnapshot {
 const viewerLogin = new Map<Forge, Promise<string | null>>();
 function viewer(forge: Forge, cwd: string): Promise<string | null> {
   if (!viewerLogin.has(forge)) {
-    const ask = forge === 'github'
-      ? run('gh', ['api', 'user', '-q', '.login'], cwd, { allowFail: true }).then((out) => out?.trim() || null)
-      : run('glab', ['api', 'user'], cwd, { allowFail: true }).then((out) => (out ? JSON.parse(out).username || null : null));
-    viewerLogin.set(forge, ask.catch(() => null));
+    const ask =
+      forge === 'github'
+        ? run('gh', ['api', 'user', '-q', '.login'], cwd, { allowFail: true }).then((out) => out?.trim() || null)
+        : run('glab', ['api', 'user'], cwd, { allowFail: true }).then((out) =>
+            out ? JSON.parse(out).username || null : null,
+          );
+    viewerLogin.set(
+      forge,
+      ask.catch(() => null),
+    );
   }
   return viewerLogin.get(forge)!;
 }
@@ -364,9 +425,12 @@ export async function prThreads(cwd: string): Promise<PrThread[]> {
 async function githubThreads(cwd: string): Promise<PrThread[]> {
   const num = (await run('gh', ['pr', 'view', '--json', 'number', '-q', '.number'], cwd, { allowFail: true }))?.trim();
   if (!num || !/^\d+$/.test(num)) return [];
-  const pick = '.[] | {id, reply: .in_reply_to_id, path, line, original_line, side, outdated: (.line == null), author: .user.login, body, url: .html_url, at: .created_at}';
+  const pick =
+    '.[] | {id, reply: .in_reply_to_id, path, line, original_line, side, outdated: (.line == null), author: .user.login, body, url: .html_url, at: .created_at}';
   const [out, states] = await Promise.all([
-    run('gh', ['api', `repos/{owner}/{repo}/pulls/${num}/comments`, '--paginate', '--jq', pick], cwd, { allowFail: true }),
+    run('gh', ['api', `repos/{owner}/{repo}/pulls/${num}/comments`, '--paginate', '--jq', pick], cwd, {
+      allowFail: true,
+    }),
     githubThreadStates(cwd, num),
   ]);
   const threads = groupThreads(jsonLines(out));
@@ -375,15 +439,41 @@ async function githubThreads(cwd: string): Promise<PrThread[]> {
 }
 
 function jsonLines(out: string | null): any[] {
-  return (out ?? '').split('\n').flatMap((l) => { try { return l.trim() ? [JSON.parse(l)] : []; } catch { return []; } });
+  return (out ?? '').split('\n').flatMap((l) => {
+    try {
+      return l.trim() ? [JSON.parse(l)] : [];
+    } catch {
+      return [];
+    }
+  });
 }
 
-const THREAD_STATES = 'query($owner:String!,$name:String!,$num:Int!){repository(owner:$owner,name:$name){pullRequest(number:$num){reviewThreads(first:100){nodes{id isResolved comments(first:1){nodes{databaseId}}}}}}}';
+const THREAD_STATES =
+  'query($owner:String!,$name:String!,$num:Int!){repository(owner:$owner,name:$name){pullRequest(number:$num){reviewThreads(first:100){nodes{id isResolved comments(first:1){nodes{databaseId}}}}}}}';
 
 /** GitHub keeps "resolved" on the GraphQL thread, keyed here by its first comment's REST id. */
 async function githubThreadStates(cwd: string, num: string): Promise<Map<string, { node: string; resolved: boolean }>> {
-  const jq = '.data.repository.pullRequest.reviewThreads.nodes[] | {node: .id, resolved: .isResolved, root: .comments.nodes[0].databaseId}';
-  const out = await run('gh', ['api', 'graphql', '-F', 'owner={owner}', '-F', 'name={repo}', '-F', `num=${num}`, '-f', `query=${THREAD_STATES}`, '--jq', jq], cwd, { allowFail: true });
+  const jq =
+    '.data.repository.pullRequest.reviewThreads.nodes[] | {node: .id, resolved: .isResolved, root: .comments.nodes[0].databaseId}';
+  const out = await run(
+    'gh',
+    [
+      'api',
+      'graphql',
+      '-F',
+      'owner={owner}',
+      '-F',
+      'name={repo}',
+      '-F',
+      `num=${num}`,
+      '-f',
+      `query=${THREAD_STATES}`,
+      '--jq',
+      jq,
+    ],
+    cwd,
+    { allowFail: true },
+  );
   return new Map(jsonLines(out).map((r) => [String(r.root), { node: String(r.node), resolved: !!r.resolved }]));
 }
 
@@ -391,7 +481,9 @@ async function githubThreadStates(cwd: string, num: string): Promise<Map<string,
 async function gitlabMr(cwd: string): Promise<{ base: string; url: string } | null> {
   try {
     const mr = JSON.parse((await run('glab', ['mr', 'view', '-F', 'json'], cwd, { allowFail: true })) ?? '');
-    return mr?.iid && mr.project_id ? { base: `projects/${mr.project_id}/merge_requests/${mr.iid}`, url: String(mr.web_url) } : null;
+    return mr?.iid && mr.project_id
+      ? { base: `projects/${mr.project_id}/merge_requests/${mr.iid}`, url: String(mr.web_url) }
+      : null;
   } catch {
     return null;
   }
@@ -401,18 +493,36 @@ async function gitlabThreads(cwd: string): Promise<PrThread[]> {
   const mr = await gitlabMr(cwd);
   const discussions = mr ? await glabJson(cwd, `${mr.base}/discussions?per_page=100`) : null;
   if (!mr || !Array.isArray(discussions)) return [];
-  return discussions.flatMap((d: any): PrThread[] => {
-    const pos = d.notes?.[0]?.position;
-    if (d.notes?.[0]?.type !== 'DiffNote' || !pos) return [];
-    const old = pos.new_line == null && pos.old_line != null;
-    const line = old ? pos.old_line : pos.new_line;
-    const path = old ? pos.old_path : pos.new_path;
-    if (!path) return [];
-    const comments = d.notes.filter((n: any) => !n.system).map((n: any) => ({
-      id: String(n.id), author: n.author?.username ?? 'someone', body: String(n.body ?? ''), url: `${mr.url}#note_${n.id}`, at: Date.parse(n.created_at) || 0,
-    }));
-    return [{ id: String(d.id), path, line: typeof line === 'number' ? line : null, side: old ? 'old' : 'new', outdated: false, resolved: !!d.notes[0].resolved, comments }];
-  }).sort(byPlace);
+  return discussions
+    .flatMap((d: any): PrThread[] => {
+      const pos = d.notes?.[0]?.position;
+      if (d.notes?.[0]?.type !== 'DiffNote' || !pos) return [];
+      const old = pos.new_line == null && pos.old_line != null;
+      const line = old ? pos.old_line : pos.new_line;
+      const path = old ? pos.old_path : pos.new_path;
+      if (!path) return [];
+      const comments = d.notes
+        .filter((n: any) => !n.system)
+        .map((n: any) => ({
+          id: String(n.id),
+          author: n.author?.username ?? 'someone',
+          body: String(n.body ?? ''),
+          url: `${mr.url}#note_${n.id}`,
+          at: Date.parse(n.created_at) || 0,
+        }));
+      return [
+        {
+          id: String(d.id),
+          path,
+          line: typeof line === 'number' ? line : null,
+          side: old ? 'old' : 'new',
+          outdated: false,
+          resolved: !!d.notes[0].resolved,
+          comments,
+        },
+      ];
+    })
+    .sort(byPlace);
 }
 
 /** Post a reply into a review thread, on whichever host the PR lives. */
@@ -424,7 +534,11 @@ export async function replyToThread(cwd: string, threadId: string, body: string)
     return;
   }
   const num = (await run('gh', ['pr', 'view', '--json', 'number', '-q', '.number'], cwd))?.trim();
-  await run('gh', ['api', '-X', 'POST', `repos/{owner}/{repo}/pulls/${num}/comments/${threadId}/replies`, '-f', `body=${body}`], cwd);
+  await run(
+    'gh',
+    ['api', '-X', 'POST', `repos/{owner}/{repo}/pulls/${num}/comments/${threadId}/replies`, '-f', `body=${body}`],
+    cwd,
+  );
 }
 
 /** Mark a review thread resolved (or reopen it). */
@@ -447,11 +561,25 @@ export async function setThreadResolved(cwd: string, threadId: string, resolved:
 /** Raw `pulls/:n/comments` rows (already trimmed by jq) into threads: replies join their root, in file/line order. */
 export function groupThreads(rows: any[]): PrThread[] {
   const roots = new Map<string, PrThread>();
-  const toComment = (r: any) => ({ id: String(r.id), author: r.author ?? 'someone', body: String(r.body ?? ''), url: String(r.url ?? ''), at: Date.parse(r.at) || 0 });
+  const toComment = (r: any) => ({
+    id: String(r.id),
+    author: r.author ?? 'someone',
+    body: String(r.body ?? ''),
+    url: String(r.url ?? ''),
+    at: Date.parse(r.at) || 0,
+  });
   for (const r of rows) {
     if (r.reply != null || !r.path) continue;
     const line = typeof r.line === 'number' ? r.line : typeof r.original_line === 'number' ? r.original_line : null;
-    roots.set(String(r.id), { id: String(r.id), path: r.path, line, side: r.side === 'LEFT' ? 'old' : 'new', outdated: !!r.outdated, resolved: false, comments: [toComment(r)] });
+    roots.set(String(r.id), {
+      id: String(r.id),
+      path: r.path,
+      line,
+      side: r.side === 'LEFT' ? 'old' : 'new',
+      outdated: !!r.outdated,
+      resolved: false,
+      comments: [toComment(r)],
+    });
   }
   for (const r of rows) {
     if (r.reply == null) continue;
@@ -498,7 +626,10 @@ function rollupChecks(rows: RollupContext[]): PrStatus['checks'] {
     const name = c.name || c.context;
     if (!name) return [];
     // An unfinished run is the current attempt even before GitHub has given it a start time.
-    const latest = c.status != null && c.status !== 'COMPLETED' ? Number.MAX_SAFE_INTEGER : Math.max(at(c.startedAt), at(c.completedAt));
+    const latest =
+      c.status != null && c.status !== 'COMPLETED'
+        ? Number.MAX_SAFE_INTEGER
+        : Math.max(at(c.startedAt), at(c.completedAt));
     const key = c.context ? `status:${c.context}` : `run:${name}/${c.workflowName ?? ''}`;
     return [{ c, i, name, key, latest }];
   });
@@ -507,37 +638,57 @@ function rollupChecks(rows: RollupContext[]): PrStatus['checks'] {
     const seen = newest.get(r.key);
     if (!seen || r.latest > seen.latest || (r.latest === seen.latest && r.i > seen.i)) newest.set(r.key, r);
   }
-  return ranked.filter((r) => newest.get(r.key) === r).map(({ c, name }) => {
-    const result = String(c.conclusion || c.state || '').toUpperCase();
-    let st: 'pass' | 'fail' | 'pending' = 'fail';
-    if (!c.conclusion && c.status && c.status !== 'COMPLETED') st = 'pending';
-    else if (['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(result)) st = 'pass';
-    else if (result === 'PENDING' || result === 'EXPECTED') st = 'pending';
-    const url = c.detailsUrl || c.targetUrl;
-    return { n: name, st, ...(url ? { url } : {}) };
-  });
+  return ranked
+    .filter((r) => newest.get(r.key) === r)
+    .map(({ c, name }) => {
+      const result = String(c.conclusion || c.state || '').toUpperCase();
+      let st: 'pass' | 'fail' | 'pending' = 'fail';
+      if (!c.conclusion && c.status && c.status !== 'COMPLETED') st = 'pending';
+      else if (['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(result)) st = 'pass';
+      else if (result === 'PENDING' || result === 'EXPECTED') st = 'pending';
+      const url = c.detailsUrl || c.targetUrl;
+      return { n: name, st, ...(url ? { url } : {}) };
+    });
 }
 
 /** Inline review comments (replies included): `gh pr view` leaves them out, yet they are most of a review. */
 async function githubInlineCount(cwd: string, num: unknown): Promise<number> {
   if (typeof num !== 'number') return 0;
   // --paginate runs the jq per page, so each page prints its own count.
-  const out = await run('gh', ['api', `repos/{owner}/{repo}/pulls/${num}/comments`, '--paginate', '--jq', 'length'], cwd, { allowFail: true });
+  const out = await run(
+    'gh',
+    ['api', `repos/{owner}/{repo}/pulls/${num}/comments`, '--paginate', '--jq', 'length'],
+    cwd,
+    { allowFail: true },
+  );
   return (out ?? '').split('\n').reduce((sum, n) => sum + (Number(n.trim()) || 0), 0);
 }
 
 async function readGithubPr(cwd: string): Promise<PrSnapshot | null> {
-  const full = 'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author,additions,deletions,changedFiles,mergeable,reviewDecision,headRefOid,updatedAt,baseRefName';
+  const full =
+    'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author,additions,deletions,changedFiles,mergeable,reviewDecision,headRefOid,updatedAt,baseRefName';
   let out = await run('gh', ['pr', 'view', '--json', full], cwd, { allowFail: true });
   // Older gh builds reject a field they do not know; the card is worth more than the full query, so ask for less.
-  if (!out) out = await run('gh', ['pr', 'view', '--json', 'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author'], cwd, { allowFail: true });
+  if (!out)
+    out = await run(
+      'gh',
+      ['pr', 'view', '--json', 'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author'],
+      cwd,
+      { allowFail: true },
+    );
   // Some tokens can read the PR but not CI/reviews. Still expose its identity/state.
   if (!out) out = await run('gh', ['pr', 'view', '--json', 'number,url,state,isDraft'], cwd, { allowFail: true });
   if (!out) return null;
   try {
     const pr = JSON.parse(out);
     const checks = rollupChecks(pr.statusCheckRollup || []);
-    const ci = !checks.length ? 'none' : checks.some((c) => c.st === 'fail') ? 'fail' : checks.some((c) => c.st === 'pending') ? 'pending' : 'pass';
+    const ci = !checks.length
+      ? 'none'
+      : checks.some((c) => c.st === 'fail')
+        ? 'fail'
+        : checks.some((c) => c.st === 'pending')
+          ? 'pending'
+          : 'pass';
     const mergeable = { MERGEABLE: 'clean', CONFLICTING: 'conflicting' } as const;
     const review = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes', REVIEW_REQUIRED: 'required' } as const;
     const size = (n: unknown) => (typeof n === 'number' ? n : undefined);
@@ -557,7 +708,9 @@ async function readGithubPr(cwd: string): Promise<PrSnapshot | null> {
       additions: size(pr.additions),
       deletions: size(pr.deletions),
       files: size(pr.changedFiles),
-      mergeable: mergeable[String(pr.mergeable || '').toUpperCase() as keyof typeof mergeable] ?? (pr.mergeable ? 'unknown' : undefined),
+      mergeable:
+        mergeable[String(pr.mergeable || '').toUpperCase() as keyof typeof mergeable] ??
+        (pr.mergeable ? 'unknown' : undefined),
       review: review[String(pr.reviewDecision || '').toUpperCase() as keyof typeof review],
       base: typeof pr.baseRefName === 'string' && pr.baseRefName ? pr.baseRefName : undefined,
       head: typeof pr.headRefOid === 'string' && pr.headRefOid ? pr.headRefOid : undefined,
@@ -568,7 +721,13 @@ async function readGithubPr(cwd: string): Promise<PrSnapshot | null> {
     const notes: PrNote[] = [];
     for (const c of pr.comments ?? []) {
       if (!c?.id) continue;
-      notes.push({ id: `c${c.id}`, author: c.author?.login ?? 'someone', body: String(c.body ?? ''), url: c.url, self: c.viewerDidAuthor === true || mine(c.author?.login) });
+      notes.push({
+        id: `c${c.id}`,
+        author: c.author?.login ?? 'someone',
+        body: String(c.body ?? ''),
+        url: c.url,
+        self: c.viewerDidAuthor === true || mine(c.author?.login),
+      });
     }
     for (const r of pr.reviews ?? []) {
       if (!r?.id) continue;
@@ -616,12 +775,34 @@ async function readGitlabPr(cwd: string): Promise<PrSnapshot | null> {
     const base = `projects/${mr.project_id}`;
     const pipeline = mr.head_pipeline ?? mr.pipeline;
     // One call for the jobs; without it the pipeline as a whole still tells red from green.
-    const jobs = pipeline?.id && mr.project_id ? await glabJson(cwd, `${base}/pipelines/${pipeline.id}/jobs?per_page=100`) : null;
-    const checks: PrStatus['checks'] = Array.isArray(jobs) && jobs.length
-      ? jobs.map((j: any) => ({ n: String(j.name), st: gitlabCheck(String(j.status), !!j.allow_failure), ...(j.web_url ? { url: j.web_url } : {}) }))
-      : pipeline?.status ? [{ n: 'pipeline', st: gitlabCheck(String(pipeline.status), false), ...(pipeline.web_url ? { url: pipeline.web_url } : {}) }] : [];
-    const ci = !checks.length ? 'none' : checks.some((c) => c.st === 'fail') ? 'fail' : checks.some((c) => c.st === 'pending') ? 'pending' : 'pass';
-    const rawNotes = mr.project_id ? await glabJson(cwd, `${base}/merge_requests/${mr.iid}/notes?per_page=100&sort=asc`) : null;
+    const jobs =
+      pipeline?.id && mr.project_id ? await glabJson(cwd, `${base}/pipelines/${pipeline.id}/jobs?per_page=100`) : null;
+    const checks: PrStatus['checks'] =
+      Array.isArray(jobs) && jobs.length
+        ? jobs.map((j: any) => ({
+            n: String(j.name),
+            st: gitlabCheck(String(j.status), !!j.allow_failure),
+            ...(j.web_url ? { url: j.web_url } : {}),
+          }))
+        : pipeline?.status
+          ? [
+              {
+                n: 'pipeline',
+                st: gitlabCheck(String(pipeline.status), false),
+                ...(pipeline.web_url ? { url: pipeline.web_url } : {}),
+              },
+            ]
+          : [];
+    const ci = !checks.length
+      ? 'none'
+      : checks.some((c) => c.st === 'fail')
+        ? 'fail'
+        : checks.some((c) => c.st === 'pending')
+          ? 'pending'
+          : 'pass';
+    const rawNotes = mr.project_id
+      ? await glabJson(cwd, `${base}/merge_requests/${mr.iid}/notes?per_page=100&sort=asc`)
+      : null;
     const human = (Array.isArray(rawNotes) ? rawNotes : []).filter((n: any) => n?.id && !n.system);
     const detailed = String(mr.detailed_merge_status || (mr.merge_status === 'can_be_merged' ? 'mergeable' : ''));
     const files = Number.parseInt(String(mr.changes_count), 10);
@@ -637,9 +818,15 @@ async function readGitlabPr(cwd: string): Promise<PrSnapshot | null> {
       title: typeof mr.title === 'string' && mr.title.trim() ? mr.title.trim() : undefined,
       author: mr.author?.username || undefined,
       files: Number.isFinite(files) ? files : undefined,
-      mergeable: mr.has_conflicts || detailed === 'conflict' ? 'conflicting' : ['', 'checking', 'unchecked', 'preparing'].includes(detailed) ? 'unknown' : 'clean',
+      mergeable:
+        mr.has_conflicts || detailed === 'conflict'
+          ? 'conflicting'
+          : ['', 'checking', 'unchecked', 'preparing'].includes(detailed)
+            ? 'unknown'
+            : 'clean',
       // Unresolved threads block a GitLab merge the way a change request does on GitHub.
-      review: detailed === 'discussions_not_resolved' ? 'changes' : detailed === 'not_approved' ? 'required' : undefined,
+      review:
+        detailed === 'discussions_not_resolved' ? 'changes' : detailed === 'not_approved' ? 'required' : undefined,
       base: typeof mr.target_branch === 'string' && mr.target_branch ? mr.target_branch : undefined,
       head: typeof mr.sha === 'string' && mr.sha ? mr.sha : undefined,
       updatedAt: mr.updated_at ? Date.parse(mr.updated_at) || undefined : undefined,

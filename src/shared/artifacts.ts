@@ -23,7 +23,14 @@ export const ARTIFACT_LIMITS = {
 export const ARTIFACT_SKIP = ['node_modules', '.git', '.DS_Store'] as const;
 
 /** Screenshot (kept beside the site, never uploaded): `<id>/thumbnail-<version>.jpg`. */
-export const ARTIFACT_THUMBNAIL = { width: 1280, height: 800, scaledWidth: 640, quality: 80, settleMs: 700, timeoutMs: 15_000 } as const;
+export const ARTIFACT_THUMBNAIL = {
+  width: 1280,
+  height: 800,
+  scaledWidth: 640,
+  quality: 80,
+  settleMs: 700,
+  timeoutMs: 15_000,
+} as const;
 export const artifactThumbnailName = (version: number) => `thumbnail-${version}.jpg`;
 
 export const ARTIFACT_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;

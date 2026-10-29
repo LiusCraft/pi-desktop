@@ -9,7 +9,9 @@ function DiagramApp() {
   useTheme();
   const [svg, setSvg] = useState<string | null>(null);
   useEffect(() => {
-    call('diagram:get', location.hash.slice(1)).then(setSvg).catch(() => setSvg(null));
+    call('diagram:get', location.hash.slice(1))
+      .then(setSvg)
+      .catch(() => setSvg(null));
   }, []);
   return svg ? <DiagramViewer svg={svg} /> : null;
 }

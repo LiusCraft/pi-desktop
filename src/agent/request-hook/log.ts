@@ -5,8 +5,25 @@ import path from 'node:path';
 import { dayKey } from '@shared/activity';
 import { tr } from '@shared/i18n/runtime';
 import {
-  DEFAULT_REQUEST_HOOK_SETTINGS, HOURS_IN_DAY, NO_SESSION_KEY, ORIGIN_OTHER, REQUEST_ORIGIN, REQUEST_STATUS, SUBAGENT_KEY_PREFIX, USAGE_SPLIT, normalizeRedactSettings, normalizeRequestHookSettings,
-  type RedactPreview, type RedactSettings, type RequestHookSettings, type RequestQuery, type RequestRecord, type UsageQuery, type UsageSeries, type UsageSummary, type UsageTotals,
+  DEFAULT_REQUEST_HOOK_SETTINGS,
+  HOURS_IN_DAY,
+  NO_SESSION_KEY,
+  ORIGIN_OTHER,
+  REQUEST_ORIGIN,
+  REQUEST_STATUS,
+  SUBAGENT_KEY_PREFIX,
+  USAGE_SPLIT,
+  normalizeRedactSettings,
+  normalizeRequestHookSettings,
+  type RedactPreview,
+  type RedactSettings,
+  type RequestHookSettings,
+  type RequestQuery,
+  type RequestRecord,
+  type UsageQuery,
+  type UsageSeries,
+  type UsageSummary,
+  type UsageTotals,
 } from '@shared/request-log';
 import { appRequestHookFile, appRequestLogDir } from '../app-paths';
 import type { Origin } from './origin';
@@ -20,15 +37,34 @@ const streamMs = (r: RequestRecord) => r.durationMs - (r.firstTokenMs ?? 0);
 
 function seriesKey(split: UsageQuery['split'], r: RequestRecord): string {
   switch (split) {
-    case USAGE_SPLIT.provider: return r.provider;
-    case USAGE_SPLIT.modelProvider: return `${r.provider}/${r.model}`;
-    case USAGE_SPLIT.session: return r.sessionId ?? NO_SESSION_KEY;
-    case USAGE_SPLIT.purpose: return r.origin === REQUEST_ORIGIN.subagent && r.subagent ? SUBAGENT_KEY_PREFIX + r.subagent : r.origin ?? ORIGIN_OTHER;
-    default: return r.model;
+    case USAGE_SPLIT.provider:
+      return r.provider;
+    case USAGE_SPLIT.modelProvider:
+      return `${r.provider}/${r.model}`;
+    case USAGE_SPLIT.session:
+      return r.sessionId ?? NO_SESSION_KEY;
+    case USAGE_SPLIT.purpose:
+      return r.origin === REQUEST_ORIGIN.subagent && r.subagent
+        ? SUBAGENT_KEY_PREFIX + r.subagent
+        : (r.origin ?? ORIGIN_OTHER);
+    default:
+      return r.model;
   }
 }
 
-const emptyTotals = (): UsageTotals => ({ requests: 0, failed: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, unpriced: 0, speedTokens: 0, speedMs: 0, timed: 0 });
+const emptyTotals = (): UsageTotals => ({
+  requests: 0,
+  failed: 0,
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  cost: 0,
+  unpriced: 0,
+  speedTokens: 0,
+  speedMs: 0,
+  timed: 0,
+});
 
 function addRecord(t: UsageTotals, r: RequestRecord, timed: boolean) {
   t.requests++;
@@ -84,7 +120,7 @@ export class RequestLog {
   }
 
   originOf(sessionId: string | undefined): Origin | undefined {
-    return sessionId ? this.tagged.get(sessionId) ?? this.resolveSession(sessionId) : undefined;
+    return sessionId ? (this.tagged.get(sessionId) ?? this.resolveSession(sessionId)) : undefined;
   }
 
   getSettings(): RequestHookSettings {
@@ -211,7 +247,16 @@ export class RequestLog {
         let line = series.get(key);
         if (!line) {
           const zeros = () => Array<number>(buckets.length).fill(0);
-          line = { key, label: key, total: emptyTotals(), requests: zeros(), tokens: zeros(), cost: zeros(), speedTokens: zeros(), speedMs: zeros() };
+          line = {
+            key,
+            label: key,
+            total: emptyTotals(),
+            requests: zeros(),
+            tokens: zeros(),
+            cost: zeros(),
+            speedTokens: zeros(),
+            speedMs: zeros(),
+          };
           series.set(key, line);
         }
         const used = r.tokens.input + r.tokens.output + r.tokens.cacheRead + r.tokens.cacheWrite;
@@ -227,6 +272,11 @@ export class RequestLog {
       }
     }
     const sum = (l: UsageSeries) => l.tokens.reduce((n, v) => n + v, 0);
-    return { total, unit: hourly ? 'hour' : 'day', buckets, series: [...series.values()].sort((x, y) => sum(y) - sum(x)) };
+    return {
+      total,
+      unit: hourly ? 'hour' : 'day',
+      buckets,
+      series: [...series.values()].sort((x, y) => sum(y) - sum(x)),
+    };
   }
 }

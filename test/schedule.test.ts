@@ -71,8 +71,22 @@ describe('Scheduler', () => {
     announce() {},
     isRunning: (id) => running.has(id),
   };
-  const make = () => new Scheduler(new Store(dir), hub, () => {}, () => clock);
-  const draft = { name: 'review', prompt: 'review PRs', kind: 'code' as const, projectPath: '/p', worktree: false, mode: 'auto' as const, model: null };
+  const make = () =>
+    new Scheduler(
+      new Store(dir),
+      hub,
+      () => {},
+      () => clock,
+    );
+  const draft = {
+    name: 'review',
+    prompt: 'review PRs',
+    kind: 'code' as const,
+    projectPath: '/p',
+    worktree: false,
+    mode: 'auto' as const,
+    model: null,
+  };
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-sched-'));

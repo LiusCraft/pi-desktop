@@ -1,0 +1,60 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "unicorn",
+    "typescript",
+    "oxc",
+    "react",
+    "react-hooks",
+    "import",
+    "jsx-a11y",
+    "vitest",
+    "node",
+    "promise"
+  ],
+  "categories": {
+    "correctness": "warn"
+  },
+  "env": {
+    "browser": true,
+    "node": true,
+    "es2024": true
+  },
+  "rules": {
+    // JSX uses the automatic runtime (tsconfig "jsx": "react-jsx").
+    "react/react-in-jsx-scope": "off",
+    // React Compiler rules. This project does not run the compiler (no
+    // babel-plugin-react-compiler): its latest-ref pattern, reads of the
+    // current time during render and manual memoization are intentional.
+    "react/set-state-in-effect": "off",
+    "react/purity": "off",
+    "react/refs": "off",
+    "react/immutability": "off",
+    "react/preserve-manual-memoization": "off",
+    // Tests assert through node:assert and the local `expectPlain` helper too.
+    "vitest/expect-expect": ["warn", { "assertFunctionNames": ["expect", "expectTypeOf", "assert", "assertType", "expectPlain"] }],
+    // Custom ARIA widgets (listbox, combobox, menu, tab) have no semantic-tag
+    // equivalent; the other a11y rules still check keyboard access and focus.
+    "jsx-a11y/prefer-tag-over-role": "off",
+    // Dialogs and prompts intentionally focus their input when they open.
+    "jsx-a11y/no-autofocus": "off",
+    // Only activation events require a role; mouse-only layers (text selection,
+    // scrolling, drag and drop) are not keyboard controls.
+    "jsx-a11y/no-static-element-interactions": [
+      "warn",
+      { "handlers": ["onClick", "onKeyDown", "onKeyUp", "onKeyPress"] }
+    ],
+    // Control characters are intentional in terminal/log text handling.
+    "no-control-regex": "off",
+    // Playwright fixtures use the empty destructuring pattern by convention.
+    "no-empty-pattern": "off"
+  },
+  "ignorePatterns": [
+    "out/**",
+    "dist/**",
+    "coverage/**",
+    "test-results/**",
+    "playwright-report/**",
+    "plugin/pi-remote/index.js"
+  ]
+}
