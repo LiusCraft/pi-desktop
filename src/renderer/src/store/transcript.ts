@@ -354,7 +354,7 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
         if (m.stopReason === 'error' && m.errorMessage) push(s, { kind: 'note', key: newKey(), level: 'error', text: `Error: ${m.errorMessage}` }, view);
         if (m.stopReason === 'aborted') push(s, { kind: 'note', key: newKey(), text: t('status.interrupted') }, view);
         s.cur = null;
-      } else if (m.role === 'custom' && m.display) push(s, customNote(m), view);
+      } else if (m.role === 'custom' && m.display) push(s, customItem(m), view);
       return {};
     }
     case 'tool_execution_start':
@@ -499,9 +499,13 @@ export function transcriptItems(meta: SessionMeta, messages: AgentMessage[], vie
   const s = emptySession(meta);
   appendMessages(s, messages, view);
   // These are shown on demand, so their own older summaries stay folded away.
-  for (const i of s.items) if (i.kind === 'compaction') {
-    i.open = true;
-    i.openSummary = false;
+  for (const i of s.items) {
+    if (i.kind === 'compaction') {
+      i.open = true;
+      i.openSummary = false;
+    } else if (i.kind === 'handoff') {
+      i.open = true;
+    }
   }
   return s.items;
 }
@@ -510,13 +514,10 @@ export function transcriptItems(meta: SessionMeta, messages: AgentMessage[], vie
  * A handoff card carries a long, model-facing text. The transcript shows one line instead: the text
  * is there for the model, not the reader.
  */
-function customNote(m: AgentMessage): ItemOf<'note'> {
+function customItem(m: AgentMessage): Item {
   if (m.customType !== HANDOFF_CUSTOM_TYPE) return { kind: 'note', key: newKey(), text: textOf(m.content) };
   const d = (m.details ?? {}) as Partial<HandoffDetails>;
-  return {
-    kind: 'note', key: newKey(),
-    text: t('handoff.card', { idle: formatIdle(d.idleMinutes ?? 0), tokens: fmtTok(d.tokensBefore ?? 0) }),
-  };
+  return { kind: 'handoff', key: newKey(), idle: formatIdle(d.idleMinutes ?? 0), tokensBefore: d.tokensBefore, open: false, hidden: 0 };
 }
 
 function appendMessages(s: SessionView, messages: AgentMessage[], view: ViewMode) {
@@ -551,7 +552,7 @@ function appendMessages(s: SessionView, messages: AgentMessage[], view: ViewMode
     } else if (m.role === 'toolResult') {
       toolEnd(s, { toolCallId: m.toolCallId!, toolName: m.toolName!, result: { content: m.content, details: m.details }, isError: m.isError }, view, true);
     } else if (m.role === 'custom' && m.display) {
-      s.items.push(customNote(m));
+      s.items.push(customItem(m));
     } else if (m.role === 'compactionSummary') {
       const tokensBefore = Number(m.tokensBefore) || undefined;
       s.items.push({ kind: 'compaction', key: newKey(), summary: String(m.summary ?? ''), tokensBefore, open: false, hidden: 0, openSummary: true });
@@ -570,7 +571,8 @@ export function collapsedItems(items: Item[]) {
   let from = 0;
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    if (item.kind !== 'compaction') continue;
+    // A handoff card stands in for the messages above it exactly like a compaction checkpoint does.
+    if (item.kind !== 'compaction' && item.kind !== 'handoff') continue;
     before.set(item.key, i - from);
     if (!item.open) for (let j = from; j < i; j++) hidden.add(items[j].key);
     from = i + 1;

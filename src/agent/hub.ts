@@ -151,6 +151,44 @@ export function compactedMessages(manager: SessionManager): AgentMessage[] {
   return branch.slice(0, end).flatMap((entry) => sessionEntryToContextMessages(entry)) as unknown as AgentMessage[];
 }
 
+/**
+ * Drops everything above the newest handoff card from the model's context — the whole effect of a
+ * rebuild. Append-only: the messages stay in the session file and behind the card.
+ */
+export function dropContextAbove(manager: SessionManager): void {
+  // The projection is what the model would see: it already excludes what an earlier rebuild dropped.
+  const { entries } = manager.buildSessionProjection();
+  const isCard = (entry: { type: string; customType?: string }) => entry.type === 'custom_message' && entry.customType === HANDOFF_CUSTOM_TYPE;
+  const newest = entries.filter((item) => isCard(item.sourceEntry)).at(-1)?.sourceEntry.id;
+  for (const { sourceEntry } of entries) {
+    if (sourceEntry.type === 'message') manager.appendContextEdit(sourceEntry.id, null);
+    // An earlier card is dropped too, so only the newest one sits in the context.
+    else if (isCard(sourceEntry) && sourceEntry.id !== newest) manager.appendContextEdit(sourceEntry.id, null);
+  }
+}
+
+/**
+ * Messages an idle rebuild took out of the model's context: the ones the newest handoff card stands
+ * in for. They stay in the session file, so the transcript can show them again on demand.
+ */
+export function omittedMessages(manager: SessionManager): AgentMessage[] {
+  const branch = manager.getBranch();
+  const cards = branch.filter((entry) => entry.type === 'custom_message' && entry.customType === HANDOFF_CUSTOM_TYPE);
+  const newest = cards.at(-1);
+  if (!newest) return [];
+  const omitted = new Set<string>();
+  for (const entry of branch) if (entry.type === 'context_edit' && entry.replacement === null) omitted.add(entry.targetId);
+  if (!omitted.size) return [];
+  // Only after the previous rebuild's card: what that one replaced belongs behind it, not behind this one.
+  const previous = cards.at(-2);
+  const from = previous ? branch.indexOf(previous) : 0;
+  // SAFETY: the protocol reads a subset of SDK messages; their content blocks are structured-cloneable.
+  return branch
+    .slice(from, branch.indexOf(newest))
+    .filter((entry) => omitted.has(entry.id))
+    .flatMap((entry) => sessionEntryToContextMessages(entry)) as unknown as AgentMessage[];
+}
+
 export class SessionHub {
   readonly agentDir: string;
   models!: ModelRuntime;
@@ -967,6 +1005,7 @@ export class SessionHub {
       isStreaming: session.isStreaming,
       isCompacting: session.isCompacting,
       hiddenMessages: this.compactedMessages(session).length,
+      handoffMessages: this.omittedMessages(session).length,
       pending: [...live.pending.values()].map((p) => p.request),
     };
   }
@@ -1695,16 +1734,8 @@ export class SessionHub {
         { customType: HANDOFF_CUSTOM_TYPE, content: card.text, display: true, details: card.details },
         { triggerTurn: false },
       );
-      // Everything above the card leaves the context. The card is a custom message, so filtering to
-      // `type === 'message'` keeps it; an earlier card is dropped so only the newest one survives.
-      const entries = manager.buildContextEntries();
-      const newest = entries.filter((e) => e.type === 'custom_message' && e.customType === HANDOFF_CUSTOM_TYPE).at(-1)?.id;
-      for (const entry of entries) {
-        if (entry.type === 'message') manager.appendContextEdit(entry.id, null);
-        else if (entry.type === 'custom_message' && entry.customType === HANDOFF_CUSTOM_TYPE && entry.id !== newest) {
-          manager.appendContextEdit(entry.id, null);
-        }
-      }
+      // Everything above the card leaves the context; the card is a custom message, so it stays.
+      dropContextAbove(manager);
       session.refreshContext();
     } catch (err) {
       // A rebuild that fails leaves the conversation intact; the message is still sent as usual.
@@ -1720,6 +1751,16 @@ export class SessionHub {
   async compactedHistory(id: string): Promise<AgentMessage[]> {
     const live = await this.ensure(id);
     return this.compactedMessages(live.runtime.session);
+  }
+
+  /** Messages an idle rebuild left out of the context: the ones behind the newest handoff card. */
+  async handoffHistory(id: string): Promise<AgentMessage[]> {
+    const live = await this.ensure(id);
+    return this.omittedMessages(live.runtime.session);
+  }
+
+  private omittedMessages(session: AgentSession): AgentMessage[] {
+    return omittedMessages(session.sessionManager);
   }
   private statsOf(session: AgentSession): SessionStats | null {
     try {

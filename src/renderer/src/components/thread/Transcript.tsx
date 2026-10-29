@@ -13,7 +13,7 @@ import { collapsedItems } from '@/store/transcript';
 import { rememberScroll, savedScroll, type ScrollSpot } from '@/store/scroll';
 import type { Item, ItemOf, SessionView } from '@/store/types';
 import { SelectionMenu } from './SelectionMenu';
-import { AskCard, CompactionItem, FootItem, GroupItem, isPendingAsk, NoteItem, PermItem, PlanItem, PrEventItem, SuggestItem, TextItem, TodosItem, UserItem } from './Items';
+import { AskCard, CompactionItem, FootItem, GroupItem, HandoffItem, isPendingAsk, NoteItem, PermItem, PlanItem, PrEventItem, SuggestItem, TextItem, TodosItem, UserItem } from './Items';
 
 /** Under a passage that was replied to: a pin per reply, which jumps to the message that quoted it. */
 function QuotePins({ pins }: { pins?: QuotePin[] }) {
@@ -49,6 +49,7 @@ function renderItem(sid: string, item: Item, items: Item[], index: number, view:
     case 'plan': return <PlanItem sid={sid} item={item} />;
     case 'suggest': return <SuggestItem sid={sid} item={item} />;
     case 'compaction': return <CompactionItem sid={sid} item={item} before={before?.get(item.key) ?? 0} />;
+    case 'handoff': return <HandoffItem sid={sid} item={item} before={before?.get(item.key) ?? 0} />;
     case 'prEvent': return <PrEventItem sid={sid} item={item} />;
     case 'foot': {
       let prev: string | undefined;

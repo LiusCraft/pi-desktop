@@ -172,6 +172,16 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 
 执行 `/compact`、上下文弹窗里的「立即压缩」或 pi 自动触发压缩时，会话页底部显示「正在压缩上下文…」，侧边栏同步转圈；压缩期间输入框只保留停止按钮，`Esc` 也能取消。结束后摘要作为一张「上下文已压缩 · 120.0k → ~12.0k tokens」卡片进入 transcript，卡片默认展开摘要，被摘要替代的历史默认收起；点「显示之前的 N 条消息」展开。重开会话时摘要仍在，历史消息在点击时才从会话文件读回，不会一次性加载。
 
+### 空闲会话重建上下文
+
+隔了很久再对一个会话说话时，提供方那边的 prompt cache 早就过期，整段历史只能按全价重发。所以在下一次真实消息之前，如果会话空闲超过了阈值、上下文又足够大（`IDLE_RESET_MIN_TOKENS`），就先把上下文重建：
+
+- 旧消息用 `SessionManager.appendContextEdit(id, null)` 从模型上下文里移除。这是 append-only 的投影编辑，**不删会话文件、不调用模型、不花钱**，所以不像 `/compact` 那样还要为摘要再付一次请求。
+- 留下一张交接卡（`custom_message`，`customType` 为 `pi-desktop-handoff`）：最近的请求、最后停在哪儿、改过和看过的文件，以及「需要更早的决定时用 `pidesk_search_session` 查，不要猜」。transcript 里这张卡是一行「上下文已重建 · 空闲 5m · 丢弃 64.2k tokens」，被它替掉的历史默认收起，点「显示之前的 N 条消息」再从会话文件读回，和压缩卡片同一套机制（`sessions:handoffHistory`）。
+- `pidesk_search_session` 检索的是本会话自己的 JSONL，包含 tool call 的参数和命令输出，所以文件路径和报错都能搜到；返回最新几条摘录。
+
+阈值按 `模型自己的设置 → 模型声明的缓存寿命 → 全局值` 解析：pi-ai 的模型目录里 Anthropic 等提供方已经声明了 `promptCache`（如 `short: 300` / `long: 3600` 秒），所以 Claude 默认 5 分钟就重建；没有声明的模型走全局值（默认 60 分钟，0 表示关闭）。设置 → 通用 → 空闲上下文里可以改全局值，也可以给单个模型覆盖（0 = 只关这个模型）。`PI_CACHE_RETENTION=long` 时按长档解析，和 pi 判断缓存是否还热的规则一致。
+
 ### 会话与项目管理
 
 - **新建会话立刻进入对话页**：`sessions:create` 只写元数据就返回；git worktree 和 Agent（扩展、MCP）在第一次启动时后台创建，进度以 `setup` 事件推给界面，对话里显示“正在启动会话…”的步骤卡片，失败时带原因，再发一条消息会重试。打开已有会话时同样显示。

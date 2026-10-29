@@ -11,6 +11,7 @@ import { CodeBlock, Markdown } from '@/components/common/Markdown';
 import { ToolOutput } from '@/components/common/ToolOutput';
 import { splitScriptHeader } from '@/lib/tool-output';
 import { CopyGlyph, useCopy } from '@/components/common/Copy';
+import { Tip } from '@/components/common/Tip';
 import { AttachmentTiles } from '@/components/common/Attachments';
 import { ContextCards } from '@/components/composer/ContextCards';
 import { InlineMessage } from '@/components/common/InlineRefs';
@@ -31,7 +32,7 @@ import { cn } from '@/lib/utils';
 import { useApp, updateSession } from '@/store/app';
 import { forgeName, forgeOfUrl } from '@shared/forge';
 import {
-  answerUi, dismissSuggested, doSuggestedHere, forkSession, openAgent, openContextReference, openDiffRef, openFileRef, openPlan, openSession, sessionDraftKey, startSuggested, toggleCompactionHistory, toggleCompactionSummary, userMessageAction,
+  answerUi, dismissSuggested, doSuggestedHere, forkSession, openAgent, openContextReference, openDiffRef, openFileRef, openPlan, openSession, sessionDraftKey, startSuggested, toggleCompactionHistory, toggleCompactionSummary, toggleHandoffHistory, userMessageAction,
 } from '@/store/actions';
 import { drafts } from '@/store/drafts';
 import { findByKey, findTool, permissionTitle } from '@/store/transcript';
@@ -395,6 +396,33 @@ export const CompactionItem = memo(function CompactionItem({ sid, item, before }
           <Markdown text={item.summary} />
         </div>
       )}
+    </div>
+  );
+});
+
+// ------------------------------------------------------------ idle rebuild
+
+/**
+ * An idle rebuild: the card the model was handed instead of the conversation. The messages it replaced
+ * sit above it and stay hidden until asked for, so the page reads as one continuous conversation.
+ */
+export const HandoffItem = memo(function HandoffItem({ sid, item, before }: { sid: string; item: ItemOf<'handoff'>; before: number }) {
+  const t = useT();
+  const earlier = before + item.hidden;
+  return (
+    <div className="rounded-xl border bg-muted/20">
+      <div className="flex items-center gap-2 px-3.5 py-2.5 text-sm">
+        <RotateCcwIcon className="size-4 shrink-0 text-muted-foreground" />
+        <span className="shrink-0 font-medium">{t('handoff.title')}</span>
+        <span className="min-w-0 truncate text-xs text-muted-foreground">{t('handoff.card', { idle: item.idle, tokens: fmtTok(item.tokensBefore ?? 0) })}</span>
+        <Tip>{t('handoff.tip')}</Tip>
+        <span className="flex-1" />
+        {earlier > 0 && (
+          <Button variant="ghost" size="sm" className="h-6 shrink-0 px-2 text-xs" disabled={item.loading} onClick={() => void toggleHandoffHistory(sid, item.key)}>
+            {item.loading ? t('compact.loadingEarlier') : t(item.open ? 'compact.hideEarlier' : 'compact.showEarlier', { n: earlier })}
+          </Button>
+        )}
+      </div>
     </div>
   );
 });

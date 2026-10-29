@@ -54,6 +54,11 @@ export type Item =
    * the history it replaces. Those start hidden behind "show earlier messages".
    */
   | { kind: 'compaction'; key: string; summary: string; tokensBefore?: number; tokensAfter?: number; /** The earlier messages are shown. */ open: boolean; /** Messages pi dropped, not in the transcript yet; fetched when they are shown. */ hidden: number; loading?: boolean; /** The summary body is expanded. */ openSummary: boolean }
+  /**
+   * An idle rebuild: the card the model was handed, and the messages that left its context. Those sit
+   * above the card and stay hidden until asked for, exactly like a compaction's history.
+   */
+  | { kind: 'handoff'; key: string; idle: string; tokensBefore?: number; open: boolean; hidden: number; loading?: boolean }
   /** A turn the PR watcher started: shown as an incoming event, never as something the user typed. */
   | { kind: 'prEvent'; key: string; event: PrEvent; at: number }
   | { kind: 'foot'; key: string; t: number; usage?: string };

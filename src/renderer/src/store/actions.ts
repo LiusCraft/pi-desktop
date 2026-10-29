@@ -487,6 +487,7 @@ export async function openSession(id: string, fresh = false) {
         replay(x, r.messages, st.prefs.viewMode);
         // The reopened transcript starts at the summary; the messages it replaced are loaded on demand.
         markCompactionHistory(x, r.hiddenMessages);
+        markHandoffHistory(x, r.handoffMessages);
       }
       x.loaded = true;
       x.setup = null;
@@ -664,24 +665,42 @@ function markCompactionHistory(s: SessionView, hidden: number) {
   if (card) card.hidden = hidden;
 }
 
-/** Show or hide the messages above a compaction card, loading them from the session file when needed. */
-export async function toggleCompactionHistory(id: string, key: string) {
+/** A reopened transcript has only the newest handoff card; remember what it replaced. */
+function markHandoffHistory(s: SessionView, hidden: number) {
+  const card = s.items.findLast((i): i is ItemOf<'handoff'> => i.kind === 'handoff');
+  if (card) card.hidden = hidden;
+}
+
+/**
+ * Show or hide the messages a checkpoint card stands in for, loading them from the session file when
+ * the view does not hold them yet. Compaction and idle rebuilds keep their history the same way.
+ */
+async function toggleHiddenHistory(
+  id: string,
+  key: string,
+  kind: 'compaction' | 'handoff',
+  channel: 'sessions:compactedHistory' | 'sessions:handoffHistory',
+) {
   const s = getApp().sessions[id];
   const card = findByKey(s, key);
-  if (!s || card?.kind !== 'compaction' || card.loading) return;
-  const set = (patch: Partial<ItemOf<'compaction'>>) => updateSession(id, (x) => {
+  if (!card || card.kind !== kind || card.loading) return;
+  const set = (patch: { open: boolean }) => updateSession(id, (x) => {
     const c = findByKey(x, key);
-    if (c?.kind === 'compaction') Object.assign(c, patch);
+    if (c?.kind === kind) Object.assign(c, patch);
   });
   // Once loaded (or when the live transcript still holds them), the items are already above the card.
   if (s.items.findIndex((i) => i.key === key) > 0 || card.open || !card.hidden) return set({ open: !card.open });
-  set({ loading: true });
+  const busy = (loading: boolean) => updateSession(id, (x) => {
+    const c = findByKey(x, key);
+    if (c?.kind === kind) c.loading = loading;
+  });
+  busy(true);
   try {
-    const messages = await call('sessions:compactedHistory', id);
+    const messages = await call(channel, id);
     setApp((st) => {
       const x = st.sessions[id];
       const c = findByKey(x, key);
-      if (c?.kind !== 'compaction') return;
+      if (c?.kind !== kind) return;
       const at = x.items.findIndex((i) => i.key === key);
       x.items.splice(at, 0, ...transcriptItems(x.meta, messages, st.prefs.viewMode));
       c.open = true;
@@ -689,9 +708,19 @@ export async function toggleCompactionHistory(id: string, key: string) {
       c.loading = false;
     });
   } catch (err) {
-    set({ loading: false });
+    busy(false);
     fail(err);
   }
+}
+
+/** Show or hide the messages above a compaction card, loading them from the session file when needed. */
+export function toggleCompactionHistory(id: string, key: string) {
+  return toggleHiddenHistory(id, key, 'compaction', 'sessions:compactedHistory');
+}
+
+/** Show or hide the messages an idle rebuild dropped, the same way a compaction card does. */
+export function toggleHandoffHistory(id: string, key: string) {
+  return toggleHiddenHistory(id, key, 'handoff', 'sessions:handoffHistory');
 }
 
 /** Expand or collapse the summary of a compaction card. */

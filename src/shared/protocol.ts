@@ -477,6 +477,8 @@ export interface OpenSessionResult extends SessionState {
   isCompacting: boolean;
   /** Messages the latest compaction summarized away: they are no longer in `messages`, but still in the session file. */
   hiddenMessages: number;
+  /** Messages an idle rebuild dropped from the context: also not in `messages`, also still in the session file. */
+  handoffMessages: number;
   /** Interactive requests still waiting for an answer (e.g. after a window reload). */
   pending: UiRequest[];
 }
@@ -1057,6 +1059,8 @@ export interface Api {
   'sessions:compact'(id: string, instructions?: string): { tokensBefore: number; estimatedTokensAfter?: number };
   /** The messages the latest compaction summarized away, so the transcript can show them again. */
   'sessions:compactedHistory'(id: string): AgentMessage[];
+  /** The messages an idle rebuild dropped from the context, so the transcript can show them again. */
+  'sessions:handoffHistory'(id: string): AgentMessage[];
   'sessions:stats'(id: string): SessionStats | null;
   'sessions:exportHtml'(id: string): { path: string };
   'sessions:clone'(id: string): void;
@@ -1189,7 +1193,7 @@ export type ApiResult<K extends ApiChannel> = Awaited<ReturnType<Api[K]>>;
 export const HOST_CHANNELS = [
   'sessions:list', 'sessions:create', 'sessions:open', 'sessions:state', 'sessions:prompt', 'sessions:respond',
   'sessions:setMode', 'sessions:setStyle', 'sessions:update', 'sessions:archive', 'sessions:unarchive', 'sessions:inspect', 'sessions:remove', 'sessions:spawn', 'sessions:abort',
-  'sessions:clearQueue', 'sessions:newContext', 'sessions:compact', 'sessions:compactedHistory', 'sessions:stats', 'sessions:exportHtml',
+  'sessions:clearQueue', 'sessions:newContext', 'sessions:compact', 'sessions:compactedHistory', 'sessions:handoffHistory', 'sessions:stats', 'sessions:exportHtml',
   'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:side', 'sessions:sideGet', 'sessions:sideStage', 'sessions:sideAbort', 'sessions:sideReset', 'sessions:workIdeas',
   'sessions:changes', 'sessions:setBase', 'sessions:commits', 'sessions:commitChanges', 'sessions:changeContent', 'sessions:pr', 'sessions:prThreads', 'sessions:prReply', 'sessions:prResolve', 'sessions:files', 'sessions:existing', 'sessions:readFile', 'sessions:search', 'sessions:readImage', 'sessions:readMedia',
   'sessions:context', 'sessions:stopTask', 'sessions:importable',
