@@ -2381,7 +2381,9 @@ export class SessionHub {
     const m = this.meta(id);
     await this.syncBranch(m);
     const pr = await git.prStatus(m.cwd);
-    if (pr) this.publishPr(m, pr);
+    // Publish null as well so a branch switch or a closed/deleted PR cannot leave stale metadata
+    // in the renderer. A subsequent refresh can then discover a PR on the new current branch.
+    this.publishPr(m, pr);
     return pr;
   }
   prThreads(id: string) {

@@ -19,11 +19,10 @@ function refresh(force = false) {
   if (!force && now - (lastLook.get(id) ?? 0) < MIN_GAP_MS) return;
   lastLook.set(id, now);
   void loadChanges(id);
-  if (s.pr) {
-    // The PR status call publishes a `pr` event that updates the bar; threads are read alongside it.
-    call('sessions:pr', id).catch(() => {});
-    void loadPrThreads(id);
-  }
+  // Query even when the session has no cached PR. The current branch may have a PR that was
+  // created outside Pi Desktop, and the status call publishes a `pr` event that updates the bar.
+  call('sessions:pr', id).catch(() => {});
+  if (s.pr) void loadPrThreads(id);
 }
 
 /** Refresh on the moments the data is likely stale: coming back to the window, switching session, opening the diff, and a slow poll while the diff is open. */

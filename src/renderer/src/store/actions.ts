@@ -194,6 +194,7 @@ function flushEvents() {
             s.meta.pr = { num: ev.status.num, url: ev.status.url, state: ev.status.state, draft: ev.status.draft };
           } else {
             s.pr = null;
+            s.meta.pr = null;
           }
           break;
         case 'git_fetched':
