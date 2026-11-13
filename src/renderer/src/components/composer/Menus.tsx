@@ -334,6 +334,13 @@ const MODE_TONE: Partial<Record<PermissionMode, string>> = {
   acceptEdits: 'text-primary',
   bypass: 'text-warning',
 };
+const MODE_ICON_TONE: Record<PermissionMode, string> = {
+  auto: 'text-info',
+  default: 'text-muted-foreground',
+  acceptEdits: 'text-success',
+  plan: 'text-primary',
+  bypass: 'text-warning',
+};
 const MODE_ICON: Record<PermissionMode, LucideIcon> = {
   auto: WandSparklesIcon,
   default: ShieldCheckIcon,
@@ -362,7 +369,7 @@ export function ModeMenu({ mode }: { mode: PermissionMode }) {
             title={m.name}
             hint={m.desc}
             icon={MODE_ICON[m.id]}
-            tone={MODE_TONE[m.id]}
+            tone={MODE_ICON_TONE[m.id]}
             onSelect={() => setPermMode(m.id)}
           />
         ))}
