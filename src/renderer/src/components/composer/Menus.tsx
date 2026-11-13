@@ -86,10 +86,9 @@ function Option({
         <span
           className={cn(
             'mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/50 text-muted-foreground',
-            tone,
           )}
         >
-          <Icon className="size-4" strokeWidth={1.8} />
+          <Icon className={cn('size-4', tone)} strokeWidth={1.8} />
         </span>
       ) : (
         <CheckIcon className={cn('mt-0.5 size-3.5 shrink-0 text-primary', !active && 'invisible')} />
