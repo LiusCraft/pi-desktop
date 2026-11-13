@@ -7,23 +7,27 @@ import { Tooltip as TooltipPrimitive } from 'radix-ui';
 /** Shared shadcn surface for both Radix tooltips and the title bridge. */
 export const tooltipSurface = 'tooltip-surface relative rounded-lg border bg-popover text-popover-foreground shadow-lg';
 export const TOOLTIP_DEFAULT_DELAY = 1000;
-const TOOLTIP_POINTER_FOCUS_SUPPRESSION = 1200;
 
 export function TooltipSurface({ className, ...props }: React.ComponentProps<'div'>) {
   return <div {...props} className={cn(tooltipSurface, className)} />;
 }
 
 export function TooltipHint({ title, children }: { title?: string; children: React.ReactElement }) {
-  const suppressFocusUntil = React.useRef(0);
+  const suppressPointerFocus = React.useRef(false);
   if (!title) return children;
   const triggerElement = children as React.ReactElement<React.HTMLAttributes<HTMLElement>>;
   const trigger = React.cloneElement(triggerElement, {
     onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
-      suppressFocusUntil.current = Date.now() + TOOLTIP_POINTER_FOCUS_SUPPRESSION;
+      suppressPointerFocus.current = true;
+      event.currentTarget.blur();
       triggerElement.props.onPointerDown?.(event);
     },
+    onPointerMove: (event: React.PointerEvent<HTMLElement>) => {
+      suppressPointerFocus.current = false;
+      triggerElement.props.onPointerMove?.(event);
+    },
     onFocus: (event: React.FocusEvent<HTMLElement>) => {
-      if (Date.now() < suppressFocusUntil.current) {
+      if (suppressPointerFocus.current) {
         event.currentTarget.blur();
         event.preventDefault();
         return;
