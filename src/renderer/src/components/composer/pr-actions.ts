@@ -44,8 +44,11 @@ export function gitActions({ branch, baseBranch, st, pr, forge, strategy }: Bran
   const onBase = !baseBranch || branch === baseBranch;
   const dirty = st?.dirty.length ?? 0;
   const ahead = st?.ahead ?? 0;
+  // The field is optional while a fresh session is still loading its first git state.
+  // Treat that as unknown; a reported false is the only state that rules out remote actions.
+  const hasRemote = st?.hasRemote !== false;
   // A branch with no upstream still owes its first push.
-  const unpushed = ahead > 0 || (!!st && !st.upstream);
+  const unpushed = hasRemote && (ahead > 0 || (!!st && !st.upstream));
   const work = dirty > 0 || unpushed;
   const open = !!pr && (pr.state === 'open' || pr.state === 'draft');
   const target = baseBranch ? tr('gitact.target', { base: baseBranch }) : '';
@@ -91,7 +94,7 @@ export function gitActions({ branch, baseBranch, st, pr, forge, strategy }: Bran
       hint: prHint,
       command: prCommand,
       prompt: prPrompt,
-      enabled: pr ? work : work || !onBase,
+      enabled: hasRemote && (pr ? work : work || !onBase),
     },
     {
       act: 'commit',
@@ -111,7 +114,7 @@ export function gitActions({ branch, baseBranch, st, pr, forge, strategy }: Bran
         : tr('gitact.pushNone'),
       command: 'push',
       prompt: pushPrompt,
-      enabled: unpushed,
+      enabled: hasRemote && unpushed,
     },
   ];
   // Only a feature branch can fall behind its base; the action never becomes the default button.
@@ -132,15 +135,23 @@ export function gitActions({ branch, baseBranch, st, pr, forge, strategy }: Bran
   // Submit the PR by default; on the base branch itself that would mean branching off, so
   // the default there is the smaller direct git step instead.
   const primary: GitAction | null = pr
-    ? work
-      ? 'pr'
-      : null
+    ? hasRemote
+      ? work
+        ? 'pr'
+        : null
+      : dirty > 0
+        ? 'commit'
+        : null
     : onBase
       ? dirty > 0
         ? 'commit'
         : unpushed
           ? 'push'
           : null
-      : 'pr';
+      : hasRemote
+        ? 'pr'
+        : dirty > 0
+          ? 'commit'
+          : null;
   return { actions, primary };
 }

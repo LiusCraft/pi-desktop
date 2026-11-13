@@ -9,6 +9,7 @@ import { workState } from '../src/agent/git';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-git-state-'));
 const repo = path.join(tmp, 'repo');
+const noRemote = path.join(tmp, 'no-remote');
 const remote = path.join(tmp, 'remote.git');
 const saved = { global: process.env.GIT_CONFIG_GLOBAL, system: process.env.GIT_CONFIG_SYSTEM };
 
@@ -38,6 +39,11 @@ describe('working-tree state', () => {
     git(repo, 'commit', '-m', 'initial');
     git(repo, 'remote', 'add', 'origin', remote);
     git(repo, 'push', '-u', 'origin', 'main');
+    fs.mkdirSync(noRemote);
+    git(noRemote, 'init', '-b', 'main');
+    fs.writeFileSync(path.join(noRemote, 'tracked.txt'), 'one\n');
+    git(noRemote, 'add', '.');
+    git(noRemote, 'commit', '-m', 'initial');
   });
   afterAll(() => {
     process.env.GIT_CONFIG_GLOBAL = saved.global;
@@ -53,7 +59,14 @@ describe('working-tree state', () => {
       baseBehind: 0,
       base: null,
       upstream: 'origin/main',
+      hasRemote: true,
     });
+  });
+
+  it('reports when a repository has no configured remote', async () => {
+    const state = await workState(noRemote);
+    assert.equal(state.hasRemote, false);
+    assert.equal(state.upstream, null);
   });
 
   it('lists modified and untracked paths, including names with spaces', async () => {

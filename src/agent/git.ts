@@ -346,8 +346,18 @@ export async function workState(cwd: string, baseBranch: string | null = null, r
         break;
       }
   const baseBehind = base ? Number((await gitSafe(cwd, 'rev-list', '--count', `HEAD..${base}`))?.trim()) || 0 : 0;
-  const forge = await originForge(cwd);
-  return { dirty, ahead, behind, baseBehind, base, upstream, ...(forge ? { forge } : {}) };
+  const [forge, remotes] = await Promise.all([originForge(cwd), gitSafe(cwd, 'remote')]);
+  const hasRemote = !!remotes?.trim();
+  return {
+    dirty,
+    ahead,
+    behind,
+    baseBehind,
+    base,
+    upstream,
+    hasRemote,
+    ...(forge ? { forge } : {}),
+  };
 }
 
 /** The code host `origin` belongs to, when the host name gives it away. */

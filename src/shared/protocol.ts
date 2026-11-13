@@ -571,6 +571,8 @@ export interface GitState {
   base: string | null;
   /** Upstream ref, or null when the branch tracks nothing yet. */
   upstream: string | null;
+  /** Whether this repository has a configured remote. */
+  hasRemote?: boolean;
   /** The code host `origin` points at, when its name says so. */
   forge?: Forge;
 }
