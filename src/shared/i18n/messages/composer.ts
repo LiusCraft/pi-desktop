@@ -2,6 +2,8 @@ import { defineMessages } from '../define';
 
 export const composer = defineMessages({
   'menu.manageModels': { en: 'Manage models…', zh: '管理模型…' },
+  'menu.searchModels': { en: 'Search models…', zh: '搜索模型…' },
+  'menu.noMatchingModels': { en: 'No matching models', zh: '没有匹配的模型' },
   'menu.contextWindowUsed': { en: '{size} context', zh: '{size} 上下文' },
   'menu.reasoning': { en: 'reasoning', zh: '推理' },
   'menu.thinkingEffort': { en: 'Thinking effort', zh: '思考强度' },
