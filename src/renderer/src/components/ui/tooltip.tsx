@@ -6,7 +6,8 @@ import { Tooltip as TooltipPrimitive } from 'radix-ui';
 
 /** Shared shadcn surface for both Radix tooltips and the title bridge. */
 export const tooltipSurface = 'tooltip-surface relative rounded-lg border bg-popover text-popover-foreground shadow-lg';
-export const TOOLTIP_DEFAULT_DELAY = 400;
+export const TOOLTIP_DEFAULT_DELAY = 1000;
+const TOOLTIP_POINTER_FOCUS_SUPPRESSION = 1200;
 
 export function TooltipSurface({ className, ...props }: React.ComponentProps<'div'>) {
   return <div {...props} className={cn(tooltipSurface, className)} />;
@@ -18,7 +19,7 @@ export function TooltipHint({ title, children }: { title?: string; children: Rea
   const triggerElement = children as React.ReactElement<React.HTMLAttributes<HTMLElement>>;
   const trigger = React.cloneElement(triggerElement, {
     onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
-      suppressFocusUntil.current = Date.now() + TOOLTIP_DEFAULT_DELAY * 3;
+      suppressFocusUntil.current = Date.now() + TOOLTIP_POINTER_FOCUS_SUPPRESSION;
       triggerElement.props.onPointerDown?.(event);
     },
     onFocus: (event: React.FocusEvent<HTMLElement>) => {
