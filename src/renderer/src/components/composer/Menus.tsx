@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { CheckIcon, ChevronDownIcon, ChevronRightIcon } from 'lucide-react';
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ListChecksIcon,
+  PencilLineIcon,
+  ShieldCheckIcon,
+  TriangleAlertIcon,
+  WandSparklesIcon,
+  type LucideIcon,
+} from 'lucide-react';
 import {
   THINKING_LEVELS,
   type ContextBreakdown,
@@ -59,23 +69,40 @@ function Option({
   active,
   title,
   hint,
+  icon: Icon,
+  tone,
   onSelect,
 }: {
   active: boolean;
   title: ReactNode;
   hint?: ReactNode;
+  icon?: LucideIcon;
+  tone?: string;
   onSelect: () => void;
 }) {
   return (
     <DropdownMenuItem
       onSelect={onSelect}
-      className={cn('items-start gap-2 py-2', active && 'bg-accent/70 focus:bg-accent')}
+      className={cn('items-start gap-2 py-2.5', active && 'bg-accent/70 focus:bg-accent')}
     >
-      <CheckIcon className={cn('mt-0.5 size-3.5 shrink-0 text-primary', !active && 'invisible')} />
+      {Icon ? (
+        <span
+          className={cn(
+            'mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/50 text-muted-foreground',
+            active && 'border-primary/20 bg-primary/10 text-primary',
+            tone,
+          )}
+        >
+          <Icon className="size-4" strokeWidth={1.8} />
+        </span>
+      ) : (
+        <CheckIcon className={cn('mt-0.5 size-3.5 shrink-0 text-primary', !active && 'invisible')} />
+      )}
       <span className="min-w-0">
         <span className="block truncate font-medium">{title}</span>
-        {hint && <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">{hint}</span>}
+        {hint && <span className="mt-0.5 block text-[12px] leading-snug text-muted-foreground">{hint}</span>}
       </span>
+      {Icon && <CheckIcon className={cn('mt-1 ml-auto size-4 shrink-0 text-primary', !active && 'invisible')} />}
     </DropdownMenuItem>
   );
 }
@@ -309,7 +336,14 @@ export function EffortMenu({ levels, effort }: { levels: ThinkingLevel[]; effort
 const MODE_TONE: Partial<Record<PermissionMode, string>> = {
   plan: 'text-info',
   acceptEdits: 'text-primary',
-  bypass: 'text-destructive',
+  bypass: 'text-warning',
+};
+const MODE_ICON: Record<PermissionMode, LucideIcon> = {
+  auto: WandSparklesIcon,
+  default: ShieldCheckIcon,
+  acceptEdits: PencilLineIcon,
+  plan: ListChecksIcon,
+  bypass: TriangleAlertIcon,
 };
 
 export function ModeMenu({ mode }: { mode: PermissionMode }) {
@@ -323,10 +357,18 @@ export function ModeMenu({ mode }: { mode: PermissionMode }) {
           {current.name}
         </FootButton>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" side="top" className="w-80">
+      <DropdownMenuContent align="start" side="top" className="w-[22rem]">
         <DropdownMenuLabel className="text-xs text-muted-foreground">{t('menu.modeLabel')}</DropdownMenuLabel>
         {MODES.map((m) => (
-          <Option key={m.id} active={m.id === mode} title={m.name} hint={m.desc} onSelect={() => setPermMode(m.id)} />
+          <Option
+            key={m.id}
+            active={m.id === mode}
+            title={m.name}
+            hint={m.desc}
+            icon={MODE_ICON[m.id]}
+            tone={MODE_TONE[m.id]}
+            onSelect={() => setPermMode(m.id)}
+          />
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
