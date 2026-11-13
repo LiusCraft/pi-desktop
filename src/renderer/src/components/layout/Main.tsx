@@ -32,6 +32,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import { TooltipHint } from '@/components/ui/tooltip';
 import { useDefaultLayout } from 'react-resizable-panels';
 import { call, canTerminal, isMac, modKey } from '@/lib/api';
 import { workIdeas, OUTPUT_STYLE_INFO, VIEW_MODES, type ViewMode } from '@/lib/constants';
@@ -66,8 +67,8 @@ import { Inbox } from './Inbox';
 import { SideChatView } from '@/components/side/SideChat';
 import { useSide } from '@/store/side';
 
-function HeaderButton({ on, children, className, ...props }: React.ComponentProps<'button'> & { on?: boolean }) {
-  return (
+function HeaderButton({ on, children, className, title, ...props }: React.ComponentProps<'button'> & { on?: boolean }) {
+  const button = (
     <button
       {...props}
       className={cn(
@@ -79,6 +80,7 @@ function HeaderButton({ on, children, className, ...props }: React.ComponentProp
       {children}
     </button>
   );
+  return <TooltipHint title={title}>{button}</TooltipHint>;
 }
 
 /**

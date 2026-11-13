@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipHint, TooltipTrigger } from '@/components/ui/tooltip';
 import { modKey } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { fname } from '@/lib/format';
@@ -47,8 +47,8 @@ function useSendState() {
   return { s, ready, busy, stopMode };
 }
 
-function Chip({ children, className, ...props }: React.ComponentProps<'button'>) {
-  return (
+function Chip({ children, className, title, ...props }: React.ComponentProps<'button'>) {
+  const button = (
     <button
       {...props}
       {...PET_GROUND}
@@ -60,6 +60,7 @@ function Chip({ children, className, ...props }: React.ComponentProps<'button'>)
       {children}
     </button>
   );
+  return <TooltipHint title={title}>{button}</TooltipHint>;
 }
 
 /** Where a new session runs: environment, project, branch / worktree. */
@@ -241,7 +242,7 @@ export function CodeComposer() {
       {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         className={cn(
-          'relative rounded-xl border bg-card px-3.5 py-2 transition-colors focus-within:border-muted-foreground/50',
+          'surface-outline relative rounded-xl bg-card px-3.5 py-2 transition-shadow',
           drag && 'ring-2 ring-primary/50',
         )}
         onClick={(e) => !(e.target as HTMLElement).closest('button') && input.current?.focus()}
@@ -319,7 +320,7 @@ export function WorkComposer() {
       {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         className={cn(
-          'relative rounded-2xl border bg-card p-3 shadow-sm transition-shadow focus-within:shadow-md',
+          'surface-outline relative rounded-2xl bg-card p-3 transition-shadow',
           drag && 'ring-2 ring-primary/50',
         )}
         onClick={(e) => !(e.target as HTMLElement).closest('button') && input.current?.focus()}

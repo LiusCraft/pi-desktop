@@ -144,7 +144,7 @@ export function PrBar({ s }: { s: SessionView }) {
   );
   if (!pr) {
     return (
-      <div className="mb-2 flex items-center gap-2 rounded-lg border bg-card/60 px-2.5 py-1.5 text-xs transition-colors hover:bg-card">
+      <div className="surface-outline mb-2 flex items-center gap-2 rounded-lg bg-card/60 px-2.5 py-1.5 text-xs transition-colors hover:bg-card">
         <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="shrink-0 font-medium whitespace-nowrap">{fname(s.meta.projectPath)}</span>
         <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={s.meta.branch}>
@@ -164,7 +164,7 @@ export function PrBar({ s }: { s: SessionView }) {
   return (
     <div
       className={cn(
-        'group/pr mb-2 flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors',
+        'surface-outline group/pr mb-2 flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs transition-colors',
         BAR_TONE[badge.tone] ?? 'bg-card/60 hover:bg-card',
       )}
     >

@@ -53,6 +53,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import { TooltipHint } from '@/components/ui/tooltip';
 import { call, isMac, isRemote } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { contentOf, onContent, wantContent } from '@/lib/change-content';
@@ -135,7 +136,7 @@ export function Card({
   return (
     <section
       className={cn(
-        'relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border bg-card',
+        'relative flex h-full min-h-0 flex-col overflow-hidden rounded-lg border bg-card/90 shadow-sm',
         drop && 'after:pointer-events-none after:absolute after:bg-primary',
         (drop === 'before' || drop === 'after') && 'after:inset-x-0 after:h-1',
         (drop === 'left' || drop === 'right') && 'after:inset-y-0 after:w-1',
@@ -214,8 +215,8 @@ export function Card({
   );
 }
 
-export function IconBtn({ children, className, ...props }: React.ComponentProps<'button'>) {
-  return (
+export function IconBtn({ children, className, title, ...props }: React.ComponentProps<'button'>) {
+  const button = (
     <button
       {...props}
       className={cn(
@@ -226,6 +227,7 @@ export function IconBtn({ children, className, ...props }: React.ComponentProps<
       {children}
     </button>
   );
+  return <TooltipHint title={title}>{button}</TooltipHint>;
 }
 
 const Empty = ({ children }: { children: ReactNode }) => (

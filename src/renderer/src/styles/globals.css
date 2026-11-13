@@ -12,31 +12,32 @@
     'Noto Sans CJK SC', sans-serif;
   --system-font-mono:
     ui-monospace, 'SF Mono', 'Cascadia Mono', 'Cascadia Code', Menlo, Consolas, 'Microsoft YaHei UI', monospace;
-  --radius: 0.625rem;
-  --background: #faf9f5;
+  --radius: 0.5625rem;
+  /* Keep the light workspace slightly tinted so surfaces read as native app chrome. */
+  --background: #f4f3ee;
   --foreground: #141413;
-  --card: #ffffff;
+  --card: #fbfaf7;
   --card-foreground: #141413;
-  --popover: #ffffff;
+  --popover: #fbfaf7;
   --popover-foreground: #141413;
   --primary: #c96442;
   --primary-foreground: #ffffff;
-  --secondary: #f0eee6;
+  --secondary: #ebe9e1;
   --secondary-foreground: #3d3d3a;
-  --muted: #f0eee6;
+  --muted: #ebe9e1;
   --muted-foreground: #73726c;
   --accent: rgba(31, 30, 29, 0.06);
   --accent-foreground: #141413;
   --destructive: #c4352b;
-  --border: rgba(31, 30, 29, 0.12);
-  --input: rgba(31, 30, 29, 0.18);
+  --border: rgba(31, 30, 29, 0.09);
+  --input: rgba(31, 30, 29, 0.14);
   --ring: rgba(201, 100, 66, 0.45);
-  --sidebar: #f5f4ed;
+  --sidebar: #ebeae3;
   --sidebar-foreground: #3d3d3a;
   --sidebar-accent: rgba(31, 30, 29, 0.07);
-  --sidebar-border: rgba(31, 30, 29, 0.1);
-  --user-bubble: #f0eee6;
-  --code-bg: #f5f4ef;
+  --sidebar-border: rgba(31, 30, 29, 0.08);
+  --user-bubble: #e8e6de;
+  --code-bg: #f0efe9;
   --success: #2f7d4f;
   --warning: #b7791f;
   --info: #2f6fd1;
@@ -90,6 +91,30 @@
   --tok-comment: #8d8c86;
   --tok-title: #8fb6f5;
   --tok-attr: #c79be6;
+}
+
+/* A quiet surface edge reads like native chrome; hard 1px outlines read like web cards. */
+.surface-outline {
+  box-shadow:
+    inset 0 0 0 1px var(--border),
+    0 1px 2px color-mix(in srgb, var(--foreground) 4%, transparent);
+}
+.surface-outline:focus-within {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--muted-foreground) 52%, transparent),
+    0 2px 6px color-mix(in srgb, var(--foreground) 7%, transparent);
+}
+
+/* Radix keeps portal content mounted during its exit animation. Hide the closed frame
+   immediately so an overlay never flashes at the document origin while Popper releases it. */
+[data-slot='tooltip-content'][data-state='closed'],
+[data-slot='dropdown-menu-content'][data-state='closed'],
+[data-slot='dropdown-menu-sub-content'][data-state='closed'],
+[data-slot='context-menu-content'][data-state='closed'],
+[data-slot='context-menu-sub-content'][data-state='closed'],
+[data-slot='popover-content'][data-state='closed'],
+[data-slot='select-content'][data-state='closed'] {
+  visibility: hidden;
 }
 
 /* VS Code Light+ / Dark+ */

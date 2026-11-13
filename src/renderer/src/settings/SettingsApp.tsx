@@ -44,13 +44,14 @@ import {
 import { BUILTIN_PETS, BUILTIN_PET_IDS, DEFAULT_PET_ID } from '@shared/pets';
 import { PET_SOUND_EVENTS, SOUND_EVENTS } from '@shared/sounds';
 import { useCopy } from '@/components/common/Copy';
+import { NativeTooltip } from '@/components/common/NativeTooltip';
 import { Segmented } from '@/components/common/Segmented';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { TooltipProvider } from '@/components/ui/tooltip';
+import { TOOLTIP_DEFAULT_DELAY, TooltipProvider } from '@/components/ui/tooltip';
 import { Tip } from '@/components/common/Tip';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { notifyResource, subscribeResource } from '@/store/resources';
@@ -1086,7 +1087,7 @@ export function SettingsApp() {
   }
 
   return (
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider delayDuration={TOOLTIP_DEFAULT_DELAY}>
       <div className="flex h-screen flex-col bg-background" data-platform={bridge.platform}>
         <header className="app-drag titlebar-inset flex h-12 shrink-0 items-center justify-center border-b text-sm font-medium">
           {t('settings.title')}
@@ -1159,6 +1160,7 @@ export function SettingsApp() {
         </div>
         <Toaster position="bottom-right" theme={settings.resolvedTheme ?? 'light'} />
       </div>
+      <NativeTooltip />
     </TooltipProvider>
   );
 }

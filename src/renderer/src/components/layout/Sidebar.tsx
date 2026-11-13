@@ -73,6 +73,7 @@ import {
 } from '@/store/actions';
 import { setApp, useApp } from '@/store/app';
 import { InlineEdit } from '@/components/common/InlineEdit';
+import { TooltipHint } from '@/components/ui/tooltip';
 import type { MessageKey } from '@shared/i18n';
 import { MAX_SESSION_TITLE, type SessionKind } from '@shared/protocol';
 import type { SessionView } from '@/store/types';
@@ -80,10 +81,10 @@ import type { SessionView } from '@/store/types';
 export function SidebarToggle({ className }: { className?: string }) {
   const t = useT();
   const collapsed = useApp((s) => s.sidebarCollapsed);
-  return (
+  const hint = `${t(collapsed ? 'sidebar.show' : 'sidebar.hide')}  ${modKey}B`;
+  const button = (
     <button
       onClick={() => toggleSidebar()}
-      title={`${t(collapsed ? 'sidebar.show' : 'sidebar.hide')}  ${modKey}B`}
       aria-expanded={!collapsed}
       className={cn(
         'flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
@@ -93,6 +94,7 @@ export function SidebarToggle({ className }: { className?: string }) {
       <PanelLeftIcon className="size-4" />
     </button>
   );
+  return <TooltipHint title={hint}>{button}</TooltipHint>;
 }
 
 /** Session state, in priority order: needs you > working or compacting > unread > PR state > idle (empty circle). */
@@ -479,17 +481,18 @@ function SessionRow({
                   />
                 </DropdownMenuContent>
               </DropdownMenu>
-              <button
-                className="hidden shrink-0 rounded p-0.5 text-muted-foreground group-hover:block hover:text-foreground"
-                title={t('sidebar.archive')}
-                aria-label={t('sidebar.archive')}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void archiveSessions([s.meta.id]);
-                }}
-              >
-                <ArchiveIcon className="size-3.5" />
-              </button>
+              <TooltipHint title={t('sidebar.archive')}>
+                <button
+                  className="hidden shrink-0 rounded p-0.5 text-muted-foreground group-hover:block hover:text-foreground"
+                  aria-label={t('sidebar.archive')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void archiveSessions([s.meta.id]);
+                  }}
+                >
+                  <ArchiveIcon className="size-3.5" />
+                </button>
+              </TooltipHint>
             </>
           )}
         </div>
@@ -519,14 +522,13 @@ function NavItem({
   hint?: string;
   active?: boolean;
 }) {
-  return (
+  const button = (
     <button
       onClick={() => {
         onClick?.();
         collapseSidebarIfCompact();
       }}
       aria-current={active ? 'page' : undefined}
-      title={hint}
       className={cn(
         'flex h-7 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm',
         active ? 'bg-sidebar-accent text-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent',
@@ -536,6 +538,7 @@ function NavItem({
       {children}
     </button>
   );
+  return <TooltipHint title={hint}>{button}</TooltipHint>;
 }
 
 type NavId = 'projects' | 'artifacts' | 'scheduled' | 'customize' | 'archived';

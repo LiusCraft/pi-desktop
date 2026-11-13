@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { ModelVendorIcon } from '@/components/common/ModelVendorIcon';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipHint, TooltipTrigger } from '@/components/ui/tooltip';
 import { Tip } from '@/components/common/Tip';
 import { call } from '@/lib/api';
 import {
@@ -39,8 +40,8 @@ const MODEL_LIST_HEIGHT = 460;
 const MODEL_MENU_CHROME_HEIGHT = 80;
 const MODEL_LIST_HEIGHT_STYLE = `min(${MODEL_LIST_HEIGHT}px, calc(var(--radix-popover-content-available-height) - ${MODEL_MENU_CHROME_HEIGHT}px))`;
 
-export function FootButton({ children, className, ...props }: React.ComponentProps<'button'>) {
-  return (
+export function FootButton({ children, className, title, ...props }: React.ComponentProps<'button'>) {
+  const button = (
     <button
       {...props}
       className={cn(
@@ -51,6 +52,7 @@ export function FootButton({ children, className, ...props }: React.ComponentPro
       {children}
     </button>
   );
+  return <TooltipHint title={title}>{button}</TooltipHint>;
 }
 
 function Option({
@@ -392,7 +394,6 @@ export function ContextRing({
         sid && 'hover:bg-accent',
         busy && 'animate-pulse',
       )}
-      title={ringTitle}
     >
       <svg viewBox="0 0 20 20" className="size-[17px]">
         <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeOpacity=".35" strokeWidth="1.6" />
@@ -410,13 +411,28 @@ export function ContextRing({
       </svg>
     </span>
   );
-  if (!sid) return ring;
+  if (!sid)
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>{ring}</TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[320px] whitespace-pre-line">
+          {ringTitle}
+        </TooltipContent>
+      </Tooltip>
+    );
   const shown = data?.categories.filter((c) => c.tokens > 0 || c.key === 'messages' || c.key === 'free') ?? [];
   return (
     <Popover open={open} onOpenChange={menu.onOpenChange}>
-      <PopoverTrigger asChild>
-        <button aria-label={t('menu.contextUsage')}>{ring}</button>
-      </PopoverTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <button aria-label={t('menu.contextUsage')}>{ring}</button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="top" align="end" className="max-w-[320px] whitespace-pre-line">
+          {ringTitle}
+        </TooltipContent>
+      </Tooltip>
       <PopoverContent side="top" align="end" className="w-[23rem] p-0">
         {data === undefined ? (
           <div className="p-4 text-sm text-muted-foreground">{t('menu.measuring')}</div>

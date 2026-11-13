@@ -3,11 +3,12 @@ import { useDefaultLayout, usePanelRef } from 'react-resizable-panels';
 import { PERMISSION_CHOICES } from '@shared/protocol';
 import { CommandPalette } from '@/components/dialogs/CommandPalette';
 import { DialogHost } from '@/components/dialogs/DialogHost';
+import { NativeTooltip } from '@/components/common/NativeTooltip';
 import { Main } from '@/components/layout/Main';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { Toaster } from '@/components/ui/sonner';
-import { TooltipProvider } from '@/components/ui/tooltip';
+import { TOOLTIP_DEFAULT_DELAY, TooltipProvider } from '@/components/ui/tooltip';
 import { bridge, call, isMac } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 import {
@@ -139,7 +140,7 @@ export function App() {
   }, [collapsed, sidebar]);
 
   return (
-    <TooltipProvider delayDuration={400}>
+    <TooltipProvider delayDuration={TOOLTIP_DEFAULT_DELAY}>
       <div className="h-screen w-screen" data-platform={bridge.platform}>
         <ResizablePanelGroup
           orientation="horizontal"
@@ -170,6 +171,7 @@ export function App() {
       </div>
       <CommandPalette />
       <DialogHost />
+      <NativeTooltip />
       <Toaster position="bottom-right" />
     </TooltipProvider>
   );
