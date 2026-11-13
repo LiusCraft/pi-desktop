@@ -14,7 +14,7 @@ export function WindowControls({ target }: { target: WindowTarget }) {
   const t = useT();
   if (!isWin32) return null;
   return (
-    <div className="no-drag flex h-full items-start">
+    <div className="no-drag flex h-full items-center">
       {CONTROLS.map(({ action, label, Icon }) => (
         <button
           key={action}
@@ -22,8 +22,7 @@ export function WindowControls({ target }: { target: WindowTarget }) {
           aria-label={t(label)}
           title={t(label)}
           className={cn(
-            'flex h-8 w-10 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
-            action === 'close' && 'hover:text-destructive-foreground hover:bg-destructive',
+            'flex h-8 w-9 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-accent/80',
           )}
           onClick={() => void call('window:control', target, action)}
         >
