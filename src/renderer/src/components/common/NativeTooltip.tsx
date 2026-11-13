@@ -26,9 +26,9 @@ function captureTitles(root: ParentNode) {
   root.querySelectorAll('[title]').forEach(captureTitle);
 }
 
-function tooltipPosition(element: HTMLElement): TooltipPlacement {
+function tooltipPosition(element: HTMLElement, text: string): TooltipPlacement {
   const rect = element.getBoundingClientRect();
-  const width = Math.min(320, Math.max(120, rect.width));
+  const width = Math.min(320, Math.max(120, Math.min(320, text.length * 7.5 + 20)));
   const left = Math.min(Math.max(EDGE, rect.left + rect.width / 2 - width / 2), window.innerWidth - width - EDGE);
   const above = rect.top >= 48;
   return { left, top: above ? rect.top - GAP : rect.bottom + GAP, side: above ? 'top' : 'bottom' };
@@ -75,7 +75,7 @@ export function NativeTooltip() {
       if (!text?.trim()) return;
       hide();
       active = element;
-      setTooltip({ text, ...tooltipPosition(element) });
+      setTooltip({ text, ...tooltipPosition(element, text) });
     };
     const schedule = (element: HTMLElement | null) => {
       cancel();
@@ -110,7 +110,10 @@ export function NativeTooltip() {
       if (active && event.target instanceof Node && active.contains(event.target)) hide();
     };
     const onViewportChange = () => {
-      if (active) setTooltip({ text: active.getAttribute(DATA_TITLE) ?? '', ...tooltipPosition(active) });
+      if (active) {
+        const text = active.getAttribute(DATA_TITLE) ?? '';
+        setTooltip({ text, ...tooltipPosition(active, text) });
+      }
     };
 
     document.addEventListener('pointerover', onOver, true);
@@ -136,7 +139,7 @@ export function NativeTooltip() {
   return createPortal(
     <TooltipSurface
       role="tooltip"
-      className="pointer-events-none fixed z-[100] max-w-[min(320px,calc(100vw-16px))] px-2.5 py-1.5 text-xs text-balance break-words whitespace-normal"
+      className="pointer-events-none fixed z-[100] w-fit max-w-[min(320px,calc(100vw-16px))] px-2.5 py-1.5 text-xs text-balance break-words whitespace-normal"
       style={{
         left: tooltip.left,
         top: tooltip.top,

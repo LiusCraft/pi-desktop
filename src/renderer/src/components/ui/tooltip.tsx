@@ -13,10 +13,26 @@ export function TooltipSurface({ className, ...props }: React.ComponentProps<'di
 }
 
 export function TooltipHint({ title, children }: { title?: string; children: React.ReactElement }) {
+  const suppressFocusUntil = React.useRef(0);
   if (!title) return children;
+  const triggerElement = children as React.ReactElement<React.HTMLAttributes<HTMLElement>>;
+  const trigger = React.cloneElement(triggerElement, {
+    onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
+      suppressFocusUntil.current = Date.now() + TOOLTIP_DEFAULT_DELAY * 3;
+      triggerElement.props.onPointerDown?.(event);
+    },
+    onFocus: (event: React.FocusEvent<HTMLElement>) => {
+      if (Date.now() < suppressFocusUntil.current) {
+        event.currentTarget.blur();
+        event.preventDefault();
+        return;
+      }
+      triggerElement.props.onFocus?.(event);
+    },
+  });
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipTrigger asChild>{trigger}</TooltipTrigger>
       <TooltipContent>{title}</TooltipContent>
     </Tooltip>
   );
