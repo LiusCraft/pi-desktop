@@ -26,6 +26,10 @@ describe('fuzzyScore', () => {
   it('is case-insensitive for path and title searches', () => {
     expect(score('login', 'Fix-Login-Bug')).toBeGreaterThan(0);
   });
+
+  it('matches model initials as an in-order subsequence', () => {
+    expect(score('ds', 'DeepSeek')).toBeGreaterThan(0);
+  });
 });
 
 describe('fuzzyRank', () => {

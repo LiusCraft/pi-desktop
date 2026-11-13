@@ -1,8 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon } from 'lucide-react';
 import type { ContextBreakdown, ModelInfo, PermissionMode, ThinkingLevel } from '@shared/protocol';
 import { cacheHitRate } from '@shared/usage';
 import { Button } from '@/components/ui/button';
+import { ModelVendorIcon } from '@/components/common/ModelVendorIcon';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tip } from '@/components/common/Tip';
 import { call } from '@/lib/api';
@@ -11,12 +13,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { levelLabel, MODES } from '@/lib/constants';
 import { useT } from '@/lib/i18n';
 import { fmtCost, fmtTok, fname } from '@/lib/format';
+import { fuzzyEntry, fuzzyRank } from '@/lib/fuzzy';
 import { cn } from '@/lib/utils';
 import { chooseEffort, chooseModel, compactSession, fail, setPermMode } from '@/store/actions';
 import { setApp, useApp } from '@/store/app';
@@ -26,6 +28,10 @@ function useMenu(name: 'model' | 'mode' | 'context') {
   const open = useApp((s) => s.menu === name);
   return { open, onOpenChange: (o: boolean) => setApp((s) => void (s.menu = o ? name : null)) };
 }
+
+const MODEL_LIST_HEIGHT = 460;
+const MODEL_MENU_CHROME_HEIGHT = 80;
+const MODEL_LIST_HEIGHT_STYLE = `min(${MODEL_LIST_HEIGHT}px, calc(var(--radix-popover-content-available-height) - ${MODEL_MENU_CHROME_HEIGHT}px))`;
 
 export function FootButton({ children, className, ...props }: React.ComponentProps<'button'>) {
   return (
@@ -75,39 +81,86 @@ export function ModelMenu({
   const t = useT();
   const models = useApp((s) => s.models);
   const menu = useMenu('model');
-  const byProvider = new Map<string, ModelInfo[]>();
-  for (const m of models) byProvider.set(m.provider, [...(byProvider.get(m.provider) ?? []), m]);
+  const [query, setQuery] = useState('');
+  const entries = useMemo(() => models.map((m) => fuzzyEntry(m, `${m.provider} ${m.id} ${m.name ?? ''}`)), [models]);
+  const filtered = useMemo(() => {
+    const byProvider = new Map<string, ModelInfo[]>();
+    for (const { item } of fuzzyRank(entries, query, entries.length)) {
+      byProvider.set(item.provider, [...(byProvider.get(item.provider) ?? []), item]);
+    }
+    return [...byProvider];
+  }, [entries, query]);
+  const close = () => menu.onOpenChange(false);
+  const selectModel = (id: string) => {
+    close();
+    void chooseModel(id);
+  };
+  const onOpenChange = (open: boolean) => {
+    if (!open) setQuery('');
+    menu.onOpenChange(open);
+  };
   return (
-    <DropdownMenu {...menu}>
-      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
-      <DropdownMenuContent align={align} side="top" className="max-h-[min(70vh,560px)] w-72 overflow-y-auto">
-        {[...byProvider].map(([provider, list], i) => (
-          <div key={provider}>
-            {i > 0 && <DropdownMenuSeparator />}
-            <DropdownMenuLabel className="text-xs text-muted-foreground">{provider}</DropdownMenuLabel>
-            {list.map((m) => {
-              const id = `${m.provider}/${m.id}`;
-              return (
-                <Option
-                  key={id}
-                  active={id === model}
-                  title={m.name || m.id}
-                  hint={[
-                    m.contextWindow ? t('menu.contextWindowUsed', { size: fmtTok(m.contextWindow) }) : '',
-                    m.reasoning ? t('menu.reasoning') : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                  onSelect={() => void chooseModel(id)}
-                />
-              );
-            })}
+    <Popover open={menu.open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      <PopoverContent align={align} side="top" className="w-72 overflow-hidden p-0">
+        <Command shouldFilter={false}>
+          <CommandInput
+            value={query}
+            onValueChange={setQuery}
+            placeholder={t('menu.searchModels')}
+            aria-label={t('menu.searchModels')}
+            className="text-[13px]"
+          />
+          <CommandList
+            className="max-h-none"
+            style={{ height: MODEL_LIST_HEIGHT_STYLE, maxHeight: MODEL_LIST_HEIGHT_STYLE }}
+          >
+            <CommandEmpty>{t('menu.noMatchingModels')}</CommandEmpty>
+            {filtered.map(([provider, list]) => (
+              <CommandGroup key={provider} heading={provider}>
+                {list.map((m) => {
+                  const id = `${m.provider}/${m.id}`;
+                  return (
+                    <CommandItem
+                      key={id}
+                      value={id}
+                      onSelect={() => selectModel(id)}
+                      className="items-start gap-2 py-1 text-[13px]"
+                    >
+                      <ModelVendorIcon model={m} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px]">{m.name || m.id}</span>
+                        <span className="block text-[11px] text-muted-foreground">
+                          {[
+                            m.contextWindow ? t('menu.contextWindowUsed', { size: fmtTok(m.contextWindow) }) : '',
+                            m.reasoning ? t('menu.reasoning') : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </span>
+                      </span>
+                      {id === model && <CheckIcon className="ml-auto size-3.5 shrink-0 self-center" />}
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            ))}
+          </CommandList>
+          <div className="border-t p-1">
+            <button
+              type="button"
+              className="relative flex w-full cursor-default items-center rounded-sm px-2 py-1.5 text-[13px] outline-hidden select-none hover:bg-accent focus:bg-accent"
+              onClick={() => {
+                close();
+                void call('settings:open', 'models');
+              }}
+            >
+              {t('menu.manageModels')}
+            </button>
           </div>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => call('settings:open', 'models')}>{t('menu.manageModels')}</DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 
