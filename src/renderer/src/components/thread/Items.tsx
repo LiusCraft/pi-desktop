@@ -73,7 +73,7 @@ import { QuestionsItem } from './Questions';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { call } from '@/lib/api';
 import { t as tr, useT } from '@/lib/i18n';
-import { ago, fmtCost, fmtMs, fmtTok, fname } from '@/lib/format';
+import { ago, fmtCost, fmtMs, fmtTok, fname, useAgo } from '@/lib/format';
 import {
   bareName,
   CODEMODE_TOOL,
@@ -194,12 +194,13 @@ function MessageActions({ sid, item, text }: { sid: string; item: ItemOf<'user'>
     (state) =>
       !!(state.sessions[sid]?.running || state.sessions[sid]?.historyBusy || state.sessions[sid]?.pendingUser.length),
   );
+  const relativeTime = useAgo(item.timestamp ?? Date.now(), true);
   if (!item.delivered || item.queued) return null;
   return (
     <div className="flex items-center gap-1 text-xs text-muted-foreground">
       {item.timestamp && (
         <span className="mr-1" title={new Date(item.timestamp).toLocaleString()}>
-          {ago(item.timestamp, true)}
+          {relativeTime}
         </span>
       )}
       <Button
@@ -670,6 +671,7 @@ export const FootItem = memo(function FootItem({
 }) {
   const t = useT();
   const { copied, copy } = useCopy();
+  const relativeTime = useAgo(item.t, true);
   return (
     <div className="flex items-center gap-1 text-xs text-muted-foreground">
       <Button
@@ -690,7 +692,7 @@ export const FootItem = memo(function FootItem({
       >
         <GitForkIcon className="size-3.5" />
       </Button>
-      <span>{ago(item.t, true)}</span>
+      <span>{relativeTime}</span>
       {item.usage && <span>· {item.usage}</span>}
     </div>
   );

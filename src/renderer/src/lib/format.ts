@@ -1,4 +1,7 @@
 import { t } from './i18n';
+import { useEffect, useState } from 'react';
+
+const RELATIVE_TIME_REFRESH_MS = 30_000;
 
 export const fname = (p: string) => String(p).split(/[\\/]/).pop() || '';
 export const fdir = (p: string) => String(p).split(/[\\/]/).slice(0, -1).join('/');
@@ -14,6 +17,16 @@ export function ago(at: number, long = false) {
   }
   const d = Math.round(m / 1440);
   return long ? t(d === 1 ? 'ago.dayOne' : 'ago.dayOther', { n: d }) : t('ago.dayShort', { n: d });
+}
+
+/** Keep a relative timestamp current while its component stays mounted. */
+export function useAgo(at: number, long = false) {
+  const [, refresh] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => refresh((n) => n + 1), RELATIVE_TIME_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, []);
+  return ago(at, long);
 }
 
 export function fmtDur(ms: number) {

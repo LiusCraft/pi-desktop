@@ -49,7 +49,7 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { call, isMac, isRemote, modKey } from '@/lib/api';
-import { ago, fname } from '@/lib/format';
+import { useAgo, fname } from '@/lib/format';
 import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import {
@@ -390,6 +390,7 @@ function SessionRow({
   );
   const [renaming, setRenaming] = useState(false);
   const picked = useSelection().has(s.meta.id);
+  const relativeTime = useAgo(s.meta.updatedAt || Date.now());
   const prNote = s.pr
     ? ` · PR #${s.pr.num} ${s.pr.state === 'open' && s.pr.draft ? t('sidebar.prDraft') : PR_STATE_KEY[s.pr.state as keyof typeof PR_STATE_KEY] ? t(PR_STATE_KEY[s.pr.state as keyof typeof PR_STATE_KEY]) : s.pr.state}`
     : '';
@@ -399,7 +400,7 @@ function SessionRow({
       ? t('status.compacting')
       : s.running
         ? t('sidebar.working')
-        : `${s.meta.title} · ${ago(s.meta.updatedAt || Date.now(), true)}${prNote}`;
+        : `${s.meta.title} · ${relativeTime}${prNote}`;
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -454,6 +455,11 @@ function SessionRow({
                   {tag}
                 </span>
               )}
+              {!s.waiting && !s.compacting && !s.running && (
+                <span className="shrink-0 text-xs text-muted-foreground tabular-nums group-hover:hidden">
+                  {relativeTime}
+                </span>
+              )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -473,6 +479,17 @@ function SessionRow({
                   />
                 </DropdownMenuContent>
               </DropdownMenu>
+              <button
+                className="hidden shrink-0 rounded p-0.5 text-muted-foreground group-hover:block hover:text-foreground"
+                title={t('sidebar.archive')}
+                aria-label={t('sidebar.archive')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void archiveSessions([s.meta.id]);
+                }}
+              >
+                <ArchiveIcon className="size-3.5" />
+              </button>
             </>
           )}
         </div>
