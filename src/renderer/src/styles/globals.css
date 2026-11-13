@@ -392,6 +392,76 @@
 }
 
 /* ---------------------------------------------------------------- motion */
+.thinking-range-shell {
+  position: relative;
+  height: 24px;
+}
+.thinking-range-track {
+  position: absolute;
+  inset: 7px 0;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #64748b 0%, #3b82f6 30%, #8b5cf6 60%, #d946ef 80%, #f59e0b 100%);
+}
+.thinking-range-track::after {
+  position: absolute;
+  inset-block: 0;
+  right: 0;
+  width: calc(100% - var(--thinking-progress, 0%));
+  border-radius: inherit;
+  background: var(--muted);
+  content: '';
+}
+.thinking-range {
+  height: 24px;
+  margin: 0;
+  appearance: none;
+  cursor: pointer;
+  background: transparent;
+  outline: none;
+}
+.thinking-range::-webkit-slider-runnable-track {
+  height: 10px;
+  background: transparent;
+}
+.thinking-range::-webkit-slider-thumb {
+  width: 18px;
+  height: 18px;
+  margin-top: -4px;
+  appearance: none;
+  border: 2px solid var(--popover);
+  border-radius: 9999px;
+  background: var(--thinking-thumb, var(--primary));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--foreground) 18%, transparent),
+    0 2px 5px rgba(0, 0, 0, 0.24);
+}
+.thinking-range::-moz-range-track {
+  height: 10px;
+  background: transparent;
+}
+.thinking-range::-moz-range-progress {
+  height: 10px;
+  background: transparent;
+}
+.thinking-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--popover);
+  border-radius: 9999px;
+  background: var(--thinking-thumb, var(--primary));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--foreground) 18%, transparent),
+    0 2px 5px rgba(0, 0, 0, 0.24);
+}
+.thinking-range:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.thinking-range:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
 @keyframes collapsible-down {
   from {
     height: 0;

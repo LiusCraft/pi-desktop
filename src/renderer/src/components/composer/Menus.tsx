@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon } from 'lucide-react';
-import type { ContextBreakdown, ModelInfo, PermissionMode, ThinkingLevel } from '@shared/protocol';
+import {
+  THINKING_LEVELS,
+  type ContextBreakdown,
+  type ModelInfo,
+  type PermissionMode,
+  type ThinkingLevel,
+} from '@shared/protocol';
 import { cacheHitRate } from '@shared/usage';
 import { Button } from '@/components/ui/button';
 import { ModelVendorIcon } from '@/components/common/ModelVendorIcon';
@@ -164,21 +170,134 @@ export function ModelMenu({
   );
 }
 
+const EFFORT_TONE_CLASSES = [
+  'text-slate-400',
+  'text-sky-400',
+  'text-violet-400',
+  'text-fuchsia-400',
+  'text-amber-300',
+] as const;
+
+const EFFORT_THUMB_COLORS = ['#94a3b8', '#60a5fa', '#a78bfa', '#e879f9', '#fbbf24'] as const;
+const EFFORT_WIDE_LEVEL_COUNT = 6;
+
+/** Keep the slider ordered by thinking strength while retaining only this model's supported levels. */
+function orderedThinkingLevels(levels: ThinkingLevel[]) {
+  return THINKING_LEVELS.filter((level) => levels.includes(level));
+}
+
+function closestThinkingLevelIndex(levels: ThinkingLevel[], effort: ThinkingLevel | null) {
+  if (!levels.length || !effort) return 0;
+  const target = THINKING_LEVELS.indexOf(effort);
+  let closest = 0;
+  let distance = Number.POSITIVE_INFINITY;
+  levels.forEach((level, index) => {
+    const nextDistance = Math.abs(THINKING_LEVELS.indexOf(level) - target);
+    if (nextDistance < distance) {
+      closest = index;
+      distance = nextDistance;
+    }
+  });
+  return closest;
+}
+
+function effortTone(index: number, lastIndex: number) {
+  const stop = lastIndex ? Math.round((index / lastIndex) * (EFFORT_TONE_CLASSES.length - 1)) : 0;
+  return EFFORT_TONE_CLASSES[Math.min(stop, EFFORT_TONE_CLASSES.length - 1)];
+}
+
+function effortThumbColor(index: number, lastIndex: number) {
+  const stop = lastIndex ? Math.round((index / lastIndex) * (EFFORT_THUMB_COLORS.length - 1)) : 0;
+  return EFFORT_THUMB_COLORS[Math.min(stop, EFFORT_THUMB_COLORS.length - 1)];
+}
+
 export function EffortMenu({ levels, effort }: { levels: ThinkingLevel[]; effort: ThinkingLevel | null }) {
   const t = useT();
-  if (!levels.length || (levels.length === 1 && levels[0] === 'off')) return null;
+  const availableLevels = useMemo(() => orderedThinkingLevels(levels), [levels]);
+  const resolvedIndex = closestThinkingLevelIndex(availableLevels, effort);
+  const [draftIndex, setDraftIndex] = useState(resolvedIndex);
+  const draftRef = useRef(resolvedIndex);
+  const interacting = useRef(false);
+  const lastIndex = Math.max(availableLevels.length - 1, 0);
+
+  useEffect(() => {
+    if (interacting.current) return;
+    draftRef.current = resolvedIndex;
+    setDraftIndex(resolvedIndex);
+  }, [availableLevels, resolvedIndex]);
+
+  if (availableLevels.length < 2) return null;
+
+  const activeLevel = availableLevels[draftIndex] ?? availableLevels[resolvedIndex];
+  const progress = lastIndex ? (draftIndex / lastIndex) * 100 : 0;
+  const tone = effortTone(draftIndex, lastIndex);
+  const contentWidth = availableLevels.length >= EFFORT_WIDE_LEVEL_COUNT ? 'w-72' : 'w-56';
+  const selectIndex = (index: number) => {
+    const next = Math.max(0, Math.min(lastIndex, index));
+    interacting.current = true;
+    draftRef.current = next;
+    setDraftIndex(next);
+  };
+  const commit = () => {
+    const next = availableLevels[draftRef.current];
+    if (!next) return;
+    interacting.current = false;
+    if (next !== effort) void chooseEffort(next);
+  };
+  const rangeStyle = {
+    '--thinking-progress': `${progress}%`,
+    '--thinking-thumb': effortThumbColor(draftIndex, lastIndex),
+  } as CSSProperties;
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <FootButton title={t('menu.thinkingEffort')}>{effort ? levelLabel(effort) : t('menu.effort')}</FootButton>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" side="top" className="w-44">
-        <DropdownMenuLabel className="text-xs text-muted-foreground">{t('menu.thinkingEffort')}</DropdownMenuLabel>
-        {levels.map((l) => (
-          <Option key={l} active={l === effort} title={levelLabel(l)} onSelect={() => void chooseEffort(l)} />
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Popover>
+      <PopoverTrigger asChild>
+        <FootButton title={t('menu.thinkingEffort')} className={tone}>
+          {activeLevel ? levelLabel(activeLevel) : t('menu.effort')}
+        </FootButton>
+      </PopoverTrigger>
+      <PopoverContent align="end" side="top" className={`${contentWidth} p-3`}>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs text-muted-foreground">{t('menu.thinkingEffort')}</span>
+          <span className={cn('text-sm font-medium', tone)}>{activeLevel && levelLabel(activeLevel)}</span>
+        </div>
+        <div className="thinking-range-shell mt-2">
+          <div className="thinking-range-track" style={rangeStyle} aria-hidden="true" />
+          <input
+            type="range"
+            min={0}
+            max={lastIndex}
+            step={1}
+            value={draftIndex}
+            aria-label={t('menu.thinkingEffort')}
+            aria-valuetext={activeLevel ? levelLabel(activeLevel) : undefined}
+            className="thinking-range relative z-10 block w-full"
+            onChange={(event) => selectIndex(event.currentTarget.valueAsNumber)}
+            onPointerUp={commit}
+            onKeyUp={commit}
+            onBlur={commit}
+            style={rangeStyle}
+          />
+        </div>
+        <div
+          className="mt-0.5 grid gap-0.5"
+          style={{ gridTemplateColumns: `repeat(${availableLevels.length}, minmax(0, 1fr))` }}
+        >
+          {availableLevels.map((level, index) => (
+            <span
+              key={level}
+              className={cn(
+                'min-w-0 truncate text-center text-[10px] leading-tight transition-colors',
+                index === draftIndex ? effortTone(index, lastIndex) : 'text-muted-foreground',
+              )}
+              title={levelLabel(level)}
+            >
+              {levelLabel(level)}
+            </span>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
