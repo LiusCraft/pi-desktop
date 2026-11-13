@@ -94,7 +94,7 @@ function Option({
         <CheckIcon className={cn('mt-0.5 size-3.5 shrink-0 text-primary', !active && 'invisible')} />
       )}
       <span className="min-w-0">
-        <span className="block truncate font-medium">{title}</span>
+        <span className={cn('block truncate font-medium', tone)}>{title}</span>
         {hint && <span className="block truncate text-[12px] leading-snug text-muted-foreground">{hint}</span>}
       </span>
       {Icon && <CheckIcon className={cn('ml-auto size-4 shrink-0 text-primary', !active && 'invisible')} />}
