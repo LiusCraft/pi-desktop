@@ -11,6 +11,7 @@ import {
 export const DEFAULT_SETTINGS: Settings = {
   theme: null,
   palette: 'default',
+  density: 'compact',
   uiFont: null,
   codeFont: null,
   language: 'system',

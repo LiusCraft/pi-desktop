@@ -230,7 +230,8 @@
   }
   body {
     @apply bg-background font-sans text-foreground antialiased;
-    font-size: 14px;
+    font-size: calc(14px * var(--density-scale));
+    line-height: calc(1.5 * var(--density-line-scale));
     text-rendering: optimizeLegibility;
     overflow: hidden;
     /* App chrome is not selectable; only content and inputs opt back in. */
@@ -251,15 +252,38 @@
 }
 
 /* ---------------------------------------------------------------- density
-   One knob for the spacing rhythm: every padding, margin and flex/grid gap is
-   multiplied by --space-scale, so 0.9 = 10% tighter without touching type,
-   icons or control sizes. Set it back to 1 for Tailwind's default spacing.
+   One knob for the whole interface rhythm. The renderer sets this from the
+   Interface density preference; compact is the default and comfortable gives
+   the layout more air. Standard Tailwind spacing and type tokens read the same
+   value, so controls, headings, rows and gaps move together.
    Fractional values (p-1.5) and negatives (-mt-1, -mx-1) are scaled too; only
    arbitrary values (p-[3px]) and keywords (auto, px) keep Tailwind's own
    declaration. */
 :root {
-  --space-scale: 0.9;
-  --spacing-scaled: calc(var(--spacing) * var(--space-scale));
+  --density-scale: 0.9;
+  --density-line-scale: 0.96;
+  --spacing: calc(0.25rem * var(--density-scale));
+  --spacing-scaled: var(--spacing);
+  --text-xs: calc(0.75rem * var(--density-scale));
+  --text-sm: calc(0.875rem * var(--density-scale));
+  --text-base: calc(1rem * var(--density-scale));
+  --text-lg: calc(1.125rem * var(--density-scale));
+  --text-xl: calc(1.25rem * var(--density-scale));
+  --text-2xl: calc(1.5rem * var(--density-scale));
+  --text-3xl: calc(1.875rem * var(--density-scale));
+  --text-4xl: calc(2.25rem * var(--density-scale));
+  --text-xs--line-height: calc((1 / 0.75) * var(--density-line-scale));
+  --text-sm--line-height: calc((1.25 / 0.875) * var(--density-line-scale));
+  --text-base--line-height: calc((1.5 / 1) * var(--density-line-scale));
+  --text-lg--line-height: calc((1.75 / 1.125) * var(--density-line-scale));
+  --text-xl--line-height: calc((1.75 / 1.25) * var(--density-line-scale));
+  --text-2xl--line-height: calc((2 / 1.5) * var(--density-line-scale));
+  --text-3xl--line-height: calc((2.25 / 1.875) * var(--density-line-scale));
+  --text-4xl--line-height: calc((2.5 / 2.25) * var(--density-line-scale));
+  --leading-tight: calc(1.25 * var(--density-line-scale));
+  --leading-snug: calc(1.375 * var(--density-line-scale));
+  --leading-normal: calc(1.5 * var(--density-line-scale));
+  --leading-relaxed: calc(1.625 * var(--density-line-scale));
 }
 
 @utility p-* {
@@ -501,8 +525,8 @@
 }
 .spark {
   display: inline-block;
-  width: 14px;
-  height: 14px;
+  width: calc(14px * var(--density-scale));
+  height: calc(14px * var(--density-scale));
   background: var(--primary);
   clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
 }
@@ -528,7 +552,7 @@
   position: relative;
 }
 .prose-chat {
-  line-height: 1.65;
+  line-height: calc(1.65 * var(--density-line-scale));
   overflow-wrap: anywhere;
 }
 .prose-chat > * + * {
@@ -539,7 +563,7 @@
 .prose-chat h3,
 .prose-chat h4 {
   font-weight: 600;
-  line-height: 1.35;
+  line-height: calc(1.35 * var(--density-line-scale));
   margin-top: 1.1em;
 }
 .prose-chat h1 {
@@ -625,8 +649,8 @@
 /* ---------------------------------------------------------------- code, diff, syntax */
 .code-lines {
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: calc(12px * var(--density-scale));
+  line-height: calc(1.6 * var(--density-line-scale));
 }
 /* Rows and transcript items far outside the viewport skip layout and paint; `auto` remembers
    the real height once seen, so long diffs, files and threads scroll without re-laying out everything. */
@@ -691,7 +715,7 @@
   box-shadow: inset 3px 0 0 var(--destructive);
 }
 .code-lines.wrap {
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--density-scale));
 }
 .code-lines.wrap .code-row > :last-child {
   white-space: pre-wrap;
@@ -704,7 +728,7 @@
   align-items: center;
   min-height: 1.9em;
   font-family: var(--font-sans);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--density-scale));
   text-align: left;
   color: var(--muted-foreground);
   background: color-mix(in srgb, var(--info) 7%, var(--muted));
@@ -1180,7 +1204,7 @@ button.chip-inline:hover {
 /* @pierre/diffs and @pierre/trees draw in shadow roots; custom properties are how they take the app's palette. */
 .review-code {
   --diffs-font-family: var(--font-mono);
-  --diffs-font-size: 12.5px;
+  --diffs-font-size: calc(12.5px * var(--density-scale));
   --diffs-dark-bg: var(--card);
   --diffs-light-bg: var(--card);
   --diffs-bg-separator-override: var(--muted);
@@ -1197,9 +1221,46 @@ button.chip-inline:hover {
   --trees-selected-bg-override: var(--accent);
   --trees-input-bg-override: var(--background);
   --trees-font-family-override: var(--font-sans);
-  --trees-font-size-override: 13px;
+  --trees-font-size-override: calc(13px * var(--density-scale));
   --trees-accent-override: var(--info);
   --trees-git-added-color-override: var(--success);
   --trees-git-modified-color-override: var(--info);
   --trees-git-deleted-color-override: var(--destructive);
+}
+
+/* A few small labels use explicit pixel sizes instead of Tailwind's standard type scale.
+   Keep those labels in the same density system too. */
+[class~='text-[9px]'] {
+  font-size: calc(9px * var(--density-scale));
+}
+[class~='text-[10px]'] {
+  font-size: calc(10px * var(--density-scale));
+}
+[class~='text-[10.5px]'] {
+  font-size: calc(10.5px * var(--density-scale));
+}
+[class~='text-[11px]'] {
+  font-size: calc(11px * var(--density-scale));
+}
+[class~='text-[11.5px]'] {
+  font-size: calc(11.5px * var(--density-scale));
+}
+[class~='text-[12.5px]'] {
+  font-size: calc(12.5px * var(--density-scale));
+}
+[class~='text-[13px]'] {
+  font-size: calc(13px * var(--density-scale));
+}
+[class~='text-[0.8rem]'] {
+  font-size: calc(0.8rem * var(--density-scale));
+}
+
+[data-slot='switch'][data-size='default'] {
+  height: calc(1.15rem * var(--density-scale));
+}
+[data-slot='switch'][data-size='sm'] {
+  height: calc(0.875rem * var(--density-scale));
+}
+[data-slot='tabs-list'] {
+  padding: calc(3px * var(--density-scale));
 }

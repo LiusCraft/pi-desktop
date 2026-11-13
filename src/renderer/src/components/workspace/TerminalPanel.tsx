@@ -4,7 +4,7 @@ import { PlusIcon, XIcon } from 'lucide-react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal, type ITheme } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
-import type { TerminalInfo } from '@shared/protocol';
+import { UI_DENSITY_SCALE, type TerminalInfo, type UiDensity } from '@shared/protocol';
 import { bridge, call } from '@/lib/api';
 import { t as tr, useT } from '@/lib/i18n';
 import { fontStack, resolvedTheme } from '@/lib/theme';
@@ -25,6 +25,9 @@ const THEMES: Record<'light' | 'dark', ITheme> = {
 const termTheme = (palette = document.documentElement.dataset.palette, mode: 'light' | 'dark' = resolvedTheme()) =>
   (palette === 'vscode' ? VSCODE_THEMES : THEMES)[mode];
 const FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
+const TERM_FONT_SIZE = 12;
+const terminalFontSize = (density?: UiDensity) =>
+  TERM_FONT_SIZE * UI_DENSITY_SCALE[density === 'comfortable' ? 'comfortable' : 'compact'];
 const exitNotice = () => `\r\n\x1b[2m${tr('terminal.exited')}\x1b[0m\r\n`;
 
 function TermView({ id, active }: { id: string; active: boolean }) {
@@ -34,7 +37,7 @@ function TermView({ id, active }: { id: string; active: boolean }) {
   useEffect(() => {
     const term = new Terminal({
       fontFamily: fontStack(getApp().settings.codeFont, FONT),
-      fontSize: 12,
+      fontSize: terminalFontSize(getApp().settings.density),
       cursorBlink: true,
       scrollback: 5000,
       theme: termTheme(),
@@ -64,6 +67,11 @@ function TermView({ id, active }: { id: string; active: boolean }) {
       const family = fontStack(s.codeFont, FONT);
       if (term.options.fontFamily !== family) {
         term.options.fontFamily = family;
+        refit();
+      }
+      const fontSize = terminalFontSize(s.density);
+      if (term.options.fontSize !== fontSize) {
+        term.options.fontSize = fontSize;
         refit();
       }
     });

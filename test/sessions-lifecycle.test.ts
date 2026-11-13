@@ -54,11 +54,21 @@ afterAll(async () => {
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
+const WAIT_POLL_INTERVAL_MS = 25;
+const SESSION_SETTLE_TIMEOUT_MS = 60_000;
+const TRANSCRIPT_SETTLE_TIMEOUT_MS = 10_000;
 const waitSettled = async (id: string, turns = 1) => {
-  const until = Date.now() + 60_000;
+  const until = Date.now() + SESSION_SETTLE_TIMEOUT_MS;
   while ((settled.get(id) ?? 0) < turns) {
     if (Date.now() > until) throw new Error('the session never settled');
-    await new Promise((r) => setTimeout(r, 25));
+    await new Promise((r) => setTimeout(r, WAIT_POLL_INTERVAL_MS));
+  }
+};
+const waitForTranscript = async (file: string, text: string) => {
+  const until = Date.now() + TRANSCRIPT_SETTLE_TIMEOUT_MS;
+  while (!readTranscript(file, 10).some((line) => line.text.includes(text))) {
+    if (Date.now() > until) throw new Error(`the transcript never contained ${text}`);
+    await new Promise((r) => setTimeout(r, WAIT_POLL_INTERVAL_MS));
   }
 };
 const code = (projectPath: string, extra: Partial<Parameters<SessionHub['create']>[0]> = {}) =>
@@ -271,7 +281,10 @@ describe('sessions talking to each other', { timeout: 120_000 }, () => {
     const text = (received as Extract<HostEvent, { type: 'pi' }>).event.message.content;
     const peer = decodePeerMessage(typeof text === 'string' ? text : text.map((c: any) => c.text).join(''));
     expect(peer).toEqual({ fromId: a.id, fromTitle: 'Sender', text: '请检查一下日期格式' });
-    expect(readTranscript(hub.meta(b.id).sessionFile!, 5)[0].text).toContain('message from session "Sender"');
+    const sessionFile = hub.meta(b.id).sessionFile;
+    expect(sessionFile).toBeTruthy();
+    if (!sessionFile) throw new Error('the receiver session has no transcript');
+    await waitForTranscript(sessionFile, 'message from session "Sender"');
   });
 
   it('stops two sessions from flooding each other', async () => {

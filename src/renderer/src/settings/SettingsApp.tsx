@@ -26,11 +26,13 @@ import type {
   SettingsPayload,
   SuggestionModelMode,
   TerminalShell,
+  UiDensity,
   WorkIdeasModelMode,
 } from '@shared/protocol';
 import { LOCALES, LOCALE_NAMES, type LanguageSetting, type MessageKey } from '@shared/i18n';
 import {
   PALETTES,
+  UI_DENSITIES,
   AUTO_REVIEW_DEFAULT_TIMEOUT,
   AUTO_REVIEW_MAX_TIMEOUT,
   AUTO_REVIEW_MIN_TIMEOUT,
@@ -133,6 +135,10 @@ const MODEL_MODE_LABELS = [
   { id: 'auto', label: 'settings.auto' },
   { id: 'fixed', label: 'settings.fixed' },
 ] as const satisfies readonly { id: SuggestionModelMode & WorkIdeasModelMode; label: MessageKey }[];
+const DENSITY_LABELS: Record<UiDensity, MessageKey> = {
+  compact: 'settings.density.compact',
+  comfortable: 'settings.density.comfortable',
+};
 
 interface Swatch<T extends string> {
   id: T;
@@ -482,6 +488,13 @@ export function SettingsApp() {
                 </SelectGroup>
               </SelectContent>
             </Select>
+          </Row>
+          <Row title={t('settings.density')} hint={t('settings.density.hint')}>
+            <Segmented
+              value={settings.density === 'comfortable' ? 'comfortable' : 'compact'}
+              onChange={(id) => void patch({ density: id })}
+              options={UI_DENSITIES.map((id) => ({ id, label: t(DENSITY_LABELS[id]) }))}
+            />
           </Row>
           <Row title={t('settings.uiFont')}>
             <FontPicker

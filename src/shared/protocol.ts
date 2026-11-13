@@ -882,6 +882,17 @@ export type ThemeSetting = 'light' | 'dark' | 'system';
 /** The colour scheme; light/dark is `theme`'s job, so each palette carries both. */
 export const PALETTES = ['default', 'vscode'] as const;
 export type Palette = (typeof PALETTES)[number];
+/** The visual density used by the interface's shared spacing and type tokens. */
+export const UI_DENSITIES = ['compact', 'comfortable'] as const;
+export type UiDensity = (typeof UI_DENSITIES)[number];
+export const UI_DENSITY_SCALE: Record<UiDensity, number> = {
+  compact: 0.9,
+  comfortable: 1.1,
+};
+export const UI_DENSITY_LINE_SCALE: Record<UiDensity, number> = {
+  compact: 0.96,
+  comfortable: 1.04,
+};
 /**
  * How the model's shell commands keep their folder. `session` runs them in one shell that stays
  * alive, so a `cd` or an `export` carries over to the next command (the way Claude Code behaves);
@@ -911,6 +922,7 @@ export const TERMINAL_MAX_LINES = 500;
 export interface Settings {
   theme: ThemeSetting | null;
   palette: Palette;
+  density: UiDensity;
   /** Font family for the interface and for code/terminal (a name or a CSS list); null uses the system fonts. */
   uiFont: string | null;
   codeFont: string | null;
