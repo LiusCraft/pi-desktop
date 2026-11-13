@@ -77,8 +77,17 @@ export function NativeTooltip() {
       active = element;
       setTooltip({ text, ...tooltipPosition(element) });
     };
-    const onOver = (event: Event) => {
+    const schedule = (element: HTMLElement | null) => {
       cancel();
+      if (!element || element.closest('[data-slot="tooltip-trigger"]') || !element.getAttribute(DATA_TITLE)?.trim())
+        return;
+      if (active && active !== element) hide();
+      timer = window.setTimeout(() => {
+        timer = null;
+        show(element);
+      }, TOOLTIP_DEFAULT_DELAY);
+    };
+    const onOver = (event: Event) => {
       const element = targetOf(event);
       if (
         !element ||
@@ -86,11 +95,7 @@ export function NativeTooltip() {
           element.contains((event as MouseEvent).relatedTarget as Node))
       )
         return;
-      if (active && active !== element) hide();
-      timer = window.setTimeout(() => {
-        timer = null;
-        show(element);
-      }, TOOLTIP_DEFAULT_DELAY);
+      schedule(element);
     };
     const onOut = (event: Event) => {
       cancel();
@@ -99,9 +104,7 @@ export function NativeTooltip() {
       if (!(next instanceof Node) || !active.contains(next)) hide();
     };
     const onFocus = (event: Event) => {
-      cancel();
-      const element = targetOf(event);
-      if (element) show(element);
+      schedule(targetOf(event));
     };
     const onBlur = (event: Event) => {
       if (active && event.target instanceof Node && active.contains(event.target)) hide();
