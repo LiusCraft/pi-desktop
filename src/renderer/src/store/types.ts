@@ -224,6 +224,8 @@ export interface SessionView {
   previewUrl: string | null;
   /** User items not yet confirmed by pi. */
   pendingUser: string[];
+  /** A renderer-only request to return the transcript to the newest message after sending. */
+  scrollRequest: string | null;
   stopping: boolean;
   historyBusy: boolean;
   /** Start-up progress while the session is being made ready; null once it is. */

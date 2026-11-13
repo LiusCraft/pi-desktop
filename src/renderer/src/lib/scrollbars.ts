@@ -6,6 +6,9 @@ const SCROLL_KEYS = new Set(['ArrowDown', 'ArrowUp', 'End', 'Home', 'PageDown', 
 const timers = new WeakMap<Element, ReturnType<typeof setTimeout>>();
 const userScrollIntent = new WeakMap<Element, number>();
 
+/** Whether a recent input event explains a scroll event on this element. */
+export const hasUserScrollIntent = (el: Element) => (userScrollIntent.get(el) ?? 0) >= performance.now();
+
 const markUserScrollIntent = (target: EventTarget | null) => {
   const start = target instanceof Element ? target : document.scrollingElement;
   if (!start) return;

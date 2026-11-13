@@ -1022,6 +1022,7 @@ export async function send(queueOnly = false) {
       x.prefs.viewMode,
     );
     v.pendingUser.push(itemKey);
+    v.scrollRequest = itemKey;
     if (optimistic) {
       v.running = true;
       v.t0 = Date.now();

@@ -9,6 +9,7 @@ import { PET_PERCH } from '@/components/composer/Clawd';
 import { runningTasks } from '@/components/workspace/Panels';
 import { togglePanel } from '@/store/actions';
 import { useApp } from '@/store/app';
+import { hasUserScrollIntent } from '@/lib/scrollbars';
 import { collapsedItems } from '@/store/transcript';
 import { rememberScroll, savedScroll, type ScrollSpot } from '@/store/scroll';
 import type { Item, ItemOf, SessionView } from '@/store/types';
@@ -234,6 +235,7 @@ export function Transcript({ s }: { s: SessionView }) {
   const jumping = useRef(false);
   /** Last seen scroll offset and content height, to tell the user scrolling up from the content shrinking under the view. */
   const last = useRef({ top: 0, height: 0 });
+  const handledScrollRequest = useRef<string | null>(null);
   const [atBottom, setAtBottom] = useState(true);
   const sid = s.meta.id;
   const links = useMemo(() => quoteLinks(s.items), [s.items]);
@@ -291,6 +293,15 @@ export function Transcript({ s }: { s: SessionView }) {
     rememberScroll(sid, { top: el.scrollTop, stick: follow });
   };
 
+  const rememberPosition = (el: HTMLElement) => {
+    last.current = { top: el.scrollTop, height: el.scrollHeight };
+  };
+
+  const scrollToBottom = (el: HTMLElement) => {
+    el.scrollTop = el.scrollHeight;
+    rememberPosition(el);
+  };
+
   // Opening a session returns to where it was left, unless it was at the bottom (or moved on
   // while it was closed, in which case openSession dropped the remembered spot).
   useLayoutEffect(() => {
@@ -302,7 +313,8 @@ export function Transcript({ s }: { s: SessionView }) {
     // A spot at the very bottom counts as "following", exactly like a real scroll would.
     stick.current = goal.stick || gapToBottom(el) < FOLLOW_PX;
     setAtBottom(stick.current || nearBottom(el));
-    last.current = { top: el.scrollTop, height: el.scrollHeight };
+    rememberPosition(el);
+    handledScrollRequest.current = s.scrollRequest;
     const timer = window.setTimeout(endRestore, RESTORE_MS);
     return () => {
       window.clearTimeout(timer);
@@ -317,45 +329,51 @@ export function Transcript({ s }: { s: SessionView }) {
     const body = content.current;
     if (!el || !body) return;
     const observer = new ResizeObserver(() => {
-      last.current.height = el.scrollHeight;
       const goal = restoring.current;
       if (goal) el.scrollTop = goal.stick ? el.scrollHeight : goal.top;
-      else if (stick.current && !jumping.current) el.scrollTop = el.scrollHeight;
+      else if (stick.current && !jumping.current) scrollToBottom(el);
+      rememberPosition(el);
     });
     observer.observe(el);
     observer.observe(body);
     return () => observer.disconnect();
   }, []);
 
-  // Sending a message returns to the bottom, wherever the view was left.
-  const sentKey = useRef<string | null>(null);
-  const lastItem = s.items[s.items.length - 1];
-  const justSent = lastItem?.kind === 'user' && !lastItem.delivered ? lastItem.key : null;
+  // Sending a message returns to the bottom, wherever the view was left. The request is kept on
+  // the session instead of inferred from the last item: a fast response can append an assistant
+  // item before React renders the optimistic user item.
   useLayoutEffect(() => {
-    if (!justSent || justSent === sentKey.current) return;
-    sentKey.current = justSent;
+    const request = s.scrollRequest;
+    if (!request || request === handledScrollRequest.current) return;
+    handledScrollRequest.current = request;
     endRestore();
     stick.current = true;
     setAtBottom(true);
     const el = scroller.current;
-    if (el) rememberScroll(sid, { top: el.scrollHeight, stick: true });
-  }, [justSent]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (el) {
+      scrollToBottom(el);
+      rememberScroll(sid, { top: el.scrollTop, stick: true });
+    }
+  }, [s.scrollRequest]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Follow along while the conversation grows, as long as the user is near the bottom.
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (el && stick.current) el.scrollTop = el.scrollHeight;
+    if (el && stick.current) scrollToBottom(el);
   });
 
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
     const movedUp = el.scrollTop < last.current.top && el.scrollHeight >= last.current.height;
+    const userScroll = hasUserScrollIntent(el);
+    const gap = gapToBottom(el);
     last.current = { top: el.scrollTop, height: el.scrollHeight };
     if (jumping.current || restoring.current) return;
     // Going up lets go of the bottom at once; only coming back down to it follows again.
-    if (movedUp) stick.current = false;
-    else if (gapToBottom(el) < FOLLOW_PX) stick.current = true;
+    if (movedUp && userScroll) stick.current = false;
+    else if (gap < FOLLOW_PX) stick.current = true;
+    else if (stick.current && !userScroll) scrollToBottom(el);
     const showLatest = stick.current || nearBottom(el);
     setAtBottom((was) => (was === showLatest ? was : showLatest));
     rememberScroll(sid, { top: el.scrollTop, stick: stick.current });

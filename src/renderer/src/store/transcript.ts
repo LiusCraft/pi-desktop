@@ -65,6 +65,7 @@ export function emptySession(meta: SessionMeta): SessionView {
     detail: null,
     previewUrl: null,
     pendingUser: [],
+    scrollRequest: null,
     stopping: false,
     historyBusy: false,
     setup: null,
