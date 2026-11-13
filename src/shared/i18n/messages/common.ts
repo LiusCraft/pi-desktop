@@ -3,25 +3,25 @@ import { defineMessages } from '../define';
 export const common = defineMessages({
   'mode.auto': { en: 'Auto', zh: '自动' },
   'mode.auto.desc': {
-    en: 'Runs safe actions automatically; asks before risky ones such as pushing, opening PRs or deleting',
-    zh: '自动执行安全操作；推送、发 PR、删除等有风险的命令才询问',
+    en: 'Runs safe actions automatically; asks for risky actions',
+    zh: '安全操作自动执行，高风险操作询问',
   },
   'mode.default': { en: 'Ask permissions', zh: '逐项询问' },
-  'mode.default.desc': { en: 'Asks before editing files or running commands', zh: '编辑文件和运行命令前都先征求同意' },
+  'mode.default.desc': { en: 'Asks before edits and commands', zh: '编辑和运行命令前询问' },
   'mode.acceptEdits': { en: 'Accept edits', zh: '自动接受编辑' },
   'mode.acceptEdits.desc': {
-    en: 'Edits files in the project directly, asks before running commands',
-    zh: '直接修改项目内文件，运行命令前询问',
+    en: 'Accepts edits; asks before commands',
+    zh: '自动接受编辑，运行命令前询问',
   },
   'mode.plan': { en: 'Plan', zh: '计划' },
   'mode.plan.desc': {
-    en: 'Explores read-only and proposes a plan; acts after you approve',
-    zh: '只读探索，先给出计划，批准后再动手',
+    en: 'Read-only exploration; acts after approval',
+    zh: '只读探索，批准后执行',
   },
   'mode.bypass': { en: 'Bypass permissions', zh: '跳过权限' },
   'mode.bypass.desc': {
-    en: 'Never asks; only recommended in an isolated environment',
-    zh: '完全不询问，仅建议在隔离环境中使用',
+    en: 'Never asks; use only in isolated environments',
+    zh: '始终执行，仅适合隔离环境',
   },
 
   'level.off': { en: 'Off', zh: '关闭' },

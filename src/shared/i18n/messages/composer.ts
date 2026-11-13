@@ -9,7 +9,7 @@ export const composer = defineMessages({
   'menu.thinkingEffort': { en: 'Thinking effort', zh: '思考强度' },
   'menu.effort': { en: 'Effort', zh: '强度' },
   'menu.mode': { en: 'Mode', zh: '模式' },
-  'menu.modeLabel': { en: 'Mode · ⇧Tab to cycle', zh: '模式 · ⇧Tab 切换' },
+  'menu.modeLabel': { en: 'How should actions be approved?', zh: '应如何批准操作？' },
   'menu.context': { en: 'Context', zh: '上下文' },
   'menu.contextUsed': { en: 'Context: {pct}% used', zh: '上下文：已用 {pct}%' },
   'menu.contextUsage': { en: 'Context window usage', zh: '上下文窗口用量' },
