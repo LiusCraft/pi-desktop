@@ -274,6 +274,11 @@
   button {
     cursor: pointer;
   }
+  button:focus:not(:focus-visible),
+  [role='button']:focus:not(:focus-visible),
+  [role='menuitem']:focus:not(:focus-visible) {
+    outline: none;
+  }
 }
 
 /* ---------------------------------------------------------------- density
