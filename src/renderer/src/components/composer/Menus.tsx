@@ -68,14 +68,12 @@ export function FootButton({ children, className, title, ...props }: React.Compo
 function Option({
   active,
   title,
-  hint,
   icon: Icon,
   tone,
   onSelect,
 }: {
   active: boolean;
   title: ReactNode;
-  hint?: ReactNode;
   icon?: LucideIcon;
   tone?: string;
   onSelect: () => void;
@@ -83,7 +81,7 @@ function Option({
   return (
     <DropdownMenuItem
       onSelect={onSelect}
-      className={cn('items-start gap-2 py-2.5', active && 'bg-accent/70 focus:bg-accent')}
+      className={cn('items-center gap-2 py-1.5', active && 'bg-accent/70 focus:bg-accent')}
     >
       {Icon ? (
         <span
@@ -98,11 +96,8 @@ function Option({
       ) : (
         <CheckIcon className={cn('mt-0.5 size-3.5 shrink-0 text-primary', !active && 'invisible')} />
       )}
-      <span className="min-w-0">
-        <span className="block truncate font-medium">{title}</span>
-        {hint && <span className="mt-0.5 block text-[12px] leading-snug text-muted-foreground">{hint}</span>}
-      </span>
-      {Icon && <CheckIcon className={cn('mt-1 ml-auto size-4 shrink-0 text-primary', !active && 'invisible')} />}
+      <span className="min-w-0 truncate font-medium">{title}</span>
+      {Icon && <CheckIcon className={cn('ml-auto size-4 shrink-0 text-primary', !active && 'invisible')} />}
     </DropdownMenuItem>
   );
 }
@@ -364,7 +359,6 @@ export function ModeMenu({ mode }: { mode: PermissionMode }) {
             key={m.id}
             active={m.id === mode}
             title={m.name}
-            hint={m.desc}
             icon={MODE_ICON[m.id]}
             tone={MODE_TONE[m.id]}
             onSelect={() => setPermMode(m.id)}
