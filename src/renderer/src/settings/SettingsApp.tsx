@@ -47,6 +47,7 @@ import {
 import { BUILTIN_PETS, BUILTIN_PET_IDS, DEFAULT_PET_ID } from '@shared/pets';
 import { PET_SOUND_EVENTS, SOUND_EVENTS } from '@shared/sounds';
 import { useCopy } from '@/components/common/Copy';
+import { WindowControls } from '@/components/common/WindowControls';
 import { NativeTooltip } from '@/components/common/NativeTooltip';
 import { Segmented } from '@/components/common/Segmented';
 import { Button } from '@/components/ui/button';
@@ -1101,8 +1102,11 @@ export function SettingsApp() {
   return (
     <TooltipProvider delayDuration={TOOLTIP_DEFAULT_DELAY}>
       <div className="flex h-screen flex-col bg-background" data-platform={bridge.platform}>
-        <header className="app-drag titlebar-inset flex h-12 shrink-0 items-center justify-center border-b text-sm font-medium">
+        <header className="app-drag titlebar-inset relative flex h-11 shrink-0 items-center justify-center border-b text-sm font-medium">
           {t('settings.title')}
+          <div className="absolute top-0 right-0 h-full">
+            <WindowControls target="settings" />
+          </div>
         </header>
         <div className="flex min-h-0 flex-1">
           <nav className="w-56 shrink-0 overflow-y-auto border-r bg-sidebar p-3">

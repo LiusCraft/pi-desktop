@@ -5,6 +5,7 @@ import { remoteHasTerminals } from '@shared/remote';
 export const bridge = window.piDesktop;
 export const platform = bridge?.platform ?? 'darwin';
 export const isMac = platform === 'darwin';
+export const isWin32 = platform === 'win32';
 export const modKey = isMac ? '⌘' : 'Ctrl+';
 
 /** The window shows another machine's sessions (fixed for the life of the window): nothing here may touch this machine's files, editors or shells. */

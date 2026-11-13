@@ -34,6 +34,8 @@ import {
   type PushEvents,
   type Settings,
   type SettingsPayload,
+  type WindowControlAction,
+  type WindowTarget,
   type WorktreeInfo,
   UI_FONT_SIZE_DEFAULT,
   UI_FONT_SIZE_MAX,
@@ -115,6 +117,7 @@ if (process.platform === 'win32') app.setAppUserModelId('dev.pi-desktop.app');
 const DEMO_ALLOWED = !app.isPackaged;
 const DEMO = DEMO_ALLOWED && process.argv.includes('--demo');
 const isMac = process.platform === 'darwin';
+const isWin = process.platform === 'win32';
 let win: BrowserWindow | null = null;
 let settingsWin: BrowserWindow | null = null;
 let store: Store;
@@ -362,7 +365,7 @@ function createWindow() {
     title: 'Pi Desktop',
     backgroundColor: bgColor(dark),
     titleBarStyle: 'hidden',
-    ...(isMac ? { trafficLightPosition: { x: 18, y: 16 } } : { titleBarOverlay: overlay(dark) }),
+    ...(isMac ? { trafficLightPosition: { x: 18, y: 16 } } : !isWin ? { titleBarOverlay: overlay(dark) } : {}),
     webPreferences: { preload: PRELOAD, contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   if (saved?.maximized) win.maximize();
@@ -387,7 +390,7 @@ function createSettingsWindow(section?: string) {
     title: tr('settings.title'),
     backgroundColor: bgColor(dark),
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
-    ...(isMac ? { trafficLightPosition: { x: 16, y: 18 } } : { titleBarOverlay: overlay(dark) }),
+    ...(isMac ? { trafficLightPosition: { x: 16, y: 18 } } : !isWin ? { titleBarOverlay: overlay(dark) } : {}),
     show: false,
     maximizable: false,
     fullscreenable: false,
@@ -654,7 +657,7 @@ function applyThemeToWindows() {
   const dark = isDark();
   for (const w of [win, settingsWin, ...sideWindows.values()]) {
     if (!w || w.isDestroyed()) continue;
-    if (!isMac && (w === win || w === settingsWin)) w.setTitleBarOverlay(overlay(dark));
+    if (!isMac && !isWin && (w === win || w === settingsWin)) w.setTitleBarOverlay(overlay(dark));
     w.setBackgroundColor(bgColor(dark));
   }
 }
@@ -954,6 +957,15 @@ const handlers: MainHandlers = {
     defaultWorktreeDir: defaultWorktreeDir(dataDir()),
     versions: { electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node },
   }),
+  'window:control': (target: WindowTarget, action: WindowControlAction) => {
+    const w = target === 'settings' ? settingsWin : win;
+    if (!w || w.isDestroyed()) return;
+    if (action === 'minimize') w.minimize();
+    else if (action === 'maximize') {
+      if (w.isMaximized()) w.unmaximize();
+      else w.maximize();
+    } else w.close();
+  },
   'app:notify': ({ title, body, sessionId }) => {
     if (settingsValue().notify === false) return;
     if (!Notification.isSupported() || (win && !win.isDestroyed() && win.isFocused())) return;

@@ -431,8 +431,7 @@
 .no-drag {
   -webkit-app-region: no-drag;
 }
-/* Windows draws its own caption buttons over the top-right corner. */
-[data-platform='win32'] .titlebar-inset,
+/* Linux draws its own caption buttons over the top-right corner. */
 [data-platform='linux'] .titlebar-inset {
   padding-right: 148px;
 }

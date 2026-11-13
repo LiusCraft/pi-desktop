@@ -39,6 +39,7 @@ import { workIdeas, OUTPUT_STYLE_INFO, VIEW_MODES, type ViewMode } from '@/lib/c
 import { useT } from '@/lib/i18n';
 import { fname } from '@/lib/format';
 import { OpenInMenu } from '@/components/common/OpenInMenu';
+import { WindowControls } from '@/components/common/WindowControls';
 import { cn } from '@/lib/utils';
 import {
   archiveSession,
@@ -376,6 +377,7 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
           {title ?? (useApp.getState().view === 'work' ? t('main.newTask') : t('main.newSession'))}
         </span>
       )}
+      <WindowControls target="main" />
     </header>
   );
 }

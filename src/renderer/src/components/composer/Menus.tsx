@@ -67,11 +67,14 @@ function Option({
   onSelect: () => void;
 }) {
   return (
-    <DropdownMenuItem onSelect={onSelect} className="items-start gap-2 py-1.5">
-      <CheckIcon className={cn('mt-0.5 size-3.5 shrink-0', !active && 'invisible')} />
+    <DropdownMenuItem
+      onSelect={onSelect}
+      className={cn('items-start gap-2 py-2', active && 'bg-accent/70 focus:bg-accent')}
+    >
+      <CheckIcon className={cn('mt-0.5 size-3.5 shrink-0 text-primary', !active && 'invisible')} />
       <span className="min-w-0">
-        <span className="block truncate">{title}</span>
-        {hint && <span className="block text-xs text-muted-foreground">{hint}</span>}
+        <span className="block truncate font-medium">{title}</span>
+        {hint && <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">{hint}</span>}
       </span>
     </DropdownMenuItem>
   );

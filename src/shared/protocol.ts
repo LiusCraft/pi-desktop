@@ -1075,6 +1075,7 @@ export interface OpenTargetEntry {
 
 export interface Api {
   'app:info'(): AppInfo;
+  'window:control'(target: WindowTarget, action: WindowControlAction): void;
   'app:notify'(n: { title: string; body: string; sessionId?: string }): void;
   'app:openExternal'(url: string): void;
   /** Ask GitHub for the releases; `available` is set when one is newer than this app. */
@@ -1340,6 +1341,11 @@ export type ApiChannel = keyof Api;
 export type ApiArgs<K extends ApiChannel> = Parameters<Api[K]>;
 export type ApiResult<K extends ApiChannel> = Awaited<ReturnType<Api[K]>>;
 
+export const WINDOW_TARGETS = ['main', 'settings'] as const;
+export type WindowTarget = (typeof WINDOW_TARGETS)[number];
+export const WINDOW_CONTROL_ACTIONS = ['minimize', 'maximize', 'close'] as const;
+export type WindowControlAction = (typeof WINDOW_CONTROL_ACTIONS)[number];
+
 /** Calls the agent host serves; main forwards these without looking at them. */
 export const HOST_CHANNELS = [
   'sessions:list',
@@ -1458,6 +1464,7 @@ export const HOST_CHANNELS = [
 
 export const MAIN_CHANNELS = [
   'app:info',
+  'window:control',
   'app:notify',
   'app:openExternal',
   'update:check',

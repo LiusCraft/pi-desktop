@@ -26,8 +26,8 @@ export function OpenInMenu({
   return (
     <DropdownMenu onOpenChange={(o) => o && refreshOpenTargets()}>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuLabel className="text-xs text-muted-foreground">{t('open.label')}</DropdownMenuLabel>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel className="mb-0.5">{t('open.label')}</DropdownMenuLabel>
         {targets.map((o) => (
           <DropdownMenuItem key={o.id} onSelect={() => call('sessions:openIn', id, o.id).catch(fail)}>
             <OpenTargetIcon target={o} />

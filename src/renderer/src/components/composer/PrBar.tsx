@@ -478,7 +478,7 @@ function SplitButton({
                 key={a.act}
                 disabled={!a.enabled}
                 onSelect={() => run(a.command, a.prompt)}
-                className="items-start gap-2 py-1.5"
+                className={cn('items-start gap-2 py-2', a.act === primary && 'bg-accent/70 focus:bg-accent')}
               >
                 <CheckIcon className={cn('mt-0.5 size-3.5 shrink-0', a.act !== primary && 'invisible')} />
                 <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
