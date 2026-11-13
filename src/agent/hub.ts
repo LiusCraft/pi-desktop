@@ -559,7 +559,7 @@ export class SessionHub {
         baseCommit = (await git.mergeBase(cwd, headCommit)) ?? (await git.head(cwd)) ?? headCommit;
         external = true;
       } else if (root && headCommit && opts.worktree !== false) {
-        branch = `claude/${slug}`;
+        branch = `pi-desktop/${slug}`;
         if (opts.baseRef) {
           const from = await git.resolveRef(root, opts.baseRef);
           if (!from) throw new Error(`Branch not found: ${opts.baseRef}`);
