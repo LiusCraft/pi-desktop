@@ -35,6 +35,9 @@ import {
   type Settings,
   type SettingsPayload,
   type WorktreeInfo,
+  UI_FONT_SIZE_DEFAULT,
+  UI_FONT_SIZE_MAX,
+  UI_FONT_SIZE_MIN,
 } from '@shared/protocol';
 import { DEFAULT_PET_ID } from '@shared/pets';
 import { DEFAULT_SETTINGS } from '@shared/settings';
@@ -169,7 +172,13 @@ function ensureDemoProject() {
 
 // Preferences live in one place so every window reads the same values.
 function settingsValue(): Settings {
-  return { ...DEFAULT_SETTINGS, ...store.get<Partial<Settings>>('settings', {}) };
+  const settings = { ...DEFAULT_SETTINGS, ...store.get<Partial<Settings>>('settings', {}) };
+  const rawFontSize = settings.fontSize;
+  settings.fontSize =
+    typeof rawFontSize === 'number' && Number.isFinite(rawFontSize)
+      ? Math.min(UI_FONT_SIZE_MAX, Math.max(UI_FONT_SIZE_MIN, Math.round(rawFontSize)))
+      : UI_FONT_SIZE_DEFAULT;
+  return settings;
 }
 /** The language the app runs in: the setting, or the OS language when it follows the system. */
 function currentLocale() {

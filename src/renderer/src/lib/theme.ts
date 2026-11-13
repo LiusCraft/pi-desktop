@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { SettingsPayload } from '@shared/protocol';
-import { UI_DENSITY_LINE_SCALE, UI_DENSITY_SCALE, type UiDensity } from '@shared/protocol';
+import { UI_DENSITY_LINE_SCALE, UI_DENSITY_SCALE, UI_FONT_SIZE_DEFAULT, type UiDensity } from '@shared/protocol';
 import { bridge } from './api';
 
 /** A font setting as a CSS family list: a single name is quoted, a list the user wrote is kept as is. */
@@ -25,6 +25,12 @@ export function applyTheme(settings: Partial<SettingsPayload> | undefined) {
   document.documentElement.classList.toggle('dark', dark);
   document.documentElement.dataset.palette = settings?.palette ?? 'default';
   document.documentElement.dataset.density = density;
+  const fontSize =
+    typeof settings?.fontSize === 'number' && Number.isFinite(settings.fontSize)
+      ? settings.fontSize
+      : UI_FONT_SIZE_DEFAULT;
+  document.documentElement.style.setProperty('--ui-font-size', `${fontSize}px`);
+  document.documentElement.style.setProperty('--font-scale', String(fontSize / UI_FONT_SIZE_DEFAULT));
   document.documentElement.style.setProperty('--density-scale', String(UI_DENSITY_SCALE[density]));
   document.documentElement.style.setProperty('--density-line-scale', String(UI_DENSITY_LINE_SCALE[density]));
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light';

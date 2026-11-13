@@ -40,6 +40,9 @@ import {
   SUGGESTION_MAX_CONTEXT,
   TERMINAL_DEFAULT_LINES,
   TERMINAL_MAX_LINES,
+  UI_FONT_SIZE_DEFAULT,
+  UI_FONT_SIZE_MAX,
+  UI_FONT_SIZE_MIN,
 } from '@shared/protocol';
 import { BUILTIN_PETS, BUILTIN_PET_IDS, DEFAULT_PET_ID } from '@shared/pets';
 import { PET_SOUND_EVENTS, SOUND_EVENTS } from '@shared/sounds';
@@ -495,6 +498,15 @@ export function SettingsApp() {
               value={settings.density === 'comfortable' ? 'comfortable' : 'compact'}
               onChange={(id) => void patch({ density: id })}
               options={UI_DENSITIES.map((id) => ({ id, label: t(DENSITY_LABELS[id]) }))}
+            />
+          </Row>
+          <Row title={t('settings.fontSize')} hint={t('settings.fontSize.hint')}>
+            <CountInput
+              value={settings.fontSize ?? UI_FONT_SIZE_DEFAULT}
+              min={UI_FONT_SIZE_MIN}
+              max={UI_FONT_SIZE_MAX}
+              label={t('settings.fontSize')}
+              onCommit={(fontSize) => void patch({ fontSize })}
             />
           </Row>
           <Row title={t('settings.uiFont')}>

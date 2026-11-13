@@ -63,6 +63,8 @@ export const settings = defineMessages({
   },
   'settings.density.compact': { en: 'Compact', zh: '紧凑' },
   'settings.density.comfortable': { en: 'Comfortable', zh: '宽松' },
+  'settings.fontSize': { en: 'Font size', zh: '字体大小' },
+  'settings.fontSize.hint': { en: 'Base interface size in pixels.', zh: '界面基础字体大小，单位为像素。' },
   'settings.theme': { en: 'Theme', zh: '主题' },
   'settings.uiFont': { en: 'Interface font', zh: '界面字体' },
   'settings.codeFont': { en: 'Code font', zh: '代码字体' },

@@ -5,6 +5,7 @@ import {
   SUGGESTION_DEFAULT_CONTEXT,
   TERMINAL_DEFAULT_LINES,
   type Settings,
+  UI_FONT_SIZE_DEFAULT,
 } from './protocol';
 
 /** What a setting is until the user changes it; `theme: null` means "not chosen yet": follow the system. */
@@ -12,6 +13,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: null,
   palette: 'default',
   density: 'compact',
+  fontSize: UI_FONT_SIZE_DEFAULT,
   uiFont: null,
   codeFont: null,
   language: 'system',

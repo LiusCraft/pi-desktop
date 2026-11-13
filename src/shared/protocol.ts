@@ -893,6 +893,9 @@ export const UI_DENSITY_LINE_SCALE: Record<UiDensity, number> = {
   compact: 0.96,
   comfortable: 1.04,
 };
+export const UI_FONT_SIZE_DEFAULT = 14;
+export const UI_FONT_SIZE_MIN = 10;
+export const UI_FONT_SIZE_MAX = 24;
 /**
  * How the model's shell commands keep their folder. `session` runs them in one shell that stays
  * alive, so a `cd` or an `export` carries over to the next command (the way Claude Code behaves);
@@ -923,6 +926,8 @@ export interface Settings {
   theme: ThemeSetting | null;
   palette: Palette;
   density: UiDensity;
+  /** Base interface font size in pixels. */
+  fontSize: number;
   /** Font family for the interface and for code/terminal (a name or a CSS list); null uses the system fonts. */
   uiFont: string | null;
   codeFont: string | null;
