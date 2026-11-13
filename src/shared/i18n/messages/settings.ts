@@ -56,6 +56,13 @@ export const settings = defineMessages({
   'settings.palette': { en: 'Colors', zh: '配色' },
   'settings.paletteDefault': { en: 'Default', zh: '默认' },
   'settings.paletteVscode': { en: 'VS Code', zh: 'VS Code' },
+  'settings.density': { en: 'Interface density', zh: '界面密度' },
+  'settings.density.hint': {
+    en: 'Choose how much space the interface uses between controls and content.',
+    zh: '选择控件和内容之间的留白大小。',
+  },
+  'settings.density.compact': { en: 'Compact', zh: '紧凑' },
+  'settings.density.comfortable': { en: 'Comfortable', zh: '宽松' },
   'settings.theme': { en: 'Theme', zh: '主题' },
   'settings.uiFont': { en: 'Interface font', zh: '界面字体' },
   'settings.codeFont': { en: 'Code font', zh: '代码字体' },
