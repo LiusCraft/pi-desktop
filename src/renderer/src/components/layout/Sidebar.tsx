@@ -6,6 +6,8 @@ import {
   ChevronRightIcon,
   ClockIcon,
   EllipsisIcon,
+  FolderIcon,
+  FolderOpenIcon,
   CodeXmlIcon,
   FlameIcon,
   GitMergeIcon,
@@ -717,9 +719,7 @@ function FolderHeader({
             aria-expanded={!folded}
             onClick={onToggle}
           >
-            <ChevronDownIcon
-              className={cn('size-3.5 shrink-0 transition-transform duration-200', folded && '-rotate-90')}
-            />
+            {folded ? <FolderIcon className="size-3.5 shrink-0" /> : <FolderOpenIcon className="size-3.5 shrink-0" />}
             <span className="truncate">{fname(path)}</span>
           </button>
           <DropdownMenu>

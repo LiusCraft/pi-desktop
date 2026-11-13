@@ -316,7 +316,7 @@ pi 默认每条命令起一个进程，一条命令里的 `cd` 到下一条就�
 
 | | Code | Work |
 |---|---|---|
-| 工作目录 | 项目的独立 worktree（`claude/<名字>` 分支，默认在 `~/.pi-desktop/.worktree`，可在设置里改根目录） | 选定的文件夹，直接修改；或新建的临时工作区（`~/.pi-desktop/work`） |
+| 工作目录 | 项目的独立 worktree（`pi-desktop/<名字>` 分支，默认在 `~/.pi-desktop/.worktree`，可在设置里改根目录） | 选定的文件夹，直接修改；或新建的临时工作区（`~/.pi-desktop/work`） |
 | 会话配置 | desktop-kit profile `code` | desktop-kit profile `work`，追加系统提示 `src/agent/work-prompt.md` |
 | 右侧面板 | Diff、计划、子 agent、终端、预览 | 进度、生成的文件（可预览、打开、在文件夹中显示）、上下文 |
 | 底部 | PR 条 + CI 状态 | — |

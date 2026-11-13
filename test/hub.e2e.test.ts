@@ -144,7 +144,7 @@ describe('code sessions', { timeout: 120_000 }, () => {
 
   it('auto mode: fixes the bug end to end in an isolated worktree, without prompts', async () => {
     const { project, meta } = await codeSession('auto', true);
-    expect(meta.branch).toMatch(/^claude\//);
+    expect(meta.branch).toMatch(/^pi-desktop\//);
     expect(meta.cwd).not.toBe(project);
     expect(meta.cwd.startsWith(path.join(tmp, 'data', '.worktree') + path.sep), 'default worktree root').toBe(true);
     const opened = await driver.hub.open(meta.id);
