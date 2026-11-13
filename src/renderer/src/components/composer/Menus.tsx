@@ -81,15 +81,11 @@ function Option({
   onSelect: () => void;
 }) {
   return (
-    <DropdownMenuItem
-      onSelect={onSelect}
-      className={cn('items-center gap-2 py-1.5', active && 'bg-accent/70 focus:bg-accent')}
-    >
+    <DropdownMenuItem onSelect={onSelect} className="items-center gap-2 py-1.5">
       {Icon ? (
         <span
           className={cn(
             'mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/50 text-muted-foreground',
-            active && 'border-primary/20 bg-primary/10 text-primary',
             tone,
           )}
         >
