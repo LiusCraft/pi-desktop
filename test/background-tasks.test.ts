@@ -82,7 +82,9 @@ describe('background tasks', () => {
       .get('pidesk_bg_shell')
       .execute('call-1', { command: 'node -e "setInterval(() => {}, 1000)"' }, undefined, undefined, ctx);
     expect(stops.has('call-1')).toBe(true);
-    await tools.get('pidesk_bg_kill').execute('call-2', { id: 'call-1' });
+    const running = await tools.get('pidesk_bg_output').execute('call-2', { id: 'call-1' });
+    expect(text(running)).toMatch(/still running; confirm app or server readiness/);
+    await tools.get('pidesk_bg_kill').execute('call-3', { id: 'call-1' });
 
     await until(() => messages.length > 0);
     expect(messages[0].options.triggerTurn).toBe(false);
