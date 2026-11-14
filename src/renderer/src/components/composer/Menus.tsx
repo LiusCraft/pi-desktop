@@ -21,6 +21,7 @@ import { cacheHitRate } from '@shared/usage';
 import { Button } from '@/components/ui/button';
 import { ModelVendorIcon } from '@/components/common/ModelVendorIcon';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { ModelDetails } from './model-details';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipHint, TooltipTrigger } from '@/components/ui/tooltip';
 import { Tip } from '@/components/common/Tip';
@@ -161,17 +162,14 @@ export function ModelMenu({
                       className="items-start gap-2 py-1 text-[13px]"
                     >
                       <ModelVendorIcon model={m} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px]">{m.name || m.id}</span>
-                        <span className="block text-[11px] text-muted-foreground">
-                          {[
-                            m.contextWindow ? t('menu.contextWindowUsed', { size: fmtTok(m.contextWindow) }) : '',
-                            m.reasoning ? t('menu.reasoning') : '',
-                          ]
-                            .filter(Boolean)
-                            .join(' · ')}
-                        </span>
-                      </span>
+                      <Tooltip delayDuration={0}>
+                        <TooltipTrigger asChild>
+                          <span className="min-w-0 flex-1 cursor-default truncate">{m.name || m.id}</span>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" align="start" className="z-[60] max-w-none p-3">
+                          <ModelDetails model={m} t={t} />
+                        </TooltipContent>
+                      </Tooltip>
                       {id === model && <CheckIcon className="ml-auto size-3.5 shrink-0 self-center" />}
                     </CommandItem>
                   );
