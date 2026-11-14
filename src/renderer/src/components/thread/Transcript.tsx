@@ -176,9 +176,7 @@ function StatusLine({ s }: { s: SessionView }) {
     <div className="flex min-w-0 items-center gap-2 overflow-hidden text-sm whitespace-nowrap text-muted-foreground">
       <span className="spark spin shrink-0" />
       {s.running && (
-        <span className="shrink-0">
-          {t('transcript.tokens', { dur: fmtDur(elapsed), tokens: fmtTok(s.tokens) })}
-        </span>
+        <span className="shrink-0">{t('transcript.tokens', { dur: fmtDur(elapsed), tokens: fmtTok(s.tokens) })}</span>
       )}
       {tasks > 0 && (
         <button

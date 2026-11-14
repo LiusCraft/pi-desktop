@@ -45,15 +45,13 @@ function SessionRate({ s }: { s: SessionView }) {
     const timer = window.setInterval(() => tick((n) => n + 1), 500);
     return () => window.clearInterval(timer);
   }, [s.running]);
-  const activeStreamMs = s.running
-    ? s.streamMs + (s.cur?.streamT0 ? Math.max(0, Date.now() - s.cur.streamT0) : 0)
-    : 0;
+  const activeStreamMs = s.running ? s.streamMs + (s.cur?.streamT0 ? Math.max(0, Date.now() - s.cur.streamT0) : 0) : 0;
   const elapsed = s.sessionStreamMs + activeStreamMs;
   const tokens = s.sessionTokens + (s.running ? s.streamTokens : 0);
   const rate = fmtTokPerSec(tokens, elapsed);
   return (
     <span
-      className="min-w-20 px-1 text-xs tabular-nums whitespace-nowrap text-muted-foreground"
+      className="min-w-20 px-1 text-xs whitespace-nowrap text-muted-foreground tabular-nums"
       title={t('transcript.rateTip')}
     >
       {t('transcript.rate', { rate })}
