@@ -36,7 +36,9 @@ const gitSafe = (cwd: string, ...args: string[]) => run('git', args, cwd, { allo
 /** How long a repository's remotes are trusted before the next background fetch. */
 const FETCH_INTERVAL_MS = 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 60 * 1000;
+const WORKTREE_FETCH_TIMEOUT_MS = 5 * 1000;
 const lastFetch = new Map<string, number>();
+const remoteFetches = new Map<string, Promise<boolean>>();
 
 /**
  * Refresh the remote-tracking refs, at most once per interval per repository (worktrees share one).
@@ -55,6 +57,75 @@ export async function fetchIfDue(cwd: string): Promise<boolean> {
     env: { GIT_TERMINAL_PROMPT: '0' },
   });
   return out !== null;
+}
+
+/** The configured remotes, in Git's order. */
+export async function remotes(dir: string) {
+  const out = await gitSafe(dir, 'remote');
+  return (out ?? '')
+    .split('\n')
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+async function configuredRemote(dir: string, branch: string | null) {
+  if (!branch || branch === 'HEAD') return null;
+  const remote = (await gitSafe(dir, 'config', '--get', `branch.${branch}.remote`))?.trim();
+  return remote && remote !== '.' ? remote : null;
+}
+
+/** Pick the remote associated with a branch, then the repository's default remote. */
+export async function baseRemote(dir: string, branch?: string | null) {
+  const configured = await configuredRemote(dir, branch ?? (await currentBranch(dir)));
+  if (configured) return configured;
+  const names = await remotes(dir);
+  for (const name of names) {
+    const head = (await gitSafe(dir, 'symbolic-ref', '--quiet', '--short', `refs/remotes/${name}/HEAD`))?.trim();
+    if (head && (await resolveRef(dir, head))) return name;
+  }
+  return names[0] ?? null;
+}
+
+async function remotePart(dir: string, ref: string) {
+  for (const remote of await remotes(dir)) {
+    if (ref.startsWith(`${remote}/`) && (await resolveRef(dir, ref)))
+      return { remote, branch: ref.slice(remote.length + 1) };
+  }
+  return null;
+}
+
+/** The remote used by a ref, or the best remote for this checkout when it is local. */
+export async function remoteForRef(dir: string, ref?: string | null) {
+  const remote = ref ? await remotePart(dir, ref) : null;
+  return remote?.remote ?? (ref ? await configuredRemote(dir, ref) : null) ?? (await baseRemote(dir));
+}
+
+/** The remote-tracking ref corresponding to a logical branch, when it exists. */
+export async function remoteBranch(dir: string, branch: string | null) {
+  if (!branch) return null;
+  const remote = await remoteForRef(dir, branch);
+  const ref = remote ? `${remote}/${branch}` : null;
+  return ref && (await resolveRef(dir, ref)) ? ref : null;
+}
+
+/** Refresh the selected base remote before creating a worktree, without moving any local branch. */
+export async function fetchBase(cwd: string, ref?: string | null): Promise<boolean> {
+  const remote = await remoteForRef(cwd, ref);
+  if (!remote) return false;
+  const common = (await gitSafe(cwd, 'rev-parse', '--git-common-dir'))?.trim();
+  if (!common) return false;
+  const key = `${path.resolve(cwd, common)}\0${remote}`;
+  const pending = remoteFetches.get(key);
+  if (pending) return pending;
+  const next = run('git', ['fetch', '--quiet', remote], cwd, {
+    allowFail: true,
+    timeout: WORKTREE_FETCH_TIMEOUT_MS,
+    env: { GIT_TERMINAL_PROMPT: '0' },
+  })
+    .then((out) => out !== null)
+    .finally(() => remoteFetches.delete(key));
+  remoteFetches.set(key, next);
+  return next;
 }
 
 export async function repoRoot(dir: string) {
@@ -81,7 +152,11 @@ export async function branches(dir: string) {
   const remote = refs
     .filter((r) => r.startsWith('refs/remotes/') && !r.endsWith('/HEAD'))
     .map((r) => r.slice('refs/remotes/'.length));
-  return [...local, ...remote.filter((r) => !local.includes(r.slice(r.indexOf('/') + 1)))];
+  return [...local, ...remote];
+}
+/** Strip a remote-tracking prefix when a ref is used as a logical base branch. */
+export async function branchName(dir: string, ref: string) {
+  return (await remotePart(dir, ref))?.branch ?? ref;
 }
 /** The commit a branch or ref points at, or null when it does not exist. */
 export async function resolveRef(dir: string, ref: string) {
@@ -119,11 +194,15 @@ export async function mergeBase(cwd: string, other: string) {
   return out ? out.trim() : null;
 }
 
-/** The repository's default branch: what origin points at, else a main/master that exists. */
+/** The repository's default branch on the selected remote, else a local main/master. */
 export async function defaultBranch(dir: string) {
-  const origin = (await gitSafe(dir, 'symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'))?.trim();
-  if (origin && (await resolveRef(dir, origin))) return origin;
-  for (const name of ['main', 'master', 'origin/main', 'origin/master']) if (await resolveRef(dir, name)) return name;
+  const remote = await baseRemote(dir);
+  if (remote) {
+    const head = (await gitSafe(dir, 'symbolic-ref', '--quiet', '--short', `refs/remotes/${remote}/HEAD`))?.trim();
+    if (head && (await resolveRef(dir, head))) return head;
+    for (const name of [`${remote}/main`, `${remote}/master`]) if (await resolveRef(dir, name)) return name;
+  }
+  for (const name of ['main', 'master']) if (await resolveRef(dir, name)) return name;
   return null;
 }
 
@@ -154,8 +233,9 @@ export async function diffBase(cwd: string, base: string | null, baseBranch: str
   if (baseBranch && baseBranch !== (await currentBranch(cwd))) {
     // The remote copy may be ahead of the local base (a PR merged there): take whichever fork point is newer.
     let fork: string | null = null;
-    for (const ref of [baseBranch, `origin/${baseBranch}`]) {
-      if (!(await resolveRef(cwd, ref))) continue;
+    const remoteBase = await remoteBranch(cwd, baseBranch);
+    for (const ref of [baseBranch, remoteBase]) {
+      if (!ref || !(await resolveRef(cwd, ref))) continue;
       const candidate = await mergeBase(cwd, ref);
       if (candidate && (!fork || (await gitSafe(cwd, 'merge-base', '--is-ancestor', fork, candidate)) !== null))
         fork = candidate;
@@ -177,8 +257,9 @@ async function squashMerged(cwd: string, fork: string, baseBranch: string): Prom
   const names = (await gitSafe(cwd, 'diff', '--name-only', '-z', fork, 'HEAD')) || '';
   const files = names.split('\0').filter(Boolean);
   if (!files.length) return false;
-  for (const ref of [`origin/${baseBranch}`, baseBranch]) {
-    if (!(await resolveRef(cwd, ref))) continue;
+  const remoteBase = await remoteBranch(cwd, baseBranch);
+  for (const ref of [remoteBase, baseBranch]) {
+    if (!ref || !(await resolveRef(cwd, ref))) continue;
     if ((await gitSafe(cwd, 'diff', '--quiet', ref, 'HEAD', '--', ...files)) !== null) return true;
   }
   return false;
@@ -327,7 +408,7 @@ export async function changeContent(
 }
 
 /** Uncommitted paths plus upstream tracking: what the composer's branch bar reports. */
-export async function workState(cwd: string, baseBranch: string | null = null, remoteBase = false): Promise<GitState> {
+export async function workState(cwd: string, baseBranch: string | null = null): Promise<GitState> {
   const status = (await gitSafe(cwd, 'status', '--porcelain', '-z', '--no-renames')) || '';
   const dirty: string[] = [];
   for (const entry of status.split('\0')) if (entry.length > 3) dirty.push(entry.slice(3));
@@ -337,16 +418,18 @@ export async function workState(cwd: string, baseBranch: string | null = null, r
   const [ahead, behind] = await Promise.all([count('@{u}..HEAD'), count('HEAD..@{u}')]);
   // The base only matters when the session sits on another branch and the base ref still exists.
   const onBase = !baseBranch || baseBranch === (await currentBranch(cwd));
-  // A PR's target is judged by the remote's copy: that is what the PR will be merged into.
+  // A PR's target is judged by the selected remote's copy: that is what the PR will be merged into.
   let base: string | null = null;
-  if (!onBase)
-    for (const ref of remoteBase ? [`origin/${baseBranch}`, baseBranch!] : [baseBranch!])
-      if (await resolveRef(cwd, ref)) {
+  if (!onBase) {
+    const remoteBase = await remoteBranch(cwd, baseBranch);
+    for (const ref of [remoteBase, baseBranch])
+      if (ref && (await resolveRef(cwd, ref))) {
         base = ref;
         break;
       }
+  }
   const baseBehind = base ? Number((await gitSafe(cwd, 'rev-list', '--count', `HEAD..${base}`))?.trim()) || 0 : 0;
-  const [forge, remotes] = await Promise.all([originForge(cwd), gitSafe(cwd, 'remote')]);
+  const [forge, remotes] = await Promise.all([remoteForge(cwd), gitSafe(cwd, 'remote')]);
   const hasRemote = !!remotes?.trim();
   return {
     dirty,
@@ -360,9 +443,10 @@ export async function workState(cwd: string, baseBranch: string | null = null, r
   };
 }
 
-/** The code host `origin` belongs to, when the host name gives it away. */
-export async function originForge(cwd: string): Promise<Forge | null> {
-  return forgeOfUrl(await gitSafe(cwd, 'remote', 'get-url', 'origin'));
+/** The code host for the checkout's selected base remote, when the host name gives it away. */
+export async function remoteForge(cwd: string): Promise<Forge | null> {
+  const remote = await baseRemote(cwd);
+  return forgeOfUrl(remote ? await gitSafe(cwd, 'remote', 'get-url', remote) : null);
 }
 
 export async function listFiles(cwd: string, limit = 3000): Promise<string[]> {
@@ -420,7 +504,7 @@ export async function prStatus(cwd: string): Promise<PrStatus | null> {
 
 /** Which CLI talks to this repo's PR: the remote's name says, else whichever finds a PR for the branch. */
 async function prForge(cwd: string): Promise<Forge> {
-  const known = await originForge(cwd);
+  const known = await remoteForge(cwd);
   if (known) return known;
   return (await run('gh', ['pr', 'view', '--json', 'number'], cwd, { allowFail: true })) ? 'github' : 'gitlab';
 }
@@ -600,7 +684,7 @@ export function groupThreads(rows: any[]): PrThread[] {
 
 /** The remote's name picks the CLI; a host we cannot tell by name (self-hosted) gets both, GitHub first. */
 export async function readPr(cwd: string): Promise<PrSnapshot | null> {
-  const known = await originForge(cwd);
+  const known = await remoteForge(cwd);
   for (const forge of known ? [known] : (['github', 'gitlab'] as const)) {
     const snapshot = forge === 'github' ? await readGithubPr(cwd) : await readGitlabPr(cwd);
     if (snapshot) return snapshot;

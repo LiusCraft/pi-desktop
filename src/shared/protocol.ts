@@ -1251,6 +1251,8 @@ export interface Api {
   'sessions:importable'(projectPath: string): ImportableSession[];
   'git:branch'(dir: string): string | null;
   'git:branches'(dir: string): string[];
+  'git:defaultBranch'(dir: string): string | null;
+  'git:refresh'(dir: string): boolean;
   'sessions:import'(file: string): SessionMeta;
   'agents:list'(): AgentCatalog;
   /** Tools worth suggesting in an allowlist: the built-ins plus whatever open sessions have loaded (MCP included). */
@@ -1406,6 +1408,8 @@ export const HOST_CHANNELS = [
   'sessions:import',
   'git:branch',
   'git:branches',
+  'git:defaultBranch',
+  'git:refresh',
   'agents:list',
   'agents:tools',
   'agents:save',

@@ -544,7 +544,14 @@ export class SessionHub {
       const projectPath = opts.projectPath;
       if (!projectPath) throw new Error('Choose a project first');
       const root = await git.repoRoot(projectPath);
+      const wantsWorktree = !!root && opts.worktree !== false && !opts.adoptPath;
+      if (root && wantsWorktree) await git.fetchBase(root, opts.baseRef);
       const headCommit = root ? await git.head(root) : null;
+      let baseRef = opts.baseRef;
+      if (root && wantsWorktree && !baseRef) {
+        const defaultRef = await git.defaultBranch(root);
+        if (defaultRef) baseRef = defaultRef;
+      }
       let baseCommit = headCommit;
       let cwd = projectPath;
       let branch = root ? await git.currentBranch(root) : null;
@@ -560,11 +567,11 @@ export class SessionHub {
         external = true;
       } else if (root && headCommit && opts.worktree !== false) {
         branch = `pi-desktop/${slug}`;
-        if (opts.baseRef) {
-          const from = await git.resolveRef(root, opts.baseRef);
-          if (!from) throw new Error(`Branch not found: ${opts.baseRef}`);
+        if (baseRef) {
+          const from = await git.resolveRef(root, baseRef);
+          if (!from) throw new Error(`Branch not found: ${baseRef}`);
           baseCommit = from;
-          baseBranch = opts.baseRef;
+          baseBranch = await git.branchName(root, baseRef);
         }
         // The root is configurable in Settings; existing sessions keep their recorded cwd.
         cwd = path.join(this.worktreeRoot(), `${path.basename(root)}-${slug}`);
@@ -2350,7 +2357,7 @@ export class SessionHub {
     const prBase = this.prBases.get(id);
     const [files, state, root] = await Promise.all([
       git.changes(m.cwd, base),
-      git.workState(m.cwd, prBase ?? m.baseBranch, !!prBase),
+      git.workState(m.cwd, prBase ?? m.baseBranch),
       git.repoRoot(m.cwd),
     ]);
     return { repo: !!root, files, state };

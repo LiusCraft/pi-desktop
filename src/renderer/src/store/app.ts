@@ -101,7 +101,7 @@ export interface AppState {
   importable: ImportableSession[];
   /** Current git branch of the selected project (new-session chips). */
   projectBranch: string | null;
-  /** Branches of the selected project, and the one the next worktree starts from (null: the current branch). */
+  /** Branches of the selected project, and the ref the next worktree starts from. */
   projectBranches: string[];
   baseRef: string | null;
   sessions: Record<string, SessionView>;

@@ -89,6 +89,8 @@ export function sessionHandlers(
     'sessions:import': withHub((h, file) => h.importSession(file)),
     'git:branch': (dir) => git.currentBranch(dir),
     'git:branches': (dir) => git.branches(dir),
+    'git:defaultBranch': (dir) => git.defaultBranch(dir),
+    'git:refresh': (dir) => git.fetchBase(dir),
     'agents:list': withHub((h) => h.agentCatalog()),
     'agents:tools': withHub((h) => h.toolOptions()),
     'agents:save': withHub((h, draft) => h.saveAgent(draft)),
