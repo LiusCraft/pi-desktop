@@ -185,7 +185,16 @@ export interface SessionView {
   /** A manual or automatic compaction is running: the session is busy, but not in a turn. */
   compacting: boolean;
   t0: number;
+  /** Output tokens emitted during this turn, reconciled with the provider's final usage when available. */
   tokens: number;
+  /** Visible output tokens emitted during assistant streams in this turn. */
+  streamTokens: number;
+  /** Milliseconds spent in assistant thinking/text streams during this turn. */
+  streamMs: number;
+  /** Visible output tokens accumulated across completed turns in this session. */
+  sessionTokens: number;
+  /** Assistant stream time accumulated across completed turns in this session. */
+  sessionStreamMs: number;
   statusText: string;
   ctxPct: number | null;
   /** Cache hit rate of the session's prompt tokens, 0-1; null when the provider reported none. */
@@ -233,5 +242,13 @@ export interface SessionView {
   /** Bumped when the agent host exits; in-flight work from before must not apply. */
   hostEpoch: number;
   /** Streaming message state. */
-  cur: { thinkGroup: string | null; thinkIndex: number; text: string | null } | null;
+  cur: {
+    thinkGroup: string | null;
+    thinkIndex: number;
+    text: string | null;
+    streamChars: number;
+    streamTextChars: number;
+    streamTokens: number;
+    streamT0: number;
+  } | null;
 }

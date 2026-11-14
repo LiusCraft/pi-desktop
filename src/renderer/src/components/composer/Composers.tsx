@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ArrowUpIcon,
   ChevronDownIcon,
@@ -25,16 +25,39 @@ import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipHint, TooltipTrigger } from '@/components/ui/tooltip';
 import { modKey } from '@/lib/api';
 import { useT } from '@/lib/i18n';
-import { fname } from '@/lib/format';
+import { fmtTokPerSec, fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { addWorkFolder, addProject, selectProject, send, setWorkFolder, stop } from '@/store/actions';
 import { modelName, setApp, setPref, useApp, useCurrent } from '@/store/app';
 import { useDrafts } from '@/store/drafts';
+import type { SessionView } from '@/store/types';
 import { bashRunning } from '@/store/transcript';
 import { Clawd, moodOf, PET_GROUND } from './Clawd';
 import { ComposerInput, pickAttachments, type ComposerHandle } from './ComposerInput';
 import { ContextRing, EffortMenu, FootButton, ModeMenu, ModelMenu } from './Menus';
 import { PrBar } from './PrBar';
+
+function SessionRate({ s }: { s: SessionView }) {
+  const t = useT();
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!s.running) return;
+    const timer = window.setInterval(() => tick((n) => n + 1), 500);
+    return () => window.clearInterval(timer);
+  }, [s.running]);
+  const activeStreamMs = s.running ? s.streamMs + (s.cur?.streamT0 ? Math.max(0, Date.now() - s.cur.streamT0) : 0) : 0;
+  const elapsed = s.sessionStreamMs + activeStreamMs;
+  const tokens = s.sessionTokens + (s.running ? s.streamTokens : 0);
+  const rate = fmtTokPerSec(tokens, elapsed);
+  return (
+    <span
+      className="min-w-20 px-1 text-xs whitespace-nowrap text-muted-foreground tabular-nums"
+      title={t('transcript.rateTip')}
+    >
+      {t('transcript.rate', { rate })}
+    </span>
+  );
+}
 
 function useSendState() {
   const s = useCurrent();
@@ -277,6 +300,7 @@ export function CodeComposer() {
           <PlusIcon className="size-4" />
         </FootButton>
         <ModeMenu mode={s ? s.meta.mode : prefs.mode} />
+        {s && <SessionRate s={s} />}
         <span className="flex-1" />
         <ModelMenu
           model={s ? s.model : prefs.model}

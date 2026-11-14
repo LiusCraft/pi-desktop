@@ -38,6 +38,11 @@ export function fmtDur(ms: number) {
 
 export const fmtTok = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
+/** Format a streaming output rate as whole tokens per second. */
+export function fmtTokPerSec(tokens: number, ms: number) {
+  return tokens > 0 && ms > 0 ? String(Math.round((tokens * 1000) / ms)) : '0';
+}
+
 /** A nested tool call's duration: "84ms" / "1.2s". */
 export const fmtMs = (ms: number) => (ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`);
 

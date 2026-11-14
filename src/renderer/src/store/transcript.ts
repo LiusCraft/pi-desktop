@@ -27,6 +27,7 @@ export interface Effects {
 }
 
 let seq = 0;
+const ESTIMATED_CHARS_PER_TOKEN = 3;
 export const newKey = () => `i${++seq}`;
 
 export function emptySession(meta: SessionMeta): SessionView {
@@ -38,6 +39,10 @@ export function emptySession(meta: SessionMeta): SessionView {
     compacting: false,
     t0: 0,
     tokens: 0,
+    streamTokens: 0,
+    streamMs: 0,
+    sessionTokens: 0,
+    sessionStreamMs: 0,
     statusText: '',
     ctxPct: null,
     cacheRate: null,
@@ -338,8 +343,37 @@ export function applyTaskUpdate(s: SessionView, u: TaskUpdate) {
 
 // ------------------------------------------------------------ streaming
 
+function beginStream(c: NonNullable<SessionView['cur']>) {
+  if (!c.streamT0) c.streamT0 = Date.now();
+}
+
+function closeStream(s: SessionView, c: NonNullable<SessionView['cur']>) {
+  if (!c.streamT0) return;
+  s.streamMs += Math.max(0, Date.now() - c.streamT0);
+  c.streamT0 = 0;
+}
+
+function addStreamDelta(s: SessionView, c: NonNullable<SessionView['cur']>, delta: string) {
+  if (!delta) return;
+  beginStream(c);
+  const previous = c.streamTokens;
+  c.streamChars += delta.length;
+  c.streamTokens = Math.ceil(c.streamChars / ESTIMATED_CHARS_PER_TOKEN);
+  const added = c.streamTokens - previous;
+  s.tokens += added;
+  s.streamTokens += added;
+}
+
 function assistantDelta(s: SessionView, ame: any, view: ViewMode) {
-  const c = (s.cur ??= { thinkGroup: null, thinkIndex: -1, text: null });
+  const c = (s.cur ??= {
+    thinkGroup: null,
+    thinkIndex: -1,
+    text: null,
+    streamChars: 0,
+    streamTextChars: 0,
+    streamTokens: 0,
+    streamT0: 0,
+  });
   const thought = () => {
     const g = findByKey(s, c.thinkGroup);
     return g?.kind === 'group' ? g.thoughts[c.thinkIndex] : undefined;
@@ -357,12 +391,16 @@ function assistantDelta(s: SessionView, ame: any, view: ViewMode) {
   switch (ame.type) {
     case 'thinking_start':
       addThought();
+      beginStream(c);
       s.statusText = t('status.thinking');
       break;
-    case 'thinking_delta':
+    case 'thinking_delta': {
       if (!thought()) addThought();
-      thought()!.text += ame.delta;
+      const delta = String(ame.delta ?? '');
+      thought()!.text += delta;
+      addStreamDelta(s, c, delta);
       break;
+    }
     case 'thinking_end': {
       const step = thought();
       if (step) {
@@ -373,12 +411,16 @@ function assistantDelta(s: SessionView, ame: any, view: ViewMode) {
     }
     case 'text_start':
       c.text = push(s, { kind: 'text', key: newKey(), text: '', live: true }, view).key;
+      beginStream(c);
       s.statusText = t('status.responding');
       break;
     case 'text_delta': {
+      const delta = String(ame.delta ?? '');
+      if (!delta) break;
       if (!liveText()) c.text = push(s, { kind: 'text', key: newKey(), text: '', live: true }, view).key;
-      liveText()!.text += ame.delta;
-      s.tokens += Math.ceil(String(ame.delta).length / 3);
+      liveText()!.text += delta;
+      c.streamTextChars += delta.length;
+      addStreamDelta(s, c, delta);
       break;
     }
     case 'text_end': {
@@ -444,12 +486,23 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
         s.running = true;
         s.t0 = Date.now();
         s.tokens = 0;
+        s.streamTokens = 0;
+        s.streamMs = 0;
       }
       s.todosKey = null;
       s.statusText = t('status.thinking');
       return {};
     case 'message_start':
-      if (ev.message?.role === 'assistant') s.cur = { thinkGroup: null, thinkIndex: -1, text: null };
+      if (ev.message?.role === 'assistant')
+        s.cur = {
+          thinkGroup: null,
+          thinkIndex: -1,
+          text: null,
+          streamChars: 0,
+          streamTextChars: 0,
+          streamTokens: 0,
+          streamT0: 0,
+        };
       return {};
     case 'message_update':
       if (ev.assistantMessageEvent) assistantDelta(s, ev.assistantMessageEvent, view);
@@ -477,7 +530,29 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
         const g = findByKey(s, c?.thinkGroup);
         const step = g?.kind === 'group' ? g.thoughts[c!.thinkIndex] : undefined;
         if (step && !step.done) finishThought(step, view);
-        if (m.usage?.output) s.tokens += Number(m.usage.output) || 0;
+        const output = Number(m.usage?.output);
+        if (c) {
+          // Deltas provide a live estimate; replace that estimate with the provider's final count.
+          if (finalText.length > c.streamTextChars) {
+            const addedChars = finalText.length - c.streamTextChars;
+            c.streamTextChars = finalText.length;
+            const previous = c.streamTokens;
+            c.streamChars += addedChars;
+            c.streamTokens = Math.ceil(c.streamChars / ESTIMATED_CHARS_PER_TOKEN);
+            const added = c.streamTokens - previous;
+            s.tokens += added;
+            s.streamTokens += added;
+          }
+          if (Number.isFinite(output) && output >= 0) {
+            const added = output - c.streamTokens;
+            s.tokens += added;
+            if (c.streamTokens > 0 || c.streamTextChars > 0) s.streamTokens += added;
+            c.streamTokens = output;
+          }
+          closeStream(s, c);
+        } else if (Number.isFinite(output) && output >= 0) {
+          s.tokens += output;
+        }
         if (m.stopReason === 'error' && m.errorMessage)
           push(s, { kind: 'note', key: newKey(), level: 'error', text: `Error: ${m.errorMessage}` }, view);
         if (m.stopReason === 'aborted') push(s, { kind: 'note', key: newKey(), text: t('status.interrupted') }, view);
@@ -560,6 +635,7 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
 export function settle(s: SessionView, aborted: boolean, view: ViewMode): Effects {
   if (!s.running) return {};
   s.running = false;
+  if (s.cur) closeStream(s, s.cur);
   s.cur = null;
   for (const item of s.items) {
     if (item.kind === 'text' && item.live) item.live = false;
@@ -577,13 +653,19 @@ export function settle(s: SessionView, aborted: boolean, view: ViewMode): Effect
     const p = findByKey(s, key);
     if (p?.kind === 'user' && !p.queued && !p.delivered) p.failed = true;
   }
+  const elapsed = Date.now() - s.t0;
+  s.sessionTokens += s.streamTokens;
+  s.sessionStreamMs += s.streamMs;
   push(
     s,
     {
       kind: 'foot',
       key: newKey(),
       t: Date.now(),
-      usage: t('status.tokens', { dur: fmtDur(Date.now() - s.t0), tokens: fmtTok(s.tokens) }),
+      usage: t('status.tokens', {
+        dur: fmtDur(elapsed),
+        tokens: fmtTok(s.tokens),
+      }),
     },
     view,
   );
@@ -662,6 +744,10 @@ export function replay(s: SessionView, messages: AgentMessage[], view: ViewMode)
   s.todosKey = null;
   s.lastTodos = [];
   s.outputs = [];
+  s.streamTokens = 0;
+  s.streamMs = 0;
+  s.sessionTokens = 0;
+  s.sessionStreamMs = 0;
   s.cur = null;
   s.waiting = null;
   s.detail = null;

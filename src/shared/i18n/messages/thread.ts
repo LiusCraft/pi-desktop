@@ -211,6 +211,7 @@ export const thread = defineMessages({
   'transcript.runningTask': { en: '{n} running task', zh: '{n} 个任务运行中' },
   'transcript.runningTasks': { en: '{n} running tasks', zh: '{n} 个任务运行中' },
   'transcript.tokens': { en: '{dur} · {tokens} tokens', zh: '{dur} · {tokens} tokens' },
+  'transcript.rate': { en: '{rate} token/s', zh: '{rate} token/s' },
   'transcript.waitingYou': { en: 'Waiting for you…', zh: '等你处理…' },
   'transcript.jump': { en: 'Jump to the newest message', zh: '跳到最新消息' },
 
@@ -259,4 +260,8 @@ export const thread = defineMessages({
   },
   'status.retrying': { en: 'Retrying ({attempt}/{max}) — {error}', zh: '重试中（{attempt}/{max}）— {error}' },
   'status.tokens': { en: '{dur} · {tokens} tokens', zh: '{dur} · {tokens} tokens' },
+  'transcript.rateTip': {
+    en: 'Session average from API request start to response',
+    zh: '整个会话平均速率，从 API 请求开始计算到响应结束',
+  },
 });
