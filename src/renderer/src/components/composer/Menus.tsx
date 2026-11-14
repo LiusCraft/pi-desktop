@@ -19,7 +19,6 @@ import {
 } from '@shared/protocol';
 import { cacheHitRate } from '@shared/usage';
 import { Button } from '@/components/ui/button';
-import { ModelVendorIcon } from '@/components/common/ModelVendorIcon';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipHint, TooltipTrigger } from '@/components/ui/tooltip';
@@ -49,6 +48,49 @@ function useMenu(name: 'model' | 'mode' | 'context') {
 const MODEL_LIST_HEIGHT = 460;
 const MODEL_MENU_CHROME_HEIGHT = 80;
 const MODEL_LIST_HEIGHT_STYLE = `min(${MODEL_LIST_HEIGHT}px, calc(var(--radix-popover-content-available-height) - ${MODEL_MENU_CHROME_HEIGHT}px))`;
+
+const MODEL_INPUT_LABELS = {
+  text: 'menu.modelInput.text',
+  image: 'menu.modelInput.image',
+  audio: 'menu.modelInput.audio',
+  video: 'menu.modelInput.video',
+  pdf: 'menu.modelInput.pdf',
+} as const;
+
+function modelInputLabel(input: string[] | undefined, t: ReturnType<typeof useT>) {
+  const types = input?.length ? input : ['text'];
+  return types
+    .map((type) => t(MODEL_INPUT_LABELS[type as keyof typeof MODEL_INPUT_LABELS] ?? 'menu.modelInput.other', { type }))
+    .join(', ');
+}
+
+function ModelDetails({ model, t }: { model: ModelInfo; t: ReturnType<typeof useT> }) {
+  const detail = (label: string, value: ReactNode) => (
+    <div className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-4 gap-y-1">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="min-w-0 text-right font-medium text-foreground">{value}</span>
+    </div>
+  );
+  return (
+    <div className="w-60 space-y-1.5 text-xs">
+      {detail(t('menu.modelDetail.model'), model.name || model.id)}
+      {detail(t('menu.modelDetail.provider'), model.provider)}
+      {detail(t('menu.modelDetail.input'), modelInputLabel(model.input, t))}
+      {detail(
+        t('menu.modelDetail.reasoning'),
+        model.reasoning === undefined
+          ? t('menu.modelDetail.unknown')
+          : model.reasoning
+            ? t('menu.modelDetail.supported')
+            : t('menu.modelDetail.unsupported'),
+      )}
+      {detail(
+        t('menu.modelDetail.context'),
+        model.contextWindow ? model.contextWindow.toLocaleString() : t('menu.modelDetail.unknown'),
+      )}
+    </div>
+  );
+}
 
 export function FootButton({ children, className, title, ...props }: React.ComponentProps<'button'>) {
   const button = (
@@ -154,26 +196,17 @@ export function ModelMenu({
                 {list.map((m) => {
                   const id = `${m.provider}/${m.id}`;
                   return (
-                    <CommandItem
-                      key={id}
-                      value={id}
-                      onSelect={() => selectModel(id)}
-                      className="items-start gap-2 py-1 text-[13px]"
-                    >
-                      <ModelVendorIcon model={m} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px]">{m.name || m.id}</span>
-                        <span className="block text-[11px] text-muted-foreground">
-                          {[
-                            m.contextWindow ? t('menu.contextWindowUsed', { size: fmtTok(m.contextWindow) }) : '',
-                            m.reasoning ? t('menu.reasoning') : '',
-                          ]
-                            .filter(Boolean)
-                            .join(' · ')}
-                        </span>
-                      </span>
-                      {id === model && <CheckIcon className="ml-auto size-3.5 shrink-0 self-center" />}
-                    </CommandItem>
+                    <Tooltip key={id}>
+                      <TooltipTrigger asChild>
+                        <CommandItem value={id} onSelect={() => selectModel(id)} className="py-1 text-[13px]">
+                          <span className="min-w-0 flex-1 truncate">{m.name || m.id}</span>
+                          {id === model && <CheckIcon className="ml-auto size-3.5 shrink-0" />}
+                        </CommandItem>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" align="start" className="max-w-none p-3">
+                        <ModelDetails model={m} t={t} />
+                      </TooltipContent>
+                    </Tooltip>
                   );
                 })}
               </CommandGroup>
