@@ -100,6 +100,28 @@ describe('creating a session', { timeout: 120_000 }, () => {
     expect(steps.at(-1)!.steps).toBeNull();
   });
 
+  it('starts a new worktree from the fetched remote default branch', async () => {
+    const project = makeProject('remote-base');
+    const remote = path.join(tmp, 'remote-base.git');
+    run(tmp, 'init', '--bare', remote);
+    run(project, 'remote', 'add', 'origin', remote);
+    run(project, 'push', '-u', 'origin', 'main');
+
+    const update = path.join(tmp, 'remote-base-update');
+    run(tmp, 'clone', '--branch', 'main', remote, update);
+    fs.writeFileSync(path.join(update, 'remote-only.txt'), 'from origin\n');
+    run(update, 'add', '-A');
+    run(update, 'commit', '-qm', 'remote update');
+    run(update, 'push', 'origin', 'main');
+
+    const meta = await code(project, { worktree: true });
+    expect(meta.baseBranch).toBe('main');
+    expect(meta.baseCommit).toBe(run(project, 'rev-parse', 'origin/main').trim());
+    await hub.open(meta.id);
+    expect(fs.existsSync(path.join(meta.cwd, 'remote-only.txt'))).toBe(true);
+    expect(fs.existsSync(path.join(project, 'remote-only.txt'))).toBe(false);
+  });
+
   it('reports a vanished session folder as an error instead of starting an agent there', async () => {
     const project = makeProject('retry');
     const meta = await code(project, { worktree: true });

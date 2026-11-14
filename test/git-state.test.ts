@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, it } from 'vitest';
-import { workState } from '../src/agent/git';
+import { baseRemote, branches, defaultBranch, remoteBranch, workState } from '../src/agent/git';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-git-state-'));
 const repo = path.join(tmp, 'repo');
@@ -63,6 +63,25 @@ describe('working-tree state', () => {
     });
   });
 
+  it('uses the remote default branch and keeps local and remote refs visible', async () => {
+    assert.equal(await defaultBranch(repo), 'origin/main');
+    assert.deepEqual(
+      (await branches(repo)).filter((ref) => ref === 'main' || ref === 'origin/main'),
+      ['main', 'origin/main'],
+    );
+  });
+
+  it('follows the branch remote instead of assuming the name origin', async () => {
+    git(repo, 'remote', 'rename', 'origin', 'upstream');
+    try {
+      assert.equal(await baseRemote(repo), 'upstream');
+      assert.equal(await defaultBranch(repo), 'upstream/main');
+      assert.equal(await remoteBranch(repo, 'main'), 'upstream/main');
+    } finally {
+      git(repo, 'remote', 'rename', 'upstream', 'origin');
+    }
+  });
+
   it('reports when a repository has no configured remote', async () => {
     const state = await workState(noRemote);
     assert.equal(state.hasRemote, false);
@@ -94,10 +113,11 @@ describe('working-tree state', () => {
     git(repo, 'checkout', 'main');
     write('tracked.txt', 'moved on\n');
     git(repo, 'commit', '-am', 'main moves');
+    git(repo, 'push', 'origin', 'main');
     git(repo, 'checkout', 'topic');
     const state = await workState(repo, 'main');
     assert.equal(state.baseBehind, 1);
-    assert.equal(state.base, 'main');
+    assert.equal(state.base, 'origin/main');
     assert.equal((await workState(repo, 'gone')).baseBehind, 0);
   });
 

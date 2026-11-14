@@ -905,7 +905,7 @@ async function createSession(firstPrompt: string, draftKey: string) {
     projectPath: work ? st.prefs.workFolder || null : st.prefs.project,
     worktree: !work && st.prefs.worktree,
     adoptPath: !work && st.adopt && st.adopt.mainRoot === st.prefs.project ? st.adopt.path : undefined,
-    baseRef: !work && st.prefs.worktree && st.baseRef && st.baseRef !== st.projectBranch ? st.baseRef : undefined,
+    baseRef: !work && st.prefs.worktree ? (st.baseRef ?? undefined) : undefined,
     title: firstPrompt.replace(/@\S+/g, '').trim().slice(0, 60) || 'New session',
     autoName: true,
     model: st.prefs.model,
@@ -1884,17 +1884,19 @@ export async function refreshImportable() {
     return setApp(
       (st) => void ((st.importable = []), (st.projectBranch = null), (st.projectBranches = []), (st.baseRef = null)),
     );
-  const [list, branch, branches] = await Promise.all([
+  await call('git:refresh', project).catch(() => false);
+  const [list, branch, branches, defaultBranch] = await Promise.all([
     call('sessions:importable', project).catch(() => []),
     call('git:branch', project).catch(() => null),
     call('git:branches', project).catch(() => [] as string[]),
+    call('git:defaultBranch', project).catch(() => null),
   ]);
   setApp((st) => {
     st.importable = list;
     st.projectBranch = branch && branch !== 'HEAD' ? branch : null;
     st.projectBranches = branches;
     // A choice made for another project (or a branch that is gone) does not carry over.
-    if (st.baseRef && !branches.includes(st.baseRef)) st.baseRef = null;
+    if (!st.baseRef || !branches.includes(st.baseRef)) st.baseRef = defaultBranch ?? st.projectBranch;
   });
 }
 

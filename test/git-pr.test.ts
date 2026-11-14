@@ -206,8 +206,9 @@ describe('GitHub PR status', () => {
     assert.equal(pr.title, 'merged work');
     assert.equal(pr.author, 'me');
     assert.equal(pr.mergeable, undefined);
-    assert.equal(calls.filter((c) => c.cmd === 'gh').length, 2);
-    assert.equal(calls[2].args.at(-1), 'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author');
+    const ghCalls = calls.filter((c) => c.cmd === 'gh');
+    assert.equal(ghCalls.length, 2);
+    assert.equal(ghCalls[1].args.at(-1), 'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author');
   });
   it('falls back to PR identity when CI/review fields are inaccessible', async () => {
     responses = [
@@ -220,8 +221,9 @@ describe('GitHub PR status', () => {
     assert.equal(pr.state, 'merged');
     assert.equal(pr.ci, 'none');
     assert.equal(pr.title, undefined);
-    assert.equal(calls.filter((c) => c.cmd === 'gh').length, 3);
-    assert.equal(calls[3].args.at(-1), 'number,url,state,isDraft');
+    const ghCalls = calls.filter((c) => c.cmd === 'gh');
+    assert.equal(ghCalls.length, 3);
+    assert.equal(ghCalls[2].args.at(-1), 'number,url,state,isDraft');
   });
   it('returns null when no PR is available', async () => {
     responses = [new Error('No PR'), new Error('No PR'), new Error('No PR')];

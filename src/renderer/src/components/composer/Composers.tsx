@@ -184,8 +184,8 @@ function NewSessionChips() {
                   {t('composer.worktreeBaseLabel')}
                 </DropdownMenuLabel>
                 <DropdownMenuItem
-                  onSelect={() => setApp((st) => void (st.baseRef = null))}
-                  className={cn(!baseRef && 'font-medium')}
+                  onSelect={() => setApp((st) => void (st.baseRef = branch))}
+                  className={cn(baseRef === branch && 'font-medium')}
                 >
                   <GitBranchIcon className="size-3.5" />
                   <span className="truncate">{branch}</span>
