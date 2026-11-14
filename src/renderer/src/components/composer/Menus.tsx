@@ -19,6 +19,7 @@ import {
 } from '@shared/protocol';
 import { cacheHitRate } from '@shared/usage';
 import { Button } from '@/components/ui/button';
+import { ModelVendorIcon } from '@/components/common/ModelVendorIcon';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipHint, TooltipTrigger } from '@/components/ui/tooltip';
@@ -72,7 +73,7 @@ function ModelDetails({ model, t }: { model: ModelInfo; t: ReturnType<typeof use
     </div>
   );
   return (
-    <div className="w-60 space-y-1.5 text-xs">
+    <div className="space-y-1.5 w-60 text-xs">
       {detail(t('menu.modelDetail.model'), model.name || model.id)}
       {detail(t('menu.modelDetail.provider'), model.provider)}
       {detail(t('menu.modelDetail.input'), modelInputLabel(model.input, t))}
@@ -196,17 +197,23 @@ export function ModelMenu({
                 {list.map((m) => {
                   const id = `${m.provider}/${m.id}`;
                   return (
-                    <Tooltip key={id}>
-                      <TooltipTrigger asChild>
-                        <CommandItem value={id} onSelect={() => selectModel(id)} className="py-1 text-[13px]">
-                          <span className="min-w-0 flex-1 truncate">{m.name || m.id}</span>
-                          {id === model && <CheckIcon className="ml-auto size-3.5 shrink-0" />}
-                        </CommandItem>
-                      </TooltipTrigger>
-                      <TooltipContent side="right" align="start" className="max-w-none p-3">
-                        <ModelDetails model={m} t={t} />
-                      </TooltipContent>
-                    </Tooltip>
+                    <CommandItem
+                      key={id}
+                      value={id}
+                      onSelect={() => selectModel(id)}
+                      className="items-start gap-2 py-1 text-[13px]"
+                    >
+                      <ModelVendorIcon model={m} />
+                      <Tooltip delayDuration={0}>
+                        <TooltipTrigger asChild>
+                          <span className="min-w-0 flex-1 cursor-default truncate">{m.name || m.id}</span>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" align="start" className="z-[60] max-w-none p-3">
+                          <ModelDetails model={m} t={t} />
+                        </TooltipContent>
+                      </Tooltip>
+                      {id === model && <CheckIcon className="ml-auto size-3.5 shrink-0 self-center" />}
+                    </CommandItem>
                   );
                 })}
               </CommandGroup>
