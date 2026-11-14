@@ -1001,6 +1001,7 @@ export async function send(queueOnly = false) {
     return void drafts.error(key, err);
   }
   const wasRunning = !!getApp().sessions[id]?.running;
+  const requestStartedAt = Date.now();
   const itemKey = newKey();
   const optimistic = !wasRunning && !text.startsWith('/');
   setApp((x) => {
@@ -1025,8 +1026,11 @@ export async function send(queueOnly = false) {
     v.scrollRequest = itemKey;
     if (optimistic) {
       v.running = true;
-      v.t0 = Date.now();
+      v.t0 = requestStartedAt;
       v.tokens = 0;
+      v.streamTokens = 0;
+      v.streamMs = 0;
+      v.cur = null;
       v.todosKey = null;
       v.statusText = t('status.thinking');
     }
