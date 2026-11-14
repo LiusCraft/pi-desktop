@@ -283,8 +283,22 @@ function load(w: BrowserWindow, page: 'index' | 'settings' | 'diagram' | 'side',
   if (DEV_URL) void w.loadURL(`${DEV_URL}/${page}.html${hash ? `#${hash}` : ''}`);
   else void w.loadFile(path.join(RENDERER, `${page}.html`), hash ? { hash } : undefined);
 }
-function harden(w: BrowserWindow) {
-  w.webContents.setWindowOpenHandler(({ url }) => {
+type WindowOpenDisposition = 'default' | 'foreground-tab' | 'background-tab' | 'new-window' | 'other';
+
+function harden(
+  w: BrowserWindow,
+  onWindowOpen?: (details: { url: string; disposition: WindowOpenDisposition }) => boolean,
+) {
+  w.webContents.on('will-attach-webview', (_event, webPreferences) => {
+    // The preview accepts arbitrary pages, so never let a page supply a preload with app access.
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.sandbox = true;
+  });
+  w.webContents.setWindowOpenHandler((details) => {
+    if (onWindowOpen?.(details)) return { action: 'deny' };
+    const { url } = details;
     if (/^https?:/.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
@@ -366,12 +380,32 @@ function createWindow() {
     backgroundColor: bgColor(dark),
     titleBarStyle: 'hidden',
     ...(isMac ? { trafficLightPosition: { x: 18, y: 16 } } : !isWin ? { titleBarOverlay: overlay(dark) } : {}),
-    webPreferences: { preload: PRELOAD, contextIsolation: true, sandbox: true, nodeIntegration: false },
+    webPreferences: {
+      preload: PRELOAD,
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+      webviewTag: true,
+    },
   });
   if (saved?.maximized) win.maximize();
   trackWindowState(win);
   load(win, 'index');
-  harden(win);
+  harden(win, ({ url, disposition }) => {
+    win?.webContents.send('preview:open', { partition: '', url, disposition });
+    return true;
+  });
+  const pendingPreviewPartitions: string[] = [];
+  win.webContents.on('will-attach-webview', (_event, _webPreferences, params) => {
+    if (params?.partition) pendingPreviewPartitions.push(params.partition);
+  });
+  win.webContents.on('did-attach-webview', (_event, guest) => {
+    const partition = pendingPreviewPartitions.shift() ?? '';
+    guest.setWindowOpenHandler(({ url, disposition }) => {
+      win?.webContents.send('preview:open', { partition, url, disposition });
+      return { action: 'deny' };
+    });
+  });
   win.on('closed', () => {
     win = null;
     // Secondary windows (settings, pet, popouts) are meaningless without the main window.

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode, type Ref } from 'react';
 import {
   ArrowLeftIcon,
+  ArrowRightIcon,
   BotIcon,
   CheckIcon,
   ChevronDownIcon,
@@ -18,6 +19,7 @@ import {
   Maximize2Icon,
   MessageSquareIcon,
   Minimize2Icon,
+  PlusIcon,
   RefreshCwIcon,
   SearchIcon,
   SquareIcon,
@@ -54,7 +56,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { TooltipHint } from '@/components/ui/tooltip';
-import { call, isMac, isRemote } from '@/lib/api';
+import { bridge, call, isMac, isRemote } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { contentOf, onContent, wantContent } from '@/lib/change-content';
 import { fileDiffOf } from '@/lib/file-diff';
@@ -774,50 +776,291 @@ ${c.subject}`}
 
 // ------------------------------------------------------------ preview
 
+const PREVIEW_PROTOCOLS = new Set(['http:', 'https:', 'file:']);
+
+function normalizePreviewUrl(input: string): string | null {
+  let raw = input.trim();
+  if (!raw) return null;
+  if (!/^[a-z][a-z\d+.-]*:\/\//i.test(raw)) raw = `http://${raw}`;
+  try {
+    const url = new URL(raw);
+    return PREVIEW_PROTOCOLS.has(url.protocol) ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+interface PreviewTab {
+  id: string;
+  partition: string;
+  url: string;
+  src: string;
+  title: string;
+}
+
+type PreviewWebviewEvent = Event & { title?: string; url?: string };
+
+interface PreviewWebview {
+  canGoBack(): boolean;
+  canGoForward(): boolean;
+  goBack(): void;
+  goForward(): void;
+  addEventListener(event: string, listener: (event: PreviewWebviewEvent) => void): void;
+  removeEventListener(event: string, listener: (event: PreviewWebviewEvent) => void): void;
+}
+
+function tabLabel(tab: PreviewTab): string {
+  if (tab.title.trim()) return tab.title;
+  if (tab.url === 'about:blank') return '';
+  try {
+    const url = new URL(tab.url);
+    return url.hostname || url.protocol.replace(':', '');
+  } catch {
+    return tab.url;
+  }
+}
+
 export function PreviewPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const t = useT();
   const saved = useApp((st) => st.prefs.previewUrl);
-  const url = s.previewUrl || saved;
-  const [value, setValue] = useState(url);
+  const initialUrl = s.previewUrl || saved;
+  const [tabs, setTabs] = useState<PreviewTab[]>([
+    { id: 'tab-1', partition: 'pi-preview-tab-1', url: initialUrl, src: initialUrl, title: '' },
+  ]);
+  const [activeId, setActiveId] = useState('tab-1');
+  const [value, setValue] = useState(initialUrl);
   const [nonce, setNonce] = useState(0);
-  useEffect(() => setValue(url), [url]);
+  const [canBack, setCanBack] = useState(false);
+  const [canForward, setCanForward] = useState(false);
+  const nextTab = useRef(2);
+  const webviewsRef = useRef(new Map<string, PreviewWebview>());
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
+  const tabIds = tabs.map((tab) => tab.id).join('|');
+
+  const syncHistory = useCallback(
+    (tabId: string) => {
+      if (tabId !== activeId) return;
+      const view = webviewsRef.current.get(tabId);
+      if (!view) return;
+      try {
+        setCanBack(view.canGoBack());
+        setCanForward(view.canGoForward());
+      } catch {
+        // The guest is not ready yet.
+      }
+    },
+    [activeId],
+  );
+
+  const setWebviewRef = useCallback((tabId: string, element: HTMLWebViewElement | null) => {
+    if (element) webviewsRef.current.set(tabId, element as unknown as PreviewWebview);
+    else webviewsRef.current.delete(tabId);
+  }, []);
+
+  const updateTabUrl = useCallback(
+    (tabId: string, nextUrl: string) => {
+      setTabs((current) => current.map((tab) => (tab.id === tabId ? { ...tab, url: nextUrl } : tab)));
+      if (tabId !== activeId) return;
+      setValue(nextUrl === 'about:blank' ? '' : nextUrl);
+      if (nextUrl !== 'about:blank') {
+        updateSession(s.meta.id, (session) => void (session.previewUrl = nextUrl));
+        setPref('previewUrl', nextUrl);
+      }
+      syncHistory(tabId);
+    },
+    [activeId, s.meta.id, syncHistory],
+  );
+
+  const updateTabTitle = useCallback((tabId: string, title: string) => {
+    setTabs((current) => current.map((tab) => (tab.id === tabId ? { ...tab, title } : tab)));
+  }, []);
+
+  useEffect(() => {
+    const cleanups: (() => void)[] = [];
+    for (const tab of tabs) {
+      const view = webviewsRef.current.get(tab.id);
+      if (!view) continue;
+      const onNavigate = (event: PreviewWebviewEvent) => {
+        if (event.url) updateTabUrl(tab.id, event.url);
+      };
+      const onTitle = (event: PreviewWebviewEvent) => {
+        if (event.title) updateTabTitle(tab.id, event.title);
+      };
+      const onFinish = () => syncHistory(tab.id);
+      view.addEventListener('did-navigate', onNavigate);
+      view.addEventListener('did-navigate-in-page', onNavigate);
+      view.addEventListener('page-title-updated', onTitle);
+      view.addEventListener('did-finish-load', onFinish);
+      cleanups.push(() => {
+        view.removeEventListener('did-navigate', onNavigate);
+        view.removeEventListener('did-navigate-in-page', onNavigate);
+        view.removeEventListener('page-title-updated', onTitle);
+        view.removeEventListener('did-finish-load', onFinish);
+      });
+    }
+    return () => cleanups.forEach((cleanup) => cleanup());
+  }, [activeId, nonce, syncHistory, tabIds, tabs, updateTabTitle, updateTabUrl]);
+
+  useEffect(() => {
+    return bridge.on('preview:open', ({ partition, url, disposition }) => {
+      const source = partition
+        ? tabsRef.current.find((tab) => tab.partition === partition) ??
+          tabsRef.current.find((tab) => tab.id === activeIdRef.current)
+        : tabsRef.current.find((tab) => tab.id === activeIdRef.current);
+      if (!source) return;
+      const next = normalizePreviewUrl(url);
+      if (!next) return;
+      const id = `tab-${nextTab.current++}`;
+      const tab = { id, partition: `pi-preview-${id}`, url: next, src: next, title: '' };
+      const nextTabs = [...tabsRef.current, tab];
+      tabsRef.current = nextTabs;
+      setTabs(nextTabs);
+      if (disposition !== 'background-tab') {
+        setActiveId(id);
+        setValue(next);
+        setCanBack(false);
+        setCanForward(false);
+      }
+    });
+  }, []);
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    let u = value.trim();
-    if (!/^https?:\/\//.test(u)) u = `http://${u}`;
-    if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(u)) return void toast.warning(t('panel.localhostOnly'));
-    updateSession(s.meta.id, (v) => void (v.previewUrl = u));
-    setPref('previewUrl', u);
+    const next = normalizePreviewUrl(value);
+    if (!next) return void toast.warning(t('panel.invalidUrl'));
+    setTabs((current) =>
+      current.map((tab) => (tab.id === activeId ? { ...tab, url: next, src: next, title: '' } : tab)),
+    );
+    updateTabUrl(activeId, next);
+    setNonce((current) => current + 1);
   };
+
+  const selectTab = (id: string) => {
+    const tab = tabs.find((item) => item.id === id);
+    if (!tab) return;
+    setActiveId(id);
+    setValue(tab.url === 'about:blank' ? '' : tab.url);
+    setCanBack(false);
+    setCanForward(false);
+  };
+
+  const addTab = () => {
+    const id = `tab-${nextTab.current++}`;
+    const tab = { id, partition: `pi-preview-${id}`, url: 'about:blank', src: 'about:blank', title: '' };
+    const nextTabs = [...tabs, tab];
+    tabsRef.current = nextTabs;
+    setTabs(nextTabs);
+    setActiveId(id);
+    setValue('');
+    setCanBack(false);
+    setCanForward(false);
+  };
+
+  const closeTab = (id: string) => {
+    if (tabs.length === 1) return;
+    const index = tabs.findIndex((tab) => tab.id === id);
+    const remaining = tabs.filter((tab) => tab.id !== id);
+    tabsRef.current = remaining;
+    setTabs(remaining);
+    webviewsRef.current.delete(id);
+    if (id !== activeId) return;
+    const replacement = remaining[Math.min(index, remaining.length - 1)];
+    setActiveId(replacement.id);
+    setValue(replacement.url === 'about:blank' ? '' : replacement.url);
+    setCanBack(false);
+    setCanForward(false);
+  };
+
   return (
     <Card
       {...card}
       title={
-        <form onSubmit={submit} className="flex-1">
-          <Input
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            aria-label={t('panel.previewUrl')}
-            spellCheck={false}
-            className="h-7 font-mono text-xs"
-          />
-        </form>
+        <div className="flex min-w-0 flex-1 items-center gap-0.5">
+          <IconBtn
+            title={t('panel.back')}
+            disabled={!canBack}
+            onClick={() => webviewsRef.current.get(activeId)?.goBack()}
+          >
+            <ArrowLeftIcon className="size-3.5" />
+          </IconBtn>
+          <IconBtn
+            title={t('panel.forward')}
+            disabled={!canForward}
+            onClick={() => webviewsRef.current.get(activeId)?.goForward()}
+          >
+            <ArrowRightIcon className="size-3.5" />
+          </IconBtn>
+          <form onSubmit={submit} className="min-w-0 flex-1">
+            <Input
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              aria-label={t('panel.previewUrl')}
+              spellCheck={false}
+              className="h-7 font-mono text-xs"
+            />
+          </form>
+        </div>
       }
       tools={
-        <IconBtn title={t('panel.reload')} onClick={() => setNonce((n) => n + 1)}>
+        <IconBtn title={t('panel.reload')} onClick={() => setNonce((current) => current + 1)}>
           <RefreshCwIcon className="size-3.5" />
         </IconBtn>
       }
       onClose={() => togglePanel(s.meta.id, 'preview', false)}
       bodyClass="overflow-hidden"
     >
-      <iframe
-        key={`${url}#${nonce}`}
-        src={url}
-        title={t('panel.preview')}
-        className="size-full border-0 bg-white"
-        sandbox="allow-scripts allow-forms allow-same-origin"
-      />
+      <div className="flex h-full min-h-0 flex-col">
+        <div role="tablist" className="flex h-8 shrink-0 items-center gap-0.5 overflow-x-auto border-b px-1">
+          {tabs.map((tab) => (
+            <div key={tab.id} className="flex max-w-56 min-w-0 shrink-0 items-center rounded-md bg-muted/60">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab.id === activeId}
+                className={cn(
+                  'min-w-0 truncate px-2 py-1 text-xs',
+                  tab.id === activeId ? 'font-medium text-foreground' : 'text-muted-foreground',
+                )}
+                onClick={() => selectTab(tab.id)}
+              >
+                {tabLabel(tab) || t('panel.newTab')}
+              </button>
+              {tabs.length > 1 && (
+                <IconBtn
+                  title={t('panel.closeTab', { name: tabLabel(tab) || t('panel.newTab') })}
+                  className="size-5 rounded-sm"
+                  onClick={() => closeTab(tab.id)}
+                >
+                  <XIcon className="size-3" />
+                </IconBtn>
+              )}
+            </div>
+          ))}
+          <IconBtn title={t('panel.newTab')} className="size-6" onClick={addTab}>
+            <PlusIcon className="size-3.5" />
+          </IconBtn>
+        </div>
+        <div className="relative min-h-0 flex-1">
+          {tabs.map((tab) => (
+            <webview
+              key={`${tab.id}:${tab.id === activeId ? nonce : 0}`}
+              ref={(element) => setWebviewRef(tab.id, element)}
+              src={tab.src}
+              partition={tab.partition}
+              title={t('panel.preview')}
+              className={cn(
+                'absolute inset-0 size-full border-0 bg-white',
+                tab.id !== activeId && 'pointer-events-none invisible',
+              )}
+              allowpopups
+              webpreferences="contextIsolation=yes,sandbox=yes"
+            />
+          ))}
+        </div>
+      </div>
     </Card>
   );
 }

@@ -1530,6 +1530,12 @@ export interface PushEvents {
   'host:event': HostEvent;
   'settings:changed': SettingsPayload;
   'settings:section': string;
+  /** A preview page requested a new tab, usually through target=_blank or window.open. */
+  'preview:open': {
+    partition: string;
+    url: string;
+    disposition: 'default' | 'foreground-tab' | 'background-tab' | 'new-window' | 'other';
+  };
   /** A notification was clicked: bring this session to the front. */
   'session:focus': string;
   /** A side chat window opened, closed or was pinned; `open: false` means it is gone, and `docked` that it went back inside its session. */
@@ -1545,6 +1551,7 @@ export const PUSH_CHANNELS: readonly PushChannel[] = [
   'host:event',
   'settings:changed',
   'settings:section',
+  'preview:open',
   'session:focus',
   'side:window',
   'terminal:data',

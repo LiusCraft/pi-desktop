@@ -14,7 +14,7 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self' data:",
-  'frame-src http://localhost:* http://127.0.0.1:*',
+  'frame-src http: https: file:',
   "connect-src 'none'",
 ].join('; ');
 const csp: Plugin = {
