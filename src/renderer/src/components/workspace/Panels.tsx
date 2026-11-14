@@ -907,8 +907,8 @@ export function PreviewPanel({ s, ...card }: CardProps & { s: SessionView }) {
   useEffect(() => {
     return bridge.on('preview:open', ({ partition, url, disposition }) => {
       const source = partition
-        ? tabsRef.current.find((tab) => tab.partition === partition) ??
-          tabsRef.current.find((tab) => tab.id === activeIdRef.current)
+        ? (tabsRef.current.find((tab) => tab.partition === partition) ??
+          tabsRef.current.find((tab) => tab.id === activeIdRef.current))
         : tabsRef.current.find((tab) => tab.id === activeIdRef.current);
       if (!source) return;
       const next = normalizePreviewUrl(url);
