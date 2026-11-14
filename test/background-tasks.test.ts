@@ -41,18 +41,21 @@ describe('background tasks', () => {
       .get('pidesk_bg_shell')
       .execute('call-1', { command: 'node -e "console.log(\'hello-bg\')"' }, undefined, undefined, ctx);
     expect(started.details.background).toBe(true);
+    expect(text(started)).toMatch(/Before reporting success/);
     expect(messages).toHaveLength(0);
 
     await until(() => messages.length > 0);
     expect(messages[0].options).toMatchObject({ triggerTurn: true, deliverAs: 'followUp' });
     expect(messages[0].message.content).toMatch(/exited with code 0/);
     expect(messages[0].message.content).toMatch(/hello-bg/);
+    expect(messages[0].message.content).toMatch(/does not prove that an app or server started/);
     const last = updates.at(-1)!;
     expect(last).toMatchObject({ toolCallId: 'call-1', state: 'done' });
     expect(last.shell?.output).toMatch(/hello-bg/);
 
     const out = await tools.get('pidesk_bg_output').execute('call-2', { id: 'call-1' });
     expect(text(out)).toMatch(/finished.*\n.*hello-bg/s);
+    expect(text(out)).toMatch(/not app or server readiness/);
   });
 
   it('pidesk_bg_shell runs in the workdir it was given', async () => {
@@ -79,7 +82,9 @@ describe('background tasks', () => {
       .get('pidesk_bg_shell')
       .execute('call-1', { command: 'node -e "setInterval(() => {}, 1000)"' }, undefined, undefined, ctx);
     expect(stops.has('call-1')).toBe(true);
-    await tools.get('pidesk_bg_kill').execute('call-2', { id: 'call-1' });
+    const running = await tools.get('pidesk_bg_output').execute('call-2', { id: 'call-1' });
+    expect(text(running)).toMatch(/still running; confirm app or server readiness/);
+    await tools.get('pidesk_bg_kill').execute('call-3', { id: 'call-1' });
 
     await until(() => messages.length > 0);
     expect(messages[0].options.triggerTurn).toBe(false);
