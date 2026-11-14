@@ -14,7 +14,7 @@ export function WindowControls({ target }: { target: WindowTarget }) {
   const t = useT();
   if (!isWin32) return null;
   return (
-    <div className="no-drag flex h-full items-center">
+    <div className="no-drag ml-auto flex h-full items-center">
       {CONTROLS.map(({ action, label, Icon }) => (
         <button
           key={action}

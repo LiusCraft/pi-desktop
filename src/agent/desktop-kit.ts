@@ -1214,6 +1214,8 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
     const shells = new Map<string, ShellTask>();
     const OUTPUT_CAP = 200_000;
     const SHOWN_TAIL = 16_000;
+    const BACKGROUND_SHELL_GUIDANCE =
+      'A zero exit code only means the shell process ended normally; it does not prove that an app or server started or stayed available. For startup commands, verify readiness from the output or confirm the task is still running. Inspect the output before reporting success.';
     const ANSI = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
     const shellOps = process.platform === 'win32' ? createLocalPowerShellOperations() : createLocalBashOperations();
     const shellUpdate = (id: string, t: ShellTask): TaskUpdate => ({
@@ -1244,8 +1246,9 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       description:
         'Start a long-running shell command (dev server, watcher, slow build or test run) in the background. ' +
         'It returns at once with a task id; read output with pidesk_bg_output, stop it with pidesk_bg_kill. ' +
-        'When the command exits you get a <task-notification> message that starts your next turn, so end the turn after starting it: ' +
-        'never `sleep`, poll or re-run the command to wait. Use the normal shell tool for short commands.',
+        'When the command exits you get a <task-notification> message that starts your next turn. Inspect that notification and the output before reporting success: ' +
+        `${BACKGROUND_SHELL_GUIDANCE} ` +
+        'If the output is truncated or ambiguous, call pidesk_bg_output; never `sleep`, poll or re-run the command to wait. Use the normal shell tool for short commands.',
       promptSnippet: 'Run long-lived shell commands in the background',
       parameters: Type.Object({
         command: Type.String({ description: 'The command to run' }),
@@ -1299,14 +1302,17 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
               id,
               `Background command "${title}" ${how}.`,
               task.state,
-              `Last output:\n${task.output.slice(-4000) || '(no output)'}`,
+              `${BACKGROUND_SHELL_GUIDANCE}\n\nLast output:\n${task.output.slice(-4000) || '(no output)'}`,
             );
           });
         return {
           content: [
             {
               type: 'text',
-              text: `Started \`${params.command}\` in the background (task ${id}). Use pidesk_bg_output to read its output and pidesk_bg_kill to stop it; you will be notified when it exits, so end the turn instead of sleeping or polling.`,
+              text:
+                `Started \`${params.command}\` in the background (task ${id}). You will be notified when it exits. ` +
+                `Before reporting success, inspect the notification and output: ${BACKGROUND_SHELL_GUIDANCE} ` +
+                'Use pidesk_bg_output for more output and pidesk_bg_kill to stop it; end the turn instead of sleeping or polling.',
             },
           ],
           details: { description: title, command: params.command, background: true },
@@ -1317,7 +1323,9 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
     pi.registerTool({
       name: 'pidesk_bg_output',
       label: 'Shell output',
-      description: 'Read the latest output of a background shell command started with pidesk_bg_shell.',
+      description:
+        'Read the latest output of a background shell command started with pidesk_bg_shell. ' +
+        'Use this before concluding that an app or server startup succeeded; exit code alone does not prove readiness.',
       parameters: Type.Object({
         id: Type.String({ description: 'The task id returned by pidesk_bg_shell' }),
         tail: Type.Optional(Type.Number({ description: 'Characters from the end to return (default 8000)' })),
@@ -1329,7 +1337,14 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         const status =
           task.state === 'running' ? 'running' : `finished (${task.state}, exit code ${task.exitCode ?? 'unknown'})`;
         const out = task.output.slice(-Math.max(1, Math.min(params.tail ?? 8000, 50_000)));
-        return { content: [{ type: 'text', text: `Status: ${status}\n${out || '(no output yet)'}` }], details: {} };
+        const note =
+          task.state === 'running'
+            ? 'The process is still running; confirm app or server readiness from the output.'
+            : 'The process has exited; a zero exit code only means normal process exit, not app or server readiness.';
+        return {
+          content: [{ type: 'text', text: `Status: ${status}\n${note}\n${out || '(no output yet)'}` }],
+          details: {},
+        };
       },
     });
 
