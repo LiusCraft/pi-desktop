@@ -5,6 +5,7 @@ import {
   parseVerdict,
   recentConversation,
   recentSteps,
+  reviewCacheKey,
   reviewRequest,
   SYSTEM_PROMPT,
 } from '../src/agent/command-review';
@@ -166,6 +167,19 @@ describe('recentSteps', () => {
     expect(reviewRequest({ command: 'ls', cwd: '/p', kind: 'code', request: 'x', steps: 'read: a.ts' })).toContain(
       "The assistant's steps since that request, oldest first:\nread: a.ts",
     );
+  });
+});
+
+describe('reviewCacheKey', () => {
+  it('keeps approvals tied to the active task, folder and exact command', () => {
+    const base = reviewCacheKey({ command: 'npm   test', cwd: '/p', kind: 'code', request: 'fix the bug' });
+    expect(base).toBe(reviewCacheKey({ command: 'npm test', cwd: '/p', kind: 'code', request: 'fix the bug' }));
+    expect(reviewCacheKey({ command: 'npm test', cwd: '/p', kind: 'code', request: 'do something else' })).not.toBe(
+      base,
+    );
+    expect(
+      reviewCacheKey({ command: 'npm test -- --runInBand', cwd: '/p', kind: 'code', request: 'fix the bug' }),
+    ).not.toBe(base);
   });
 });
 

@@ -107,6 +107,8 @@ export interface KitHost {
   scope?: WorkScope;
   /** Auto mode: a model's verdict on a command no rule settles; null when review is off or it could not answer, and the user is asked. */
   review?(command: string, cwd: string, signal?: AbortSignal): Promise<CommandVerdict | null>;
+  /** True while a PR watcher turn is running; its git/gh commands were enabled by the PR bar. */
+  prAutomation?: () => boolean;
   /** How the model's shell commands keep their folder; read for every command (see `SHELL_SESSION_MODES`). */
   shellSession?: () => ShellSessionMode;
   /**
@@ -271,8 +273,8 @@ const RISKY = [
   /\bdd\s+if=/,
   /\bgit\s+checkout\s+--\s/,
 ];
-// Work works in the user's own folders (documents, downloads…), so anything that
-// deletes, moves or sends data away also needs approval.
+// Work runs in the user's own folders, so dangerous file movement and network sends need a
+// confirmation when no real review model is available (the offline demo is the only such case).
 const WORK_RISKY = [
   /\b(rm|rmdir|mv|del|erase|unlink|shred|truncate)\b/,
   /\bfind\b.*-delete\b/,
@@ -280,6 +282,34 @@ const WORK_RISKY = [
   /\b(curl|wget)\b.*(-X\s*(POST|PUT|PATCH|DELETE)|--data|\s-d\s|\s-F\s|--upload-file|\s-T\s)/,
   /\b(sendmail|mail|mutt)\b/,
 ];
+export const isRiskyCommand = (command: string, profile: SessionKind = 'code') =>
+  RISKY.some((r) => r.test(command)) || (profile === 'work' && WORK_RISKY.some((r) => r.test(command)));
+
+/** Commands that a PR watcher may run without another permission decision. */
+const PR_AUTOMATION_COMMANDS = new Set(['git', 'gh', 'glab']);
+const PR_AUTOMATION_NEUTRAL = new Set(['cd', 'pushd', 'popd']);
+
+/**
+ * A PR watcher is trusted only for a command made entirely of git/forge CLI steps.
+ * Shell expansion, redirection and arbitrary commands stay behind the normal gate.
+ */
+export function isPrAutomationCommand(command: string): boolean {
+  const bare = command.replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, "''");
+  if (/[>`$()]/.test(bare)) return false;
+  // Backgrounding is not part of a PR operation; && and || are ordinary step separators.
+  if (bare.replace(/&&|\|\|/g, '').includes('&')) return false;
+  const segments = bare
+    .split(/&&|\|\||;|\||\r?\n/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  let hasCli = false;
+  for (const segment of segments) {
+    const executable = segment.split(/\s+/)[0]?.toLowerCase();
+    if (PR_AUTOMATION_COMMANDS.has(executable)) hasCli = true;
+    else if (!PR_AUTOMATION_NEUTRAL.has(executable)) return false;
+  }
+  return hasCli;
+}
 
 export function isReadOnlyCommand(command: string): boolean {
   // Blank out quoted arguments so operators inside them (grep "a\|b") are not treated as pipes.
@@ -296,8 +326,6 @@ export function isReadOnlyCommand(command: string): boolean {
       return SAFE_COMMANDS.has(cmd);
     });
 }
-export const isRiskyCommand = (command: string, profile: SessionKind = 'code') =>
-  RISKY.some((r) => r.test(command)) || (profile === 'work' && WORK_RISKY.some((r) => r.test(command)));
 export const commandKey = (command: string) => command.trim().split(/\s+/).slice(0, 2).join(' ');
 
 const DENIED = 'The user denied this tool call. Ask how they want to proceed.';
@@ -487,12 +515,17 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       if (SHELL_TOOLS.has(name)) {
         const command = String(input.command ?? '');
         const readOnly = isReadOnlyCommand(command);
+        // A PR watcher is an explicit automation switch in the PR bar. Its git/forge steps do not
+        // become interactive just because the session is in default, accept-edits or plan mode.
+        if (host.prAutomation?.() && isPrAutomationCommand(command)) return undefined;
         if (mode === 'plan')
           return readOnly ? undefined : { block: true, reason: 'Plan mode only allows read-only commands.' };
+        // The deterministic pre-check is deliberately small: only commands we can prove are read-only,
+        // or a command the user already allowed, skip the model review.
         if (readOnly || state.allowed.has(commandKey(command))) return undefined;
-        if (mode === 'auto' && !isRiskyCommand(command, state.profile)) {
-          // No rule settles it: a model reads it first and authorizes it. Without that authorization
-          // (review off, failed, timed out or doubtful) the user decides, as in every mode but bypass.
+        if (mode === 'auto') {
+          // Everything else in auto mode gets the task-aware model review. Without that authorization
+          // (review off, failed, timed out or doubtful) the user decides.
           const review = (await host.review?.(command, ctx.cwd, ctx.signal)) ?? null;
           if (review?.verdict === 'allow') return undefined;
           const title = review?.reason ? tr('ag.reviewAsk', { command, reason: review.reason }) : `Run ${command}`;

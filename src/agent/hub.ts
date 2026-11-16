@@ -121,7 +121,14 @@ import { REQUEST_ORIGIN, type RequestOrigin } from '@shared/request-log';
 import { recordRequests } from './request-hook/hook';
 import { RequestLog } from './request-hook/log';
 import { withOrigin } from './request-hook/origin';
-import { createDesktopKit, type KitHost, type KitState, type SessionScope, type SubagentRun } from './desktop-kit';
+import {
+  createDesktopKit,
+  isRiskyCommand,
+  type KitHost,
+  type KitState,
+  type SessionScope,
+  type SubagentRun,
+} from './desktop-kit';
 import type { ShellCommands } from './shell-session';
 import { toWireEvent } from './events';
 import {
@@ -193,6 +200,10 @@ interface Live {
   disposed: boolean;
   /** Running `task` subagents by tool call id, so one can be stopped on its own. */
   tasks: Map<string, AbortController>;
+  /** The current turn came from an enabled PR watcher, not from the composer. */
+  prAutomation: boolean;
+  /** Model-approved commands, scoped to the task that was active when they were reviewed. */
+  reviewedCommands: Set<string>;
   /** The shell behind the session's `bash` tool; the composer's `!command` runs in the same one. */
   shell?: ShellCommands;
   /** Exact files this session successfully wrote, edited, or presented to the user. */
@@ -692,6 +703,8 @@ export class SessionHub {
       historyBusy: false,
       disposed: false,
       tasks: new Map(),
+      prAutomation: false,
+      reviewedCommands: new Set(),
       outputPaths: new Set(),
       pendingOutputPaths: new Map(),
     };
@@ -835,6 +848,7 @@ export class SessionHub {
       cwd: this.meta(live.id).cwd,
       scope: hub.workScope(live.id),
       review: (command, cwd, signal) => hub.reviewCommand(live, command, cwd, signal),
+      prAutomation: () => live.prAutomation,
       // Read for every command, so switching it on the Settings page applies without a new session.
       shellSession: () => {
         const mode = hub.storedSettings().shellSession;
@@ -1021,6 +1035,7 @@ export class SessionHub {
   }
 
   private setStatus(live: Live, status: 'idle' | 'running') {
+    if (status === 'idle') live.prAutomation = false;
     if (live.status === status) return;
     live.status = status;
     this.emit({ type: 'status', sessionId: live.id, status });
@@ -1480,7 +1495,12 @@ export class SessionHub {
     return result;
   }
 
-  async prompt(id: string, payload: unknown, behavior: StreamingBehavior): Promise<{ disposition: string }> {
+  async prompt(
+    id: string,
+    payload: unknown,
+    behavior: StreamingBehavior,
+    origin: 'user' | 'pr' = 'user',
+  ): Promise<{ disposition: string }> {
     const live = await this.ensure(id);
     // The ghost text predicted the previous turn; a real message makes it stale.
     this.abortSuggestion(id);
@@ -1492,6 +1512,9 @@ export class SessionHub {
     const slash = built.message.startsWith('/');
     const expanded = expandUserCommand(built.message, live.runtime.session.promptTemplates);
     const message = expanded ? encodeUserCommandMessage(expanded.name, expanded.args, expanded.prompt) : built.message;
+    // Only the host's PR watcher may keep the automation bypass; a user/peer/task prompt that
+    // arrives while that turn is starting must not inherit it, even if its text resembles an event.
+    if (origin !== 'pr') live.prAutomation = false;
     // Image checks yield; never submit an old, in-flight message to a session that has since ended.
     if (live.disposed || live.generation !== generation)
       throw new Error(
@@ -1681,7 +1704,8 @@ export class SessionHub {
 
   /**
    * A model's verdict on a command that no rule settles. Null when review is off or the model failed or timed
-   * out, which the kit treats as "ask the user"; the offline demo has no model to ask, so it is let through.
+   * out, which the kit treats as "ask the user"; the offline demo lets ordinary Code commands through but
+   * keeps Work's destructive-file fallback behind a prompt.
    */
   private async reviewCommand(
     live: Live,
@@ -1692,8 +1716,15 @@ export class SessionHub {
     const settings = this.storedSettings();
     if (!settings.autoReview) return null;
     const session = live.runtime.session;
+    const kind = this.meta(live.id).kind;
+    const request = commandReview.latestRequest(session.messages);
+    const cacheKey = commandReview.reviewCacheKey({ command, cwd, kind, request });
+    if (live.reviewedCommands.has(cacheKey)) return { verdict: 'allow', reason: '' };
     const current = session.model ? `${session.model.provider}/${session.model.id}` : this.meta(live.id).model;
-    if (current?.startsWith('demo/')) return { verdict: 'allow', reason: '' };
+    // The demo provider cannot review. Keep Work's destructive-file fallback safe, while letting
+    // ordinary Code commands exercise the same auto-review path without a network model.
+    if (current?.startsWith('demo/'))
+      return kind === 'work' && isRiskyCommand(command, kind) ? null : { verdict: 'allow', reason: '' };
     const model = current ? this.modelFor(settings.autoReviewModel, settings.autoReviewModelId, current) : null;
     if (!model || model.provider === 'demo') return null;
     const controller = new AbortController();
@@ -1715,8 +1746,8 @@ export class SessionHub {
               content: commandReview.reviewRequest({
                 command,
                 cwd,
-                kind: this.meta(live.id).kind,
-                request: commandReview.latestRequest(session.messages),
+                kind,
+                request,
                 history: commandReview.recentConversation(session.messages),
                 steps: commandReview.recentSteps(session.messages),
               }),
@@ -1726,7 +1757,9 @@ export class SessionHub {
         { signal: controller.signal, maxTokens: commandReview.REVIEW_MAX_TOKENS, sessionId: live.id },
       );
       if (reply.stopReason === 'error' || reply.stopReason === 'aborted') return null;
-      return commandReview.parseVerdict(prediction.contentText(reply.content));
+      const verdict = commandReview.parseVerdict(prediction.contentText(reply.content));
+      if (verdict?.verdict === 'allow') live.reviewedCommands.add(cacheKey);
+      return verdict;
     } catch {
       return null;
     } finally {
@@ -2680,9 +2713,13 @@ export class SessionHub {
       m.prAutoDone = { ...m.prAutoDone, ...pending.mark };
       this.save();
     }
+    live.prAutomation = true;
     try {
-      await this.prompt(id, { text: encodePrEvent(pending.event), attachments: [] }, 'followUp');
+      await this.prompt(id, { text: encodePrEvent(pending.event), attachments: [] }, 'followUp', 'pr');
+      // A prompt can be handled without starting a running turn (for example after a shutdown race).
+      if (live.status === 'idle') live.prAutomation = false;
     } catch (err) {
+      live.prAutomation = false;
       this.emit({
         type: 'notify',
         sessionId: id,
