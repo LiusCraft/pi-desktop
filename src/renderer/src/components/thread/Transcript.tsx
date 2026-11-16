@@ -8,7 +8,7 @@ import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { PET_PERCH } from '@/components/composer/Clawd';
 import { runningTasks } from '@/components/workspace/Panels';
-import { openFileRef, togglePanel } from '@/store/actions';
+import { openDiffRef, togglePanel } from '@/store/actions';
 import { useApp } from '@/store/app';
 import { hasUserScrollIntent } from '@/lib/scrollbars';
 import { collapsedItems } from '@/store/transcript';
@@ -33,47 +33,84 @@ import {
   UserItem,
 } from './Items';
 
-/** Under a passage that was replied to: a pin per reply, which jumps to the message that quoted it. */
+/** Keep the inline summary compact while allowing the user to inspect every file in place. */
+const MAX_INLINE_CHANGED_FILES = 5;
+
+function fileIsDirty(s: SessionView, file: { path: string }) {
+  // A clean working tree means the session's branch changes were committed (or otherwise confirmed).
+  // Before the first refresh, keep the previous list rather than hiding it optimistically.
+  return !s.gitState || s.gitState.dirty.includes(file.path);
+}
+
+/** The session's files stay visible until the working tree confirms that they were committed. */
 function ChangedFiles({ s }: { s: SessionView }) {
   const t = useT();
-  const files = changedFileSummaries(s.outputs, s.changes);
+  const outputs = s.meta.baseCommit ? s.outputs.filter((file) => fileIsDirty(s, file)) : s.outputs;
+  const changes = s.meta.baseCommit ? s.changes.filter((file) => fileIsDirty(s, file)) : s.sessionChanges;
+  const files = changedFileSummaries(outputs, changes);
+  const [expanded, setExpanded] = useState(false);
+  const initial = files.slice(0, MAX_INLINE_CHANGED_FILES);
+  const extra = files.slice(MAX_INLINE_CHANGED_FILES);
+  const renderFile = (file: (typeof files)[number]) => {
+    const { change, created } = file;
+    return (
+      <li key={file.path}>
+        <button
+          type="button"
+          className="flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs hover:bg-accent"
+          title={file.path}
+          onClick={() => openDiffRef(file.path)}
+        >
+          {created ? (
+            <FilePlus2Icon className="size-3.5 shrink-0 text-success" />
+          ) : (
+            <FilePenIcon className="size-3.5 shrink-0 text-info" />
+          )}
+          <span className="min-w-0 flex-1 truncate font-mono">{file.path}</span>
+          <span className="shrink-0 text-muted-foreground">{t(created ? 'progress.created' : 'progress.edited')}</span>
+          {change && !change.binary && (
+            <span className="shrink-0 font-mono tabular-nums">
+              <span className="text-success">+{change.add}</span>{' '}
+              <span className="text-destructive">−{change.del}</span>
+            </span>
+          )}
+        </button>
+      </li>
+    );
+  };
   if (!files.length) return null;
   return (
     <section className="rounded-xl border bg-card/60 px-3.5 py-2.5">
       <div className="mb-2 flex items-center gap-2 text-sm font-medium">
         <FilePenIcon className="size-4 shrink-0 text-muted-foreground" />
-        {t('thread.filesChanged', { n: files.length })}
+        <span className="min-w-0 flex-1">{t('thread.filesChanged', { n: files.length })}</span>
+        {!!extra.length && (
+          <button
+            type="button"
+            className="shrink-0 text-xs font-normal text-muted-foreground hover:text-foreground"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {t(expanded ? 'thread.filesCollapse' : 'thread.filesShowAll')}
+          </button>
+        )}
       </div>
       <ul className="space-y-0.5">
-        {files.map((file) => {
-          const { change, created } = file;
-          return (
-            <li key={file.path}>
-              <button
-                type="button"
-                className="flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs hover:bg-accent"
-                title={file.path}
-                onClick={() => void openFileRef(file.path)}
-              >
-                {created ? (
-                  <FilePlus2Icon className="size-3.5 shrink-0 text-success" />
-                ) : (
-                  <FilePenIcon className="size-3.5 shrink-0 text-info" />
-                )}
-                <span className="min-w-0 flex-1 truncate font-mono">{file.path}</span>
-                <span className="shrink-0 text-muted-foreground">
-                  {t(created ? 'progress.created' : 'progress.edited')}
-                </span>
-                {change && !change.binary && (
-                  <span className="shrink-0 font-mono tabular-nums">
-                    <span className="text-success">+{change.add}</span>{' '}
-                    <span className="text-destructive">−{change.del}</span>
-                  </span>
-                )}
-              </button>
-            </li>
-          );
-        })}
+        {initial.map(renderFile)}
+        {!!extra.length && (
+          <li className="list-none">
+            <div
+              className={cn(
+                'grid overflow-hidden transition-[grid-template-rows] duration-200 ease-out',
+                expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+              )}
+            >
+              <div className="min-h-0 overflow-hidden">
+                <ul className="space-y-0.5">{extra.map(renderFile)}</ul>
+              </div>
+            </div>
+          </li>
+        )}
       </ul>
     </section>
   );
@@ -285,6 +322,7 @@ export function Transcript({ s }: { s: SessionView }) {
   const sid = s.meta.id;
   const links = useMemo(() => quoteLinks(s.items), [s.items]);
   const collapse = useMemo(() => collapsedItems(s.items), [s.items]);
+  const showChangedFiles = !s.running && s.items.at(-1)?.kind === 'foot';
   const quoted = useRef<{ range: Range; userKey: string }[]>([]);
 
   // The exact text that was replied to stays faintly marked.
@@ -463,12 +501,12 @@ export function Transcript({ s }: { s: SessionView }) {
           {s.items.map((item, i) =>
             isPendingAsk(item) || collapse.hidden.has(item.key) ? null : (
               <div key={item.key} data-item-key={item.key} className="transcript-item">
-                {i === s.items.length - 1 && item.kind === 'foot' && <ChangedFiles s={s} />}
                 {renderItem(s.meta.id, item, s.items, i, view, links.targets.get(item.key), collapse.before)}
                 <QuotePins pins={links.pins.get(item.key)} />
               </div>
             ),
           )}
+          {showChangedFiles && <ChangedFiles s={s} />}
           {s.setup && <SetupCard steps={s.setup} />}
           <StatusLine s={s} />
         </div>

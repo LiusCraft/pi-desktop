@@ -30,7 +30,7 @@ import {
 import { useDefaultLayout } from 'react-resizable-panels';
 import { toast } from 'sonner';
 import { findInText, SEARCH_MAX_MATCHES, type SearchResult } from '@shared/text-search';
-import type { CommitInfo } from '@shared/protocol';
+import type { CommitInfo, FileContent } from '@shared/protocol';
 import { generatedKind, isGeneratedFile, type GeneratedKind } from '@shared/generated';
 import {
   HEADER_TOGGLE_ATTR,
@@ -85,7 +85,7 @@ import {
 } from '@/store/actions';
 import { modelName, setPref, updateSession, useApp } from '@/store/app';
 import { findByKey, findTool } from '@/store/transcript';
-import type { CardId, ChangedFile, DropPlace, Item, SessionView } from '@/store/types';
+import type { CardId, ChangedFile, DropPlace, Item, SessionChange, SessionView } from '@/store/types';
 import { FileContextMenu } from './FileContextMenu';
 import { FindBar, SearchResults, type FindScope } from './FindBar';
 import { PathTree, type PathStatus } from './PathTree';
@@ -299,6 +299,7 @@ const GENERATED_LABEL = {
 } as const satisfies Record<GeneratedKind, string>;
 
 const STATUS_OF_CHANGE: Record<ChangedFile['status'], PathStatus> = { A: 'added', M: 'modified', D: 'deleted' };
+type DiffFile = ChangedFile | SessionChange;
 
 export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const t = useT();
@@ -318,24 +319,32 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [hit, setHit] = useState(0);
   const id = s.meta.id;
-  const files = commit ? commitFiles : s.changes;
+  const sessionMode = !s.meta.baseCommit;
+  const files: DiffFile[] = commit ? commitFiles : sessionMode ? s.sessionChanges : s.changes;
   const hash = commit?.hash ?? null;
   const columnLayout = useDefaultLayout({ id: `${id}:diff-column` });
   // Contents are read per file as the viewer reaches it; each arrival re-renders the panel.
   const [arrived, arrive] = useReducer((n: number) => n + 1, 0);
   useEffect(() => onContent(arrive), []);
-  const contents = useCallback((f: ChangedFile) => contentOf(id, hash, f), [id, hash]);
+  const contents = useCallback(
+    (f: DiffFile): FileContent | undefined =>
+      sessionMode && !commit && 'before' in f
+        ? { before: f.before, after: f.after, binary: f.binary }
+        : contentOf(id, hash, f),
+    [id, hash, sessionMode, commit],
+  );
   const isBinary = useCallback((f: ChangedFile) => f.binary || !!contents(f)?.binary, [contents]);
   const byPath = useMemo(() => new Map(files.map((f) => [f.path, f])), [files]);
   useEffect(() => {
+    if (sessionMode) return void setCommits([]);
     call('sessions:commits', id)
       .then(setCommits)
       .catch(() => setCommits([]));
-  }, [id, s.changes, s.meta.baseBranch]);
+  }, [id, s.changes, s.meta.baseBranch, sessionMode]);
   // Branches a diff can be measured from, read when the picker opens.
   const [branches, setBranches] = useState<string[]>([]);
   const loadBranches = (open: boolean) => {
-    if (open)
+    if (open && !sessionMode)
       call('git:branches', s.meta.cwd)
         .then(setBranches)
         .catch(() => setBranches([]));
@@ -344,9 +353,9 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const seenRevs = useRef<Map<string, string> | null>(null);
   useEffect(() => {
     const prev = seenRevs.current;
-    seenRevs.current = new Map(s.changes.map((f) => [f.path, f.rev]));
+    seenRevs.current = new Map(files.map((f) => [f.path, f.rev]));
     if (!prev) return;
-    const changed = s.changes.filter((f) => prev.get(f.path) !== f.rev).map((f) => f.path);
+    const changed = files.filter((f) => prev.get(f.path) !== f.rev).map((f) => f.path);
     if (!changed.length) return;
     setFlipped((c) => {
       const n = new Set(c);
@@ -355,7 +364,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
         else n.delete(path);
       return n;
     });
-  }, [s.changes]);
+  }, [files]);
   const pickBase = (ref: string) => {
     seenRevs.current = null;
     setCommit(null);
@@ -426,8 +435,9 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   }, [finding, query, caseSensitive, files, arrived]); // eslint-disable-line react-hooks/exhaustive-deps
   // Searching needs every file's text, not just the ones scrolled to.
   useEffect(() => {
-    if (finding && query) for (const f of files) if (!f.binary) wantContent(id, hash, f);
-  }, [finding, !!query, files, hash]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (finding && query)
+      for (const f of files) if (!f.binary && !('before' in f && 'after' in f)) wantContent(id, hash, f);
+  }, [finding, !!query, files, hash, sessionMode]); // eslint-disable-line react-hooks/exhaustive-deps
   // Scrolling the viewer can pull focus into it; stepping with Enter needs the box to keep it.
   const keepFindFocus = () => requestAnimationFrame(() => finder.current?.focus({ preventScroll: true }));
   const showHit = (at: number) => {
@@ -483,11 +493,11 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
     }
     if (!diffTarget.path) return;
     const { path: target, line, side } = diffTarget;
-    if (!open(target, line, side))
+    if (!open(target, line, side) && !sessionMode)
       void loadChanges(id).then(() => requestAnimationFrame(() => open(target, line, side)));
     diffTarget.path = null;
     diffTarget.line = undefined;
-  }, [diffTarget.seq, s.changes.length, s.prThreads]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [diffTarget.seq, s.diffRequest, files.length, s.prThreads, sessionMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const items = useMemo<ReviewItem[]>(() => {
     // `arrived` is a cache-busting counter: contentOf() reads a store outside React.
@@ -510,7 +520,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const need = (ids: string[]) =>
     ids.forEach((p) => {
       const f = byPath.get(p);
-      if (f) wantContent(id, hash, f);
+      if (f && !('before' in f && 'after' in f)) wantContent(id, hash, f);
     });
   const statuses = useMemo(() => new Map(files.map((f) => [f.path, STATUS_OF_CHANGE[f.status]])), [files]);
   const decorate = (path: string): FileTreeRowDecoration | null => {
@@ -526,7 +536,11 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
     };
   };
 
-  const title = (
+  const title = sessionMode ? (
+    <span className="flex min-w-0 items-center gap-1.5 text-sm font-normal">
+      <span className="truncate">{t('panel.sessionChanges')}</span>
+    </span>
+  ) : (
     <span className="flex min-w-0 items-center gap-1.5 text-sm font-normal">
       <DropdownMenu onOpenChange={loadBranches}>
         <DropdownMenuTrigger asChild>
@@ -599,8 +613,8 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
     </IconBtn>
   );
   let content: ReactNode;
-  if (!s.meta.baseCommit) content = <Empty>{t('panel.notGit')}</Empty>;
-  else if (!s.changes.length) content = <Empty>{t('panel.noChanges')}</Empty>;
+  if (!s.meta.baseCommit && !s.sessionChanges.length) content = <Empty>{t('panel.noChanges')}</Empty>;
+  else if (!files.length) content = <Empty>{t('panel.noChanges')}</Empty>;
   else {
     content = (
       <div className="flex h-full min-h-0 flex-col" {...findKeys(openFind)}>
@@ -636,7 +650,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
                         key={String(flat)}
                         flat={flat}
                         className="min-h-0 flex-1"
-                        label="Changed files"
+                        label={t('panel.changedFiles')}
                         meta={s.meta}
                         paths={files.map((f) => f.path)}
                         statuses={statuses}

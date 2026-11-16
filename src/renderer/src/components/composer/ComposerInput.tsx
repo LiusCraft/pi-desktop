@@ -25,7 +25,13 @@ import {
   type Mention,
 } from './mentions';
 import { LIMITS } from '@shared/attachments';
-import { badgeDeletion, messageSpans, referenceToken, type ContextReference } from '@shared/context-reference';
+import {
+  badgeDeletion,
+  decodeReferencePrompt,
+  messageSpans,
+  referenceToken,
+  type ContextReference,
+} from '@shared/context-reference';
 import type { AttachmentSource } from '@shared/protocol';
 import { AttachmentTiles } from '@/components/common/Attachments';
 import { ReferencePreview } from '@/components/common/InlineRefs';
@@ -230,8 +236,9 @@ export const ComposerInput = forwardRef<
   const t = useT();
   const key = useDrafts((s) => s.active);
   const draft = useDrafts((s) => (s.active ? s.drafts[s.active] : undefined));
-  const running = useApp((s) => (s.current ? s.sessions[s.current]?.running : false));
-  const files = useApp((s) => (s.current ? s.sessions[s.current]?.files : null));
+  const session = useApp((s) => (s.current ? s.sessions[s.current] : undefined));
+  const running = !!session?.running;
+  const files = session?.files ?? null;
   /** A typed @path is only a badge when it names a file the project actually has. */
   const knownPath = useMemo(() => {
     if (!files) return () => false;
@@ -246,7 +253,27 @@ export const ComposerInput = forwardRef<
   const [preview, setPreview] = useState<{ reference: ContextReference; x: number; y: number } | null>(null);
   const menu = useRef<HTMLDivElement>(null);
   const request = useRef(0);
+  const historyIndex = useRef<number | null>(null);
+  const historyDraft = useRef('');
   useImperativeHandle(ref, () => ({ focus: () => input.current?.focus() }));
+
+  const history = useMemo(
+    () =>
+      session?.items.flatMap((item) => {
+        if (item.kind !== 'user' || !item.delivered || item.failed) return [];
+        const text = item.submission?.text || decodeReferencePrompt(item.text)?.text || item.text;
+        return text ? [text] : [];
+      }) ?? [],
+    [session?.items],
+  );
+  const resetHistory = () => {
+    historyIndex.current = null;
+    historyDraft.current = '';
+  };
+  useEffect(() => resetHistory(), [key]);
+  useEffect(() => {
+    if (draft?.sending) resetHistory();
+  }, [draft?.sending]);
 
   // The guess only makes sense while the session is idle and the draft is empty:
   // typing or a new turn replaces it.
@@ -404,6 +431,49 @@ export const ComposerInput = forwardRef<
       if (e.key === 'Escape') {
         e.stopPropagation();
         return setItems([]);
+      }
+    }
+    if (
+      key &&
+      draft &&
+      !draft.sending &&
+      !draft.preparing &&
+      !draft.attachments.length &&
+      !draft.references.length &&
+      !e.nativeEvent.isComposing &&
+      (e.key === 'ArrowUp' || e.key === 'ArrowDown')
+    ) {
+      const el = e.currentTarget;
+      const browsing = historyIndex.current !== null;
+      const atBoundary =
+        browsing ||
+        (e.key === 'ArrowUp'
+          ? !el.value.includes('\n') || (el.selectionStart === 0 && el.selectionEnd === 0)
+          : el.selectionStart === el.value.length && el.selectionEnd === el.value.length);
+      if (atBoundary && history.length) {
+        e.preventDefault();
+        if (e.key === 'ArrowUp') {
+          if (historyIndex.current === null) historyDraft.current = el.value;
+          historyIndex.current = Math.max(0, (historyIndex.current ?? history.length) - 1);
+          drafts.setText(key, history[historyIndex.current]);
+        } else if (historyIndex.current !== null) {
+          if (historyIndex.current < history.length - 1) {
+            historyIndex.current++;
+            drafts.setText(key, history[historyIndex.current]);
+          } else {
+            const restored = historyDraft.current;
+            resetHistory();
+            drafts.setText(key, restored);
+          }
+        }
+        requestAnimationFrame(() => {
+          const current = input.current;
+          if (current) {
+            current.focus();
+            current.setSelectionRange(current.value.length, current.value.length);
+          }
+        });
+        return;
       }
     }
     if (e.key === 'Tab' && e.shiftKey) {
@@ -600,6 +670,7 @@ export const ComposerInput = forwardRef<
           aria-label={placeholder}
           placeholder={suggestion ? '' : placeholder}
           onChange={(e) => {
+            resetHistory();
             drafts.setText(key, e.target.value);
             void suggest();
           }}

@@ -12,7 +12,7 @@ import { t } from '@/lib/i18n';
 import { bareName, CODEMODE_TOOL, nestedCalls, toolFromArgs, toolLabel, type ToolState } from '@/lib/tools';
 import type { ViewMode } from '@/lib/constants';
 import { readArrangement, readPanels } from './layout';
-import type { Item, ItemOf, SessionView, ThinkStep, Todo } from './types';
+import type { Item, ItemOf, SessionChange, SessionView, ThinkStep, Todo } from './types';
 
 export interface Effects {
   scheduleChanges?: boolean;
@@ -56,6 +56,9 @@ export function emptySession(meta: SessionMeta): SessionView {
     todosKey: null,
     lastTodos: [],
     outputs: [],
+    turnOutputs: [],
+    turnChanges: [],
+    sessionChanges: [],
     changes: [],
     gitState: null,
     pr: meta.pr,
@@ -71,6 +74,7 @@ export function emptySession(meta: SessionMeta): SessionView {
     previewUrl: null,
     pendingUser: [],
     scrollRequest: null,
+    diffRequest: 0,
     stopping: false,
     historyBusy: false,
     setup: null,
@@ -142,15 +146,81 @@ function finishThought(step: ThinkStep, view: ViewMode) {
 
 // ------------------------------------------------------------ tools
 
+/** Start a new file-change summary without discarding the session's historical output list. */
+export function startChangeTurn(s: SessionView) {
+  s.turnOutputs = [];
+  s.turnChanges = [];
+}
+
+function recordOutput(s: SessionView, path: string, kind: 'write' | 'edit', t = Date.now()) {
+  const update = (list: SessionView['outputs'] | SessionView['turnOutputs']) => {
+    const prev = list.find((o) => o.path === path);
+    if (prev) prev.t = t;
+    else list.push({ path, kind, t });
+  };
+  update(s.outputs);
+  update(s.turnOutputs);
+}
+
 /** Result files the model listed join the session's outputs, as write and edit calls do. */
 export function addOutputs(s: SessionView, files: string[]) {
   for (const file of files) {
     if (typeof file !== 'string') continue;
-    const rel = relPath(s.meta.cwd, file);
-    const prev = s.outputs.find((o) => o.path === rel);
-    if (prev) prev.t = Date.now();
-    else s.outputs.push({ path: rel, kind: 'write', t: Date.now() });
+    recordOutput(s, relPath(s.meta.cwd, file), 'write');
   }
+}
+
+function recordChange(
+  list: SessionChange[],
+  path: string,
+  kind: 'write' | 'edit',
+  oldText: string | null,
+  newText: string | null,
+  preview: previews.ToolPreview,
+  toolId: string,
+) {
+  const existing = list.find((change) => change.path === path);
+  const before = existing?.before ?? oldText;
+  const after = newText ?? existing?.after ?? null;
+  const stats =
+    before !== null || after !== null
+      ? previews.diffStats(before, after)
+      : preview.type === 'diff'
+        ? { add: preview.add, del: preview.del }
+        : { add: 0, del: 0 };
+  const next: SessionChange = {
+    path,
+    status: existing?.status ?? (kind === 'write' ? 'A' : 'M'),
+    binary: false,
+    add: stats.add,
+    del: stats.del,
+    rev: `${Date.now()}:${toolId}`,
+    before,
+    after,
+  };
+  if (existing) Object.assign(existing, next);
+  else list.push(next);
+}
+
+function recordSessionChange(
+  s: SessionView,
+  path: string,
+  kind: 'write' | 'edit',
+  args: Record<string, any>,
+  preview: previews.ToolPreview,
+  toolId: string,
+) {
+  const oldText = kind === 'edit' && typeof args.oldText === 'string' ? args.oldText : null;
+  const newText =
+    kind === 'write'
+      ? typeof args.content === 'string'
+        ? args.content
+        : null
+      : typeof args.newText === 'string'
+        ? args.newText
+        : null;
+  recordChange(s.sessionChanges, path, kind, oldText, newText, preview, toolId);
+  recordChange(s.turnChanges, path, kind, oldText, newText, preview, toolId);
 }
 
 export function toolStart(
@@ -269,6 +339,10 @@ export function toolEnd(
       t.add = preview.add;
       t.del = preview.del;
     }
+    if (!ev.isError && t.path && (t.kind === 'edit' || t.kind === 'write')) {
+      const rel = relPath(s.meta.cwd, t.path);
+      recordSessionChange(s, rel, t.kind, t.args, preview, t.id);
+    }
   }
   if (t.kind === 'websearch' && !ev.isError) t.count = ev.result?.details?.hits?.length;
   if (bareName(ev.toolName) === CODEMODE_TOOL) t.calls = nestedCalls(ev.result?.details?.calls);
@@ -287,12 +361,7 @@ export function toolEnd(
   }
   if (t.kind === 'bash') t.output = text;
   else if (t.kind === 'edit' || t.kind === 'write') {
-    if (!ev.isError && t.path) {
-      const rel = relPath(s.meta.cwd, t.path);
-      const prev = s.outputs.find((o) => o.path === rel);
-      if (prev) prev.t = Date.now();
-      else s.outputs.push({ path: rel, kind: t.kind, t: Date.now() });
-    }
+    if (!ev.isError && t.path) recordOutput(s, relPath(s.meta.cwd, t.path), t.kind);
     if (!replay) fx.scheduleChanges = true;
   } else if (t.kind === 'agent' && ev.result?.details?.background) {
     // The call only started the task; its real end arrives as a `task` event.
@@ -464,6 +533,7 @@ function userFromMessage(s: SessionView, m: AgentMessage, view: ViewMode) {
       failed: false,
     });
   } else if (!user.clientId || !s.items.some((i) => i.kind === 'user' && i.clientId === user.clientId)) {
+    startChangeTurn(s);
     push(
       s,
       { kind: 'user', key: newKey(), ...user, entryId: m.entryId, timestamp: m.timestamp, delivered: true },
@@ -744,6 +814,9 @@ export function replay(s: SessionView, messages: AgentMessage[], view: ViewMode)
   s.todosKey = null;
   s.lastTodos = [];
   s.outputs = [];
+  s.turnOutputs = [];
+  s.turnChanges = [];
+  s.sessionChanges = [];
   s.streamTokens = 0;
   s.streamMs = 0;
   s.sessionTokens = 0;
@@ -814,6 +887,7 @@ function appendMessages(s: SessionView, messages: AgentMessage[], view: ViewMode
     if (m.role === 'user') {
       const user = decodeUserContent(m.content);
       if (user.text.startsWith('[pi-desktop]')) continue;
+      startChangeTurn(s);
       if (sawAssistant) s.items.push({ kind: 'foot', key: newKey(), t: m.timestamp || Date.now() });
       sawAssistant = false;
       s.todosKey = null;

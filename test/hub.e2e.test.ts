@@ -349,6 +349,32 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect((await driver.hub.open(meta.id)).messages).toEqual(before.messages);
   });
 
+  it('rewinds a message and restores the file changes made after it', async () => {
+    const { project, meta } = await codeSession();
+    const before = read(project, 'src/utils/date.js');
+    await driver.run(meta.id, '日期显示少了一个月，帮我修一下');
+    expect(read(project, 'src/utils/date.js')).not.toBe(before);
+    const opened = await driver.hub.open(meta.id);
+    const user = opened.messages.find((message) => message.role === 'user');
+    expect(user?.entryId).toBeTruthy();
+    const result = await driver.hub.messageAction(meta.id, user!.entryId!, 'rewind');
+    expect(read(project, 'src/utils/date.js')).toBe(before);
+    expect(result.session.messages.filter((message) => message.role === 'user')).toHaveLength(0);
+  });
+
+  it('rewinds a message and removes files created by write tools', async () => {
+    const { project, meta } = await codeSession('bypass');
+    const created = path.join(project, 'src/components/ThemeToggle.jsx');
+    expect(fs.existsSync(created)).toBe(false);
+    await driver.run(meta.id, '添加深色模式');
+    expect(fs.existsSync(created)).toBe(true);
+    const opened = await driver.hub.open(meta.id);
+    const user = opened.messages.find((message) => message.role === 'user');
+    expect(user?.entryId).toBeTruthy();
+    await driver.hub.messageAction(meta.id, user!.entryId!, 'rewind');
+    expect(fs.existsSync(created)).toBe(false);
+  });
+
   it('names a session from its first prompt, and a rename locks the title', async () => {
     const project = makeProject('naming');
     const meta = await driver.hub.create({

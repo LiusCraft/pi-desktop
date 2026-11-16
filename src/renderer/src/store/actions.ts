@@ -50,6 +50,7 @@ import {
   replay,
   resolveUi,
   settle,
+  startChangeTurn,
   transcriptItems,
   type Effects,
 } from './transcript';
@@ -1005,6 +1006,8 @@ export async function send(queueOnly = false) {
   }
   const wasRunning = !!getApp().sessions[id]?.running;
   const requestStartedAt = Date.now();
+  // The transcript summary belongs to the new user turn, not to the previous answer.
+  updateSession(id, startChangeTurn);
   const itemKey = newKey();
   const optimistic = !wasRunning && !text.startsWith('/');
   setApp((x) => {
@@ -1357,6 +1360,7 @@ export async function userMessageAction(id: string, entryId: string, action: 're
         label: t(action === 'rewind' ? 'act.rewoundMessage' : 'act.branchStart'),
       });
     if (restoreDraft && draft.notice) drafts.error(sessionDraftKey(session.meta.id), draft.notice);
+    if (session.meta.kind === 'code') void loadChanges(session.meta.id);
     // Navigate only if the user has stayed on the source session during the request.
     if (getApp().current === id) await openSession(session.meta.id);
   } catch (err) {
@@ -1558,6 +1562,9 @@ export const diffTarget = {
   thread: false,
   seq: 0,
 };
+function requestDiff(id: string) {
+  updateSession(id, (v) => void (v.diffRequest += 1));
+}
 export function openDiffRef(path: string, line?: number, side?: 'old' | 'new' | 'mixed') {
   const s = currentSession();
   if (!s) return;
@@ -1565,6 +1572,7 @@ export function openDiffRef(path: string, line?: number, side?: 'old' | 'new' | 
   diffTarget.line = positiveLine(line);
   diffTarget.side = side === 'old' ? 'deletions' : 'additions';
   diffTarget.seq++;
+  requestDiff(s.meta.id);
   togglePanel(s.meta.id, 'diff', true);
 }
 /** A card of a sent message: go to what it refers to. `quoted` is the transcript item a reply points at. */
@@ -1594,6 +1602,7 @@ export async function openPrComments() {
   }
   diffTarget.thread = true;
   diffTarget.seq++;
+  requestDiff(id);
   togglePanel(id, 'diff', true);
 }
 
@@ -1638,6 +1647,9 @@ async function pruneOutputs(id: string) {
     const alive = new Set(await call('sessions:existing', id, paths));
     updateSession(id, (v) => {
       v.outputs = v.outputs.filter((o) => alive.has(o.path));
+      v.turnOutputs = v.turnOutputs.filter((o) => alive.has(o.path));
+      v.turnChanges = v.turnChanges.filter((change) => alive.has(change.path));
+      v.sessionChanges = v.sessionChanges.filter((change) => alive.has(change.path));
     });
   } catch {
     // Keep the list as it is when the check fails.

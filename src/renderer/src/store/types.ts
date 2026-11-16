@@ -153,6 +153,12 @@ export interface FileTab {
 
 export type ChangedFile = FileChange;
 
+/** A file changed by the current conversation turn, including the content available from its tool result. */
+export interface SessionChange extends ChangedFile {
+  before: string | null;
+  after: string | null;
+}
+
 /** The cards the workspace can show beside the conversation. */
 export type CardId = 'progress' | 'tasks' | 'diff' | 'preview' | 'detail' | 'files' | 'terminal';
 
@@ -213,6 +219,13 @@ export interface SessionView {
   lastTodos: Todo[];
   /** Files Pi Desktop created or edited (Work panel). */
   outputs: { path: string; kind: 'write' | 'edit'; t: number }[];
+  /** Files listed or changed during the current user turn, for the transcript summary. */
+  turnOutputs: { path: string; kind: 'write' | 'edit'; t: number }[];
+  /** Files changed during the current user turn, for the transcript summary. */
+  turnChanges: SessionChange[];
+  /** The cumulative session changes, used as the Diff source outside git repositories. */
+  sessionChanges: SessionChange[];
+  /** The cumulative session-base diff when the session is in a git repository. */
   changes: ChangedFile[];
   /** Live git state for the branch bar: uncommitted paths and unpushed commits. */
   gitState: GitState | null;
@@ -235,6 +248,8 @@ export interface SessionView {
   pendingUser: string[];
   /** A renderer-only request to return the transcript to the newest message after sending. */
   scrollRequest: string | null;
+  /** Bumped whenever a caller asks the open Diff panel to jump to a file or thread. */
+  diffRequest: number;
   stopping: boolean;
   historyBusy: boolean;
   /** Start-up progress while the session is being made ready; null once it is. */
