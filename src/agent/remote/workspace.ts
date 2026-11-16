@@ -27,7 +27,10 @@ export class ProjectBook {
     return project;
   }
   removeProject(dir: string): Project[] {
-    this.store.set('projects', this.store.get<Project[]>('projects', []).filter((p) => p.path !== dir));
+    this.store.set(
+      'projects',
+      this.store.get<Project[]>('projects', []).filter((p) => p.path !== dir),
+    );
     return this.projects();
   }
 
@@ -43,7 +46,10 @@ export class ProjectBook {
     return folder;
   }
   removeWorkFolder(dir: string): WorkProject[] {
-    this.store.set('workFolders', this.store.get<WorkProject[]>('workFolders', []).filter((p) => p.path !== dir));
+    this.store.set(
+      'workFolders',
+      this.store.get<WorkProject[]>('workFolders', []).filter((p) => p.path !== dir),
+    );
     return this.workFolders();
   }
   /** Changes what a Work project holds without reordering the list. */
@@ -72,7 +78,9 @@ function applyPatch(project: WorkProject, patch: WorkProjectPatch): WorkProject 
       .slice(0, PROJECT_LIMITS.links);
   }
   if (patch.codeFolders !== undefined) {
-    const folders = (Array.isArray(patch.codeFolders) ? patch.codeFolders : []).map((f) => clip(f, PROJECT_LIMITS.url).trim()).filter(Boolean);
+    const folders = (Array.isArray(patch.codeFolders) ? patch.codeFolders : [])
+      .map((f) => clip(f, PROJECT_LIMITS.url).trim())
+      .filter(Boolean);
     next.codeFolders = [...new Set(folders)].slice(0, PROJECT_LIMITS.codeFolders);
   }
   return next;
@@ -82,7 +90,8 @@ function applyPatch(project: WorkProject, patch: WorkProjectPatch): WorkProject 
 export function existingFolder(value: unknown): string {
   const raw = typeof value === 'string' ? expandHome(value) : '';
   const abs = path.resolve(localPath(raw));
-  if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) throw new Error(`${abs} is not a folder on that machine.`);
+  if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory())
+    throw new Error(`${abs} is not a folder on that machine.`);
   return abs;
 }
 
@@ -92,7 +101,8 @@ export function browse(dir: unknown): RemoteListing {
   const parent = path.dirname(abs);
   let dirs: RemoteListing['dirs'] = [];
   try {
-    dirs = fs.readdirSync(abs, { withFileTypes: true })
+    dirs = fs
+      .readdirSync(abs, { withFileTypes: true })
       .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
       .map((e) => ({ name: e.name, path: path.join(abs, e.name) }))
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -108,17 +118,25 @@ export type WorkspaceResult = Project[] | Project | WorkProject[] | WorkProject 
 /** Answer the workspace calls of a remote client from one project book. */
 export function workspaceCall(book: ProjectBook, method: RemoteWorkspaceMethod, args: unknown[]): WorkspaceResult {
   switch (method) {
-    case 'projects:list': return book.projects();
-    case 'projects:addPath': return book.addProject(existingFolder(args[0]));
-    case 'projects:remove': return book.removeProject(String(args[0]));
-    case 'work:folders': return book.workFolders();
-    case 'work:addPath': return book.addWorkFolder(existingFolder(args[0]));
+    case 'projects:list':
+      return book.projects();
+    case 'projects:addPath':
+      return book.addProject(existingFolder(args[0]));
+    case 'projects:remove':
+      return book.removeProject(String(args[0]));
+    case 'work:folders':
+      return book.workFolders();
+    case 'work:addPath':
+      return book.addWorkFolder(existingFolder(args[0]));
     case 'work:useFolder': {
       const dir = String(args[0]);
       return fs.existsSync(dir) ? book.addWorkFolder(dir) : null;
     }
-    case 'work:removeFolder': return book.removeWorkFolder(String(args[0]));
-    case 'work:update': return book.updateWorkFolder(String(args[0]), (args[1] ?? {}) as WorkProjectPatch);
-    case 'remote:browse': return browse(args[0]);
+    case 'work:removeFolder':
+      return book.removeWorkFolder(String(args[0]));
+    case 'work:update':
+      return book.updateWorkFolder(String(args[0]), (args[1] ?? {}) as WorkProjectPatch);
+    case 'remote:browse':
+      return browse(args[0]);
   }
 }

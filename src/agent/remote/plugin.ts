@@ -6,7 +6,16 @@ import path from 'node:path';
 import { getAgentDir, type ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { HOST_CHANNELS } from '@shared/protocol';
 import { tr } from '@shared/i18n/runtime';
-import { isRemotePort, isTerminalMethod, isTransferMethod, REMOTE_DEFAULT_PORT, REMOTE_PORT_RANGE, REMOTE_WORKSPACE_METHODS, type RemoteServeSettings, type RemoteWorkspaceMethod } from '@shared/remote';
+import {
+  isRemotePort,
+  isTerminalMethod,
+  isTransferMethod,
+  REMOTE_DEFAULT_PORT,
+  REMOTE_PORT_RANGE,
+  REMOTE_WORKSPACE_METHODS,
+  type RemoteServeSettings,
+  type RemoteWorkspaceMethod,
+} from '@shared/remote';
 import { sessionHandlers } from '../handlers';
 import { SessionHub } from '../hub';
 import { Store } from '../store';
@@ -45,15 +54,25 @@ const shared = globalThis as { [RUNNING]?: Running | null };
 
 export default function piRemote(pi: ExtensionAPI) {
   const state = {
-    get running() { return shared[RUNNING] ?? null; },
-    set running(value: Running | null) { shared[RUNNING] = value; },
+    get running() {
+      return shared[RUNNING] ?? null;
+    },
+    set running(value: Running | null) {
+      shared[RUNNING] = value;
+    },
   };
   const store = () => new Store(homeDir());
 
   function config(patch: Partial<Config> = {}): Config {
     const s = store();
     const saved = s.get<Partial<Config>>(CONFIG_KEY, {});
-    const next: Config = { port: saved.port ?? REMOTE_DEFAULT_PORT, lan: saved.lan === true, tunnel: saved.tunnel === true, token: saved.token || newRemoteToken(), ...patch };
+    const next: Config = {
+      port: saved.port ?? REMOTE_DEFAULT_PORT,
+      lan: saved.lan === true,
+      tunnel: saved.tunnel === true,
+      token: saved.token || newRemoteToken(),
+      ...patch,
+    };
     if (!saved.token || Object.keys(patch).length) s.set(CONFIG_KEY, next);
     return next;
   }
@@ -76,7 +95,8 @@ export default function piRemote(pi: ExtensionAPI) {
         call: async (method, args) => {
           if (isTerminalMethod(method)) throw new Error(tr('remote.terminal.unavailable'));
           if (isTransferMethod(method)) return transferCall(dataDir, method, args);
-          if ((REMOTE_WORKSPACE_METHODS as readonly string[]).includes(method)) return workspaceCall(book, method as RemoteWorkspaceMethod, args);
+          if ((REMOTE_WORKSPACE_METHODS as readonly string[]).includes(method))
+            return workspaceCall(book, method as RemoteWorkspaceMethod, args);
           const handler = handlers[method as (typeof HOST_CHANNELS)[number]];
           if (!handler) throw new Error(`Unknown method: ${method}`);
           return handler(...args);
@@ -116,7 +136,11 @@ export default function piRemote(pi: ExtensionAPI) {
     ].join('\n');
   }
 
-  pi.registerFlag(AUTOSTART_FLAG, { description: 'Serve sessions to remote Pi Desktop clients on start', type: 'boolean', default: false });
+  pi.registerFlag(AUTOSTART_FLAG, {
+    description: 'Serve sessions to remote Pi Desktop clients on start',
+    type: 'boolean',
+    default: false,
+  });
 
   pi.registerCommand(COMMAND, {
     description: 'Remote access for Pi Desktop: start [--lan] [--tunnel] [--port N] | stop | status | token | rotate',
@@ -132,7 +156,8 @@ export default function piRemote(pi: ExtensionAPI) {
           const at = rest.indexOf('--port');
           if (at >= 0) {
             const port = Number(rest[at + 1]);
-            if (!isRemotePort(port)) throw new Error(`--port needs a number between ${REMOTE_PORT_RANGE.min} and ${REMOTE_PORT_RANGE.max}.`);
+            if (!isRemotePort(port))
+              throw new Error(`--port needs a number between ${REMOTE_PORT_RANGE.min} and ${REMOTE_PORT_RANGE.max}.`);
             patch.port = port;
           }
           ctx.ui.notify(describe(await start(patch)), 'info');
@@ -147,9 +172,17 @@ export default function piRemote(pi: ExtensionAPI) {
         } else if (sub === 'token') {
           ctx.ui.notify(`Access token: ${config().token}`, 'info');
         } else if (sub === 'status') {
-          ctx.ui.notify(state.running ? `${describe(state.running)}\nConnected clients: ${state.running.server.clients}` : 'Remote access is off. Run /remote start.', 'info');
+          ctx.ui.notify(
+            state.running
+              ? `${describe(state.running)}\nConnected clients: ${state.running.server.clients}`
+              : 'Remote access is off. Run /remote start.',
+            'info',
+          );
         } else {
-          ctx.ui.notify(`Unknown option "${sub}". Use: start [--lan] [--tunnel] [--port N] | stop | status | token | rotate`, 'warning');
+          ctx.ui.notify(
+            `Unknown option "${sub}". Use: start [--lan] [--tunnel] [--port N] | stop | status | token | rotate`,
+            'warning',
+          );
         }
       } catch (err) {
         ctx.ui.notify(err instanceof Error ? err.message : String(err), 'error');

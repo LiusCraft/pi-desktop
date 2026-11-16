@@ -1,4 +1,7 @@
 import { t } from './i18n';
+import { useEffect, useState } from 'react';
+
+const RELATIVE_TIME_REFRESH_MS = 30_000;
 
 export const fname = (p: string) => String(p).split(/[\\/]/).pop() || '';
 export const fdir = (p: string) => String(p).split(/[\\/]/).slice(0, -1).join('/');
@@ -16,6 +19,16 @@ export function ago(at: number, long = false) {
   return long ? t(d === 1 ? 'ago.dayOne' : 'ago.dayOther', { n: d }) : t('ago.dayShort', { n: d });
 }
 
+/** Keep a relative timestamp current while its component stays mounted. */
+export function useAgo(at: number, long = false) {
+  const [, refresh] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => refresh((n) => n + 1), RELATIVE_TIME_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, []);
+  return ago(at, long);
+}
+
 export function fmtDur(ms: number) {
   const t = Math.round(ms / 1000);
   if (t < 60) return `${t}s`;
@@ -24,6 +37,11 @@ export function fmtDur(ms: number) {
 }
 
 export const fmtTok = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+
+/** Format a streaming output rate as whole tokens per second. */
+export function fmtTokPerSec(tokens: number, ms: number) {
+  return tokens > 0 && ms > 0 ? String(Math.round((tokens * 1000) / ms)) : '0';
+}
 
 /** A nested tool call's duration: "84ms" / "1.2s". */
 export const fmtMs = (ms: number) => (ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`);
@@ -34,7 +52,8 @@ export function fmtCost(cost: number) {
   return `$${cost > 0 ? cost.toPrecision(2) : '0.00'}`;
 }
 
-export const sizeLabel = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+export const sizeLabel = (n: number) =>
+  n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
 
 /** A tool path relative to the session folder (tools may report absolute paths). */
 export function relPath(cwd: string, p: string) {

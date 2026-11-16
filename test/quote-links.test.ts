@@ -11,7 +11,10 @@ describe('quoteLinks', () => {
     const items = [
       user('u1', '帮我看看'),
       text('a1', '这里 **有一个** bug：\n\n- 空指针'),
-      user('u2', referencePrompt('为什么', [{ id: 'q', kind: 'quote', path: '', text: '有一个 bug：空指针', comment: '细说' }])),
+      user(
+        'u2',
+        referencePrompt('为什么', [{ id: 'q', kind: 'quote', path: '', text: '有一个 bug：空指针', comment: '细说' }]),
+      ),
     ];
     const { pins, targets } = quoteLinks(items);
     expect(pins.get('a1')).toEqual([{ userKey: 'u2', comment: '细说', text: '有一个 bug：空指针' }]);

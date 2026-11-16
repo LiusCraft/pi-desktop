@@ -30,14 +30,23 @@ export function prBadge(pr: Status & Partial<Pick<PrStatus, 'review'>>): PrBadge
 }
 
 /** Lines and files the PR touches; null while the host has not told us, so the bar can show the working tree instead. */
-export function prSize(pr: Pick<PrStatus, 'additions' | 'deletions' | 'files'>): { add: number; del: number; files: number | null } | null {
+export function prSize(
+  pr: Pick<PrStatus, 'additions' | 'deletions' | 'files'>,
+): { add: number; del: number; files: number | null } | null {
   if (pr.additions == null && pr.deletions == null) return null;
   return { add: pr.additions ?? 0, del: pr.deletions ?? 0, files: pr.files ?? null };
 }
 
 /** The host says this can merge and nothing is red, running or waiting on changes: a good moment for auto-merge. */
 export function prReady(pr: Status & Partial<Pick<PrStatus, 'review'>>) {
-  return pr.state === 'open' && !pr.draft && pr.mergeable === 'clean' && pr.ci !== 'fail' && pr.ci !== 'pending' && pr.review !== 'changes';
+  return (
+    pr.state === 'open' &&
+    !pr.draft &&
+    pr.mergeable === 'clean' &&
+    pr.ci !== 'fail' &&
+    pr.ci !== 'pending' &&
+    pr.review !== 'changes'
+  );
 }
 
 /** The failing commit a fix belongs to; keyed by commit so the same red run is only fixed once. */
@@ -56,7 +65,8 @@ export function prCiLine(pr: Pick<PrLike, 'ci'> & Partial<Pick<PrStatus, 'checks
     const failed = checks.filter((c) => c.st === 'fail').length;
     return tr('pr.checksFailed', { failed, checks: plural(n) });
   }
-  if (pr.ci === 'pending') return tr('pr.checksRunningLine', { checks: plural(checks.filter((c) => c.st === 'pending').length || n) });
+  if (pr.ci === 'pending')
+    return tr('pr.checksRunningLine', { checks: plural(checks.filter((c) => c.st === 'pending').length || n) });
   return tr('pr.checksAllPassed', { checks: plural(n) });
 }
 

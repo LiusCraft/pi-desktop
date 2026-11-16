@@ -1,12 +1,14 @@
 import { useEffect } from 'react';
 import type { SettingsPayload } from '@shared/protocol';
+import { UI_DENSITY_LINE_SCALE, UI_DENSITY_SCALE, UI_FONT_SIZE_DEFAULT, type UiDensity } from '@shared/protocol';
 import { bridge } from './api';
 
 /** A font setting as a CSS family list: a single name is quoted, a list the user wrote is kept as is. */
 export const fontFamilyCss = (font: string) => (/[,"']/.test(font) ? font : `"${font}"`);
 
 /** The custom font (if any) leading `fallback`, a CSS font list. */
-export const fontStack = (font: string | null | undefined, fallback: string) => (font?.trim() ? `${fontFamilyCss(font.trim())}, ${fallback}` : fallback);
+export const fontStack = (font: string | null | undefined, fallback: string) =>
+  font?.trim() ? `${fontFamilyCss(font.trim())}, ${fallback}` : fallback;
 
 function applyFont(name: string, font: string | null | undefined, system: string) {
   const style = document.documentElement.style;
@@ -19,8 +21,18 @@ export function applyTheme(settings: Partial<SettingsPayload> | undefined) {
   applyFont('--app-font-sans', settings?.uiFont, '--system-font-sans');
   applyFont('--app-font-mono', settings?.codeFont, '--system-font-mono');
   const dark = (settings?.resolvedTheme ?? 'light') === 'dark';
+  const density: UiDensity = settings?.density === 'comfortable' ? 'comfortable' : 'compact';
   document.documentElement.classList.toggle('dark', dark);
   document.documentElement.dataset.palette = settings?.palette ?? 'default';
+  document.documentElement.dataset.density = density;
+  const fontSize =
+    typeof settings?.fontSize === 'number' && Number.isFinite(settings.fontSize)
+      ? settings.fontSize
+      : UI_FONT_SIZE_DEFAULT;
+  document.documentElement.style.setProperty('--ui-font-size', `${fontSize}px`);
+  document.documentElement.style.setProperty('--font-scale', String(fontSize / UI_FONT_SIZE_DEFAULT));
+  document.documentElement.style.setProperty('--density-scale', String(UI_DENSITY_SCALE[density]));
+  document.documentElement.style.setProperty('--density-line-scale', String(UI_DENSITY_LINE_SCALE[density]));
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
 }
 

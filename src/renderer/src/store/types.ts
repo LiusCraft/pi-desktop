@@ -1,6 +1,17 @@
 import type { Attachment, DecodedAttachment } from '@shared/attachments';
 import type {
-  FileChange, GitState, PrStatus, PrSummary, PrThread, SessionMeta, SetupStep, SlashCommand, QuestionAnswer, SpawnTask, ThinkingLevel, UiRequest,
+  FileChange,
+  GitState,
+  PrStatus,
+  PrSummary,
+  PrThread,
+  SessionMeta,
+  SetupStep,
+  SlashCommand,
+  QuestionAnswer,
+  SpawnTask,
+  ThinkingLevel,
+  UiRequest,
 } from '@shared/protocol';
 import type { PrEvent } from '@shared/pr-event';
 import type { ToolState } from '@/lib/tools';
@@ -41,24 +52,78 @@ export type Item =
       wire?: string;
     }
   | { kind: 'text'; key: string; text: string; live: boolean; msgTs?: number }
+  /**
+   * A command the user ran with `!` in the session's own shell. pi keeps it in the conversation, so it
+   * arrives from `bashExecution` messages on reload and from `bash_execution_update` events while it runs.
+   */
+  | {
+      kind: 'bash';
+      key: string;
+      command: string;
+      output: string;
+      running: boolean;
+      exitCode?: number;
+      cancelled?: boolean;
+      truncated?: boolean;
+      fullOutputPath?: string;
+      /** `!!`: the transcript keeps it, the model does not see it. */
+      excluded?: boolean;
+      /** Why the command did not run at all (the host refused it). */
+      error?: string;
+      at: number;
+    }
   | { kind: 'note'; key: string; text: string; level?: 'error' }
   | { kind: 'group'; key: string; thoughts: ThinkStep[]; tools: ToolState[]; open: boolean; userToggled?: boolean }
   | { kind: 'todos'; key: string; items: Todo[] }
   | { kind: 'perm'; key: string; requestId: string | null; toolCallId: string; title: string; resolved: string | null }
-  | { kind: 'ask'; key: string; requestId: string | null; request: UiRequest; resolved: string | null; answers?: QuestionAnswer[]; /** Set for `pidesk_ask_question`, whose card starts at the tool call. */ toolCallId?: string }
-  | { kind: 'plan'; key: string; toolCallId: string | null; title: string; md: string; requestId: string | null; resolved: string | null }
+  | {
+      kind: 'ask';
+      key: string;
+      requestId: string | null;
+      request: UiRequest;
+      resolved: string | null;
+      answers?: QuestionAnswer[];
+      /** Set for `pidesk_ask_question`, whose card starts at the tool call. */ toolCallId?: string;
+    }
+  | {
+      kind: 'plan';
+      key: string;
+      toolCallId: string | null;
+      title: string;
+      md: string;
+      requestId: string | null;
+      resolved: string | null;
+    }
   /** Tasks the agent suggests; what the user did with each lives in `meta.suggestions`. */
   | { kind: 'suggest'; key: string; toolCallId: string; tasks: SpawnTask[] }
   /**
    * A compaction checkpoint: the summary is what the model keeps, and the messages above it are
    * the history it replaces. Those start hidden behind "show earlier messages".
    */
-  | { kind: 'compaction'; key: string; summary: string; tokensBefore?: number; tokensAfter?: number; /** The earlier messages are shown. */ open: boolean; /** Messages pi dropped, not in the transcript yet; fetched when they are shown. */ hidden: number; loading?: boolean; /** The summary body is expanded. */ openSummary: boolean }
+  | {
+      kind: 'compaction';
+      key: string;
+      summary: string;
+      tokensBefore?: number;
+      tokensAfter?: number;
+      /** The earlier messages are shown. */ open: boolean;
+      /** Messages pi dropped, not in the transcript yet; fetched when they are shown. */ hidden: number;
+      loading?: boolean;
+      /** The summary body is expanded. */ openSummary: boolean;
+    }
   /**
    * An idle rebuild: the card the model was handed, and the messages that left its context. Those sit
    * above the card and stay hidden until asked for, exactly like a compaction's history.
    */
-  | { kind: 'handoff'; key: string; idle: string; tokensBefore?: number; open: boolean; hidden: number; loading?: boolean }
+  | {
+      kind: 'handoff';
+      key: string;
+      idle: string;
+      tokensBefore?: number;
+      open: boolean;
+      hidden: number;
+      loading?: boolean;
+    }
   /** A turn the PR watcher started: shown as an incoming event, never as something the user typed. */
   | { kind: 'prEvent'; key: string; event: PrEvent; at: number }
   | { kind: 'foot'; key: string; t: number; usage?: string };
@@ -68,7 +133,17 @@ export type ItemOf<K extends Item['kind']> = Extract<Item, { kind: K }>;
 export type Detail =
   | { type: 'plan'; key: string }
   | { type: 'agent'; toolCallId: string }
-  | { type: 'file'; path: string; line: number; start?: number; loading: boolean; text?: string | null; error?: string; image?: string | null; media?: { kind: 'audio' | 'video'; src: string } | null };
+  | {
+      type: 'file';
+      path: string;
+      line: number;
+      start?: number;
+      loading: boolean;
+      text?: string | null;
+      error?: string;
+      image?: string | null;
+      media?: { kind: 'audio' | 'video'; src: string } | null;
+    };
 
 /** A file open in the Files card. A tab nobody double-clicked is a preview: the next single click replaces it. */
 export interface FileTab {
@@ -110,7 +185,16 @@ export interface SessionView {
   /** A manual or automatic compaction is running: the session is busy, but not in a turn. */
   compacting: boolean;
   t0: number;
+  /** Output tokens emitted during this turn, reconciled with the provider's final usage when available. */
   tokens: number;
+  /** Visible output tokens emitted during assistant streams in this turn. */
+  streamTokens: number;
+  /** Milliseconds spent in assistant thinking/text streams during this turn. */
+  streamMs: number;
+  /** Visible output tokens accumulated across completed turns in this session. */
+  sessionTokens: number;
+  /** Assistant stream time accumulated across completed turns in this session. */
+  sessionStreamMs: number;
   statusText: string;
   ctxPct: number | null;
   /** Cache hit rate of the session's prompt tokens, 0-1; null when the provider reported none. */
@@ -149,6 +233,8 @@ export interface SessionView {
   previewUrl: string | null;
   /** User items not yet confirmed by pi. */
   pendingUser: string[];
+  /** A renderer-only request to return the transcript to the newest message after sending. */
+  scrollRequest: string | null;
   stopping: boolean;
   historyBusy: boolean;
   /** Start-up progress while the session is being made ready; null once it is. */
@@ -156,5 +242,13 @@ export interface SessionView {
   /** Bumped when the agent host exits; in-flight work from before must not apply. */
   hostEpoch: number;
   /** Streaming message state. */
-  cur: { thinkGroup: string | null; thinkIndex: number; text: string | null } | null;
+  cur: {
+    thinkGroup: string | null;
+    thinkIndex: number;
+    text: string | null;
+    streamChars: number;
+    streamTextChars: number;
+    streamTokens: number;
+    streamT0: number;
+  } | null;
 }

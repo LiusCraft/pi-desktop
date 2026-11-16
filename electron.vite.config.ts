@@ -14,14 +14,14 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self' data:",
-  // A desktop plugin's page is served from its own scheme (see `src/main/plugins.ts`).
-  'frame-src http://localhost:* http://127.0.0.1:* pidesk-plugin:',
+  'frame-src http: https: file: pidesk-plugin:',
   "connect-src 'none'",
 ].join('; ');
 const csp: Plugin = {
   name: 'pi-desktop-csp',
   apply: 'build',
-  transformIndexHtml: (html) => html.replace('<head>', `<head>\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`),
+  transformIndexHtml: (html) =>
+    html.replace('<head>', `<head>\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`),
 };
 
 export default defineConfig({

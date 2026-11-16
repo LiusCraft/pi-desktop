@@ -1,6 +1,17 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import {
-  BotIcon, ChevronDownIcon, EllipsisIcon, EyeIcon, ExternalLinkIcon, FileTextIcon, FolderIcon, GitBranchIcon, GitForkIcon, GlobeIcon, LaptopIcon, PanelRightIcon,
+  BotIcon,
+  ChevronDownIcon,
+  EllipsisIcon,
+  EyeIcon,
+  ExternalLinkIcon,
+  FileTextIcon,
+  FolderIcon,
+  GitBranchIcon,
+  GitForkIcon,
+  GlobeIcon,
+  LaptopIcon,
+  PanelRightIcon,
   SquareTerminalIcon,
 } from 'lucide-react';
 import { PET_BLOCK_ATTR } from '@/components/composer/Clawd';
@@ -10,20 +21,35 @@ import { InlineEdit } from '@/components/common/InlineEdit';
 import { AskDock, Transcript } from '@/components/thread/Transcript';
 import { openCards, soloCard, Workspace } from '@/components/workspace/Workspace';
 import {
-  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup,
-  DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import { TooltipHint } from '@/components/ui/tooltip';
 import { useDefaultLayout } from 'react-resizable-panels';
 import { call, canTerminal, isMac, modKey } from '@/lib/api';
 import { workIdeas, OUTPUT_STYLE_INFO, VIEW_MODES, type ViewMode } from '@/lib/constants';
 import { useT } from '@/lib/i18n';
 import { fname } from '@/lib/format';
 import { OpenInMenu } from '@/components/common/OpenInMenu';
+import { WindowControls } from '@/components/common/WindowControls';
 import { cn } from '@/lib/utils';
 import {
-  archiveSession, deleteSession, exportHtml, setOutputStyle, setSessionTitle, setViewMode,
-  togglePanel, welcomeDraftKey,
+  archiveSession,
+  deleteSession,
+  exportHtml,
+  setOutputStyle,
+  setSessionTitle,
+  setViewMode,
+  togglePanel,
+  welcomeDraftKey,
 } from '@/store/actions';
 import { updateSession, useApp, useCurrent } from '@/store/app';
 import { drafts } from '@/store/drafts';
@@ -43,12 +69,20 @@ import { Inbox } from './Inbox';
 import { SideChatView } from '@/components/side/SideChat';
 import { useSide } from '@/store/side';
 
-function HeaderButton({ on, children, className, ...props }: React.ComponentProps<'button'> & { on?: boolean }) {
-  return (
-    <button {...props} className={cn('flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground', on && 'bg-accent text-foreground', className)}>
+function HeaderButton({ on, children, className, title, ...props }: React.ComponentProps<'button'> & { on?: boolean }) {
+  const button = (
+    <button
+      {...props}
+      className={cn(
+        'flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground',
+        on && 'bg-accent text-foreground',
+        className,
+      )}
+    >
       {children}
     </button>
   );
+  return <TooltipHint title={title}>{button}</TooltipHint>;
 }
 
 /**
@@ -56,7 +90,15 @@ function HeaderButton({ on, children, className, ...props }: React.ComponentProp
  * Opens where the user clicked: the menu hangs off an invisible anchor placed at
  * the pointer (or under the button, for a keyboard activation).
  */
-function SessionMenu({ s, onRename, children }: { s: SessionView; onRename: () => void; children: (props: { onClick: (e: MouseEvent<HTMLElement>) => void }) => ReactNode }) {
+function SessionMenu({
+  s,
+  onRename,
+  children,
+}: {
+  s: SessionView;
+  onRename: () => void;
+  children: (props: { onClick: (e: MouseEvent<HTMLElement>) => void }) => ReactNode;
+}) {
   const t = useT();
   const view = useApp((st) => st.prefs.viewMode);
   const views = VIEW_MODES.filter((m) => m.id !== 'thinking' || hasThinking(s));
@@ -76,22 +118,37 @@ function SessionMenu({ s, onRename, children }: { s: SessionView; onRename: () =
           <span aria-hidden className="pointer-events-none fixed size-0" style={{ left: at.x, top: at.y }} />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" sideOffset={0} className="w-60" onCloseAutoFocus={(e) => e.preventDefault()}>
-        <DropdownMenuItem onSelect={onRename}>{t('main.rename')}</DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => void copyText(s.meta.cwd)}>{t(s.meta.worktree ? 'main.copyWorktreePath' : 'main.copyFolderPath')}</DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => void exportHtml(s.meta.id)}>{t('main.exportHtml')}</DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel className="flex justify-between text-xs text-muted-foreground">{t('main.transcriptView')}<span>{modKey}O</span></DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={view} onValueChange={(v) => setViewMode(v as ViewMode)}>
-          {views.map((m) => <DropdownMenuRadioItem key={m.id} value={m.id} title={m.desc}>{m.name}</DropdownMenuRadioItem>)}
-        </DropdownMenuRadioGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel className="text-xs text-muted-foreground">{t('main.outputStyle')}</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={s.meta.outputStyle} onValueChange={(v) => setOutputStyle(v as OutputStyle)}>
-          {OUTPUT_STYLE_INFO.map((o) => <DropdownMenuRadioItem key={o.id} value={o.id} title={o.desc}>{o.name}</DropdownMenuRadioItem>)}
-        </DropdownMenuRadioGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => void archiveSession(s.meta.id)}>{t('main.archive')}</DropdownMenuItem>
-        <DropdownMenuItem variant="destructive" onSelect={() => void deleteSession(s.meta.id)}>{t('main.delete')}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={onRename}>{t('main.rename')}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => void copyText(s.meta.cwd)}>
+            {t(s.meta.worktree ? 'main.copyWorktreePath' : 'main.copyFolderPath')}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => void exportHtml(s.meta.id)}>{t('main.exportHtml')}</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="flex justify-between text-xs text-muted-foreground">
+            {t('main.transcriptView')}
+            <span>{modKey}O</span>
+          </DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={view} onValueChange={(v) => setViewMode(v as ViewMode)}>
+            {views.map((m) => (
+              <DropdownMenuRadioItem key={m.id} value={m.id} title={m.desc}>
+                {m.name}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-xs text-muted-foreground">{t('main.outputStyle')}</DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={s.meta.outputStyle} onValueChange={(v) => setOutputStyle(v as OutputStyle)}>
+            {OUTPUT_STYLE_INFO.map((o) => (
+              <DropdownMenuRadioItem key={o.id} value={o.id} title={o.desc}>
+                {o.name}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => void archiveSession(s.meta.id)}>{t('main.archive')}</DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" onSelect={() => void deleteSession(s.meta.id)}>
+            {t('main.delete')}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </>
@@ -102,11 +159,19 @@ function SessionMenu({ s, onRename, children }: { s: SessionView; onRename: () =
 function SessionIcon({ s }: { s: SessionView }) {
   const t = useT();
   const cls = 'size-4 shrink-0 text-muted-foreground';
-  if (s.meta.kind === 'work') return <span className="flex shrink-0 items-center p-1.5"><FolderIcon className={cls} /></span>;
+  if (s.meta.kind === 'work')
+    return (
+      <span className="flex shrink-0 items-center p-1.5">
+        <FolderIcon className={cls} />
+      </span>
+    );
   const isWorktree = s.meta.worktree || !!s.meta.external;
   const Icon = isWorktree ? GitForkIcon : LaptopIcon;
   return (
-    <span className="no-drag flex shrink-0 cursor-default select-none items-center p-1.5" title={t('main.envTip', { env: t(isWorktree ? 'main.envWorktree' : 'main.envLocal'), path: s.meta.cwd })}>
+    <span
+      className="no-drag flex shrink-0 cursor-default items-center p-1.5 select-none"
+      title={t('main.envTip', { env: t(isWorktree ? 'main.envWorktree' : 'main.envLocal'), path: s.meta.cwd })}
+    >
       <Icon className={cls} />
     </span>
   );
@@ -158,11 +223,24 @@ function PanelsMenu({ s, hasTasks }: { s: SessionView; hasTasks: boolean }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <HeaderButton on={items.some((i) => p[i.key])} title={t('main.panels')} aria-label={t('main.panels')} className="@2xl:hidden"><EllipsisIcon className="size-4" /></HeaderButton>
+        <HeaderButton
+          on={items.some((i) => p[i.key])}
+          title={t('main.panels')}
+          aria-label={t('main.panels')}
+          className="@2xl:hidden"
+        >
+          <EllipsisIcon className="size-4" />
+        </HeaderButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
         {items.map((i) => (
-          <DropdownMenuCheckboxItem key={i.key} checked={p[i.key]} onCheckedChange={() => togglePanel(s.meta.id, i.key)}>{i.label}</DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            key={i.key}
+            checked={p[i.key]}
+            onCheckedChange={() => togglePanel(s.meta.id, i.key)}
+          >
+            {i.label}
+          </DropdownMenuCheckboxItem>
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -177,7 +255,12 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
   const p = s?.panels;
   const hasTasks = !!s?.items.some((i) => i.kind === 'group' && i.tools.some((t) => t.kind === 'agent'));
   return (
-    <header className={cn('@container app-drag titlebar-inset flex h-11 shrink-0 items-center gap-1 px-3', collapsed && isMac && 'pl-[84px]')}>
+    <header
+      className={cn(
+        'app-drag titlebar-inset @container flex h-11 shrink-0 items-center gap-1 px-3',
+        collapsed && isMac && 'pl-[84px]',
+      )}
+    >
       {collapsed && <SidebarToggle />}
       {s ? (
         <>
@@ -189,7 +272,10 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
                 ariaLabel={t('main.rename')}
                 maxLength={MAX_SESSION_TITLE}
                 className="w-56"
-                onCommit={(next) => { setRenamingId(null); void setSessionTitle(s.meta.id, next); }}
+                onCommit={(next) => {
+                  setRenamingId(null);
+                  void setSessionTitle(s.meta.id, next);
+                }}
                 onCancel={() => setRenamingId(null)}
               />
             </span>
@@ -205,7 +291,11 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
               </span>
               <SessionMenu s={s} onRename={() => setRenamingId(s.meta.id)}>
                 {(trigger) => (
-                  <button {...trigger} aria-label={t('main.sessionMenu')} className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground">
+                  <button
+                    {...trigger}
+                    aria-label={t('main.sessionMenu')}
+                    className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                  >
                     <ChevronDownIcon className="size-3.5" />
                   </button>
                 )}
@@ -221,22 +311,74 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
           )}
           <span className="flex-1" />
           {work ? (
-            <HeaderButton on={p!.progress} title={t('main.progress')} onClick={() => togglePanel(s.meta.id, 'progress')}><PanelRightIcon className="size-4" /></HeaderButton>
+            <HeaderButton
+              on={p!.progress}
+              title={t('main.progress')}
+              onClick={() => togglePanel(s.meta.id, 'progress')}
+            >
+              <PanelRightIcon className="size-4" />
+            </HeaderButton>
           ) : (
             <>
               <PanelsMenu s={s} hasTasks={hasTasks} />
-              {hasTasks && <HeaderButton on={p!.tasks} title={t('main.backgroundTasks')} onClick={() => togglePanel(s.meta.id, 'tasks')} className="hidden @2xl:flex"><BotIcon className="size-4" /></HeaderButton>}
-              {canTerminal && <HeaderButton on={p!.terminal} title={t('main.terminal')} onClick={() => togglePanel(s.meta.id, 'terminal')} className="hidden @2xl:flex"><SquareTerminalIcon className="size-4" /></HeaderButton>}
-              <HeaderButton on={p!.diff} title={`${t('main.diff')}  ${modKey}D`} onClick={() => togglePanel(s.meta.id, 'diff')} className="hidden @2xl:flex"><FileTextIcon className="size-4" /></HeaderButton>
-              <HeaderButton on={p!.preview} title={t('main.preview')} onClick={() => togglePanel(s.meta.id, 'preview')} className="hidden @2xl:flex"><GlobeIcon className="size-4" /></HeaderButton>
-              <HeaderButton on={p!.files} title={t('main.files')} onClick={() => togglePanel(s.meta.id, 'files')} className="hidden @2xl:flex"><FolderIcon className="size-4" /></HeaderButton>
+              {hasTasks && (
+                <HeaderButton
+                  on={p!.tasks}
+                  title={t('main.backgroundTasks')}
+                  onClick={() => togglePanel(s.meta.id, 'tasks')}
+                  className="hidden @2xl:flex"
+                >
+                  <BotIcon className="size-4" />
+                </HeaderButton>
+              )}
+              {canTerminal && (
+                <HeaderButton
+                  on={p!.terminal}
+                  title={t('main.terminal')}
+                  onClick={() => togglePanel(s.meta.id, 'terminal')}
+                  className="hidden @2xl:flex"
+                >
+                  <SquareTerminalIcon className="size-4" />
+                </HeaderButton>
+              )}
+              <HeaderButton
+                on={p!.diff}
+                title={`${t('main.diff')}  ${modKey}D`}
+                onClick={() => togglePanel(s.meta.id, 'diff')}
+                className="hidden @2xl:flex"
+              >
+                <FileTextIcon className="size-4" />
+              </HeaderButton>
+              <HeaderButton
+                on={p!.preview}
+                title={t('main.preview')}
+                onClick={() => togglePanel(s.meta.id, 'preview')}
+                className="hidden @2xl:flex"
+              >
+                <GlobeIcon className="size-4" />
+              </HeaderButton>
+              <HeaderButton
+                on={p!.files}
+                title={t('main.files')}
+                onClick={() => togglePanel(s.meta.id, 'files')}
+                className="hidden @2xl:flex"
+              >
+                <FolderIcon className="size-4" />
+              </HeaderButton>
             </>
           )}
-          <OpenInMenu id={s.meta.id}><HeaderButton title={t('main.openIn')}><ExternalLinkIcon className="size-4" /></HeaderButton></OpenInMenu>
+          <OpenInMenu id={s.meta.id}>
+            <HeaderButton title={t('main.openIn')}>
+              <ExternalLinkIcon className="size-4" />
+            </HeaderButton>
+          </OpenInMenu>
         </>
       ) : (
-        <span className="px-2 text-sm text-muted-foreground">{title ?? (useApp.getState().view === 'work' ? t('main.newTask') : t('main.newSession'))}</span>
+        <span className="px-2 text-sm text-muted-foreground">
+          {title ?? (useApp.getState().view === 'work' ? t('main.newTask') : t('main.newSession'))}
+        </span>
       )}
+      <WindowControls target="main" />
     </header>
   );
 }
@@ -268,8 +410,12 @@ function WorkIdeas() {
   useEffect(() => {
     if (!enabled) return;
     let live = true;
-    void call('sessions:workIdeas').then((list) => live && list && setIdeas(list)).catch(() => {});
-    return () => { live = false; };
+    void call('sessions:workIdeas')
+      .then((list) => live && list && setIdeas(list))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
   }, [enabled]);
   if (!enabled) return null;
   return (
@@ -323,7 +469,10 @@ function Thread({ s }: { s: SessionView }) {
       <CodeComposer />
       {sideOpen && (
         // Floats over the conversation; the thread underneath keeps running.
-        <div {...{ [PET_BLOCK_ATTR]: '' }} className="absolute top-3 right-3 bottom-auto z-20 h-[min(560px,calc(100%-1.5rem))] w-[min(400px,calc(100%-1.5rem))]">
+        <div
+          {...{ [PET_BLOCK_ATTR]: '' }}
+          className="absolute top-3 right-3 bottom-auto z-20 h-[min(560px,calc(100%-1.5rem))] w-[min(400px,calc(100%-1.5rem))]"
+        >
           <SideChatView sid={s.meta.id} mode="embedded" />
         </div>
       )}
@@ -332,10 +481,22 @@ function Thread({ s }: { s: SessionView }) {
   if (!tools) return conversation;
   if (s.expandedWide && soloCard(s)) return <Workspace s={s} />;
   return (
-    <ResizablePanelGroup orientation="horizontal" id={`${s.meta.id}:thread`} defaultLayout={defaultLayout} onLayoutChanged={onLayoutChanged}>
-      <ResizablePanel id="conversation" minSize={320}>{conversation}</ResizablePanel>
+    <ResizablePanelGroup
+      orientation="horizontal"
+      id={`${s.meta.id}:thread`}
+      defaultLayout={defaultLayout}
+      onLayoutChanged={onLayoutChanged}
+    >
+      <ResizablePanel id="conversation" minSize={320}>
+        {conversation}
+      </ResizablePanel>
       <ResizableHandle className="bg-transparent" />
-      <ResizablePanel id="tools" minSize={300} defaultSize={secondary.length && primary.length ? '62%' : '48%'} className="pb-2">
+      <ResizablePanel
+        id="tools"
+        minSize={300}
+        defaultSize={secondary.length && primary.length ? '62%' : '48%'}
+        className="pb-2"
+      >
         <Workspace s={s} />
       </ResizablePanel>
     </ResizablePanelGroup>
@@ -356,14 +517,45 @@ export function Main() {
   const plugins = useApp((st) => st.plugins);
   // The plugin page's title is the plugin's own (its manifest names it); the others have a fixed one.
   const [pluginId, pluginPageId] = (pluginPage ?? '').split(':');
-  const pluginTitle = plugins.find((p) => p.id === pluginId)?.contributions.pages.find((p) => p.id === pluginPageId)?.title;
-  const title = customize ? t('page.customize') : scheduled ? t('page.scheduled') : archived ? t('page.archived') : activity ? t('page.activity') : artifacts ? t('page.artifacts') : projects ? t('page.projects') : pluginPage ? pluginTitle : undefined;
-  const page = customize ? <CustomizePage /> : scheduled ? <ScheduledPage /> : archived ? <ArchivedPage /> : activity ? <ActivityPage /> : artifacts ? <ArtifactsPage /> : projects ? <ProjectsPage /> : pluginPage ? <PluginPage /> : null;
+  const pluginTitle = plugins
+    .find((p) => p.id === pluginId)
+    ?.contributions.pages.find((p) => p.id === pluginPageId)?.title;
+  const title = customize
+    ? t('page.customize')
+    : scheduled
+      ? t('page.scheduled')
+      : archived
+        ? t('page.archived')
+        : activity
+          ? t('page.activity')
+          : artifacts
+            ? t('page.artifacts')
+            : projects
+              ? t('page.projects')
+              : pluginPage
+                ? pluginTitle
+                : undefined;
+  const page = customize ? (
+    <CustomizePage />
+  ) : scheduled ? (
+    <ScheduledPage />
+  ) : archived ? (
+    <ArchivedPage />
+  ) : activity ? (
+    <ActivityPage />
+  ) : artifacts ? (
+    <ArtifactsPage />
+  ) : projects ? (
+    <ProjectsPage />
+  ) : pluginPage ? (
+    <PluginPage />
+  ) : null;
   return (
     <main className="flex h-full min-w-0 flex-col bg-background">
       <Header s={page ? undefined : s} title={title} />
-      <div className="flex min-h-0 flex-1 flex-col">{page ?? (s ? <Thread key={s.meta.id} s={s} /> : view === 'work' ? <WorkWelcome /> : <CodeWelcome />)}</div>
+      <div className="flex min-h-0 flex-1 flex-col">
+        {page ?? (s ? <Thread key={s.meta.id} s={s} /> : view === 'work' ? <WorkWelcome /> : <CodeWelcome />)}
+      </div>
     </main>
   );
 }
-

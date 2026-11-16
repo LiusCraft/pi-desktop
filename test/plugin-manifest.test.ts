@@ -26,13 +26,22 @@ describe('plugin manifest', () => {
     const result = parse(base);
     expect(result).toEqual({
       kind: 'ok',
-      manifest: { apiVersion: 1, id: 'inbox', permissions: ['session:read'], host: null, contributions: { pages: [{ id: 'inbox', title: 'Inbox', entry: 'ui/index.html' }] } },
+      manifest: {
+        apiVersion: 1,
+        id: 'inbox',
+        permissions: ['session:read'],
+        host: null,
+        contributions: { pages: [{ id: 'inbox', title: 'Inbox', entry: 'ui/index.html' }] },
+      },
     });
   });
 
   it('defaults permissions and pages to empty', () => {
     const result = parse({ apiVersion: 1, id: 'inbox' });
-    expect(result).toEqual({ kind: 'ok', manifest: { apiVersion: 1, id: 'inbox', permissions: [], host: null, contributions: { pages: [] } } });
+    expect(result).toEqual({
+      kind: 'ok',
+      manifest: { apiVersion: 1, id: 'inbox', permissions: [], host: null, contributions: { pages: [] } },
+    });
   });
 
   it('drops duplicate permissions', () => {
@@ -53,8 +62,14 @@ describe('plugin manifest', () => {
   });
 
   it('rejects an id the protocol could not carry', () => {
-    expect(parse({ ...base, id: 'GitHub_Inbox' })).toEqual({ kind: 'error', error: 'id 只能用小写字母、数字和 -：GitHub_Inbox' });
-    expect(parse({ ...base, id: undefined })).toEqual({ kind: 'error', error: 'id 只能用小写字母、数字和 -：undefined' });
+    expect(parse({ ...base, id: 'GitHub_Inbox' })).toEqual({
+      kind: 'error',
+      error: 'id 只能用小写字母、数字和 -：GitHub_Inbox',
+    });
+    expect(parse({ ...base, id: undefined })).toEqual({
+      kind: 'error',
+      error: 'id 只能用小写字母、数字和 -：undefined',
+    });
   });
 
   it('rejects an unknown permission', () => {
@@ -68,19 +83,33 @@ describe('plugin manifest', () => {
     expect(isInsidePackage('../outside.html')).toBe(false);
     expect(isInsidePackage('/etc/passwd')).toBe(false);
     expect(isInsidePackage('ui/../../x.html')).toBe(false);
-    expect(parse({ ...base, contributions: { pages: [{ id: 'inbox', title: 'Inbox', entry: '../x.html' }] } }))
-      .toEqual({ kind: 'error', error: '入口必须是包内的文件：../x.html' });
+    expect(parse({ ...base, contributions: { pages: [{ id: 'inbox', title: 'Inbox', entry: '../x.html' }] } })).toEqual(
+      { kind: 'error', error: '入口必须是包内的文件：../x.html' },
+    );
   });
 
   it('rejects a page without a title or with a taken id', () => {
-    expect(parse({ ...base, contributions: { pages: [{ id: 'inbox', title: ' ', entry: 'ui/index.html' }] } }))
-      .toEqual({ kind: 'error', error: '页面 inbox 需要标题和入口' });
-    expect(parse({ ...base, contributions: { pages: [{ id: 'inbox', title: 'A', entry: 'a.html' }, { id: 'inbox', title: 'B', entry: 'b.html' }] } }))
-      .toEqual({ kind: 'error', error: '两个页面用了同一个 id：inbox' });
+    expect(parse({ ...base, contributions: { pages: [{ id: 'inbox', title: ' ', entry: 'ui/index.html' }] } })).toEqual(
+      { kind: 'error', error: '页面 inbox 需要标题和入口' },
+    );
+    expect(
+      parse({
+        ...base,
+        contributions: {
+          pages: [
+            { id: 'inbox', title: 'A', entry: 'a.html' },
+            { id: 'inbox', title: 'B', entry: 'b.html' },
+          ],
+        },
+      }),
+    ).toEqual({ kind: 'error', error: '两个页面用了同一个 id：inbox' });
   });
 
   it('drops a view this app does not have instead of rejecting the page', () => {
-    const result = parse({ ...base, contributions: { pages: [{ id: 'inbox', title: 'Inbox', entry: 'ui/index.html', views: ['code', 'mobile'] }] } });
+    const result = parse({
+      ...base,
+      contributions: { pages: [{ id: 'inbox', title: 'Inbox', entry: 'ui/index.html', views: ['code', 'mobile'] }] },
+    });
     expect(result.kind === 'ok' && result.manifest.contributions.pages[0].views).toEqual(['code']);
   });
 });

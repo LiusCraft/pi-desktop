@@ -4,12 +4,25 @@
 import { useMemo, useState } from 'react';
 import { Loader2Icon, PencilIcon, PlusIcon, RefreshCwIcon, SearchIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import { ENDPOINT_APIS, type EndpointDraft, type EndpointInfo, type EndpointModel, type ModelCatalogInfo } from '@shared/protocol';
+import {
+  ENDPOINT_APIS,
+  type EndpointDraft,
+  type EndpointInfo,
+  type EndpointModel,
+  type ModelCatalogInfo,
+} from '@shared/protocol';
 import { alignModel } from '@shared/model-metadata';
 import { ModelEditor } from './ModelEditor';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -46,23 +59,52 @@ export function mergeModels(current: EndpointModel[], fetched: EndpointModel[]):
   return [...byId.values()];
 }
 
-function ModelRow({ model, selected, disabled, onToggle, onEdit }: { model: EndpointModel; selected: boolean; disabled: boolean; onToggle: () => void; onEdit: () => void }) {
+function ModelRow({
+  model,
+  selected,
+  disabled,
+  onToggle,
+  onEdit,
+}: {
+  model: EndpointModel;
+  selected: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+  onEdit: () => void;
+}) {
   return (
     <div className="flex items-center gap-1">
-    <Label className={cn('min-w-0 flex-1 items-start gap-2.5 rounded-md px-2 py-2 font-normal leading-normal hover:bg-accent', !disabled && 'cursor-pointer')}>
-      <Checkbox checked={selected} disabled={disabled} onCheckedChange={onToggle} className="mt-0.5" />
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-2">
-          <span className="truncate font-mono text-xs">{model.id}</span>
-          {model.source === 'models.dev' && <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px] text-muted-foreground">models.dev</Badge>}
+      <Label
+        className={cn(
+          'min-w-0 flex-1 items-start gap-2.5 rounded-md px-2 py-2 leading-normal font-normal hover:bg-accent',
+          !disabled && 'cursor-pointer',
+        )}
+      >
+        <Checkbox checked={selected} disabled={disabled} onCheckedChange={onToggle} className="mt-0.5" />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span className="truncate font-mono text-xs">{model.id}</span>
+            {model.source === 'models.dev' && (
+              <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px] text-muted-foreground">
+                models.dev
+              </Badge>
+            )}
+          </span>
+          {model.name && model.name !== model.id && <span className="mt-0.5 block truncate text-xs">{model.name}</span>}
+          <span className="mt-0.5 block text-[11px] text-muted-foreground">{modelMetaLine(model)}</span>
         </span>
-        {model.name && model.name !== model.id && <span className="mt-0.5 block truncate text-xs">{model.name}</span>}
-        <span className="mt-0.5 block text-[11px] text-muted-foreground">{modelMetaLine(model)}</span>
-      </span>
-    </Label>
-    <Button type="button" variant="ghost" size="sm" disabled={disabled} aria-label={t('endpoint.editModel', { id: model.id })} onClick={onEdit}>
-      <PencilIcon data-icon="inline-start" />{t('endpoint.editShort')}
-    </Button>
+      </Label>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        disabled={disabled}
+        aria-label={t('endpoint.editModel', { id: model.id })}
+        onClick={onEdit}
+      >
+        <PencilIcon data-icon="inline-start" />
+        {t('endpoint.editShort')}
+      </Button>
     </div>
   );
 }
@@ -104,7 +146,9 @@ export function EndpointDialog({
     const q = query.trim().toLowerCase();
     return models.filter((model) => !q || model.id.toLowerCase().includes(q) || model.name?.toLowerCase().includes(q));
   }, [models, query]);
-  const isLocal = /^https?:\/\/(localhost|127\.|0\.0\.0\.0|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(baseUrl.trim());
+  const isLocal = /^https?:\/\/(localhost|127\.|0\.0\.0\.0|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(
+    baseUrl.trim(),
+  );
 
   const toggle = (modelId: string) => {
     setSelected((prev) => {
@@ -131,7 +175,11 @@ export function EndpointDialog({
         const firstLoad = models.length === 0;
         setModels((prev) => mergeModels(prev, result.models));
         if (firstLoad) setSelected(new Set(result.models.map((model) => model.id)));
-        toast.success(t(result.models.some((m) => m.source === 'models.dev') ? 'endpoint.fetchedAligned' : 'endpoint.fetched', { n: result.models.length }));
+        toast.success(
+          t(result.models.some((m) => m.source === 'models.dev') ? 'endpoint.fetchedAligned' : 'endpoint.fetched', {
+            n: result.models.length,
+          }),
+        );
       }
       if (result.error) setError(result.error.replace(/^(?:无法获取模型列表：|Cannot fetch the model list: )/, ''));
     } catch (err) {
@@ -144,7 +192,9 @@ export function EndpointDialog({
   const addModel = () => {
     const modelId = newModel.trim();
     if (!modelId || busy || editingModel) return;
-    setModels((prev) => (prev.some((model) => model.id === modelId) ? prev : [...prev, { id: modelId, source: 'manual' }]));
+    setModels((prev) =>
+      prev.some((model) => model.id === modelId) ? prev : [...prev, { id: modelId, source: 'manual' }],
+    );
     setSelected((prev) => new Set(prev).add(modelId));
     setNewModel('');
     setQuery('');
@@ -181,13 +231,13 @@ export function EndpointDialog({
     <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
       <DialogContent className="flex max-h-[86vh] flex-col sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{editing ? t('endpoint.editTitle', { name: endpoint!.name }) : t('endpoint.addTitle')}</DialogTitle>
-          <DialogDescription>
-            {t('endpoint.desc')}
-          </DialogDescription>
+          <DialogTitle>
+            {editing ? t('endpoint.editTitle', { name: endpoint!.name }) : t('endpoint.addTitle')}
+          </DialogTitle>
+          <DialogDescription>{t('endpoint.desc')}</DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+        <div className="space-y-4 min-h-0 flex-1 overflow-y-auto pr-1">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="endpoint-id">Provider ID</Label>
@@ -199,11 +249,18 @@ export function EndpointDialog({
                 placeholder="my-endpoint"
                 onChange={(e) => setId(e.target.value.replace(/[^a-zA-Z0-9._-]/g, ''))}
               />
-              <p className="text-[11px] text-muted-foreground">{t('endpoint.idHint', { ref: `${id.trim().toLowerCase() || 'provider'}/model-id` })}</p>
+              <p className="text-[11px] text-muted-foreground">
+                {t('endpoint.idHint', { ref: `${id.trim().toLowerCase() || 'provider'}/model-id` })}
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="endpoint-name">{t('endpoint.displayName')}</Label>
-              <Input id="endpoint-name" value={name} placeholder={id || t('endpoint.optional')} onChange={(e) => setName(e.target.value)} />
+              <Input
+                id="endpoint-name"
+                value={name}
+                placeholder={id || t('endpoint.optional')}
+                onChange={(e) => setName(e.target.value)}
+              />
               <p className="text-[11px] text-muted-foreground">{t('endpoint.nameHint')}</p>
             </div>
           </div>
@@ -217,21 +274,28 @@ export function EndpointDialog({
               placeholder="https://api.example.com/v1"
               onChange={(e) => setBaseUrl(e.target.value)}
             />
-            <p className="text-[11px] text-muted-foreground">
-              {t('endpoint.urlHint')}
-            </p>
+            <p className="text-[11px] text-muted-foreground">{t('endpoint.urlHint')}</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>{t('endpoint.apiType')}</Label>
-              <Select value={api || 'provider-default'} onValueChange={(value) => setApi(value === 'provider-default' ? '' : value)}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectGroup>
-                  {apiOptions.map((value) => (
-                    <SelectItem key={value || 'default'} value={value || 'provider-default'}>{value ? API_LABELS[value] ?? value : t('fmt.apiDefault')}</SelectItem>
-                  ))}
-                </SelectGroup></SelectContent>
+              <Select
+                value={api || 'provider-default'}
+                onValueChange={(value) => setApi(value === 'provider-default' ? '' : value)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {apiOptions.map((value) => (
+                      <SelectItem key={value || 'default'} value={value || 'provider-default'}>
+                        {value ? (API_LABELS[value] ?? value) : t('fmt.apiDefault')}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
@@ -247,7 +311,13 @@ export function EndpointDialog({
                     spellCheck={false}
                     value={apiKey}
                     disabled={removeKey}
-                    placeholder={endpoint?.keySet ? t('endpoint.keySavedPh') : isLocal ? t('endpoint.localPh') : t('endpoint.optional')}
+                    placeholder={
+                      endpoint?.keySet
+                        ? t('endpoint.keySavedPh')
+                        : isLocal
+                          ? t('endpoint.localPh')
+                          : t('endpoint.optional')
+                    }
                     onChange={(e) => setApiKey(e.target.value)}
                   />
                   <div className="flex items-center justify-between text-[11px] text-muted-foreground">
@@ -263,7 +333,10 @@ export function EndpointDialog({
                     {endpoint?.keySet && (
                       <button
                         type="button"
-                        className={cn('shrink-0 hover:underline', removeKey ? 'text-destructive' : 'text-muted-foreground')}
+                        className={cn(
+                          'shrink-0 hover:underline',
+                          removeKey ? 'text-destructive' : 'text-muted-foreground',
+                        )}
                         onClick={() => {
                           setRemoveKey((v) => !v);
                           setApiKey('');
@@ -283,11 +356,21 @@ export function EndpointDialog({
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium">{t('endpoint.models')}</div>
                 <p className="text-[11px] text-muted-foreground">
-                  {t('endpoint.selected', { n: selected.size, total: models.length })}{catalogAt ? t('endpoint.updatedAgo', { ago: agoLabel(catalogAt) }) : ''}
+                  {t('endpoint.selected', { n: selected.size, total: models.length })}
+                  {catalogAt ? t('endpoint.updatedAgo', { ago: agoLabel(catalogAt) }) : ''}
                 </p>
               </div>
-              <Button size="sm" variant="outline" disabled={!!busy || !!editingModel || !baseUrl.trim()} onClick={() => void discover()}>
-                {busy === 'discover' ? <Loader2Icon className="size-3.5 animate-spin" /> : <RefreshCwIcon className="size-3.5" />}
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!!busy || !!editingModel || !baseUrl.trim()}
+                onClick={() => void discover()}
+              >
+                {busy === 'discover' ? (
+                  <Loader2Icon className="size-3.5 animate-spin" />
+                ) : (
+                  <RefreshCwIcon className="size-3.5" />
+                )}
                 {t('endpoint.fetch')}
               </Button>
             </div>
@@ -295,7 +378,13 @@ export function EndpointDialog({
             {models.length > 8 && (
               <div className="relative">
                 <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input value={query} disabled={!!editingModel || !!busy} onChange={(e) => setQuery(e.target.value)} placeholder={t('endpoint.filter')} className="h-8 pl-8 text-xs" />
+                <Input
+                  value={query}
+                  disabled={!!editingModel || !!busy}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={t('endpoint.filter')}
+                  className="h-8 pl-8 text-xs"
+                />
               </div>
             )}
 
@@ -303,8 +392,16 @@ export function EndpointDialog({
               <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                 <span>{t('endpoint.matches', { n: visibleModels.length })}</span>
                 <div className="flex gap-2">
-                  <button type="button" className="hover:underline" onClick={() => setSelected(new Set(models.map((m) => m.id)))}>{t('endpoint.selectAll')}</button>
-                  <button type="button" className="hover:underline" onClick={() => setSelected(new Set())}>{t('endpoint.clear')}</button>
+                  <button
+                    type="button"
+                    className="hover:underline"
+                    onClick={() => setSelected(new Set(models.map((m) => m.id)))}
+                  >
+                    {t('endpoint.selectAll')}
+                  </button>
+                  <button type="button" className="hover:underline" onClick={() => setSelected(new Set())}>
+                    {t('endpoint.clear')}
+                  </button>
                 </div>
               </div>
             )}
@@ -313,14 +410,24 @@ export function EndpointDialog({
               {visibleModels.length ? (
                 visibleModels.map((model) => (
                   <div key={model.id}>
-                    <ModelRow model={model} selected={selected.has(model.id)} disabled={!!busy || (!!editingModel && editingModel !== model.id)} onToggle={() => toggle(model.id)} onEdit={() => setEditingModel(model.id)} />
+                    <ModelRow
+                      model={model}
+                      selected={selected.has(model.id)}
+                      disabled={!!busy || (!!editingModel && editingModel !== model.id)}
+                      onToggle={() => toggle(model.id)}
+                      onEdit={() => setEditingModel(model.id)}
+                    />
                     {editingModel === model.id && (
-                      <ModelEditor model={model} onCancel={() => setEditingModel(null)} onApply={(updated) => {
-                        setModels((previous) => previous.map((item) => item.id === updated.id ? updated : item));
-                        setSelected((previous) => new Set(previous).add(updated.id));
-                        setEditingModel(null);
-                        setError(null);
-                      }} />
+                      <ModelEditor
+                        model={model}
+                        onCancel={() => setEditingModel(null)}
+                        onApply={(updated) => {
+                          setModels((previous) => previous.map((item) => (item.id === updated.id ? updated : item)));
+                          setSelected((previous) => new Set(previous).add(updated.id));
+                          setEditingModel(null);
+                          setError(null);
+                        }}
+                      />
                     )}
                   </div>
                 ))
@@ -338,7 +445,14 @@ export function EndpointDialog({
                 addModel();
               }}
             >
-              <Input value={newModel} disabled={!!editingModel || !!busy} onChange={(e) => setNewModel(e.target.value)} placeholder={t('endpoint.addById')} className="h-8 text-xs" spellCheck={false} />
+              <Input
+                value={newModel}
+                disabled={!!editingModel || !!busy}
+                onChange={(e) => setNewModel(e.target.value)}
+                placeholder={t('endpoint.addById')}
+                className="h-8 text-xs"
+                spellCheck={false}
+              />
               <Button type="submit" size="sm" variant="outline" disabled={!newModel.trim() || !!editingModel || !!busy}>
                 <PlusIcon className="size-3.5" />
                 {t('endpoint.add')}
@@ -352,12 +466,16 @@ export function EndpointDialog({
 
           {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
           {endpoint && endpoint.extra.length > 0 && (
-            <p className="text-[11px] text-muted-foreground">{t('endpoint.extra', { fields: endpoint.extra.join(', ') })}</p>
+            <p className="text-[11px] text-muted-foreground">
+              {t('endpoint.extra', { fields: endpoint.extra.join(', ') })}
+            </p>
           )}
         </div>
 
         <DialogFooter>
-          <Button type="button" variant="outline" disabled={!!busy} onClick={onClose}>{t('endpoint.cancel')}</Button>
+          <Button type="button" variant="outline" disabled={!!busy} onClick={onClose}>
+            {t('endpoint.cancel')}
+          </Button>
           <Button type="button" disabled={!!busy || !!editingModel} onClick={() => void save()}>
             {busy === 'save' && <Loader2Icon className="size-3.5 animate-spin" />}
             {t('endpoint.save')}

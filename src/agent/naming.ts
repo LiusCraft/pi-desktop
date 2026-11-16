@@ -33,7 +33,11 @@ export function titleFromPrompt(message: unknown, max = MAX_TITLE) {
 export function cleanTitle(raw: unknown) {
   let title = String(raw ?? '').trim();
   if (!title) return null;
-  title = title.split('\n').map((line) => line.trim()).find(Boolean) || '';
+  title =
+    title
+      .split('\n')
+      .map((line) => line.trim())
+      .find(Boolean) || '';
   title = title
     .replace(/^(?:title|name|标题|名称)\s*[:：]\s*/i, '')
     .replace(/[\s"'“”‘’`*#_>~-]+$/g, '')
@@ -45,6 +49,7 @@ export function cleanTitle(raw: unknown) {
   // Sentence punctuation means the model answered instead of titling.
   if (/[，。！？；：,;]/.test(title)) return null;
   if (title.split(/\s+/).length > 10) return null;
-  if (/^(?:sorry|i'?m sorry|i can'?t|i cannot|unable to|无法|抱歉|对不起|你好|您好|当然|好的)/i.test(title)) return null;
+  if (/^(?:sorry|i'?m sorry|i can'?t|i cannot|unable to|无法|抱歉|对不起|你好|您好|当然|好的)/i.test(title))
+    return null;
   return title;
 }

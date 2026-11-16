@@ -3,8 +3,12 @@
 // exist is the caller's check (they live in an installed package, which only the caller knows).
 import { tr } from './i18n/runtime';
 import {
-  PLUGIN_API_VERSION, isPluginPermission,
-  type DesktopPluginManifest, type PluginPage, type PluginPermission, type SessionKind,
+  PLUGIN_API_VERSION,
+  isPluginPermission,
+  type DesktopPluginManifest,
+  type PluginPage,
+  type PluginPermission,
+  type SessionKind,
 } from './protocol';
 
 /** A plugin id: it ends up in `plugin:<id>:<method>` and `pidesk-plugin://<id>/`, so it stays URL-safe. */
@@ -34,7 +38,8 @@ export type ManifestParse =
   /** It says it is one, but the section cannot be used; the message is already translated. */
   | { kind: 'error'; error: string };
 
-const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
 const fail = (error: string): ManifestParse => ({ kind: 'error', error });
 
 function parsePages(raw: unknown): PluginPage[] | string {
@@ -52,7 +57,9 @@ function parsePages(raw: unknown): PluginPage[] | string {
     if (!entry) return tr('plugins.err.badEntry', { value: item.entry });
     // An unknown view is dropped rather than rejected: a page that names a mode this app does not
     // have still works in the ones it does.
-    const views = Array.isArray(item.views) ? item.views.filter((v): v is SessionKind => VIEWS.includes(v as SessionKind)) : [];
+    const views = Array.isArray(item.views)
+      ? item.views.filter((v): v is SessionKind => VIEWS.includes(v as SessionKind))
+      : [];
     pages.push({ id, title, entry, ...(views.length ? { views } : {}) });
   }
   return pages;
@@ -65,7 +72,8 @@ export function parseDesktopManifest(pkg: unknown): ManifestParse {
   if (!isRecord(raw)) return fail(tr('plugins.err.badManifest'));
 
   const version = raw.apiVersion;
-  if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) return fail(tr('plugins.err.badApiVersion'));
+  if (typeof version !== 'number' || !Number.isInteger(version) || version < 1)
+    return fail(tr('plugins.err.badApiVersion'));
   if (version > PLUGIN_API_VERSION) return fail(tr('plugins.err.apiVersion', { version }));
 
   const id = typeof raw.id === 'string' && PLUGIN_ID.test(raw.id) ? raw.id : '';
@@ -73,7 +81,8 @@ export function parseDesktopManifest(pkg: unknown): ManifestParse {
 
   const permissions: PluginPermission[] = [];
   if (raw.permissions !== undefined) {
-    if (!Array.isArray(raw.permissions)) return fail(tr('plugins.err.badPermission', { value: String(raw.permissions) }));
+    if (!Array.isArray(raw.permissions))
+      return fail(tr('plugins.err.badPermission', { value: String(raw.permissions) }));
     for (const value of raw.permissions) {
       if (!isPluginPermission(value)) return fail(tr('plugins.err.badPermission', { value: String(value) }));
       if (!permissions.includes(value)) permissions.push(value);

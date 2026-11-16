@@ -9,7 +9,13 @@ describe('sideTranscript', () => {
     const text = sideTranscript([
       { role: 'user', content: '[pi-desktop] You are in PLAN MODE.' },
       { role: 'user', content: '修一下日期\n\n```js\nfoo()\n```' },
-      { role: 'assistant', content: [{ type: 'text', text: '好的' }, { type: 'toolCall', name: 'read', arguments: { path: 'a.ts' } }] },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: '好的' },
+          { type: 'toolCall', name: 'read', arguments: { path: 'a.ts' } },
+        ],
+      },
       { role: 'toolResult', content: [{ type: 'text', text: 'x'.repeat(2000) }] },
     ]);
     assert.ok(!text.includes('PLAN MODE'));

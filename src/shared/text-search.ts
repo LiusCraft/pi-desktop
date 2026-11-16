@@ -20,7 +20,12 @@ export interface LineMatch {
 }
 
 /** One entry per line that contains `query`, at most `limit` of them. */
-export function findInText(text: string, query: string, caseSensitive: boolean, limit = SEARCH_MAX_MATCHES): LineMatch[] {
+export function findInText(
+  text: string,
+  query: string,
+  caseSensitive: boolean,
+  limit = SEARCH_MAX_MATCHES,
+): LineMatch[] {
   if (!query) return [];
   const needle = caseSensitive ? query : query.toLowerCase();
   const out: LineMatch[] = [];

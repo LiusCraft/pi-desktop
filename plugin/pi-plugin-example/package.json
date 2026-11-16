@@ -2,17 +2,36 @@
   "name": "@pi-desktop/plugin-example",
   "version": "0.1.0",
   "description": "Example desktop plugin: a page in the sidebar that talks to its own host entry.",
-  "keywords": ["pi-package", "pi-desktop-plugin"],
+  "keywords": [
+    "pi-desktop-plugin",
+    "pi-package"
+  ],
   "license": "MIT",
+  "files": [
+    "host.js",
+    "ui",
+    "README.md"
+  ],
   "type": "module",
-  "files": ["host.js", "ui", "README.md"],
   "piDesktop": {
     "apiVersion": 1,
     "id": "example",
-    "permissions": ["session:read", "session:prompt", "notify", "storage", "host:call"],
+    "permissions": [
+      "session:read",
+      "session:prompt",
+      "notify",
+      "storage",
+      "host:call"
+    ],
     "host": "./host.js",
     "contributions": {
-      "pages": [{ "id": "home", "title": "Example", "entry": "ui/index.html" }]
+      "pages": [
+        {
+          "id": "home",
+          "title": "Example",
+          "entry": "ui/index.html"
+        }
+      ]
     }
   }
 }

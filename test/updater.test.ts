@@ -8,10 +8,20 @@ import { compareVersions, parseVersion } from '../src/shared/update';
 
 const asset = (name: string, size = 3) => ({ name, browser_download_url: `https://dl/${name}`, size });
 const release = (tag: string, extra: object = {}) => ({
-  tag_name: tag, name: tag, body: `notes ${tag}`, html_url: `https://gh/${tag}`, published_at: '2026-01-01T00:00:00Z',
-  draft: false, prerelease: false, assets: [asset(`Pi-Desktop-${tag.slice(1)}-win-x64-setup.exe`), asset(`Pi-Desktop-${tag.slice(1)}-arm64.dmg`)], ...extra,
+  tag_name: tag,
+  name: tag,
+  body: `notes ${tag}`,
+  html_url: `https://gh/${tag}`,
+  published_at: '2026-01-01T00:00:00Z',
+  draft: false,
+  prerelease: false,
+  assets: [asset(`Pi-Desktop-${tag.slice(1)}-win-x64-setup.exe`), asset(`Pi-Desktop-${tag.slice(1)}-arm64.dmg`)],
+  ...extra,
 });
-const fetchOf = (body: unknown, status = 200) => async () => new Response(JSON.stringify(body), { status });
+const fetchOf =
+  (body: unknown, status = 200) =>
+  async () =>
+    new Response(JSON.stringify(body), { status });
 
 describe('versions', () => {
   it('parses plain semver only', () => {
@@ -25,7 +35,12 @@ describe('versions', () => {
 });
 
 describe('pickAsset', () => {
-  const assets = [asset('Pi-Desktop-1.0.0-win-x64-setup.exe'), asset('Pi-Desktop-1.0.0-arm64.dmg'), asset('Pi-Desktop-1.0.0-x64.dmg'), asset('SHA256SUMS.txt')];
+  const assets = [
+    asset('Pi-Desktop-1.0.0-win-x64-setup.exe'),
+    asset('Pi-Desktop-1.0.0-arm64.dmg'),
+    asset('Pi-Desktop-1.0.0-x64.dmg'),
+    asset('SHA256SUMS.txt'),
+  ];
   it.each([
     ['win32', 'x64', 'Pi-Desktop-1.0.0-win-x64-setup.exe'],
     ['darwin', 'arm64', 'Pi-Desktop-1.0.0-arm64.dmg'],
@@ -36,7 +51,12 @@ describe('pickAsset', () => {
 
 describe('checkForUpdate', () => {
   it('reports the newest release when it is newer, skipping drafts and prereleases', async () => {
-    const body = [release('v0.3.0', { draft: true }), release('v0.2.0'), release('v0.1.5', { prerelease: true }), release('v0.1.0')];
+    const body = [
+      release('v0.3.0', { draft: true }),
+      release('v0.2.0'),
+      release('v0.1.5', { prerelease: true }),
+      release('v0.1.0'),
+    ];
     const result = await checkForUpdate('0.1.0', fetchOf(body), 'win32', 'x64');
     expect(result.releases.map((r) => r.version)).toEqual(['0.2.0', '0.1.0']);
     expect(result.available?.version).toBe('0.2.0');
@@ -55,13 +75,25 @@ describe('downloadInstaller', () => {
   const target = { name: 'a.exe', url: 'https://dl/a.exe', size: 3 };
   it('writes the file and reports progress', async () => {
     const seen: number[] = [];
-    const file = await downloadInstaller(target, dir(), async () => new Response(new Uint8Array([1, 2, 3])), (p) => seen.push(p.received));
+    const file = await downloadInstaller(
+      target,
+      dir(),
+      async () => new Response(new Uint8Array([1, 2, 3])),
+      (p) => seen.push(p.received),
+    );
     expect(fs.readFileSync(file)).toEqual(Buffer.from([1, 2, 3]));
     expect(seen.at(-1)).toBe(3);
   });
   it('removes a truncated download', async () => {
     const d = dir();
-    await expect(downloadInstaller(target, d, async () => new Response(new Uint8Array([1])), () => {})).rejects.toThrow(/incomplete/);
+    await expect(
+      downloadInstaller(
+        target,
+        d,
+        async () => new Response(new Uint8Array([1])),
+        () => {},
+      ),
+    ).rejects.toThrow(/incomplete/);
     expect(fs.existsSync(path.join(d, 'a.exe'))).toBe(false);
   });
 });

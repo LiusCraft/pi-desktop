@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import type { PrThread } from '../src/shared/protocol';
 import { firstThread, placeThreads } from '../src/renderer/src/lib/diff';
 
-const thread = (id: string, path: string, line: number | null, side: 'old' | 'new' = 'new'): PrThread => ({ id, path, line, side, outdated: false, resolved: false, comments: [] });
+const thread = (id: string, path: string, line: number | null, side: 'old' | 'new' = 'new'): PrThread => ({
+  id,
+  path,
+  line,
+  side,
+  outdated: false,
+  resolved: false,
+  comments: [],
+});
 
 describe('firstThread (the comment chip lands here)', () => {
   const files = [{ path: 'a.ts' }, { path: 'b.ts' }];
@@ -16,7 +24,11 @@ describe('firstThread (the comment chip lands here)', () => {
 });
 
 describe('placeThreads', () => {
-  const rows = [{ t: ' ', o: 1, n: 1 }, { t: '-', o: 2 }, { t: '+', n: 2 }];
+  const rows = [
+    { t: ' ', o: 1, n: 1 },
+    { t: '-', o: 2 },
+    { t: '+', n: 2 },
+  ];
   it('matches new-side threads to context and added rows, old-side to removed rows', () => {
     const { placed, lost } = placeThreads(rows, [thread('n', 'f', 2), thread('o', 'f', 2, 'old'), thread('c', 'f', 1)]);
     expect(placed.get(2)?.map((t) => t.id)).toEqual(['n']);
@@ -25,6 +37,9 @@ describe('placeThreads', () => {
     expect(lost).toEqual([]);
   });
   it('reports threads whose line is gone', () => {
-    expect(placeThreads(rows, [thread('x', 'f', 99), thread('y', 'f', null)]).lost.map((t) => t.id)).toEqual(['x', 'y']);
+    expect(placeThreads(rows, [thread('x', 'f', 99), thread('y', 'f', null)]).lost.map((t) => t.id)).toEqual([
+      'x',
+      'y',
+    ]);
   });
 });

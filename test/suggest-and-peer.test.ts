@@ -24,28 +24,71 @@ describe('peer messages', () => {
 });
 
 describe('suggested tasks in the transcript', () => {
-  const tasks = [{ title: 'Add a test', prompt: 'Write a test for formatDate' }, { title: 'Fix typo', prompt: 'README says teh' }];
+  const tasks = [
+    { title: 'Add a test', prompt: 'Write a test for formatDate' },
+    { title: 'Fix typo', prompt: 'README says teh' },
+  ];
 
   it('shows one card per suggestion call, from the call’s arguments', () => {
     const s = emptySession(meta);
-    applyPiEvent(s, { type: 'tool_execution_start', toolCallId: 'c1', toolName: 'pidesk_suggest_task', args: { tasks } }, 'normal');
-    applyPiEvent(s, { type: 'tool_execution_end', toolCallId: 'c1', toolName: 'pidesk_suggest_task', result: { content: [{ type: 'text', text: 'ok' }], details: { tasks } } }, 'normal');
-    expect(s.items.filter((i) => i.kind === 'suggest')).toEqual([{ kind: 'suggest', key: expect.any(String), toolCallId: 'c1', tasks }]);
-    expect(s.items.some((i) => i.kind === 'group'), 'not a generic tool row').toBe(false);
+    applyPiEvent(
+      s,
+      { type: 'tool_execution_start', toolCallId: 'c1', toolName: 'pidesk_suggest_task', args: { tasks } },
+      'normal',
+    );
+    applyPiEvent(
+      s,
+      {
+        type: 'tool_execution_end',
+        toolCallId: 'c1',
+        toolName: 'pidesk_suggest_task',
+        result: { content: [{ type: 'text', text: 'ok' }], details: { tasks } },
+      },
+      'normal',
+    );
+    expect(s.items.filter((i) => i.kind === 'suggest')).toEqual([
+      { kind: 'suggest', key: expect.any(String), toolCallId: 'c1', tasks },
+    ]);
+    expect(
+      s.items.some((i) => i.kind === 'group'),
+      'not a generic tool row',
+    ).toBe(false);
   });
 
   it('ignores malformed suggestions instead of drawing an empty card', () => {
     const s = emptySession(meta);
-    applyPiEvent(s, { type: 'tool_execution_start', toolCallId: 'c2', toolName: 'pidesk_suggest_task', args: { tasks: [{ title: 'no prompt' }] } }, 'normal');
+    applyPiEvent(
+      s,
+      {
+        type: 'tool_execution_start',
+        toolCallId: 'c2',
+        toolName: 'pidesk_suggest_task',
+        args: { tasks: [{ title: 'no prompt' }] },
+      },
+      'normal',
+    );
     expect(s.items).toEqual([]);
   });
 
   it('comes back when the session is reopened', () => {
     const s = emptySession(meta);
-    replay(s, [
-      { role: 'assistant', content: [{ type: 'toolCall', id: 'c3', name: 'pidesk_suggest_task', arguments: { tasks } }] },
-      { role: 'toolResult', toolCallId: 'c3', toolName: 'pidesk_suggest_task', content: [{ type: 'text', text: 'ok' }], details: { tasks } },
-    ], 'normal');
+    replay(
+      s,
+      [
+        {
+          role: 'assistant',
+          content: [{ type: 'toolCall', id: 'c3', name: 'pidesk_suggest_task', arguments: { tasks } }],
+        },
+        {
+          role: 'toolResult',
+          toolCallId: 'c3',
+          toolName: 'pidesk_suggest_task',
+          content: [{ type: 'text', text: 'ok' }],
+          details: { tasks },
+        },
+      ],
+      'normal',
+    );
     expect(s.items.find((i) => i.kind === 'suggest')).toMatchObject({ toolCallId: 'c3', tasks });
   });
 });

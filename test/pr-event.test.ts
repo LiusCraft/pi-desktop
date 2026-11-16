@@ -4,7 +4,10 @@ import { describe, it } from 'vitest';
 import { decodePrEvent, encodePrEvent, isPrEvent, type PrEvent } from '../src/shared/pr-event';
 
 const event = (p: Partial<PrEvent> = {}): PrEvent => ({
-  kind: 'ci-fail', num: 4, url: 'https://github.com/owner/repo/pull/4', head: 'abc123',
+  kind: 'ci-fail',
+  num: 4,
+  url: 'https://github.com/owner/repo/pull/4',
+  head: 'abc123',
   summary: 'build (ubuntu) 失败',
   failed: [{ name: 'build (ubuntu)', url: 'https://github.com/owner/repo/runs/1' }],
   instruction: '读失败日志，修好后提交并推送。',
@@ -25,18 +28,29 @@ describe('PR event wire message', () => {
   });
 
   it('round-trips notes, keeping their authors and bodies', () => {
-    const wire = encodePrEvent(event({
-      kind: 'notes', failed: undefined,
-      notes: [
-        { id: '1', author: 'alice', body: '这个分支名有点糊\n\n改一下', url: 'https://github.com/owner/repo/pull/4#issuecomment-1' },
-        { id: '2', author: 'bob', body: 'tests fail locally' },
-      ],
-      instruction: '逐条处理评审意见。',
-    }));
+    const wire = encodePrEvent(
+      event({
+        kind: 'notes',
+        failed: undefined,
+        notes: [
+          {
+            id: '1',
+            author: 'alice',
+            body: '这个分支名有点糊\n\n改一下',
+            url: 'https://github.com/owner/repo/pull/4#issuecomment-1',
+          },
+          { id: '2', author: 'bob', body: 'tests fail locally' },
+        ],
+        instruction: '逐条处理评审意见。',
+      }),
+    );
     const back = decodePrEvent(wire)!;
     assert.equal(back.kind, 'notes');
     assert.equal(back.failed, undefined);
-    assert.deepEqual(back.notes?.map((n) => n.author), ['alice', 'bob']);
+    assert.deepEqual(
+      back.notes?.map((n) => n.author),
+      ['alice', 'bob'],
+    );
     assert.equal(back.notes?.[0].body, '这个分支名有点糊\n\n改一下');
     assert.equal(back.instruction, '逐条处理评审意见。');
   });

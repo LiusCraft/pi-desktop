@@ -11,18 +11,34 @@ const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-shell-tool-'));
 fs.mkdirSync(path.join(folder, 'sub'), { recursive: true });
 
 const shutdowns: (() => void)[] = [];
+/** The shells the kit handed to its host, in order; null is the shutdown notice. */
+const shells: unknown[] = [];
 
 function load(mode: ShellSessionMode) {
   const tools = new Map<string, any>();
   const handlers = new Map<string, ((...args: any[]) => void)[]>();
   const pi = {
-    on: (event: string, handler: (...args: any[]) => void) => { handlers.set(event, [...(handlers.get(event) ?? []), handler]); },
+    on: (event: string, handler: (...args: any[]) => void) => {
+      handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+    },
     getAllTools: () => [],
     registerTool: (tool: any) => tools.set(tool.name, tool),
     getSettings: () => ({}),
   };
-  const state = { mode: 'bypass', profile: 'code', outputStyle: 'default', allowed: new Set<string>() } as KitHost['state'];
-  createDesktopKit({ state, cwd: folder, shellSession: () => mode, ask: async () => ({ value: 'Allow' }), setMode: () => {} })(pi as any);
+  const state = {
+    mode: 'bypass',
+    profile: 'code',
+    outputStyle: 'default',
+    allowed: new Set<string>(),
+  } as KitHost['state'];
+  createDesktopKit({
+    state,
+    cwd: folder,
+    shellSession: () => mode,
+    registerShell: (shell) => shells.push(shell),
+    ask: async () => ({ value: 'Allow' }),
+    setMode: () => {},
+  })(pi as any);
   // The bash tool is registered when the session starts, once pi's settings are readable.
   for (const handler of handlers.get('session_start') ?? []) handler({ type: 'session_start' });
   shutdowns.push(...(handlers.get('session_shutdown') ?? []));
@@ -38,19 +54,28 @@ const canonical = (folder: string) => {
   return process.platform === 'win32' ? full.toLowerCase() : full;
 };
 
-const context = () => ({
-  cwd: folder,
-  model: undefined,
-  thinkingLevel: undefined,
-  sessionManager: { getSessionId: () => 'test-session', getSessionFile: () => null },
-}) as any;
+const context = () =>
+  ({
+    cwd: folder,
+    model: undefined,
+    thinkingLevel: undefined,
+    sessionManager: { getSessionId: () => 'test-session', getSessionFile: () => null },
+  }) as any;
 
 afterEach(() => {
   for (const stop of shutdowns.splice(0)) stop();
 });
 
 describe('bash tool', () => {
-  it('keeps pi\'s own description and adds workdir on top', () => {
+  it('hands the session its shell, and takes it back when the session ends', () => {
+    load('session');
+    // The composer's `!command` runs in this very shell, so the host has to know about it.
+    const shell = shells.at(-1) as { operations: { exec: unknown } };
+    expect(typeof shell.operations.exec).toBe('function');
+    for (const stop of shutdowns.splice(0)) stop();
+    expect(shells.at(-1)).toBeNull();
+  });
+  it("keeps pi's own description and adds workdir on top", () => {
     const tool = load('session');
     expect(tool.description).toMatch(/Execute a bash command/);
     expect(tool.description).toMatch(/workdir/);
@@ -59,19 +84,33 @@ describe('bash tool', () => {
 
   it('runs a command in the workdir it was given', async () => {
     const tool = load('command');
-    const result = await tool.execute('call-1', { command: 'basename "$PWD"', workdir: 'sub' }, undefined, undefined, context());
+    const result = await tool.execute(
+      'call-1',
+      { command: 'basename "$PWD"', workdir: 'sub' },
+      undefined,
+      undefined,
+      context(),
+    );
     expect(text(result)).toContain('sub');
   });
 
   it('refuses a workdir that is not a folder', async () => {
     const tool = load('command');
-    await expect(tool.execute('call-1', { command: 'pwd', workdir: 'nope' }, undefined, undefined, context())).rejects.toThrow(/not a folder/);
+    await expect(
+      tool.execute('call-1', { command: 'pwd', workdir: 'nope' }, undefined, undefined, context()),
+    ).rejects.toThrow(/not a folder/);
   });
 
   it('treats a `null` workdir as none', async () => {
     const tool = load('command');
     // Optional arguments arrive stringified: `workdir: null` reaches the tool as "null".
-    const result = await tool.execute('call-1', { command: 'basename "$PWD"', workdir: 'null' }, undefined, undefined, context());
+    const result = await tool.execute(
+      'call-1',
+      { command: 'basename "$PWD"', workdir: 'null' },
+      undefined,
+      undefined,
+      context(),
+    );
     expect(text(result)).toContain(path.basename(folder));
   });
 
@@ -104,7 +143,13 @@ describe('bash tool', () => {
 
   it('says so when a command repeats a `cd` into the folder the shell is already in', async () => {
     const tool = load('session');
-    const repeated = await tool.execute('call-1', { command: `cd '${folder}' && echo hi` }, undefined, undefined, context());
+    const repeated = await tool.execute(
+      'call-1',
+      { command: `cd '${folder}' && echo hi` },
+      undefined,
+      undefined,
+      context(),
+    );
     expect(text(repeated)).toContain('hi');
     expect(text(repeated)).toMatch(/already in that folder/);
   });

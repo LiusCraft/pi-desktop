@@ -43,11 +43,25 @@ describe('ModelsDevCatalog', () => {
   it('matches exact, canonical and gateway-prefixed model ids', () => {
     const file = catalogFile({
       anthropic: [
-        { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', context: 200000, output: 64000, cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 }, reasoning: true, image: true },
+        {
+          id: 'claude-sonnet-4-5',
+          name: 'Claude Sonnet 4.5',
+          context: 200000,
+          output: 64000,
+          cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+          reasoning: true,
+          image: true,
+        },
       ],
       openai: [{ id: 'gpt-5', name: 'GPT-5', context: 400000, output: 128000, cost: { input: 1.25, output: 10 } }],
       openrouter: [
-        { id: 'anthropic/claude-sonnet-4.5', name: 'Claude Sonnet 4.5 (OpenRouter)', context: 1000000, output: 64000, cost: { input: 3, output: 15 } },
+        {
+          id: 'anthropic/claude-sonnet-4.5',
+          name: 'Claude Sonnet 4.5 (OpenRouter)',
+          context: 1000000,
+          output: 64000,
+          cost: { input: 3, output: 15 },
+        },
         { id: 'openai/gpt-5', name: 'GPT-5', context: 500000, output: 128000, cost: { input: 1.25, output: 10 } },
       ],
     });
@@ -92,7 +106,11 @@ describe('ModelsDevCatalog', () => {
     fs.writeFileSync(file, JSON.stringify(cached));
     const catalog = new ModelsDevCatalog(file);
     await catalog.ready();
-    expect(catalog.lookup('image-model')).toMatchObject({ contextWindow: undefined, maxTokens: undefined, cost: { input: 0, output: 0 } });
+    expect(catalog.lookup('image-model')).toMatchObject({
+      contextWindow: undefined,
+      maxTokens: undefined,
+      cost: { input: 0, output: 0 },
+    });
   });
 
   it('keeps working with a missing cache file', () => {

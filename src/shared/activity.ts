@@ -16,7 +16,12 @@ export interface ActivityDay {
 export const HOURS_PER_DAY = 24;
 export const TEMPORARY_WORKSPACE = '';
 
-export const emptyDay = (): ActivityDay => ({ prompts: { code: 0, work: 0 }, sessions: [], hours: Array(HOURS_PER_DAY).fill(0), projects: {} });
+export const emptyDay = (): ActivityDay => ({
+  prompts: { code: 0, work: 0 },
+  sessions: [],
+  hours: Array(HOURS_PER_DAY).fill(0),
+  projects: {},
+});
 
 /** Keyed by `dayKey`. */
 export type ActivityLog = Record<string, ActivityDay>;
@@ -39,7 +44,10 @@ export const dayTotal = (day: ActivityDay | undefined) => (day ? day.prompts.cod
  * so a light user and a heavy one both get a spread instead of one fixed scale.
  */
 export function activityLevels(log: ActivityLog): (total: number) => number {
-  const totals = Object.values(log).map(dayTotal).filter((n) => n > 0).sort((a, b) => a - b);
+  const totals = Object.values(log)
+    .map(dayTotal)
+    .filter((n) => n > 0)
+    .sort((a, b) => a - b);
   const at = (q: number) => totals[Math.min(totals.length - 1, Math.floor(q * totals.length))];
   const cuts = totals.length ? [at(0.25), at(0.5), at(0.75)] : [];
   return (total) => {
@@ -59,7 +67,9 @@ export interface ActivitySummary {
 /** Streaks over consecutive local days; today may still be empty without breaking the current one. */
 export function summarize(log: ActivityLog, today = new Date()): ActivitySummary {
   const active = (d: Date) => dayTotal(log[dayKey(d)]) > 0;
-  const days = Object.keys(log).filter((k) => dayTotal(log[k]) > 0).sort();
+  const days = Object.keys(log)
+    .filter((k) => dayTotal(log[k]) > 0)
+    .sort();
   let longest = 0;
   let run = 0;
   let prev: Date | null = null;
@@ -97,7 +107,16 @@ export interface RangeStats {
 
 /** Totals over the `days` local days ending on `end` (inclusive). */
 export function rangeStats(log: ActivityLog, end: Date, days: number): RangeStats {
-  const stats: RangeStats = { days, prompts: 0, code: 0, work: 0, activeDays: 0, busiest: null, hours: Array(HOURS_PER_DAY).fill(0), projects: [] };
+  const stats: RangeStats = {
+    days,
+    prompts: 0,
+    code: 0,
+    work: 0,
+    activeDays: 0,
+    busiest: null,
+    hours: Array(HOURS_PER_DAY).fill(0),
+    projects: [],
+  };
   const projects = new Map<string, number>();
   for (let i = 0; i < days; i++) {
     const key = dayKey(new Date(end.getFullYear(), end.getMonth(), end.getDate() - i));

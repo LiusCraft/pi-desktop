@@ -1,37 +1,74 @@
-"use client"
+'use client';
 
-import * as React from "react"
-import { cn } from "@/lib/utils"
-import { Tooltip as TooltipPrimitive } from "radix-ui"
+import * as React from 'react';
+import { cn } from '@/lib/utils';
+import { Tooltip as TooltipPrimitive } from 'radix-ui';
+
+/** Shared shadcn surface for both Radix tooltips and the title bridge. */
+export const tooltipSurface = 'tooltip-surface relative rounded-lg border bg-popover text-popover-foreground shadow-lg';
+export const TOOLTIP_DEFAULT_DELAY = 1000;
+
+export function TooltipSurface({ className, ...props }: React.ComponentProps<'div'>) {
+  return <div {...props} className={cn(tooltipSurface, className)} />;
+}
+
+export function TooltipHint({ title, children }: { title?: string; children: React.ReactElement }) {
+  const suppressPointerFocus = React.useRef(false);
+  if (!title) return children;
+  const triggerElement = children as React.ReactElement<React.HTMLAttributes<HTMLElement>>;
+  const trigger = React.cloneElement(triggerElement, {
+    onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
+      suppressPointerFocus.current = true;
+      event.currentTarget.blur();
+      triggerElement.props.onPointerDown?.(event);
+    },
+    onPointerMove: (event: React.PointerEvent<HTMLElement>) => {
+      suppressPointerFocus.current = false;
+      triggerElement.props.onPointerMove?.(event);
+    },
+    onFocus: (event: React.FocusEvent<HTMLElement>) => {
+      if (suppressPointerFocus.current) {
+        event.currentTarget.blur();
+        event.preventDefault();
+        return;
+      }
+      triggerElement.props.onFocus?.(event);
+    },
+  });
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+      <TooltipContent>{title}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 function TooltipProvider({
-  delayDuration = 0,
+  delayDuration = TOOLTIP_DEFAULT_DELAY,
+  skipDelayDuration = 0,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
   return (
     <TooltipPrimitive.Provider
       data-slot="tooltip-provider"
       delayDuration={delayDuration}
+      skipDelayDuration={skipDelayDuration}
       {...props}
     />
-  )
+  );
 }
 
-function Tooltip({
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Root>) {
-  return <TooltipPrimitive.Root data-slot="tooltip" {...props} />
+function Tooltip({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Root>) {
+  return <TooltipPrimitive.Root data-slot="tooltip" {...props} />;
 }
 
-function TooltipTrigger({
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
+function TooltipTrigger({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
+  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />;
 }
 
 function TooltipContent({
   className,
-  sideOffset = 0,
+  sideOffset = 6,
   children,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Content>) {
@@ -41,16 +78,17 @@ function TooltipContent({
         data-slot="tooltip-content"
         sideOffset={sideOffset}
         className={cn(
-          "z-50 w-fit origin-(--radix-tooltip-content-transform-origin) animate-in rounded-md bg-foreground px-3 py-1.5 text-xs text-balance text-background fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
-          className
+          'z-50 w-fit max-w-[min(320px,calc(100vw-16px))] origin-(--radix-tooltip-content-transform-origin) animate-in px-3 py-1.5 text-xs text-balance break-words whitespace-normal fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
+          tooltipSurface,
+          className,
         )}
+        collisionPadding={8}
         {...props}
       >
         {children}
-        <TooltipPrimitive.Arrow className="z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px] bg-foreground fill-foreground" />
       </TooltipPrimitive.Content>
     </TooltipPrimitive.Portal>
-  )
+  );
 }
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider };

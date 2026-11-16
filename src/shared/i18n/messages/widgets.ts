@@ -2,10 +2,16 @@ import { defineMessages } from '../define';
 
 export const widgets = defineMessages({
   'attach.unavailable': { en: 'Image unavailable', zh: '图片不可用' },
-  'attach.localRef': { en: '{path} · local reference; unavailable once moved or deleted', zh: '{path} · 本机引用，移动或删除后不可用' },
+  'attach.localRef': {
+    en: '{path} · local reference; unavailable once moved or deleted',
+    zh: '{path} · 本机引用，移动或删除后不可用',
+  },
   'attach.localFile': { en: 'Local file · {size}', zh: '本地文件 · {size}' },
 
-  'code.lineTip': { en: 'Click to comment on a line; Shift-click to select several', zh: '点击添加行评论，Shift 点击选择多行' },
+  'code.lineTip': {
+    en: 'Click to comment on a line; Shift-click to select several',
+    zh: '点击添加行评论，Shift 点击选择多行',
+  },
   'code.lineLabel': { en: 'Comment on line {n}', zh: '评论第 {n} 行' },
   'code.unmodified': { en: '{n} unmodified lines', zh: '{n} 行未修改' },
   'code.unmodifiedOne': { en: '1 unmodified line', zh: '1 行未修改' },
@@ -13,11 +19,17 @@ export const widgets = defineMessages({
   'code.showUnmodified': { en: 'Show unmodified lines', zh: '显示未修改的行' },
   'code.noPreview': { en: 'No preview available', zh: '没有预览' },
   'code.image': { en: 'Image', zh: '图片' },
-  'code.limited': { en: 'Preview limited to {n} rows. Open the file to see current content.', zh: '预览最多 {n} 行。打开文件查看当前内容。' },
+  'code.limited': {
+    en: 'Preview limited to {n} rows. Open the file to see current content.',
+    zh: '预览最多 {n} 行。打开文件查看当前内容。',
+  },
   'code.range': { en: 'Lines {from}–{to}', zh: '第 {from}–{to} 行' },
   'code.rangeOf': { en: 'Lines {from}–{to} of {total}', zh: '第 {from}–{to} 行，共 {total} 行' },
   'code.empty': { en: 'Empty file', zh: '空文件' },
-  'code.more': { en: '{n} more lines in this result. Open the file to see current content.', zh: '这个结果还有 {n} 行。打开文件查看当前内容。' },
+  'code.more': {
+    en: '{n} more lines in this result. Open the file to see current content.',
+    zh: '这个结果还有 {n} 行。打开文件查看当前内容。',
+  },
   'code.open': { en: 'Open {name}', zh: '打开 {name}' },
 
   'diagram.hint': { en: 'Scroll to zoom · drag to pan · double-click to reset', zh: '滚轮缩放 · 拖动平移 · 双击复位' },
@@ -65,7 +77,10 @@ export const widgets = defineMessages({
   'side.popOut': { en: 'Pop out as a window', zh: '弹出为独立窗口' },
   'side.close': { en: 'Close', zh: '关闭' },
   'side.empty': { en: 'Ask a quick question about the current session.', zh: '随口问一句关于当前会话的问题。' },
-  'side.empty2': { en: 'Answers are based on the session; they do not interrupt the main task or enter its context.', zh: '回答基于会话内容，不会打断主任务，也不会进入它的上下文。' },
+  'side.empty2': {
+    en: 'Answers are based on the session; they do not interrupt the main task or enter its context.',
+    zh: '回答基于会话内容，不会打断主任务，也不会进入它的上下文。',
+  },
   'side.thinking': { en: 'Thinking…', zh: '思考中…' },
   'side.stop': { en: 'Stop', zh: '停止' },
   'side.removeQuote': { en: 'Remove quote', zh: '移除引用' },
@@ -77,7 +92,6 @@ export const widgets = defineMessages({
   'inbox.needsReply': { en: 'Needs your reply', zh: '等你回复' },
   'inbox.waitingApproval': { en: 'Waiting for approval', zh: '等待批准' },
   'inbox.openPrs': { en: 'Open pull requests', zh: '打开的 PR' },
-
 
   'copy.failed': { en: 'Could not write to the clipboard', zh: '无法写入剪贴板' },
   'open.label': { en: 'Open in', zh: '打开方式' },

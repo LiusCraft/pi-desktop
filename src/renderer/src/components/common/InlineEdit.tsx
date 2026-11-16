@@ -3,7 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 
-export function InlineEdit({ value, onCommit, onCancel, className, ariaLabel, maxLength }: {
+export function InlineEdit({
+  value,
+  onCommit,
+  onCancel,
+  className,
+  ariaLabel,
+  maxLength,
+}: {
   value: string;
   onCommit: (value: string) => void;
   onCancel: () => void;
@@ -50,7 +57,10 @@ export function InlineEdit({ value, onCommit, onCancel, className, ariaLabel, ma
       // The row or title button underneath would otherwise react to these too.
       onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
-      className={cn('min-w-0 rounded-md border border-ring/50 bg-background px-1.5 py-0.5 text-sm outline-none', className)}
+      className={cn(
+        'min-w-0 rounded-md border border-ring/50 bg-background px-1.5 py-0.5 text-sm outline-none',
+        className,
+      )}
     />
   );
 }

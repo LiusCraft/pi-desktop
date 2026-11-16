@@ -7,7 +7,15 @@ import path from 'node:path';
 import { getSupportedThinkingLevels } from '@earendil-works/pi-ai/models';
 import { afterAll, describe, expect, it } from 'vitest';
 import { alignModel } from '../src/agent/model-admin';
-import { EndpointStore, LOCAL_KEY, discoveryUrls, isLocalUrl, parseModelList, stripJsonComments, validProviderId } from '../src/agent/endpoints';
+import {
+  EndpointStore,
+  LOCAL_KEY,
+  discoveryUrls,
+  isLocalUrl,
+  parseModelList,
+  stripJsonComments,
+  validProviderId,
+} from '../src/agent/endpoints';
 import { supportedThinkingLevels } from '../src/shared/model-metadata';
 import { setActiveLocale } from '../src/shared/i18n/runtime';
 
@@ -20,7 +28,10 @@ const storeAt = (name: string) => new EndpointStore(path.join(tmp, `${name}.json
 
 describe('models.json helpers', () => {
   it('reads files with comments and trailing commas', () => {
-    expect(JSON.parse(stripJsonComments('{\n // comment\n "a": 1, /* block */\n "b": [1,2,],\n}'))).toEqual({ a: 1, b: [1, 2] });
+    expect(JSON.parse(stripJsonComments('{\n // comment\n "a": 1, /* block */\n "b": [1,2,],\n}'))).toEqual({
+      a: 1,
+      b: [1, 2],
+    });
   });
 
   it('recognizes local endpoints', () => {
@@ -42,24 +53,45 @@ describe('models.json helpers', () => {
 
 describe('parseModelList', () => {
   it('reads OpenAI-style lists with context hints', () => {
-    expect(parseModelList({ data: [{ id: 'gpt-5', context_length: 400000, max_completion_tokens: 128000 }, { id: 'o4-mini' }] })).toEqual([
+    expect(
+      parseModelList({
+        data: [{ id: 'gpt-5', context_length: 400000, max_completion_tokens: 128000 }, { id: 'o4-mini' }],
+      }),
+    ).toEqual([
       { id: 'gpt-5', name: undefined, contextWindow: 400000, maxTokens: 128000, source: 'endpoint' },
       { id: 'o4-mini', name: undefined, contextWindow: undefined, maxTokens: undefined, source: 'endpoint' },
     ]);
   });
 
   it('reads Anthropic-style lists with display names', () => {
-    expect(parseModelList({ data: [{ id: 'claude-opus-4', display_name: 'Claude Opus 4' }], has_more: false })).toEqual([
-      { id: 'claude-opus-4', name: 'Claude Opus 4', contextWindow: undefined, maxTokens: undefined, source: 'endpoint' },
-    ]);
+    expect(parseModelList({ data: [{ id: 'claude-opus-4', display_name: 'Claude Opus 4' }], has_more: false })).toEqual(
+      [
+        {
+          id: 'claude-opus-4',
+          name: 'Claude Opus 4',
+          contextWindow: undefined,
+          maxTokens: undefined,
+          source: 'endpoint',
+        },
+      ],
+    );
   });
 
   it('reads Google-style lists and strips the models/ prefix', () => {
     expect(
       parseModelList({
-        models: [{ name: 'models/gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', inputTokenLimit: 1048576, outputTokenLimit: 65536 }],
+        models: [
+          {
+            name: 'models/gemini-2.5-pro',
+            displayName: 'Gemini 2.5 Pro',
+            inputTokenLimit: 1048576,
+            outputTokenLimit: 65536,
+          },
+        ],
       }),
-    ).toEqual([{ id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', contextWindow: 1048576, maxTokens: 65536, source: 'endpoint' }]);
+    ).toEqual([
+      { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', contextWindow: 1048576, maxTokens: 65536, source: 'endpoint' },
+    ]);
   });
 
   it('accepts plain arrays, dedupes and drops junk', () => {
@@ -71,16 +103,26 @@ describe('parseModelList', () => {
 
 describe('discoveryUrls', () => {
   it('tries the versioned path first when the base URL has none', () => {
-    expect(discoveryUrls('https://api.example.com', 'openai-completions')).toEqual(['https://api.example.com/v1/models', 'https://api.example.com/models']);
+    expect(discoveryUrls('https://api.example.com', 'openai-completions')).toEqual([
+      'https://api.example.com/v1/models',
+      'https://api.example.com/models',
+    ]);
   });
   it('keeps an existing version segment untouched', () => {
-    expect(discoveryUrls('https://example.com/api/v1/', 'openai-completions')).toEqual(['https://example.com/api/v1/models']);
+    expect(discoveryUrls('https://example.com/api/v1/', 'openai-completions')).toEqual([
+      'https://example.com/api/v1/models',
+    ]);
   });
   it('tries /v1 for an Anthropic root address', () => {
-    expect(discoveryUrls('https://api.anthropic.com', 'anthropic-messages')).toEqual(['https://api.anthropic.com/v1/models', 'https://api.anthropic.com/models']);
+    expect(discoveryUrls('https://api.anthropic.com', 'anthropic-messages')).toEqual([
+      'https://api.anthropic.com/v1/models',
+      'https://api.anthropic.com/models',
+    ]);
   });
   it('uses the versioned base for Google', () => {
-    expect(discoveryUrls('https://generativelanguage.googleapis.com/v1beta', 'google-generative-ai')).toEqual(['https://generativelanguage.googleapis.com/v1beta/models']);
+    expect(discoveryUrls('https://generativelanguage.googleapis.com/v1beta', 'google-generative-ai')).toEqual([
+      'https://generativelanguage.googleapis.com/v1beta/models',
+    ]);
   });
 });
 
@@ -89,7 +131,11 @@ describe('EndpointStore', () => {
     const store = storeAt('new');
     fs.writeFileSync(
       store.file,
-      JSON.stringify({ providers: { existing: { baseUrl: 'https://keep.me/v1', api: 'openai-completions' } } }, null, 2),
+      JSON.stringify(
+        { providers: { existing: { baseUrl: 'https://keep.me/v1', api: 'openai-completions' } } },
+        null,
+        2,
+      ),
     );
     store.save({
       id: 'My-Endpoint',
@@ -109,7 +155,14 @@ describe('EndpointStore', () => {
       baseUrl: 'https://api.example.com/v1',
       api: 'openai-completions',
       name: 'My Endpoint',
-      models: [{ id: 'gpt-5', contextWindow: 400000, maxTokens: 128000, cost: { input: 1.25, output: 10, cacheRead: 0, cacheWrite: 0 } }],
+      models: [
+        {
+          id: 'gpt-5',
+          contextWindow: 400000,
+          maxTokens: 128000,
+          cost: { input: 1.25, output: 10, cacheRead: 0, cacheWrite: 0 },
+        },
+      ],
     });
     // The key never lands in models.json.
     expect(JSON.stringify(written)).not.toContain('sk-test');
@@ -117,11 +170,22 @@ describe('EndpointStore', () => {
 
   it('adds the documented placeholder for a keyless local endpoint', () => {
     const store = storeAt('local');
-    store.save({ id: 'ollama', baseUrl: 'http://localhost:11434/v1', api: 'openai-completions', models: [{ id: 'qwen2.5-coder:7b' }] });
+    store.save({
+      id: 'ollama',
+      baseUrl: 'http://localhost:11434/v1',
+      api: 'openai-completions',
+      models: [{ id: 'qwen2.5-coder:7b' }],
+    });
     expect(JSON.parse(fs.readFileSync(store.file, 'utf8')).providers.ollama.apiKey).toBe(LOCAL_KEY);
 
     // A real key replaces the placeholder.
-    store.save({ id: 'ollama', baseUrl: 'http://localhost:11434/v1', api: 'openai-completions', apiKey: 'real', models: [{ id: 'qwen2.5-coder:7b' }] });
+    store.save({
+      id: 'ollama',
+      baseUrl: 'http://localhost:11434/v1',
+      api: 'openai-completions',
+      apiKey: 'real',
+      models: [{ id: 'qwen2.5-coder:7b' }],
+    });
     expect(JSON.parse(fs.readFileSync(store.file, 'utf8')).providers.ollama.apiKey).toBeUndefined();
   });
 
@@ -150,16 +214,38 @@ describe('EndpointStore', () => {
     const provider = JSON.parse(fs.readFileSync(store.file, 'utf8')).providers.proxy;
     expect(provider.headers).toEqual({ 'x-team': 'mine' });
     expect(provider.apiKey).toBe('$PROXY_KEY');
-    expect(provider.models).toEqual([{ id: 'gpt-5', samplingParams: { temperature: 0.2 }, contextWindow: 400000, name: 'GPT-5', maxTokens: 128000 }]);
+    expect(provider.models).toEqual([
+      { id: 'gpt-5', samplingParams: { temperature: 0.2 }, contextWindow: 400000, name: 'GPT-5', maxTokens: 128000 },
+    ]);
   });
 
   it('repairs old zero limits when resaving and preserves free prices', () => {
     const store = storeAt('zero-limits');
-    fs.writeFileSync(store.file, JSON.stringify({ providers: { proxy: {
-      baseUrl: 'https://proxy.example.com/v1', api: 'openai-completions',
-      models: [{ id: 'image-model', contextWindow: 0, maxTokens: 0, samplingParams: { temperature: 0.2 }, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
-    } } }));
-    const endpoint = store.list(new Set(), () => ({ keySet: true }), () => ({ contextWindow: 0, maxTokens: 0, cost: { input: 9, output: 10 } }))[0];
+    fs.writeFileSync(
+      store.file,
+      JSON.stringify({
+        providers: {
+          proxy: {
+            baseUrl: 'https://proxy.example.com/v1',
+            api: 'openai-completions',
+            models: [
+              {
+                id: 'image-model',
+                contextWindow: 0,
+                maxTokens: 0,
+                samplingParams: { temperature: 0.2 },
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+              },
+            ],
+          },
+        },
+      }),
+    );
+    const endpoint = store.list(
+      new Set(),
+      () => ({ keySet: true }),
+      () => ({ contextWindow: 0, maxTokens: 0, cost: { input: 9, output: 10 } }),
+    )[0];
     expect(endpoint.models[0].contextWindow).toBeUndefined();
     expect(endpoint.models[0].cost).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
     store.save(endpoint);
@@ -172,10 +258,19 @@ describe('EndpointStore', () => {
 
   it('rejects invalid manual values before changing the file', () => {
     const store = storeAt('validation');
-    const draft = { id: 'proxy', baseUrl: 'https://proxy.example.com/v1', api: 'openai-completions', models: [{ id: 'model' }] };
+    const draft = {
+      id: 'proxy',
+      baseUrl: 'https://proxy.example.com/v1',
+      api: 'openai-completions',
+      models: [{ id: 'model' }],
+    };
     store.save(draft);
     const before = fs.readFileSync(store.file, 'utf8');
-    for (const model of [{ id: 'model', contextWindow: 0 }, { id: 'model', maxTokens: -1 }, { id: 'model', cost: { input: -0.5 } }]) {
+    for (const model of [
+      { id: 'model', contextWindow: 0 },
+      { id: 'model', maxTokens: -1 },
+      { id: 'model', cost: { input: -0.5 } },
+    ]) {
       expect(() => store.save({ ...draft, models: [model] })).toThrow(/模型 model/);
       expect(fs.readFileSync(store.file, 'utf8')).toBe(before);
     }
@@ -183,55 +278,122 @@ describe('EndpointStore', () => {
 
   it('round-trips a model thinking level map', () => {
     const store = storeAt('thinking-levels');
-    const thinkingLevelMap = { off: null, minimal: 'minimal', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: null };
+    const thinkingLevelMap = {
+      off: null,
+      minimal: 'minimal',
+      low: 'low',
+      medium: 'medium',
+      high: 'high',
+      xhigh: 'xhigh',
+      max: null,
+    };
     store.save({
       id: 'proxy',
       baseUrl: 'https://proxy.example.com/v1',
       api: 'openai-completions',
       models: [{ id: 'reasoner', reasoning: true, thinkingLevelMap }],
     });
-    expect(JSON.parse(fs.readFileSync(store.file, 'utf8')).providers.proxy.models[0].thinkingLevelMap).toEqual(thinkingLevelMap);
-    expect(store.list(new Set(), () => ({ keySet: true }), () => undefined)[0].models[0].thinkingLevelMap).toEqual(thinkingLevelMap);
+    expect(JSON.parse(fs.readFileSync(store.file, 'utf8')).providers.proxy.models[0].thinkingLevelMap).toEqual(
+      thinkingLevelMap,
+    );
+    expect(
+      store.list(
+        new Set(),
+        () => ({ keySet: true }),
+        () => undefined,
+      )[0].models[0].thinkingLevelMap,
+    ).toEqual(thinkingLevelMap);
   });
 
   it('drops unknown levels and non-string values from a hand-edited map', () => {
     const store = storeAt('thinking-levels-clean');
-    fs.writeFileSync(store.file, JSON.stringify({ providers: { proxy: {
-      baseUrl: 'https://proxy.example.com/v1', api: 'openai-completions',
-      models: [{ id: 'reasoner', reasoning: true, thinkingLevelMap: { high: 'max', low: null, bogus: 'xhigh', minimal: 2 } }],
-    } } }));
-    expect(store.list(new Set(), () => ({ keySet: true }), () => undefined)[0].models[0].thinkingLevelMap).toEqual({ high: 'max', low: null });
+    fs.writeFileSync(
+      store.file,
+      JSON.stringify({
+        providers: {
+          proxy: {
+            baseUrl: 'https://proxy.example.com/v1',
+            api: 'openai-completions',
+            models: [
+              {
+                id: 'reasoner',
+                reasoning: true,
+                thinkingLevelMap: { high: 'max', low: null, bogus: 'xhigh', minimal: 2 },
+              },
+            ],
+          },
+        },
+      }),
+    );
+    expect(
+      store.list(
+        new Set(),
+        () => ({ keySet: true }),
+        () => undefined,
+      )[0].models[0].thinkingLevelMap,
+    ).toEqual({ high: 'max', low: null });
   });
 
   it('clamps levels like pi: defaults through high, xhigh and max need a mapping', () => {
     expect(supportedThinkingLevels({ reasoning: true })).toEqual(['off', 'minimal', 'low', 'medium', 'high']);
-    expect(supportedThinkingLevels({ reasoning: true, thinkingLevelMap: { off: null, xhigh: 'xhigh', max: null } })).toEqual([
-      'minimal', 'low', 'medium', 'high', 'xhigh',
-    ]);
-    expect(supportedThinkingLevels({ reasoning: true, thinkingLevelMap: { low: null, medium: null, high: null } })).toEqual(['off', 'minimal']);
+    expect(
+      supportedThinkingLevels({ reasoning: true, thinkingLevelMap: { off: null, xhigh: 'xhigh', max: null } }),
+    ).toEqual(['minimal', 'low', 'medium', 'high', 'xhigh']);
+    expect(
+      supportedThinkingLevels({ reasoning: true, thinkingLevelMap: { low: null, medium: null, high: null } }),
+    ).toEqual(['off', 'minimal']);
     expect(supportedThinkingLevels({ reasoning: false, thinkingLevelMap: { xhigh: 'xhigh' } })).toEqual(['off']);
     // Stay in step with the SDK, which clamps the composer's choices with the same function.
-    const levels = [undefined, { off: null }, { xhigh: 'xhigh' }, { max: 'max', high: null }, { minimal: null, low: null, medium: null, high: null }];
+    const levels = [
+      undefined,
+      { off: null },
+      { xhigh: 'xhigh' },
+      { max: 'max', high: null },
+      { minimal: null, low: null, medium: null, high: null },
+    ];
     for (const thinkingLevelMap of levels) {
       const model = {
-        id: 'model', name: 'Model', api: 'openai-completions' as const, provider: 'test', baseUrl: 'https://example.com/v1',
-        input: ['text' as const], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: 128000, maxTokens: 16384, reasoning: true, thinkingLevelMap,
+        id: 'model',
+        name: 'Model',
+        api: 'openai-completions' as const,
+        provider: 'test',
+        baseUrl: 'https://example.com/v1',
+        input: ['text' as const],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 128000,
+        maxTokens: 16384,
+        reasoning: true,
+        thinkingLevelMap,
       };
       expect(supportedThinkingLevels(model)).toEqual(getSupportedThinkingLevels(model));
     }
   });
 
   it('aligns costs field by field without replacing zero or false overrides', () => {
-    expect(alignModel({ id: 'model', reasoning: false, contextWindow: 1000, cost: { input: 0, cacheRead: 0 } }, {
-      contextWindow: 200000, maxTokens: 32000, reasoning: true, cost: { input: 4, output: 8, cacheRead: 1, cacheWrite: 2 },
-    })).toMatchObject({ contextWindow: 1000, maxTokens: 32000, reasoning: false, cost: { input: 0, output: 8, cacheRead: 0, cacheWrite: 2 } });
+    expect(
+      alignModel(
+        { id: 'model', reasoning: false, contextWindow: 1000, cost: { input: 0, cacheRead: 0 } },
+        {
+          contextWindow: 200000,
+          maxTokens: 32000,
+          reasoning: true,
+          cost: { input: 4, output: 8, cacheRead: 1, cacheWrite: 2 },
+        },
+      ),
+    ).toMatchObject({
+      contextWindow: 1000,
+      maxTokens: 32000,
+      reasoning: false,
+      cost: { input: 0, output: 8, cacheRead: 0, cacheWrite: 2 },
+    });
   });
 
   it('refuses to overwrite a malformed file', () => {
     const store = storeAt('broken');
     fs.writeFileSync(store.file, '{ not json');
-    expect(() => store.save({ id: 'x', baseUrl: 'https://x.dev/v1', api: 'openai-completions', models: [] })).toThrow(/models\.json/);
+    expect(() => store.save({ id: 'x', baseUrl: 'https://x.dev/v1', api: 'openai-completions', models: [] })).toThrow(
+      /models\.json/,
+    );
     expect(fs.readFileSync(store.file, 'utf8')).toBe('{ not json');
   });
 
@@ -244,23 +406,46 @@ describe('EndpointStore', () => {
       api: 'openai-completions',
       models: [{ id: 'claude-sonnet-4-5' }, { id: 'manual-model', cost: { input: 1, output: 2 } }],
     });
-    const aligned = alignModel({ id: 'claude-sonnet-4-5' }, {
-      contextWindow: 200000,
-      maxTokens: 64000,
-      reasoning: true,
-      cost: { input: 3, output: 15 },
-      source: 'models.dev',
-    });
+    const aligned = alignModel(
+      { id: 'claude-sonnet-4-5' },
+      {
+        contextWindow: 200000,
+        maxTokens: 64000,
+        reasoning: true,
+        cost: { input: 3, output: 15 },
+        source: 'models.dev',
+      },
+    );
     expect(aligned).toMatchObject({ contextWindow: 200000, maxTokens: 64000, reasoning: true, source: 'models.dev' });
 
-    const list = store.list(new Set(['openai']), () => ({ keySet: true, keySource: 'auth.json' }), (id) =>
-      id === 'claude-sonnet-4-5'
-        ? { name: 'Claude Sonnet 4.5', contextWindow: 200000, maxTokens: 64000, cost: { input: 3, output: 15 }, source: 'models.dev' }
-        : undefined,
+    const list = store.list(
+      new Set(['openai']),
+      () => ({ keySet: true, keySource: 'auth.json' }),
+      (id) =>
+        id === 'claude-sonnet-4-5'
+          ? {
+              name: 'Claude Sonnet 4.5',
+              contextWindow: 200000,
+              maxTokens: 64000,
+              cost: { input: 3, output: 15 },
+              source: 'models.dev',
+            }
+          : undefined,
     );
     expect(list).toHaveLength(1);
-    expect(list[0]).toMatchObject({ id: 'gateway', name: 'Gateway', builtin: false, keySet: true, keySource: 'auth.json' });
-    expect(list[0].models[0]).toMatchObject({ name: 'Claude Sonnet 4.5', contextWindow: 200000, maxTokens: 64000, source: 'models.dev' });
+    expect(list[0]).toMatchObject({
+      id: 'gateway',
+      name: 'Gateway',
+      builtin: false,
+      keySet: true,
+      keySource: 'auth.json',
+    });
+    expect(list[0].models[0]).toMatchObject({
+      name: 'Claude Sonnet 4.5',
+      contextWindow: 200000,
+      maxTokens: 64000,
+      source: 'models.dev',
+    });
     expect(list[0].models[1].cost).toEqual({ input: 1, output: 2, cacheRead: 0, cacheWrite: 0 });
 
     store.remove('gateway');

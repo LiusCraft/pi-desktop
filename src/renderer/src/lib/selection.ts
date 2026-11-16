@@ -17,6 +17,10 @@ document.addEventListener('keydown', (e) => {
 });
 
 let hovered: Element | null = null;
-document.addEventListener('pointermove', (e) => {
-  hovered = e.target instanceof Element ? e.target : null;
-}, { passive: true });
+document.addEventListener(
+  'pointermove',
+  (e) => {
+    hovered = e.target instanceof Element ? e.target : null;
+  },
+  { passive: true },
+);

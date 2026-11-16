@@ -16,7 +16,12 @@ function load(host: Partial<KitHost>) {
     registerTool: (t: any) => tools.set(t.name, t),
     sendMessage: (message: any, options: any) => messages.push({ message, options }),
   };
-  const state = { mode: 'auto', profile: 'code', outputStyle: 'default', allowed: new Set<string>() } as KitHost['state'];
+  const state = {
+    mode: 'auto',
+    profile: 'code',
+    outputStyle: 'default',
+    allowed: new Set<string>(),
+  } as KitHost['state'];
   createDesktopKit({ state, ask: async () => ({ cancelled: true }), setMode: () => {}, ...host })(pi as any);
   return { tools, messages };
 }
@@ -32,27 +37,34 @@ describe('background tasks', () => {
   it('pidesk_bg_shell returns at once, streams output, and notifies the model when the command exits', async () => {
     const updates: TaskUpdate[] = [];
     const { tools, messages } = load({ taskUpdate: (u) => updates.push(u) });
-    const started = await tools.get('pidesk_bg_shell').execute('call-1', { command: 'node -e "console.log(\'hello-bg\')"' }, undefined, undefined, ctx);
+    const started = await tools
+      .get('pidesk_bg_shell')
+      .execute('call-1', { command: 'node -e "console.log(\'hello-bg\')"' }, undefined, undefined, ctx);
     expect(started.details.background).toBe(true);
+    expect(text(started)).toMatch(/Before reporting success/);
     expect(messages).toHaveLength(0);
 
     await until(() => messages.length > 0);
     expect(messages[0].options).toMatchObject({ triggerTurn: true, deliverAs: 'followUp' });
     expect(messages[0].message.content).toMatch(/exited with code 0/);
     expect(messages[0].message.content).toMatch(/hello-bg/);
+    expect(messages[0].message.content).toMatch(/does not prove that an app or server started/);
     const last = updates.at(-1)!;
     expect(last).toMatchObject({ toolCallId: 'call-1', state: 'done' });
     expect(last.shell?.output).toMatch(/hello-bg/);
 
     const out = await tools.get('pidesk_bg_output').execute('call-2', { id: 'call-1' });
     expect(text(out)).toMatch(/finished.*\n.*hello-bg/s);
+    expect(text(out)).toMatch(/not app or server readiness/);
   });
 
   it('pidesk_bg_shell runs in the workdir it was given', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-bg-workdir-'));
     const updates: TaskUpdate[] = [];
     const { tools } = load({ taskUpdate: (u) => updates.push(u) });
-    await tools.get('pidesk_bg_shell').execute('call-1', { command: 'node -e "console.log(process.cwd())"', workdir: dir }, undefined, undefined, ctx);
+    await tools
+      .get('pidesk_bg_shell')
+      .execute('call-1', { command: 'node -e "console.log(process.cwd())"', workdir: dir }, undefined, undefined, ctx);
     await until(() => updates.at(-1)?.state === 'done');
     // The child's cwd may carry the long name where os.tmpdir() keeps the 8.3 one: compare folders, not text.
     const printed = updates.at(-1)?.shell?.output.trim() ?? '';
@@ -66,9 +78,13 @@ describe('background tasks', () => {
       taskUpdate: (u) => updates.push(u),
       trackTask: (id, stop) => (stops.set(id, stop), () => void stops.delete(id)),
     });
-    await tools.get('pidesk_bg_shell').execute('call-1', { command: 'node -e "setInterval(() => {}, 1000)"' }, undefined, undefined, ctx);
+    await tools
+      .get('pidesk_bg_shell')
+      .execute('call-1', { command: 'node -e "setInterval(() => {}, 1000)"' }, undefined, undefined, ctx);
     expect(stops.has('call-1')).toBe(true);
-    await tools.get('pidesk_bg_kill').execute('call-2', { id: 'call-1' });
+    const running = await tools.get('pidesk_bg_output').execute('call-2', { id: 'call-1' });
+    expect(text(running)).toMatch(/still running; confirm app or server readiness/);
+    await tools.get('pidesk_bg_kill').execute('call-3', { id: 'call-1' });
 
     await until(() => messages.length > 0);
     expect(messages[0].options.triggerTurn).toBe(false);
@@ -83,11 +99,22 @@ describe('background tasks', () => {
       taskUpdate: (u) => updates.push(u),
       runSubagent: (run: SubagentRun) =>
         new Promise<string>((resolve) => {
-          run.onProgress({ commands: 0, reads: 1, searches: 0, failed: 0 }, { startedAt: Date.now(), tokens: 5, toolUses: 1, activity: 'Reading', steps: [] });
+          run.onProgress(
+            { commands: 0, reads: 1, searches: 0, failed: 0 },
+            { startedAt: Date.now(), tokens: 5, toolUses: 1, activity: 'Reading', steps: [] },
+          );
           finish = resolve;
         }),
     });
-    const r = await tools.get('pidesk_task').execute('call-1', { description: 'Explore it', prompt: 'look', run_in_background: true }, undefined, undefined, ctx);
+    const r = await tools
+      .get('pidesk_task')
+      .execute(
+        'call-1',
+        { description: 'Explore it', prompt: 'look', run_in_background: true },
+        undefined,
+        undefined,
+        ctx,
+      );
     expect(r.details.background).toBe(true);
     expect(updates.at(-1)).toMatchObject({ state: 'running' });
     expect(messages).toHaveLength(0);
@@ -104,16 +131,26 @@ describe('background tasks', () => {
     const shell = new AbortController();
     const subagent = new AbortController();
     let abortedTurn = false;
+    let abortedBash = false;
     // Only what abort() reads from a live session: its tracked tasks and its own session.
     const live = {
-      id: 's1', pending: new Map(), tasks: new Map([['call-1', shell], ['call-2', subagent]]),
-      runtime: { session: { abort: async () => void (abortedTurn = true) } },
+      id: 's1',
+      pending: new Map(),
+      tasks: new Map([
+        ['call-1', shell],
+        ['call-2', subagent],
+      ]),
+      runtime: {
+        session: { abort: async () => void (abortedTurn = true), abortBash: () => void (abortedBash = true) },
+      },
     };
     (hub as unknown as { live: Map<string, unknown> }).live.set('s1', live);
 
     await hub.abort('s1');
 
     expect(abortedTurn).toBe(true);
+    // A `!command` the user ran in the session's shell stops with the turn.
+    expect(abortedBash).toBe(true);
     expect(shell.signal.aborted).toBe(true);
     expect(subagent.signal.aborted).toBe(true);
   });

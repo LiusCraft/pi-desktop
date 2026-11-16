@@ -38,12 +38,28 @@ const fromRow = (path: string, flat: boolean) => (flat ? path.replaceAll(FLAT_SL
 function rowOf(event: Event, flat: boolean): RowTarget | null {
   for (const node of event.composedPath()) {
     if (!(node instanceof HTMLElement) || !node.dataset.itemPath) continue;
-    return { path: fromRow(node.dataset.itemPath.replace(/\/$/, ''), flat), directory: node.dataset.itemType === 'folder' };
+    return {
+      path: fromRow(node.dataset.itemPath.replace(/\/$/, ''), flat),
+      directory: node.dataset.itemType === 'folder',
+    };
   }
   return null;
 }
 
-export function PathTree({ meta, label, paths, statuses, decorate, selected, expandAll = false, flat = false, snapshotOf, onOpen, onPin, className }: {
+export function PathTree({
+  meta,
+  label,
+  paths,
+  statuses,
+  decorate,
+  selected,
+  expandAll = false,
+  flat = false,
+  snapshotOf,
+  onOpen,
+  onPin,
+  className,
+}: {
   meta: SessionMeta;
   /** What the list is called for assistive tech. */
   label: string;
@@ -69,7 +85,10 @@ export function PathTree({ meta, label, paths, statuses, decorate, selected, exp
   const lastClick = useRef(0);
   const programmatic = useRef(false);
   const [menu, setMenu] = useState<RowTarget>({ path: '', directory: false });
-  const gitStatus = useMemo(() => [...(statuses ?? [])].map(([path, status]) => ({ path: toRow(path, flat), status })), [statuses, flat]);
+  const gitStatus = useMemo(
+    () => [...(statuses ?? [])].map(([path, status]) => ({ path: toRow(path, flat), status })),
+    [statuses, flat],
+  );
   const rows = useMemo(() => paths.map((p) => toRow(p, flat)), [paths, flat]);
 
   const { model } = useFileTree({
@@ -80,7 +99,8 @@ export function PathTree({ meta, label, paths, statuses, decorate, selected, exp
     fileTreeSearchMode: 'hide-non-matches',
     gitStatus,
     unsafeCSS: SCROLL_X_CSS,
-    renderRowDecoration: ({ item }) => (item.kind === 'file' ? latest.current.decorate?.(fromRow(item.path, flat)) ?? null : null),
+    renderRowDecoration: ({ item }) =>
+      item.kind === 'file' ? (latest.current.decorate?.(fromRow(item.path, flat)) ?? null) : null,
     onSelectionChange: (picked) => {
       const path = picked.at(-1);
       if (!path || programmatic.current || Date.now() - lastClick.current < CLICK_SETTLE_MS) return;

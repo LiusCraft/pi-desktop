@@ -20,7 +20,10 @@ let baseUrl: string;
 let hub: SessionHub;
 const events: HostEvent[] = [];
 
-async function waitFor<T extends HostEvent['type']>(type: T, timeoutMs = 5_000): Promise<Extract<HostEvent, { type: T }>> {
+async function waitFor<T extends HostEvent['type']>(
+  type: T,
+  timeoutMs = 5_000,
+): Promise<Extract<HostEvent, { type: T }>> {
   const started = Date.now();
   for (;;) {
     const hit = events.find((event) => event.type === type);
@@ -38,7 +41,12 @@ beforeAll(async () => {
   // Seed the models.dev cache so alignment never reaches the network.
   fs.writeFileSync(
     path.join(dataDir, 'cache', 'models-dev.json'),
-    JSON.stringify({ fetchedAt: Date.now(), providers: { openai: [{ id: 'test-model', name: 'Test Model', context: 12345, output: 6789, cost: { input: 1, output: 2 } }] } }),
+    JSON.stringify({
+      fetchedAt: Date.now(),
+      providers: {
+        openai: [{ id: 'test-model', name: 'Test Model', context: 12345, output: 6789, cost: { input: 1, output: 2 } }],
+      },
+    }),
   );
   server = http.createServer((req, res) => {
     if (req.url?.endsWith('/v1/models')) {
@@ -129,7 +137,12 @@ describe('SessionHub model admin', () => {
   });
 
   it('uses the documented placeholder key for a keyless local endpoint', async () => {
-    await hub.admin.saveEndpoint({ id: 'ollama', baseUrl: 'http://localhost:11434/v1', api: 'openai-completions', models: [{ id: 'qwen2.5-coder:7b' }] });
+    await hub.admin.saveEndpoint({
+      id: 'ollama',
+      baseUrl: 'http://localhost:11434/v1',
+      api: 'openai-completions',
+      models: [{ id: 'qwen2.5-coder:7b' }],
+    });
     expect(modelsJson().providers.ollama.apiKey).toBe('local');
     const endpoint = (await hub.admin.catalog()).endpoints.find((item) => item.id === 'ollama')!;
     expect(endpoint.keySet).toBe(true);
@@ -137,12 +150,29 @@ describe('SessionHub model admin', () => {
   });
 
   it('loads manual overrides and recovers endpoints with old zero limits', async () => {
-    await hub.admin.saveEndpoint({ id: 'editable', baseUrl, api: 'openai-completions', models: [{
-      id: 'test-model', name: 'My Model', contextWindow: 64000, maxTokens: 4000,
-      reasoning: false, input: ['text'], cost: { input: 0, output: 0.25, cacheRead: 0, cacheWrite: 0 },
-    }] });
+    await hub.admin.saveEndpoint({
+      id: 'editable',
+      baseUrl,
+      api: 'openai-completions',
+      models: [
+        {
+          id: 'test-model',
+          name: 'My Model',
+          contextWindow: 64000,
+          maxTokens: 4000,
+          reasoning: false,
+          input: ['text'],
+          cost: { input: 0, output: 0.25, cacheRead: 0, cacheWrite: 0 },
+        },
+      ],
+    });
     const overridden = (await hub.admin.catalog()).endpoints.find((item) => item.id === 'editable')!.models[0];
-    expect(overridden).toMatchObject({ name: 'My Model', contextWindow: 64000, maxTokens: 4000, cost: { input: 0, output: 0.25 } });
+    expect(overridden).toMatchObject({
+      name: 'My Model',
+      contextWindow: 64000,
+      maxTokens: 4000,
+      cost: { input: 0, output: 0.25 },
+    });
     const data = modelsJson();
     data.providers.editable.models.push({ id: 'image-model', contextWindow: 0, maxTokens: 0 });
     fs.writeFileSync(path.join(agentDir, 'models.json'), JSON.stringify(data));
@@ -150,12 +180,20 @@ describe('SessionHub model admin', () => {
     const saved = await hub.admin.saveEndpoint(endpoint);
     expect(saved.errors).toEqual([]);
     expect(modelsJson().providers.editable.models[1]).toEqual({ id: 'image-model' });
-    const available = (await hub.listModels()).models.find((model) => model.provider === 'editable' && model.id === 'test-model');
+    const available = (await hub.listModels()).models.find(
+      (model) => model.provider === 'editable' && model.id === 'test-model',
+    );
     expect(available).toBeDefined();
   });
 
   it('removes an endpoint and its credential', async () => {
-    await hub.admin.saveEndpoint({ id: 'gone', baseUrl, api: 'openai-completions', apiKey: 'x', models: [{ id: 'test-model' }] });
+    await hub.admin.saveEndpoint({
+      id: 'gone',
+      baseUrl,
+      api: 'openai-completions',
+      apiKey: 'x',
+      models: [{ id: 'test-model' }],
+    });
     expect(authJson().gone).toMatchObject({ key: 'x' });
     const catalog = await hub.admin.removeEndpoint('gone');
     expect(catalog.endpoints.some((item) => item.id === 'gone')).toBe(false);

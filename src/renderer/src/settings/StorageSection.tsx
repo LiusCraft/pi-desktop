@@ -15,13 +15,23 @@ import { Group, Heading, Panel, Row } from './ui';
 const fail = (err: unknown) => toast.error(errText(err));
 /** Setting names in the order the form shows them, for "fill in … first" messages. */
 const FIELD_LABEL: Record<string, MessageKey | string> = {
-  endpoint: 'Endpoint', bucket: 'Bucket', accessKeyId: 'Access Key ID', secretAccessKey: 'Secret Access Key', publicBaseUrl: 'storage.publicBaseUrl',
+  endpoint: 'Endpoint',
+  bucket: 'Bucket',
+  accessKeyId: 'Access Key ID',
+  secretAccessKey: 'Secret Access Key',
+  publicBaseUrl: 'storage.publicBaseUrl',
 };
 
 type Form = ObjectStorageDraft;
 const toForm = (info: ObjectStorageInfo): Form => ({
-  endpoint: info.endpoint, region: info.region, bucket: info.bucket, accessKeyId: info.accessKeyId, publicBaseUrl: info.publicBaseUrl,
-  prefix: info.prefix, pathStyle: info.pathStyle, secretAccessKey: '',
+  endpoint: info.endpoint,
+  region: info.region,
+  bucket: info.bucket,
+  accessKeyId: info.accessKeyId,
+  publicBaseUrl: info.publicBaseUrl,
+  prefix: info.prefix,
+  pathStyle: info.pathStyle,
+  secretAccessKey: '',
 });
 
 function StoragePanel({ info, onSaved }: { info: ObjectStorageInfo; onSaved: (info: ObjectStorageInfo) => void }) {
@@ -29,7 +39,10 @@ function StoragePanel({ info, onSaved }: { info: ObjectStorageInfo; onSaved: (in
   const [form, setForm] = useState<Form>(() => toForm(info));
   const [busy, setBusy] = useState<'save' | 'test' | null>(null);
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
-  const fieldLabel = (key: string) => { const l = FIELD_LABEL[key] ?? key; return l.startsWith('storage.') ? t(l as MessageKey) : l; };
+  const fieldLabel = (key: string) => {
+    const l = FIELD_LABEL[key] ?? key;
+    return l.startsWith('storage.') ? t(l as MessageKey) : l;
+  };
   const missing = missingStorageField(form, info.secretSet || !!form.secretAccessKey);
 
   const save = async () => {
@@ -56,7 +69,12 @@ function StoragePanel({ info, onSaved }: { info: ObjectStorageInfo; onSaved: (in
       setBusy(null);
     }
   };
-  const field = (label: string, key: keyof Form, hint?: string, extra?: { placeholder?: string; type?: string; mono?: boolean; tip?: string }) => (
+  const field = (
+    label: string,
+    key: keyof Form,
+    hint?: string,
+    extra?: { placeholder?: string; type?: string; mono?: boolean; tip?: string },
+  ) => (
     <Row title={label} hint={hint} tip={extra?.tip}>
       <Input
         className={cn('h-8 w-72', extra?.mono !== false && 'font-mono text-xs')}
@@ -71,24 +89,50 @@ function StoragePanel({ info, onSaved }: { info: ObjectStorageInfo; onSaved: (in
   );
   return (
     <Panel>
-      {field('Endpoint', 'endpoint', t('storage.endpoint.hint'), { placeholder: 'https://<account>.r2.cloudflarestorage.com', tip: t('storage.endpoint.tip') })}
+      {field('Endpoint', 'endpoint', t('storage.endpoint.hint'), {
+        placeholder: 'https://<account>.r2.cloudflarestorage.com',
+        tip: t('storage.endpoint.tip'),
+      })}
       {field('Region', 'region', t('storage.region.hint'), { placeholder: 'auto' })}
       {field('Bucket', 'bucket', t('storage.bucket.hint'), { tip: t('storage.bucket.tip') })}
       {field('Access Key ID', 'accessKeyId')}
-      {field('Secret Access Key', 'secretAccessKey', t(info.secretSet ? 'storage.secret.set' : 'storage.secret.unset'), {
-        type: 'password', placeholder: info.secretSet ? '••••••••' : undefined,
+      {field(
+        'Secret Access Key',
+        'secretAccessKey',
+        t(info.secretSet ? 'storage.secret.set' : 'storage.secret.unset'),
+        {
+          type: 'password',
+          placeholder: info.secretSet ? '••••••••' : undefined,
+        },
+      )}
+      {field(t('storage.publicBaseUrl'), 'publicBaseUrl', t('storage.publicBaseUrl.hint'), {
+        placeholder: 'https://pub-xxxx.r2.dev',
+        tip: t('storage.publicBaseUrl.tip'),
       })}
-      {field(t('storage.publicBaseUrl'), 'publicBaseUrl', t('storage.publicBaseUrl.hint'), { placeholder: 'https://pub-xxxx.r2.dev', tip: t('storage.publicBaseUrl.tip') })}
-      {field(t('storage.prefix'), 'prefix', t('storage.prefix.hint'), { placeholder: 'pi-desktop', tip: t('storage.prefix.tip') })}
+      {field(t('storage.prefix'), 'prefix', t('storage.prefix.hint'), {
+        placeholder: 'pi-desktop',
+        tip: t('storage.prefix.tip'),
+      })}
       <Row title={t('storage.pathStyle')} hint={t('storage.pathStyle.hint')} tip={t('storage.pathStyle.tip')}>
         <Switch checked={form.pathStyle} onCheckedChange={(v) => set('pathStyle', v)} />
       </Row>
       <div className="flex items-center justify-end gap-2 px-4 py-3">
-        {missing && <span className="mr-auto text-xs text-muted-foreground">{t('storage.needFirst', { field: fieldLabel(missing) })}</span>}
-        <Button size="sm" variant="outline" disabled={busy !== null || (!!missing && missing !== 'publicBaseUrl')} onClick={() => void test()}>
+        {missing && (
+          <span className="mr-auto text-xs text-muted-foreground">
+            {t('storage.needFirst', { field: fieldLabel(missing) })}
+          </span>
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy !== null || (!!missing && missing !== 'publicBaseUrl')}
+          onClick={() => void test()}
+        >
           {busy === 'test' ? t('storage.testing') : t('storage.test')}
         </Button>
-        <Button size="sm" disabled={busy !== null} onClick={() => void save()}>{busy === 'save' ? t('storage.saving') : t('storage.save')}</Button>
+        <Button size="sm" disabled={busy !== null} onClick={() => void save()}>
+          {busy === 'save' ? t('storage.saving') : t('storage.save')}
+        </Button>
       </div>
     </Panel>
   );
@@ -104,7 +148,10 @@ export function StorageSection() {
   return (
     <div>
       <Heading title={t('storage.title')} sub={t('storage.sub')} tip={t('storage.tip')} />
-      <Group title={t(info.ready ? 'storage.ready' : 'storage.notReady')} sub={t(info.ready ? 'storage.ready.sub' : 'storage.notReady.sub')}>
+      <Group
+        title={t(info.ready ? 'storage.ready' : 'storage.notReady')}
+        sub={t(info.ready ? 'storage.ready.sub' : 'storage.notReady.sub')}
+      >
         <StoragePanel info={info} onSaved={setInfo} />
       </Group>
     </div>

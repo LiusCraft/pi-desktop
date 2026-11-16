@@ -19,7 +19,9 @@ function JsonBlock({ text, value }: { text: string; value: object }) {
   const [raw, setRaw] = useState(false);
   const { copied, copy } = useCopy();
   const pretty = useMemo(() => JSON.stringify(value, null, 2) ?? text, [value, text]);
-  const summary = Array.isArray(value) ? t('tool.items', { n: value.length }) : t('tool.fields', { n: Object.keys(value).length });
+  const summary = Array.isArray(value)
+    ? t('tool.items', { n: value.length })
+    : t('tool.fields', { n: Object.keys(value).length });
   return (
     <div className={BLOCK}>
       <div className="flex items-center gap-2 px-3 py-1 text-xs text-muted-foreground">
@@ -29,16 +31,25 @@ function JsonBlock({ text, value }: { text: string; value: object }) {
             compact
             value={raw ? 'raw' : 'data'}
             onChange={(id) => setRaw(id === 'raw')}
-            options={[{ id: 'data', label: t('tool.structured') }, { id: 'raw', label: t('tool.raw') }]}
+            options={[
+              { id: 'data', label: t('tool.structured') },
+              { id: 'raw', label: t('tool.raw') },
+            ]}
           />
-          <button type="button" className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent hover:text-foreground" onClick={() => copy(pretty)}>
+          <button
+            type="button"
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent hover:text-foreground"
+            onClick={() => copy(pretty)}
+          >
             <CopyGlyph copied={copied} />
             {t(copied ? 'md.copied' : 'md.copy')}
           </button>
         </div>
       </div>
       {raw ? (
-        <pre className="max-h-80 overflow-auto px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre-wrap"><HighlightedCode code={pretty} lang="json" /></pre>
+        <pre className="max-h-80 overflow-auto px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+          <HighlightedCode code={pretty} lang="json" />
+        </pre>
       ) : (
         <div className="max-h-80 overflow-auto px-2 py-1.5">
           <StructuredValue value={value} />
@@ -56,13 +67,22 @@ export const ToolOutput = memo(function ToolOutput({ text }: { text: string }) {
         if (segment.kind === 'code') {
           // A fence labelled json is data like any other, not something to read line by line.
           const json = langOfFence(segment.lang) === 'json' ? parseJsonOutput(segment.code) : null;
-          return json
-            ? <JsonBlock key={i} text={segment.code} value={json.value} />
-            : <CodeBlock key={i} lang={segment.lang} code={segment.code} flush />;
+          return json ? (
+            <JsonBlock key={i} text={segment.code} value={json.value} />
+          ) : (
+            <CodeBlock key={i} lang={segment.lang} code={segment.code} flush />
+          );
         }
         const json = parseJsonOutput(segment.text);
         if (json) return <JsonBlock key={i} text={segment.text} value={json.value} />;
-        return <pre key={i} className={`${BLOCK} max-h-80 overflow-auto px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre-wrap`}>{segment.text}</pre>;
+        return (
+          <pre
+            key={i}
+            className={`${BLOCK} max-h-80 overflow-auto px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre-wrap`}
+          >
+            {segment.text}
+          </pre>
+        );
       })}
     </>
   );

@@ -2,6 +2,9 @@ import { defineMessages } from '../define';
 
 export const main = defineMessages({
   'main.copy': { en: 'Copy', zh: '复制' },
+  'main.windowMinimize': { en: 'Minimize', zh: '最小化' },
+  'main.windowMaximize': { en: 'Maximize', zh: '最大化' },
+  'main.windowClose': { en: 'Close', zh: '关闭' },
   'main.cut': { en: 'Cut', zh: '剪切' },
   'main.paste': { en: 'Paste', zh: '粘贴' },
   'main.selectAll': { en: 'Select all', zh: '全选' },

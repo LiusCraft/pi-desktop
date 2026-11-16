@@ -14,8 +14,24 @@ import type { ArtifactMeta } from './artifacts';
 import type { ObjectStorageDraft, ObjectStorageInfo } from './storage';
 import type { LanguageSetting, Locale } from './i18n';
 import type { SearchEngine, WebSearchDraft, WebSearchInfo } from './web-search';
-import type { RedactPreview, RedactSettings, RequestHookSettings, RequestQuery, RequestRecord, UsageQuery, UsageSummary } from './request-log';
-import type { RemoteActive, RemoteConnectionDraft, RemoteConnectionInfo, RemoteLinkState, RemoteListing, RemoteServeSettings, RemoteServeState } from './remote';
+import type {
+  RedactPreview,
+  RedactSettings,
+  RequestHookSettings,
+  RequestQuery,
+  RequestRecord,
+  UsageQuery,
+  UsageSummary,
+} from './request-log';
+import type {
+  RemoteActive,
+  RemoteConnectionDraft,
+  RemoteConnectionInfo,
+  RemoteLinkState,
+  RemoteListing,
+  RemoteServeSettings,
+  RemoteServeState,
+} from './remote';
 import type { ScheduledTask, TaskDraft } from './schedule';
 import type { SearchResult } from './text-search';
 import type { PromptTokens } from './usage';
@@ -529,7 +545,11 @@ export interface ContextBreakdown {
   cache: PromptTokens;
   /** Session spend in dollars so far: each call's tokens at its model's prices. */
   cost: number;
-  categories: { key: 'messages' | 'mcp' | 'extension' | 'system' | 'skills' | 'memory' | 'prompt' | 'buffer' | 'free'; label: string; tokens: number }[];
+  categories: {
+    key: 'messages' | 'mcp' | 'extension' | 'system' | 'skills' | 'memory' | 'prompt' | 'buffer' | 'free';
+    label: string;
+    tokens: number;
+  }[];
   /** Per-item detail for the expandable sections. */
   items: { group: 'mcp' | 'extension' | 'system' | 'skills' | 'memory'; name: string; tokens: number }[];
 }
@@ -560,6 +580,25 @@ export interface SlashCommand {
   name: string;
   description?: string;
   source: string;
+}
+
+/** `!command` in the composer: run one command in the shell the session's own commands use. */
+export interface BashRunOptions {
+  /** `!!command`: the result stays in the transcript but out of the model's context. */
+  excludeFromContext?: boolean;
+  /** Echoed in each `bash_execution_update` event, so the view can stream it into the right item. */
+  id?: string;
+}
+
+/** What one such command returns (pi's BashResult). */
+export interface BashRunResult {
+  /** Combined stdout and stderr, possibly truncated. */
+  output: string;
+  exitCode?: number;
+  cancelled: boolean;
+  truncated: boolean;
+  /** Where the untruncated output was written, when it was. */
+  fullOutputPath?: string;
 }
 
 export interface FileChange {
@@ -605,6 +644,8 @@ export interface GitState {
   base: string | null;
   /** Upstream ref, or null when the branch tracks nothing yet. */
   upstream: string | null;
+  /** Whether this repository has a configured remote. */
+  hasRemote?: boolean;
   /** The code host `origin` points at, when its name says so. */
   forge?: Forge;
 }
@@ -651,9 +692,19 @@ export interface WorkProject extends Project {
 }
 
 /** What the Projects page edits; absent fields stay as they are. */
-export type WorkProjectPatch = Partial<Pick<WorkProject, 'name' | 'description' | 'instructions' | 'links' | 'codeFolders' | 'memory'>>;
+export type WorkProjectPatch = Partial<
+  Pick<WorkProject, 'name' | 'description' | 'instructions' | 'links' | 'codeFolders' | 'memory'>
+>;
 
-export const PROJECT_LIMITS = { name: 80, description: 500, instructions: 16_000, memory: 16_000, links: 20, url: 2000, codeFolders: 10 } as const;
+export const PROJECT_LIMITS = {
+  name: 80,
+  description: 500,
+  instructions: 16_000,
+  memory: 16_000,
+  links: 20,
+  url: 2000,
+  codeFolders: 10,
+} as const;
 
 export type AttachmentSource = { path: string } | { name: string; mimeType: string; data: string };
 export interface AttachmentImportResult {
@@ -720,7 +771,16 @@ export interface UiResponse {
  * tasks, customize, artifacts, activity, a model's project notes) or the main process (projects, Work folders).
  * A new resource: name it here, announce it where it is written, subscribe in its views.
  */
-export const HOST_RESOURCES = ['models', 'tasks', 'projects', 'workFolders', 'customize', 'plugins', 'artifacts', 'activity'] as const;
+export const HOST_RESOURCES = [
+  'models',
+  'tasks',
+  'projects',
+  'workFolders',
+  'customize',
+  'plugins',
+  'artifacts',
+  'activity',
+] as const;
 export type HostResource = (typeof HOST_RESOURCES)[number];
 
 export type HostEvent =
@@ -740,7 +800,14 @@ export type HostEvent =
   | { type: 'side'; sessionId: string; chat: SideChat }
   /** Host-owned data changed: the views showing that resource read it again. */
   | { type: 'changed'; resource: HostResource }
-  | { type: 'auth_prompt'; loginId: string; provider: string; providerName: string; requestId: string; prompt: AuthPrompt }
+  | {
+      type: 'auth_prompt';
+      loginId: string;
+      provider: string;
+      providerName: string;
+      requestId: string;
+      prompt: AuthPrompt;
+    }
   /** Out-of-band login progress: browser URL, device code, status text. */
   | { type: 'auth_event'; loginId: string; provider: string; event: AuthEvent }
   | { type: 'editor_text'; sessionId: string; text: string }
@@ -856,7 +923,12 @@ export interface EndpointDraft {
 }
 
 /** API families the endpoint editor offers; models.json accepts others too. */
-export const ENDPOINT_APIS: readonly EndpointApi[] = ['openai-completions', 'openai-responses', 'anthropic-messages', 'google-generative-ai'];
+export const ENDPOINT_APIS: readonly EndpointApi[] = [
+  'openai-completions',
+  'openai-responses',
+  'anthropic-messages',
+  'google-generative-ai',
+];
 
 export interface EndpointDiscovery {
   models: EndpointModel[];
@@ -875,13 +947,33 @@ export interface AuthPrompt {
 export type AuthEvent =
   | { type: 'info'; message: string; links?: { url: string; label?: string }[] }
   | { type: 'auth_url'; url: string; instructions?: string }
-  | { type: 'device_code'; userCode: string; verificationUri: string; intervalSeconds?: number; expiresInSeconds?: number }
+  | {
+      type: 'device_code';
+      userCode: string;
+      verificationUri: string;
+      intervalSeconds?: number;
+      expiresInSeconds?: number;
+    }
   | { type: 'progress'; message: string };
 
 export type ThemeSetting = 'light' | 'dark' | 'system';
 /** The colour scheme; light/dark is `theme`'s job, so each palette carries both. */
 export const PALETTES = ['default', 'vscode'] as const;
 export type Palette = (typeof PALETTES)[number];
+/** The visual density used by the interface's shared spacing and type tokens. */
+export const UI_DENSITIES = ['compact', 'comfortable'] as const;
+export type UiDensity = (typeof UI_DENSITIES)[number];
+export const UI_DENSITY_SCALE: Record<UiDensity, number> = {
+  compact: 0.9,
+  comfortable: 1.1,
+};
+export const UI_DENSITY_LINE_SCALE: Record<UiDensity, number> = {
+  compact: 0.96,
+  comfortable: 1.04,
+};
+export const UI_FONT_SIZE_DEFAULT = 14;
+export const UI_FONT_SIZE_MIN = 10;
+export const UI_FONT_SIZE_MAX = 24;
 /**
  * How the model's shell commands keep their folder. `session` runs them in one shell that stays
  * alive, so a `cd` or an `export` carries over to the next command (the way Claude Code behaves);
@@ -911,6 +1003,9 @@ export const TERMINAL_MAX_LINES = 500;
 export interface Settings {
   theme: ThemeSetting | null;
   palette: Palette;
+  density: UiDensity;
+  /** Base interface font size in pixels. */
+  fontSize: number;
   /** Font family for the interface and for code/terminal (a name or a CSS list); null uses the system fonts. */
   uiFont: string | null;
   codeFont: string | null;
@@ -1010,24 +1105,55 @@ export interface BootPayload {
   remote: RemoteActive | null;
 }
 export type OpenTarget =
-  | 'vscode' | 'vscode-insiders' | 'cursor' | 'windsurf' | 'trae' | 'antigravity' | 'vscodium' | 'zed' | 'sublime'
-  | 'idea' | 'webstorm' | 'pycharm' | 'goland' | 'rustrover' | 'clion' | 'phpstorm'
-  | 'terminal' | 'folder';
+  | 'vscode'
+  | 'vscode-insiders'
+  | 'cursor'
+  | 'windsurf'
+  | 'trae'
+  | 'antigravity'
+  | 'vscodium'
+  | 'zed'
+  | 'sublime'
+  | 'idea'
+  | 'webstorm'
+  | 'pycharm'
+  | 'goland'
+  | 'rustrover'
+  | 'clion'
+  | 'phpstorm'
+  | 'terminal'
+  | 'folder';
 /** A shell the terminal panel can start. */
-export interface TerminalShell { file: string; label: string }
+export interface TerminalShell {
+  file: string;
+  label: string;
+}
 /** One terminal tab of a session. */
-export interface TerminalInfo { id: string; title: string }
+export interface TerminalInfo {
+  id: string;
+  title: string;
+}
 /** What attaching to a terminal returns: the output so far, to repaint a fresh view. */
-export interface TerminalAttach { backlog: string; exited: boolean }
+export interface TerminalAttach {
+  backlog: string;
+  exited: boolean;
+}
 /** A side chat that lives in its own window. */
-export interface SideWindow { sessionId: string; pinned: boolean }
+export interface SideWindow {
+  sessionId: string;
+  pinned: boolean;
+}
 /** An "Open in" choice; `icon` is the installed app's own icon as a data URL, when it could be read. */
-export interface OpenTargetEntry { id: OpenTarget; icon?: string }
+export interface OpenTargetEntry {
+  id: OpenTarget;
+  icon?: string;
+}
 
 // ------------------------------------------------------------ the renderer API
 
 export interface Api {
   'app:info'(): AppInfo;
+  'window:control'(target: WindowTarget, action: WindowControlAction): void;
   'app:notify'(n: { title: string; body: string; sessionId?: string }): void;
   'app:openExternal'(url: string): void;
   /** Ask GitHub for the releases; `available` is set when one is newer than this app. */
@@ -1087,7 +1213,6 @@ export interface Api {
   'attachments:pick'(): AttachmentImportResult;
   'attachments:clipboard'(): ClipboardImportResult;
 
-
   /** Editors found on this machine, plus the terminal and file manager. */
   /** Open (or focus) the side chat of a session in a window of its own. */
   'side:pop'(sessionId: string): void;
@@ -1118,10 +1243,25 @@ export interface Api {
   /** The session as the host holds it now, without its transcript; null when the host holds nothing more than its meta. */
   'sessions:state'(id: string): SessionState | null;
   'sessions:prompt'(id: string, payload: PromptSubmission, behavior: StreamingBehavior): { disposition: string };
+  /**
+   * Run a command in the shell the session's own `bash` commands use (`!command` in the composer), so it
+   * starts where they left the shell. Output streams as `bash_execution_update` pi events carrying `id`;
+   * pi keeps the result in the conversation, so the next turn sees it.
+   */
+  'sessions:bash'(id: string, command: string, options: BashRunOptions): BashRunResult;
   'sessions:respond'(id: string, requestId: string, response: UiResponse): void;
   'sessions:setMode'(id: string, mode: PermissionMode): void;
   'sessions:setStyle'(id: string, style: OutputStyle): void;
-  'sessions:update'(id: string, patch: { title?: string; pinned?: boolean; pr?: PrSummary | null; suggestion?: { key: string; state: 'here' | 'dismissed' }; prAuto?: { fixCi?: boolean; merge?: boolean; fixDone?: string; mergeDone?: number } }): SessionMeta;
+  'sessions:update'(
+    id: string,
+    patch: {
+      title?: string;
+      pinned?: boolean;
+      pr?: PrSummary | null;
+      suggestion?: { key: string; state: 'here' | 'dismissed' };
+      prAuto?: { fixCi?: boolean; merge?: boolean; fixDone?: string; mergeDone?: number };
+    },
+  ): SessionMeta;
   'sessions:archive'(id: string): void;
   'sessions:unarchive'(id: string): SessionMeta;
   'sessions:inspect'(id: string): SessionCleanup;
@@ -1139,7 +1279,11 @@ export interface Api {
   'sessions:stats'(id: string): SessionStats | null;
   'sessions:exportHtml'(id: string): { path: string };
   'sessions:clone'(id: string): void;
-  'sessions:messageAction'(id: string, entryId: string, action: 'rewind' | 'fork'): { session: OpenSessionResult; draft: DecodedUserContent };
+  'sessions:messageAction'(
+    id: string,
+    entryId: string,
+    action: 'rewind' | 'fork',
+  ): { session: OpenSessionResult; draft: DecodedUserContent };
   'sessions:setModel'(id: string, model: string): { levels: ThinkingLevel[]; thinking: ThinkingLevel };
   'sessions:setThinking'(id: string, level: ThinkingLevel): void;
   'sessions:commands'(id: string): SlashCommand[];
@@ -1183,6 +1327,8 @@ export interface Api {
   'sessions:importable'(projectPath: string): ImportableSession[];
   'git:branch'(dir: string): string | null;
   'git:branches'(dir: string): string[];
+  'git:defaultBranch'(dir: string): string | null;
+  'git:refresh'(dir: string): boolean;
   'sessions:import'(file: string): SessionMeta;
   'agents:list'(): AgentCatalog;
   /** Tools worth suggesting in an allowlist: the built-ins plus whatever open sessions have loaded (MCP included). */
@@ -1198,7 +1344,12 @@ export interface Api {
   'customize:claudeImport'(project: string | null): CustomizeCatalog;
   'customize:claudeDismiss'(project: string | null): CustomizeCatalog;
   'customize:connectorSave'(draft: ConnectorDraft, project: string | null): CustomizeCatalog;
-  'customize:connectorSetEnabled'(name: string, scope: 'user' | 'project', enabled: boolean, project: string | null): CustomizeCatalog;
+  'customize:connectorSetEnabled'(
+    name: string,
+    scope: 'user' | 'project',
+    enabled: boolean,
+    project: string | null,
+  ): CustomizeCatalog;
   'customize:connectorRemove'(name: string, scope: 'user' | 'project', project: string | null): CustomizeCatalog;
   /** Copy the skills of a git repository into the personal skills folder (installing again updates them). */
   'customize:skillsFromGit'(repo: string, subdir: string, project: string | null): CustomizeCatalog;
@@ -1209,11 +1360,22 @@ export interface Api {
   'customize:pluginRemove'(source: string, scope: 'user' | 'project', project: string | null): CustomizeCatalog;
   'customize:pluginUpdate'(source: string | null, project: string | null): CustomizeCatalog;
   'customize:pluginResources'(source: string, scope: 'user' | 'project', project: string | null): PluginResource[];
-  'customize:pluginSetResource'(source: string, scope: 'user' | 'project', resource: PluginResource, enabled: boolean, project: string | null): CustomizeCatalog;
+  'customize:pluginSetResource'(
+    source: string,
+    scope: 'user' | 'project',
+    resource: PluginResource,
+    enabled: boolean,
+    project: string | null,
+  ): CustomizeCatalog;
   /** The desktop plugins of the packages configured for this project (Customize → Plugins). */
   'plugins:list'(project: string | null): DesktopPluginInfo[];
   /** Turn one on or off; turning it on passes the permissions the user just agreed to. */
-  'plugins:setEnabled'(id: string, enabled: boolean, granted: PluginPermission[] | null, project: string | null): DesktopPluginInfo[];
+  'plugins:setEnabled'(
+    id: string,
+    enabled: boolean,
+    granted: PluginPermission[] | null,
+    project: string | null,
+  ): DesktopPluginInfo[];
   /**
    * A call from a plugin's own page: main checks the plugin is ready and hands it to the agent host,
    * which runs the method the plugin registered. The page cannot name another plugin: the frame that
@@ -1274,35 +1436,188 @@ export type ApiChannel = keyof Api;
 export type ApiArgs<K extends ApiChannel> = Parameters<Api[K]>;
 export type ApiResult<K extends ApiChannel> = Awaited<ReturnType<Api[K]>>;
 
+export const WINDOW_TARGETS = ['main', 'settings'] as const;
+export type WindowTarget = (typeof WINDOW_TARGETS)[number];
+export const WINDOW_CONTROL_ACTIONS = ['minimize', 'maximize', 'close'] as const;
+export type WindowControlAction = (typeof WINDOW_CONTROL_ACTIONS)[number];
+
 /** Calls the agent host serves; main forwards these without looking at them. */
 export const HOST_CHANNELS = [
-  'sessions:list', 'sessions:create', 'sessions:open', 'sessions:state', 'sessions:prompt', 'sessions:respond',
-  'sessions:setMode', 'sessions:setStyle', 'sessions:update', 'sessions:archive', 'sessions:unarchive', 'sessions:inspect', 'sessions:remove', 'sessions:spawn', 'sessions:abort',
-  'sessions:clearQueue', 'sessions:newContext', 'sessions:compact', 'sessions:compactedHistory', 'sessions:handoffHistory', 'sessions:stats', 'sessions:exportHtml',
-  'sessions:clone', 'sessions:messageAction', 'sessions:setModel', 'sessions:setThinking', 'sessions:commands', 'sessions:suggest', 'sessions:side', 'sessions:sideGet', 'sessions:sideStage', 'sessions:sideAbort', 'sessions:sideReset', 'sessions:workIdeas',
-  'sessions:changes', 'sessions:setBase', 'sessions:commits', 'sessions:commitChanges', 'sessions:changeContent', 'sessions:pr', 'sessions:prThreads', 'sessions:prReply', 'sessions:prResolve', 'sessions:files', 'sessions:existing', 'sessions:readFile', 'sessions:search', 'sessions:readImage', 'sessions:readMedia',
-  'sessions:context', 'sessions:stopTask', 'sessions:importable',
-  'sessions:import', 'git:branch', 'git:branches', 'agents:list', 'agents:tools', 'agents:save', 'agents:remove',
-  'customize:list', 'customize:readFile', 'customize:skillSetDisabled', 'customize:skillCreate', 'customize:promptCreate', 'customize:promptDelete', 'customize:claudeImport', 'customize:claudeDismiss', 'customize:connectorSave',
-  'customize:connectorSetEnabled', 'customize:connectorRemove', 'customize:skillsFromGit', 'customize:skillDelete', 'customize:skillsFromGitRemove', 'customize:pluginInstall', 'customize:pluginRemove', 'customize:pluginUpdate', 'customize:pluginResources', 'customize:pluginSetResource',
-  'plugins:list', 'plugins:setEnabled',
-  'activity:get', 'tasks:list', 'tasks:save', 'tasks:setEnabled', 'tasks:remove', 'tasks:run',
-  'artifacts:list', 'artifacts:fromFile', 'artifacts:remove', 'artifacts:publish', 'artifacts:unpublish', 'storage:get', 'storage:save', 'storage:test',
-  'web:get', 'web:save', 'web:test',
-  'requests:getSettings', 'requests:saveSettings', 'requests:list', 'requests:summary', 'requests:preview',
-  'models:list', 'models:levels',
-  'models:catalog', 'models:login', 'models:loginRespond', 'models:loginCancel', 'models:logout',
-  'models:endpointSave', 'models:endpointRemove', 'models:endpointDiscover', 'models:refresh',
+  'sessions:list',
+  'sessions:create',
+  'sessions:open',
+  'sessions:state',
+  'sessions:prompt',
+  'sessions:bash',
+  'sessions:respond',
+  'sessions:setMode',
+  'sessions:setStyle',
+  'sessions:update',
+  'sessions:archive',
+  'sessions:unarchive',
+  'sessions:inspect',
+  'sessions:remove',
+  'sessions:spawn',
+  'sessions:abort',
+  'sessions:clearQueue',
+  'sessions:newContext',
+  'sessions:compact',
+  'sessions:compactedHistory',
+  'sessions:handoffHistory',
+  'sessions:stats',
+  'sessions:exportHtml',
+  'sessions:clone',
+  'sessions:messageAction',
+  'sessions:setModel',
+  'sessions:setThinking',
+  'sessions:commands',
+  'sessions:suggest',
+  'sessions:side',
+  'sessions:sideGet',
+  'sessions:sideStage',
+  'sessions:sideAbort',
+  'sessions:sideReset',
+  'sessions:workIdeas',
+  'sessions:changes',
+  'sessions:setBase',
+  'sessions:commits',
+  'sessions:commitChanges',
+  'sessions:changeContent',
+  'sessions:pr',
+  'sessions:prThreads',
+  'sessions:prReply',
+  'sessions:prResolve',
+  'sessions:files',
+  'sessions:existing',
+  'sessions:readFile',
+  'sessions:search',
+  'sessions:readImage',
+  'sessions:readMedia',
+  'sessions:context',
+  'sessions:stopTask',
+  'sessions:importable',
+  'sessions:import',
+  'git:branch',
+  'git:branches',
+  'git:defaultBranch',
+  'git:refresh',
+  'agents:list',
+  'agents:tools',
+  'agents:save',
+  'agents:remove',
+  'customize:list',
+  'customize:readFile',
+  'customize:skillSetDisabled',
+  'customize:skillCreate',
+  'customize:promptCreate',
+  'customize:promptDelete',
+  'customize:claudeImport',
+  'customize:claudeDismiss',
+  'customize:connectorSave',
+  'customize:connectorSetEnabled',
+  'customize:connectorRemove',
+  'customize:skillsFromGit',
+  'customize:skillDelete',
+  'customize:skillsFromGitRemove',
+  'customize:pluginInstall',
+  'customize:pluginRemove',
+  'customize:pluginUpdate',
+  'customize:pluginResources',
+  'customize:pluginSetResource',
+  'plugins:list',
+  'plugins:setEnabled',
+  'activity:get',
+  'tasks:list',
+  'tasks:save',
+  'tasks:setEnabled',
+  'tasks:remove',
+  'tasks:run',
+  'artifacts:list',
+  'artifacts:fromFile',
+  'artifacts:remove',
+  'artifacts:publish',
+  'artifacts:unpublish',
+  'storage:get',
+  'storage:save',
+  'storage:test',
+  'web:get',
+  'web:save',
+  'web:test',
+  'requests:getSettings',
+  'requests:saveSettings',
+  'requests:list',
+  'requests:summary',
+  'requests:preview',
+  'models:list',
+  'models:levels',
+  'models:catalog',
+  'models:login',
+  'models:loginRespond',
+  'models:loginCancel',
+  'models:logout',
+  'models:endpointSave',
+  'models:endpointRemove',
+  'models:endpointDiscover',
+  'models:refresh',
 ] as const satisfies readonly ApiChannel[];
 
 export const MAIN_CHANNELS = [
-  'app:info', 'app:notify', 'app:openExternal', 'update:check', 'update:install', 'app:revealPath', 'app:pickFolder',
-  'settings:open', 'settings:get', 'settings:set', 'pets:save', 'pets:remove', 'settings:close', 'diagram:open', 'diagram:get', 'artifacts:preview', 'artifacts:thumbnail',
-  'projects:list', 'projects:add', 'projects:adoptWorktree', 'projects:remove', 'projects:addPath',
-  'work:folders', 'work:addFolder', 'work:useFolder', 'work:removeFolder', 'work:addPath', 'work:update', 'remote:browse',
-  'remote:list', 'remote:save', 'remote:remove', 'remote:connect', 'remote:disconnect', 'remote:serveGet', 'remote:serveSet', 'remote:serveRotate',
-  'attachments:import', 'attachments:pick', 'attachments:clipboard',
-  'app:openTargets', 'terminal:shells', 'terminal:list', 'terminal:create', 'terminal:attach', 'terminal:text', 'terminal:write', 'terminal:resize', 'terminal:close', 'sessions:openIn', 'sessions:openPath', 'side:pop', 'side:pin', 'side:dock', 'side:windows',
+  'app:info',
+  'window:control',
+  'app:notify',
+  'app:openExternal',
+  'update:check',
+  'update:install',
+  'app:revealPath',
+  'app:pickFolder',
+  'settings:open',
+  'settings:get',
+  'settings:set',
+  'pets:save',
+  'pets:remove',
+  'settings:close',
+  'diagram:open',
+  'diagram:get',
+  'artifacts:preview',
+  'artifacts:thumbnail',
+  'projects:list',
+  'projects:add',
+  'projects:adoptWorktree',
+  'projects:remove',
+  'projects:addPath',
+  'work:folders',
+  'work:addFolder',
+  'work:useFolder',
+  'work:removeFolder',
+  'work:addPath',
+  'work:update',
+  'remote:browse',
+  'remote:list',
+  'remote:save',
+  'remote:remove',
+  'remote:connect',
+  'remote:disconnect',
+  'remote:serveGet',
+  'remote:serveSet',
+  'remote:serveRotate',
+  'attachments:import',
+  'attachments:pick',
+  'attachments:clipboard',
+  'app:openTargets',
+  'terminal:shells',
+  'terminal:list',
+  'terminal:create',
+  'terminal:attach',
+  'terminal:text',
+  'terminal:write',
+  'terminal:resize',
+  'terminal:close',
+  'sessions:openIn',
+  'sessions:openPath',
+  'side:pop',
+  'side:pin',
+  'side:dock',
+  'side:windows',
   'plugin:call',
 ] as const satisfies readonly ApiChannel[];
 
@@ -1313,6 +1628,12 @@ export interface PushEvents {
   'host:event': HostEvent;
   'settings:changed': SettingsPayload;
   'settings:section': string;
+  /** A preview page requested a new tab, usually through target=_blank or window.open. */
+  'preview:open': {
+    partition: string;
+    url: string;
+    disposition: 'default' | 'foreground-tab' | 'background-tab' | 'new-window' | 'other';
+  };
   /** A notification was clicked: bring this session to the front. */
   'session:focus': string;
   /** A side chat window opened, closed or was pinned; `open: false` means it is gone, and `docked` that it went back inside its session. */
@@ -1324,7 +1645,18 @@ export interface PushEvents {
   'update:found': ReleaseNote;
 }
 export type PushChannel = keyof PushEvents;
-export const PUSH_CHANNELS: readonly PushChannel[] = ['host:event', 'settings:changed', 'settings:section', 'session:focus', 'side:window', 'terminal:data', 'terminal:exit', 'update:progress', 'update:found'];
+export const PUSH_CHANNELS: readonly PushChannel[] = [
+  'host:event',
+  'settings:changed',
+  'settings:section',
+  'preview:open',
+  'session:focus',
+  'side:window',
+  'terminal:data',
+  'terminal:exit',
+  'update:progress',
+  'update:found',
+];
 
 // ------------------------------------------------------------ main ⇄ host messages
 
@@ -1358,8 +1690,7 @@ export interface HostInitOptions {
 }
 export type HostMethod = (typeof HOST_CHANNELS)[number] | keyof HostInternal;
 
-export type MainToHost =
-  | { kind: 'call'; id: number; method: HostMethod; args: unknown[] };
+export type MainToHost = { kind: 'call'; id: number; method: HostMethod; args: unknown[] };
 export type HostToMain =
   | { kind: 'result'; id: number; ok: true; value: unknown }
   | { kind: 'result'; id: number; ok: false; error: string }

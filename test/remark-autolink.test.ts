@@ -10,7 +10,11 @@ function shape(markdown: string): string[] {
   const processor = unified().use(remarkParse).use(remarkGfm).use(remarkTrimAutolinks);
   const tree: any = processor.runSync(processor.parse(markdown));
   const render = (n: any): string =>
-    n.type === 'link' ? `[${n.children.map(render).join('')} -> ${n.url}]` : n.type === 'inlineCode' ? `\`${n.value}\`` : (n.value ?? '');
+    n.type === 'link'
+      ? `[${n.children.map(render).join('')} -> ${n.url}]`
+      : n.type === 'inlineCode'
+        ? `\`${n.value}\``
+        : (n.value ?? '');
   return tree.children[0].children.map(render);
 }
 
@@ -25,7 +29,9 @@ describe('autolinks next to CJK punctuation', () => {
 
   it('ends the link before other full-width and CJK punctuation', () => {
     for (const mark of ['，', '。', '）', '；', '、', '！']) {
-      expect(shape(`见 https://example.com/a/b${mark}然后`)[1]).toBe('[https://example.com/a/b -> https://example.com/a/b]');
+      expect(shape(`见 https://example.com/a/b${mark}然后`)[1]).toBe(
+        '[https://example.com/a/b -> https://example.com/a/b]',
+      );
     }
   });
 
@@ -34,8 +40,12 @@ describe('autolinks next to CJK punctuation', () => {
   });
 
   it('leaves ordinary links alone', () => {
-    expect(shape('see https://example.com/a?b=1&c=2 now')[1]).toBe('[https://example.com/a?b=1&c=2 -> https://example.com/a?b=1&c=2]');
+    expect(shape('see https://example.com/a?b=1&c=2 now')[1]).toBe(
+      '[https://example.com/a?b=1&c=2 -> https://example.com/a?b=1&c=2]',
+    );
     expect(shape('[点这里（说明）](https://example.com)')).toEqual(['[点这里（说明） -> https://example.com]']);
-    expect(shape('https://zh.wikipedia.org/wiki/中文')[0]).toBe('[https://zh.wikipedia.org/wiki/中文 -> https://zh.wikipedia.org/wiki/中文]');
+    expect(shape('https://zh.wikipedia.org/wiki/中文')[0]).toBe(
+      '[https://zh.wikipedia.org/wiki/中文 -> https://zh.wikipedia.org/wiki/中文]',
+    );
   });
 });

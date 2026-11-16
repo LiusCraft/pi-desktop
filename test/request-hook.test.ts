@@ -17,8 +17,15 @@ afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 const DAY = 86_400_000;
 const record = (over: Partial<RequestRecord> = {}): RequestRecord => ({
-  id: 'r', at: Date.now(), provider: 'p', model: 'm', status: REQUEST_STATUS.ok, durationMs: 5,
-  tokens: { input: 10, output: 20, cacheRead: 1, cacheWrite: 2 }, cost: 0.5, ...over,
+  id: 'r',
+  at: Date.now(),
+  provider: 'p',
+  model: 'm',
+  status: REQUEST_STATUS.ok,
+  durationMs: 5,
+  tokens: { input: 10, output: 20, cacheRead: 1, cacheWrite: 2 },
+  cost: 0.5,
+  ...over,
 });
 
 describe('RequestLog', () => {
@@ -38,20 +45,47 @@ describe('RequestLog', () => {
     const now = Date.now();
     log.append(record({ at: now }));
     log.append(record({ at: now, status: REQUEST_STATUS.error, unpriced: true }));
-    log.append(record({ at: now - DAY, model: 'other', provider: 'q', durationMs: 2000, tokens: { input: 1, output: 100, cacheRead: 0, cacheWrite: 0 } }));
+    log.append(
+      record({
+        at: now - DAY,
+        model: 'other',
+        provider: 'q',
+        durationMs: 2000,
+        tokens: { input: 1, output: 100, cacheRead: 0, cacheWrite: 0 },
+      }),
+    );
 
     const week = log.summary({ days: 7, split: 'model' }, now);
     expect(week.unit).toBe('day');
     expect(week.buckets).toHaveLength(7);
-    expect(week.total).toMatchObject({ requests: 3, failed: 1, unpriced: 1, input: 21, output: 140, cacheRead: 2, cacheWrite: 4, cost: 1.5 });
+    expect(week.total).toMatchObject({
+      requests: 3,
+      failed: 1,
+      unpriced: 1,
+      input: 21,
+      output: 140,
+      cacheRead: 2,
+      cacheWrite: 4,
+      cost: 1.5,
+    });
     const m = week.series.find((x) => x.key === 'm')!;
     expect(m.requests.at(-1)).toBe(2);
     expect(m.tokens.at(-1)).toBe(2 * (10 + 20 + 1 + 2));
     // only the request that finished and produced output counts for speed
     expect(m.total).toMatchObject({ speedTokens: 20, speedMs: 5 });
 
-    expect(log.summary({ days: 7, split: 'provider' }, now).series.map((x) => x.key).sort()).toEqual(['p', 'q']);
-    expect(log.summary({ days: 7, split: 'modelProvider' }, now).series.map((x) => x.key).sort()).toEqual(['p/m', 'q/other']);
+    expect(
+      log
+        .summary({ days: 7, split: 'provider' }, now)
+        .series.map((x) => x.key)
+        .sort(),
+    ).toEqual(['p', 'q']);
+    expect(
+      log
+        .summary({ days: 7, split: 'modelProvider' }, now)
+        .series.map((x) => x.key)
+        .sort(),
+    ).toEqual(['p/m', 'q/other']);
   });
 
   it('cuts today by hour', () => {
@@ -93,8 +127,21 @@ describe('RequestLog', () => {
 
 function message(over: Partial<AssistantMessage> = {}): AssistantMessage {
   return {
-    role: 'assistant', content: [], api: 'openai-completions', provider: 'p', model: 'm', stopReason: 'stop', timestamp: Date.now(),
-    usage: { input: 3, output: 4, cacheRead: 0, cacheWrite: 0, totalTokens: 7, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.25 } },
+    role: 'assistant',
+    content: [],
+    api: 'openai-completions',
+    provider: 'p',
+    model: 'm',
+    stopReason: 'stop',
+    timestamp: Date.now(),
+    usage: {
+      input: 3,
+      output: 4,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 7,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.25 },
+    },
     ...over,
   } as AssistantMessage;
 }
@@ -127,18 +174,28 @@ describe('recordRequests', () => {
     await models.streamSimple(model, { messages: [] }, { sessionId: 's1' }).result();
     await settle();
     expect(log.list({ limit: 5 })).toMatchObject([
-      { sessionId: 's1', provider: 'p', model: 'm', status: 'ok', httpStatus: 200, cost: 0.25, tokens: { input: 3, output: 4 } },
+      {
+        sessionId: 's1',
+        provider: 'p',
+        model: 'm',
+        status: 'ok',
+        httpStatus: 200,
+        cost: 0.25,
+        tokens: { input: 3, output: 4 },
+      },
     ]);
     expect(log.list({ limit: 5 })[0].body).toBeUndefined();
   });
 
-  it('keeps the body only when asked, and still calls the caller\'s own callbacks', async () => {
+  it("keeps the body only when asked, and still calls the caller's own callbacks", async () => {
     const log = new RequestLog(dir);
     log.saveSettings({ logBody: true });
     const models = fakeRuntime(message());
     recordRequests(models, log);
     let seen: unknown;
-    await models.streamSimple(model, { messages: [] }, { onPayload: (p: unknown) => void (seen = p) } as never).result();
+    await models
+      .streamSimple(model, { messages: [] }, { onPayload: (p: unknown) => void (seen = p) } as never)
+      .result();
     await settle();
     expect(seen).toEqual({ messages: ['hi'] });
     expect(log.list({ limit: 5 })[0].body).toBe('{"messages":["hi"]}');
@@ -180,7 +237,12 @@ describe('recordRequests with masking', () => {
           for (let i = 0; i < answer.length; i += 3) {
             const delta = answer.slice(i, i + 3);
             text += delta;
-            stream.push({ type: 'text_delta', contentIndex: 0, delta, partial: message({ content: [{ type: 'text', text }] }) } as never);
+            stream.push({
+              type: 'text_delta',
+              contentIndex: 0,
+              delta,
+              partial: message({ content: [{ type: 'text', text }] }),
+            } as never);
           }
           const done = message({ content: [{ type: 'text', text: answer }] });
           stream.push({ type: 'text_end', contentIndex: 0, content: answer, partial: done } as never);
@@ -240,7 +302,15 @@ describe('records made before sessions were tagged', () => {
     log.append(record({ id: 'none', sessionId: 'elsewhere' }));
     const byId = Object.fromEntries(log.list({ limit: 10 }).map((r) => [r.id, [r.sessionId, r.origin]]));
     expect(byId).toEqual({ old: ['hub-9', 'work'], known: ['hub-9', 'code'], none: ['elsewhere', undefined] });
-    expect(log.summary({ days: 1, split: 'session' }).series.map((s) => [s.key, s.total.requests]).sort()).toEqual([['elsewhere', 1], ['hub-9', 2]]);
+    expect(
+      log
+        .summary({ days: 1, split: 'session' })
+        .series.map((s) => [s.key, s.total.requests])
+        .sort(),
+    ).toEqual([
+      ['elsewhere', 1],
+      ['hub-9', 2],
+    ]);
   });
 });
 
@@ -300,10 +370,29 @@ describe('first token and origin', () => {
     await models.streamSimple(model, { messages: [] }).result();
     await settle();
     const all = log.list({ limit: 10 }).reverse();
-    expect(all.map((r) => [r.origin, r.subagent])).toEqual([['code', undefined], ['subagent', 'explorer'], ['naming', undefined], [undefined, undefined]]);
-    expect(log.summary({ days: 1, split: 'purpose' }).series.map((s) => s.key).sort()).toEqual(['code', 'naming', 'other', 'subagent:explorer']);
+    expect(all.map((r) => [r.origin, r.subagent])).toEqual([
+      ['code', undefined],
+      ['subagent', 'explorer'],
+      ['naming', undefined],
+      [undefined, undefined],
+    ]);
+    expect(
+      log
+        .summary({ days: 1, split: 'purpose' })
+        .series.map((s) => s.key)
+        .sort(),
+    ).toEqual(['code', 'naming', 'other', 'subagent:explorer']);
     // the app's own session id replaces pi's; a side call keeps the id it was made with; no session is its own series
     expect(all.map((r) => r.sessionId)).toEqual(['hub-1', 'hub-1', 'main', undefined]);
-    expect(log.summary({ days: 1, split: 'session' }).series.map((s) => [s.key, s.total.requests]).sort()).toEqual([['hub-1', 2], ['main', 1], ['none', 1]]);
+    expect(
+      log
+        .summary({ days: 1, split: 'session' })
+        .series.map((s) => [s.key, s.total.requests])
+        .sort(),
+    ).toEqual([
+      ['hub-1', 2],
+      ['main', 1],
+      ['none', 1],
+    ]);
   });
 });

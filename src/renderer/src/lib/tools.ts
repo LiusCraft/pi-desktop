@@ -30,14 +30,16 @@ export function nestedCalls(raw: unknown): NestedToolCall[] {
     if (!call || typeof call !== 'object') return [];
     const c = call as Record<string, unknown>;
     if (typeof c.name !== 'string') return [];
-    return [{
-      name: c.name,
-      args: typeof c.args === 'string' ? c.args : '',
-      status: CALL_STATUSES.has(c.status as string) ? (c.status as NestedToolCall['status']) : 'ok',
-      ...(typeof c.durationMs === 'number' ? { durationMs: c.durationMs } : {}),
-      ...(typeof c.error === 'string' && c.error ? { error: c.error } : {}),
-      ...(typeof c.cost === 'number' && c.cost ? { cost: c.cost } : {}),
-    }];
+    return [
+      {
+        name: c.name,
+        args: typeof c.args === 'string' ? c.args : '',
+        status: CALL_STATUSES.has(c.status as string) ? (c.status as NestedToolCall['status']) : 'ok',
+        ...(typeof c.durationMs === 'number' ? { durationMs: c.durationMs } : {}),
+        ...(typeof c.error === 'string' && c.error ? { error: c.error } : {}),
+        ...(typeof c.cost === 'number' && c.cost ? { cost: c.cost } : {}),
+      },
+    ];
   });
 }
 
@@ -77,7 +79,19 @@ export interface ToolState {
   sh?: { command: string; output: string; exitCode?: number | null };
 }
 
-const KIND: Record<string, ToolKind> = { read: 'read', edit: 'edit', write: 'write', bash: 'bash', powershell: 'bash', bg_shell: 'agent', grep: 'grep', find: 'glob', ls: 'ls', task: 'agent', web_search: 'websearch' };
+const KIND: Record<string, ToolKind> = {
+  read: 'read',
+  edit: 'edit',
+  write: 'write',
+  bash: 'bash',
+  powershell: 'bash',
+  bg_shell: 'agent',
+  grep: 'grep',
+  find: 'glob',
+  ls: 'ls',
+  task: 'agent',
+  web_search: 'websearch',
+};
 
 /** Desktop-owned tools are named `pidesk_*`; older sessions recorded them without the prefix. */
 export const bareName = (name: string) => name.replace(/^pidesk_/, '');
@@ -85,10 +99,18 @@ export const bareName = (name: string) => name.replace(/^pidesk_/, '');
 export function toolFromArgs(id: string, toolName: string, args: Record<string, any> = {}): ToolState {
   const name = bareName(toolName);
   return {
-    id, name: toolName, kind: KIND[name] ?? 'other', args: args ?? {}, status: 'running', open: false,
-    path: args?.path || args?.file_path, cmd: args?.command || '', q: args?.pattern || args?.path || args?.query || '',
+    id,
+    name: toolName,
+    kind: KIND[name] ?? 'other',
+    args: args ?? {},
+    status: 'running',
+    open: false,
+    path: args?.path || args?.file_path,
+    cmd: args?.command || '',
+    q: args?.pattern || args?.path || args?.query || '',
     ...(args?.workdir ? { dir: String(args.workdir) } : {}),
-    desc: args?.description || (name === 'bg_shell' ? args?.command : '') || t('toolLabel.subagent'), prompt: args?.prompt ?? (name === 'bg_shell' ? args?.command : undefined),
+    desc: args?.description || (name === 'bg_shell' ? args?.command : '') || t('toolLabel.subagent'),
+    prompt: args?.prompt ?? (name === 'bg_shell' ? args?.command : undefined),
     ...(name === 'bg_shell' ? { sh: { command: args?.command ?? '', output: '' } } : {}),
   };
 }
@@ -124,16 +146,26 @@ export function toolLabel(tool: ToolState) {
     return t(run ? 'toolLabel.scripting' : 'toolLabel.scripted') + (what ? `: ${what}` : '');
   }
   switch (tool.kind) {
-    case 'read': return t(run ? 'toolLabel.reading' : 'toolLabel.read', { name: fname(tool.path ?? '') });
-    case 'edit': return t(run ? 'toolLabel.editing' : 'toolLabel.edited', { name: fname(tool.path ?? '') });
-    case 'write': return t(run ? 'toolLabel.writing' : 'toolLabel.wrote', { name: fname(tool.path ?? '') });
-    case 'grep': return t('toolLabel.searched', { q: tool.q });
-    case 'glob': return t('toolLabel.found', { q: tool.q });
-    case 'ls': return t('toolLabel.listed', { q: tool.q || '.' });
-    case 'bash': return t(run ? 'toolLabel.running' : 'toolLabel.ran', { cmd: tool.cmd });
-    case 'agent': return t('toolLabel.agent', { desc: tool.desc });
-    case 'websearch': return t(run ? 'toolLabel.webSearching' : 'toolLabel.webSearched', { q: tool.q });
-    default: return t(run ? 'toolLabel.using' : 'toolLabel.used', { name: tool.name });
+    case 'read':
+      return t(run ? 'toolLabel.reading' : 'toolLabel.read', { name: fname(tool.path ?? '') });
+    case 'edit':
+      return t(run ? 'toolLabel.editing' : 'toolLabel.edited', { name: fname(tool.path ?? '') });
+    case 'write':
+      return t(run ? 'toolLabel.writing' : 'toolLabel.wrote', { name: fname(tool.path ?? '') });
+    case 'grep':
+      return t('toolLabel.searched', { q: tool.q });
+    case 'glob':
+      return t('toolLabel.found', { q: tool.q });
+    case 'ls':
+      return t('toolLabel.listed', { q: tool.q || '.' });
+    case 'bash':
+      return t(run ? 'toolLabel.running' : 'toolLabel.ran', { cmd: tool.cmd });
+    case 'agent':
+      return t('toolLabel.agent', { desc: tool.desc });
+    case 'websearch':
+      return t(run ? 'toolLabel.webSearching' : 'toolLabel.webSearched', { q: tool.q });
+    default:
+      return t(run ? 'toolLabel.using' : 'toolLabel.used', { name: tool.name });
   }
 }
 
@@ -153,10 +185,22 @@ export function toolScope(tool: ToolState): string {
 
 /** "Ran 2 commands, read 3 files, edited a file". */
 export function groupSummary(tools: ToolState[]) {
-  const c = { cmd: 0, fail: 0, skill: new Set<string>(), read: new Set<string>(), edit: new Set<string>(), write: new Set<string>(), search: 0, agent: 0, other: 0 };
+  const c = {
+    cmd: 0,
+    fail: 0,
+    skill: new Set<string>(),
+    read: new Set<string>(),
+    edit: new Set<string>(),
+    write: new Set<string>(),
+    search: 0,
+    agent: 0,
+    other: 0,
+  };
   for (const t of tools) {
-    if (t.kind === 'bash') { c.cmd++; if (t.status === 'err') c.fail++; }
-    else if (skillOf(t)) c.skill.add(skillOf(t)!);
+    if (t.kind === 'bash') {
+      c.cmd++;
+      if (t.status === 'err') c.fail++;
+    } else if (skillOf(t)) c.skill.add(skillOf(t)!);
     else if (t.kind === 'read') c.read.add(t.path ?? '');
     else if (t.kind === 'edit') c.edit.add(t.path ?? '');
     else if (t.kind === 'write') c.write.add(t.path ?? '');
@@ -165,7 +209,11 @@ export function groupSummary(tools: ToolState[]) {
     else c.other++;
   }
   const parts: string[] = [];
-  if (c.cmd) parts.push((c.cmd === 1 ? t('group.ranCommand') : t('group.ranCommands', { n: c.cmd })) + (c.fail ? t('group.failed', { n: c.fail }) : ''));
+  if (c.cmd)
+    parts.push(
+      (c.cmd === 1 ? t('group.ranCommand') : t('group.ranCommands', { n: c.cmd })) +
+        (c.fail ? t('group.failed', { n: c.fail }) : ''),
+    );
   if (c.skill.size) parts.push(c.skill.size === 1 ? t('group.usedSkill') : t('group.usedSkills', { n: c.skill.size }));
   if (c.read.size) parts.push(c.read.size === 1 ? t('group.readFile') : t('group.readFiles', { n: c.read.size }));
   if (c.write.size) parts.push(c.write.size === 1 ? t('group.wroteFile') : t('group.wroteFiles', { n: c.write.size }));
@@ -178,7 +226,10 @@ export function groupSummary(tools: ToolState[]) {
 }
 
 export function groupStats(tools: ToolState[]) {
-  return tools.reduce((a, t) => (t.add != null ? { add: a.add + t.add, del: a.del + (t.del ?? 0) } : a), { add: 0, del: 0 });
+  return tools.reduce((a, t) => (t.add != null ? { add: a.add + t.add, del: a.del + (t.del ?? 0) } : a), {
+    add: 0,
+    del: 0,
+  });
 }
 
 export const isFileTool = (t: ToolState) => (t.kind === 'read' || t.kind === 'edit' || t.kind === 'write') && !!t.path;

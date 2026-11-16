@@ -4,7 +4,7 @@
 // transcript decodes into an event card. Modelled on shared/peer-message.ts.
 
 const NOTICE =
-  'Pi Desktop\'s own PR watcher started this turn, not the user: it saw a change on the pull request and the user left ' +
+  "Pi Desktop's own PR watcher started this turn, not the user: it saw a change on the pull request and the user left " +
   'that automation on. Do the work the instruction asks for — use gh (GitHub) or glab (GitLab) and git for anything it refers to — and keep the ' +
   'usual permission rules in mind. The watcher keeps polling this pull request on its own: do not run gh pr checks --watch, gh run watch ' +
   'or any other CI polling loop, and do not wait for CI in this turn. Push the work and end the turn; the next change starts a new turn by itself.';
@@ -48,7 +48,11 @@ export interface PrEvent {
 const MAX_BODY = 2000;
 
 const stored = (e: PrEvent): Omit<PrEvent, 'instruction'> => ({
-  kind: e.kind, num: e.num, url: e.url, head: e.head, summary: e.summary,
+  kind: e.kind,
+  num: e.num,
+  url: e.url,
+  head: e.head,
+  summary: e.summary,
   ...(e.failed?.length ? { failed: e.failed } : {}),
   ...(e.notes?.length ? { notes: e.notes.map((n) => ({ ...n, body: n.body.slice(0, MAX_BODY) })) } : {}),
 });

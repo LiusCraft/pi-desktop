@@ -22,9 +22,22 @@ export function HtmlPreview({ sid, path, html, title }: { sid: string; path: str
   }, [pick]);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <iframe ref={frame} key={path} srcDoc={html + REPORTER} title={title} className="min-h-0 flex-1 border-0 bg-white" sandbox="allow-scripts" />
+      <iframe
+        ref={frame}
+        key={path}
+        srcDoc={html + REPORTER}
+        title={title}
+        className="min-h-0 flex-1 border-0 bg-white"
+        sandbox="allow-scripts"
+      />
       {picker.reference && (
-        <SelectionComposer sid={sid} reference={picker.reference} commenting={picker.commenting} onCommenting={picker.setCommenting} onDone={picker.reset} />
+        <SelectionComposer
+          sid={sid}
+          reference={picker.reference}
+          commenting={picker.commenting}
+          onCommenting={picker.setCommenting}
+          onDone={picker.reset}
+        />
       )}
     </div>
   );

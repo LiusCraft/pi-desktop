@@ -77,22 +77,30 @@ describe('plugin host entries', () => {
 
   it('refuses a plugin the registry says is off', async () => {
     const info = makePlugin('export default function (desktop) { desktop.handle("add", () => 1); }');
-    await expect(makeHosts(info, { enabled: false, granted: PERMISSIONS }).service.call(info, 'add', [])).rejects.toThrow('未启用');
+    await expect(
+      makeHosts(info, { enabled: false, granted: PERMISSIONS }).service.call(info, 'add', []),
+    ).rejects.toThrow('未启用');
   });
 
   it('refuses a permission the user did not grant', async () => {
-    const info = makePlugin('export default function (desktop) { desktop.handle("add", () => 1); }', { granted: ['session:read'] });
+    const info = makePlugin('export default function (desktop) { desktop.handle("add", () => 1); }', {
+      granted: ['session:read'],
+    });
     await expect(makeHosts(info).service.call(info, 'add', [])).rejects.toThrow('没有获得');
     await expect(makeHosts(info).service.call(info, '#storage.get', ['name'])).rejects.toThrow('没有获得 storage 权限');
   });
 
   it('refuses a value that cannot be sent back', async () => {
-    const info = makePlugin('export default function (desktop) { desktop.handle("loop", () => { const a = {}; a.self = a; return a; }); }');
+    const info = makePlugin(
+      'export default function (desktop) { desktop.handle("loop", () => { const a = {}; a.self = a; return a; }); }',
+    );
     await expect(makeHosts(info).service.call(info, 'loop', [])).rejects.toThrow('无法传递的值');
   });
 
   it('sends notifications and data to the windows', async () => {
-    const info = makePlugin('export default function (desktop) { desktop.handle("go", () => { desktop.notify("done", "warning"); desktop.emit("count", 7); }); }');
+    const info = makePlugin(
+      'export default function (desktop) { desktop.handle("go", () => { desktop.notify("done", "warning"); desktop.emit("count", 7); }); }',
+    );
     const { service, events } = makeHosts(info);
     await service.call(info, 'go', []);
     expect(events).toEqual([

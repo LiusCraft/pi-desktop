@@ -47,7 +47,9 @@ describe('searchSessionFiles', () => {
     const result = await searchSessionFiles(root, ['src/a.ts', 'b.txt', 'bin.dat', 'gone.ts'], 'needle', false);
     expect(result.truncated).toBe(false);
     expect(result.matches.map((m) => `${m.path}:${m.line}`)).toEqual(['src/a.ts:1', 'b.txt:2']);
-    expect((await searchSessionFiles(root, ['src/a.ts', 'b.txt'], 'needle', true)).matches.map((m) => m.path)).toEqual(['src/a.ts']);
+    expect((await searchSessionFiles(root, ['src/a.ts', 'b.txt'], 'needle', true)).matches.map((m) => m.path)).toEqual([
+      'src/a.ts',
+    ]);
   });
 
   it('reports a search that hit the limit as truncated', async () => {

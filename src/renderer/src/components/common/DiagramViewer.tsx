@@ -9,7 +9,9 @@ const MAX_SCALE = 8;
 export function DiagramViewer({ svg }: { svg: string }) {
   const t = useT();
   const locale = useLocale();
-  useEffect(() => { document.title = t('app.diagram'); }, [locale]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    document.title = t('app.diagram');
+  }, [locale]); // eslint-disable-line react-hooks/exhaustive-deps
   const stage = useRef<HTMLDivElement>(null);
   const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
   const drag = useRef<{ x: number; y: number } | null>(null);
@@ -55,7 +57,7 @@ export function DiagramViewer({ svg }: { svg: string }) {
           <button className={tool} title={t('diagram.zoomOut')} onClick={() => zoomCenter(1 / 1.25)}>
             <MinusIcon className="size-4" />
           </button>
-          <span className="w-12 text-center tabular-nums text-muted-foreground">{Math.round(view.scale * 100)}%</span>
+          <span className="w-12 text-center text-muted-foreground tabular-nums">{Math.round(view.scale * 100)}%</span>
           <button className={tool} title={t('diagram.zoomIn')} onClick={() => zoomCenter(1.25)}>
             <PlusIcon className="size-4" />
           </button>
@@ -82,7 +84,7 @@ export function DiagramViewer({ svg }: { svg: string }) {
         onDoubleClick={reset}
       >
         <div
-          className="h-full w-full origin-top-left select-none p-6 [&_svg]:h-full [&_svg]:w-full [&_svg]:max-w-none!"
+          className="h-full w-full origin-top-left p-6 select-none [&_svg]:h-full [&_svg]:w-full [&_svg]:max-w-none!"
           style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}
           dangerouslySetInnerHTML={{ __html: svg }}
         />

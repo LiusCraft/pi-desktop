@@ -28,26 +28,38 @@ describe('findBashDir', () => {
 
   it('follows git.exe to a Git installed outside Program Files', () => {
     // The machine this was written for: Git on another drive, nothing in C:\Program Files\Git.
-    const probeWithGit = probe(['E:\\program\\Git\\bin\\bash.exe'], { gitExes: () => ['E:\\program\\Git\\cmd\\git.exe'] });
+    const probeWithGit = probe(['E:\\program\\Git\\bin\\bash.exe'], {
+      gitExes: () => ['E:\\program\\Git\\cmd\\git.exe'],
+    });
     expect(findBashDir(probeWithGit)).toBe('E:\\program\\Git\\bin');
   });
 
   it('climbs out of the mingw64 layout, which is what `where git` reports first', () => {
     const git = ['E:\\program\\Git\\mingw64\\bin\\git.exe', 'E:\\program\\Git\\cmd\\git.exe'];
-    expect(findBashDir(probe(['E:\\program\\Git\\bin\\bash.exe'], { gitExes: () => git }))).toBe('E:\\program\\Git\\bin');
+    expect(findBashDir(probe(['E:\\program\\Git\\bin\\bash.exe'], { gitExes: () => git }))).toBe(
+      'E:\\program\\Git\\bin',
+    );
   });
 
   it('accepts the usr/bin layout of a Git install', () => {
-    const probeWithGit = probe(['E:\\program\\Git\\usr\\bin\\bash.exe'], { gitExes: () => ['E:\\program\\Git\\cmd\\git.exe'] });
+    const probeWithGit = probe(['E:\\program\\Git\\usr\\bin\\bash.exe'], {
+      gitExes: () => ['E:\\program\\Git\\cmd\\git.exe'],
+    });
     expect(findBashDir(probeWithGit)).toBe('E:\\program\\Git\\usr\\bin');
   });
 
   it('takes any other bash on PATH, such as MSYS2 or Cygwin', () => {
-    expect(findBashDir(probe(['C:\\msys64\\usr\\bin\\bash.exe'], { pathDirs: ['C:\\msys64\\usr\\bin'] }))).toBe('C:\\msys64\\usr\\bin');
+    expect(findBashDir(probe(['C:\\msys64\\usr\\bin\\bash.exe'], { pathDirs: ['C:\\msys64\\usr\\bin'] }))).toBe(
+      'C:\\msys64\\usr\\bin',
+    );
   });
 
   it('never picks the WSL launcher, even when it comes first on PATH', () => {
-    const dirs = ['C:\\Windows\\system32', 'C:\\Users\\x\\AppData\\Local\\Microsoft\\WindowsApps', 'C:\\msys64\\usr\\bin'];
+    const dirs = [
+      'C:\\Windows\\system32',
+      'C:\\Users\\x\\AppData\\Local\\Microsoft\\WindowsApps',
+      'C:\\msys64\\usr\\bin',
+    ];
     const files = [...dirs.slice(0, 2).map((dir) => win.join(dir, 'bash.exe')), 'C:\\msys64\\usr\\bin\\bash.exe'];
     expect(findBashDir(probe(files, { pathDirs: dirs }))).toBe('C:\\msys64\\usr\\bin');
   });

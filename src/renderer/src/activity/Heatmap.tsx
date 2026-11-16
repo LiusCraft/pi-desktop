@@ -18,10 +18,21 @@ const weekdayLabel = (day: number) => new Date(2023, 0, 1 + day).toLocaleDateStr
 /** Share of the accent colour per level; level 0 is the empty-day background. */
 const LEVEL_MIX = [0, 32, 55, 78, 100];
 
-export const levelColor = (level: number) => (level ? `color-mix(in oklab, var(--primary) ${LEVEL_MIX[Math.min(level, ACTIVITY_LEVELS)]}%, transparent)` : undefined);
-export const fmtDay = (d: Date) => d.toLocaleDateString(getLocale(), { year: 'numeric', month: 'short', day: 'numeric' });
+export const levelColor = (level: number) =>
+  level
+    ? `color-mix(in oklab, var(--primary) ${LEVEL_MIX[Math.min(level, ACTIVITY_LEVELS)]}%, transparent)`
+    : undefined;
+export const fmtDay = (d: Date) =>
+  d.toLocaleDateString(getLocale(), { year: 'numeric', month: 'short', day: 'numeric' });
 
-export function Heatmap({ log, weeks: weekCount, today, levelOf, selected, onSelect }: {
+export function Heatmap({
+  log,
+  weeks: weekCount,
+  today,
+  levelOf,
+  selected,
+  onSelect,
+}: {
   log: ActivityLog;
   weeks: number;
   today: Date;
@@ -35,21 +46,30 @@ export function Heatmap({ log, weeks: weekCount, today, levelOf, selected, onSel
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
-    const fit = () => setCell(Math.max(MIN_CELL, Math.min(MAX_CELL, Math.floor((el.clientWidth - LABEL_WIDTH) / weekCount) - GAP)));
+    const fit = () =>
+      setCell(Math.max(MIN_CELL, Math.min(MAX_CELL, Math.floor((el.clientWidth - LABEL_WIDTH) / weekCount) - GAP)));
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(el);
     return () => ro.disconnect();
   }, [weekCount]);
   const weeks = useMemo(() => {
-    const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay() - (weekCount - 1) * 7);
-    return Array.from({ length: weekCount }, (_, w) => Array.from({ length: 7 }, (_, d) => {
-      const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + w * 7 + d);
-      return date <= today ? date : null;
-    }));
+    const start = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate() - today.getDay() - (weekCount - 1) * 7,
+    );
+    return Array.from({ length: weekCount }, (_, w) =>
+      Array.from({ length: 7 }, (_, d) => {
+        const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + w * 7 + d);
+        return date <= today ? date : null;
+      }),
+    );
   }, [today, weekCount]);
   const monthLabels = useMemo(() => {
-    const starts = weeks.map((_, w) => w).filter((w) => w === 0 || weeks[w][0]!.getMonth() !== weeks[w - 1][0]!.getMonth());
+    const starts = weeks
+      .map((_, w) => w)
+      .filter((w) => w === 0 || weeks[w][0]!.getMonth() !== weeks[w - 1][0]!.getMonth());
     const shown = starts.filter((w, i) => i === starts.length - 1 || starts[i + 1] - w >= MIN_LABEL_GAP);
     return new Map(shown.map((w) => [w, weeks[w][0]!.toLocaleDateString(getLocale(), { month: 'short' })]));
   }, [weeks]);
@@ -57,12 +77,23 @@ export function Heatmap({ log, weeks: weekCount, today, levelOf, selected, onSel
   return (
     <div ref={box} className="overflow-x-auto pb-1">
       <div className="flex w-max" style={{ gap: GAP }}>
-        <div className="grid pt-[18px] text-[10px] leading-none text-muted-foreground" style={{ gridTemplateRows: `repeat(7, ${cell}px)`, gap: GAP }}>
-          {Array.from({ length: 7 }, (_, d) => <span key={d} className="flex items-center pr-1.5">{WEEKDAY_ROWS.includes(d) ? weekdayLabel(d) : ''}</span>)}
+        <div
+          className="grid pt-[18px] text-[10px] leading-none text-muted-foreground"
+          style={{ gridTemplateRows: `repeat(7, ${cell}px)`, gap: GAP }}
+        >
+          {Array.from({ length: 7 }, (_, d) => (
+            <span key={d} className="flex items-center pr-1.5">
+              {WEEKDAY_ROWS.includes(d) ? weekdayLabel(d) : ''}
+            </span>
+          ))}
         </div>
         <div>
           <div className="flex pb-1.5 text-[10px] leading-3 text-muted-foreground" style={{ gap: GAP }}>
-            {weeks.map((_, w) => <span key={w} className="whitespace-nowrap" style={{ width: cell }}>{monthLabels.get(w)}</span>)}
+            {weeks.map((_, w) => (
+              <span key={w} className="whitespace-nowrap" style={{ width: cell }}>
+                {monthLabels.get(w)}
+              </span>
+            ))}
           </div>
           <div className="flex" style={{ gap: GAP }}>
             {weeks.map((week, w) => (
@@ -76,7 +107,10 @@ export function Heatmap({ log, weeks: weekCount, today, levelOf, selected, onSel
                     <button
                       key={d}
                       aria-label={`${fmtDay(date)}: ${total}`}
-                      className={cn('rounded-[3px] bg-foreground/[0.07] outline-offset-2 transition-transform hover:scale-125', selected === key && 'outline outline-2 outline-foreground/70')}
+                      className={cn(
+                        'rounded-[3px] bg-foreground/[0.07] outline-offset-2 transition-transform hover:scale-125',
+                        selected === key && 'outline outline-2 outline-foreground/70',
+                      )}
                       style={{ backgroundColor: levelColor(levelOf(total)) }}
                       title={`${fmtDay(date)} · ${total ? t('activity.cellTip', { n: total, code: entry.prompts.code, work: entry.prompts.work }) : t('activity.noActivity')}`}
                       onClick={() => onSelect(selected === key ? null : key)}
@@ -97,7 +131,13 @@ export function Legend() {
   return (
     <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
       {t('activity.less')}
-      {Array.from({ length: ACTIVITY_LEVELS + 1 }, (_, l) => <span key={l} className="size-[11px] rounded-[3px] bg-foreground/[0.07]" style={{ backgroundColor: levelColor(l) }} />)}
+      {Array.from({ length: ACTIVITY_LEVELS + 1 }, (_, l) => (
+        <span
+          key={l}
+          className="size-[11px] rounded-[3px] bg-foreground/[0.07]"
+          style={{ backgroundColor: levelColor(l) }}
+        />
+      ))}
       {t('activity.more')}
     </div>
   );

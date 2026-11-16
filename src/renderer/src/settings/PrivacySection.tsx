@@ -3,8 +3,16 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  MASK_ACTION, MASK_KIND, PERSONAL_KINDS, SECRET_KINDS,
-  type MaskAction, type MaskKind, type MaskRule, type RedactPreview, type RedactSettings, type RequestHookSettings,
+  MASK_ACTION,
+  MASK_KIND,
+  PERSONAL_KINDS,
+  SECRET_KINDS,
+  type MaskAction,
+  type MaskKind,
+  type MaskRule,
+  type RedactPreview,
+  type RedactSettings,
+  type RequestHookSettings,
 } from '@shared/request-log';
 import { REQUEST_RETENTION } from '@shared/request-log';
 import type { MessageKey } from '@shared/i18n';
@@ -20,11 +28,22 @@ import { Group, Heading, Panel, Row } from './ui';
 const fail = (err: unknown) => toast.error(errText(err));
 
 const KIND_LABEL: Record<MaskKind, MessageKey> = {
-  PRIVATE_KEY: 'privacy.kind.PRIVATE_KEY', API_KEY: 'privacy.kind.API_KEY', JWT: 'privacy.kind.JWT', PASSWORD: 'privacy.kind.PASSWORD',
-  EMAIL: 'privacy.kind.EMAIL', PHONE: 'privacy.kind.PHONE', ID_CARD: 'privacy.kind.ID_CARD', BANK_CARD: 'privacy.kind.BANK_CARD',
-  TERM: 'privacy.kind.TERM', CUSTOM: 'privacy.kind.CUSTOM',
+  PRIVATE_KEY: 'privacy.kind.PRIVATE_KEY',
+  API_KEY: 'privacy.kind.API_KEY',
+  JWT: 'privacy.kind.JWT',
+  PASSWORD: 'privacy.kind.PASSWORD',
+  EMAIL: 'privacy.kind.EMAIL',
+  PHONE: 'privacy.kind.PHONE',
+  ID_CARD: 'privacy.kind.ID_CARD',
+  BANK_CARD: 'privacy.kind.BANK_CARD',
+  TERM: 'privacy.kind.TERM',
+  CUSTOM: 'privacy.kind.CUSTOM',
 };
-const ACTION_LABEL: Record<MaskAction, MessageKey> = { mask: 'privacy.action.mask', warn: 'privacy.action.warn', block: 'privacy.action.block' };
+const ACTION_LABEL: Record<MaskAction, MessageKey> = {
+  mask: 'privacy.action.mask',
+  warn: 'privacy.action.warn',
+  block: 'privacy.action.block',
+};
 const ACTIONS = Object.values(MASK_ACTION);
 /** A rules line starting with this is a regular expression, anything else is a prefix. */
 const REGEX_PREFIX = 're:';
@@ -32,18 +51,54 @@ const REGEX_PREFIX = 're:';
 const PREVIEW_DELAY_MS = 300;
 
 const ruleToLine = (r: MaskRule) => (r.regex ? REGEX_PREFIX + r.pattern : r.pattern);
-const lineToRule = (line: string): MaskRule => (line.startsWith(REGEX_PREFIX) ? { pattern: line.slice(REGEX_PREFIX.length), regex: true } : { pattern: line, regex: false });
-const lines = (text: string) => text.split('\n').map((l) => l.trim()).filter(Boolean);
+const lineToRule = (line: string): MaskRule =>
+  line.startsWith(REGEX_PREFIX)
+    ? { pattern: line.slice(REGEX_PREFIX.length), regex: true }
+    : { pattern: line, regex: false };
+const lines = (text: string) =>
+  text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
 
 /** A text box that saves when it loses focus, so a half-typed list is never saved. */
-function ListInput({ value, onCommit, multiline, placeholder, label }: { value: string; onCommit: (text: string) => void; multiline?: boolean; placeholder?: string; label: string }) {
+function ListInput({
+  value,
+  onCommit,
+  multiline,
+  placeholder,
+  label,
+}: {
+  value: string;
+  onCommit: (text: string) => void;
+  multiline?: boolean;
+  placeholder?: string;
+  label: string;
+}) {
   const [text, setText] = useState(value);
   useEffect(() => setText(value), [value]);
   const commit = () => text !== value && onCommit(text);
   return multiline ? (
-    <Textarea className="min-h-16 w-72 shrink-0 font-mono text-xs" value={text} aria-label={label} placeholder={placeholder} spellCheck={false} onChange={(e) => setText(e.target.value)} onBlur={commit} />
+    <Textarea
+      className="min-h-16 w-72 shrink-0 font-mono text-xs"
+      value={text}
+      aria-label={label}
+      placeholder={placeholder}
+      spellCheck={false}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+    />
   ) : (
-    <Input className="h-8 w-72 shrink-0" value={text} aria-label={label} placeholder={placeholder} spellCheck={false} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && commit()} />
+    <Input
+      className="h-8 w-72 shrink-0"
+      value={text}
+      aria-label={label}
+      placeholder={placeholder}
+      spellCheck={false}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => e.key === 'Enter' && commit()}
+    />
   );
 }
 
@@ -58,7 +113,17 @@ function RetentionInput({ value, onCommit }: { value: number; onCommit: (days: n
   };
   return (
     <div className="flex shrink-0 items-center gap-2">
-      <Input type="number" className="h-8 w-20 text-center" min={REQUEST_RETENTION.min} max={REQUEST_RETENTION.max} value={text} aria-label={t('privacy.retention')} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && commit()} />
+      <Input
+        type="number"
+        className="h-8 w-20 text-center"
+        min={REQUEST_RETENTION.min}
+        max={REQUEST_RETENTION.max}
+        value={text}
+        aria-label={t('privacy.retention')}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === 'Enter' && commit()}
+      />
       <span className="text-sm text-muted-foreground">{t('privacy.days')}</span>
     </div>
   );
@@ -71,21 +136,41 @@ function TryIt({ redact }: { redact: RedactSettings }) {
   const key = JSON.stringify(redact);
   useEffect(() => {
     if (!text.trim()) return setPreview(null);
-    const timer = setTimeout(() => void call('requests:preview', text, redact).then(setPreview).catch(fail), PREVIEW_DELAY_MS);
+    const timer = setTimeout(
+      () => void call('requests:preview', text, redact).then(setPreview).catch(fail),
+      PREVIEW_DELAY_MS,
+    );
     return () => clearTimeout(timer);
     // `key` stands for the settings' content
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, key]);
 
   const found = preview ? Object.values(preview.masked).reduce((n, c) => n + c, 0) : 0;
-  const warned = preview ? Object.keys(preview.warned).map((k) => t(KIND_LABEL[k as MaskKind])).join(', ') : '';
+  const warned = preview
+    ? Object.keys(preview.warned)
+        .map((k) => t(KIND_LABEL[k as MaskKind]))
+        .join(', ')
+    : '';
   return (
     <div className="flex flex-col gap-2 px-4 py-3.5">
-      <div className="flex items-center gap-1.5 text-sm font-medium">{t('privacy.try')}<Tip>{t('privacy.try.tip')}</Tip></div>
-      <Textarea className="min-h-20 font-mono text-xs" value={text} placeholder={t('privacy.try.placeholder')} spellCheck={false} onChange={(e) => setText(e.target.value)} />
+      <div className="flex items-center gap-1.5 text-sm font-medium">
+        {t('privacy.try')}
+        <Tip>{t('privacy.try.tip')}</Tip>
+      </div>
+      <Textarea
+        className="min-h-20 font-mono text-xs"
+        value={text}
+        placeholder={t('privacy.try.placeholder')}
+        spellCheck={false}
+        onChange={(e) => setText(e.target.value)}
+      />
       {preview && (
         <>
-          {found > 0 && <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-2.5 font-mono text-xs">{preview.text}</pre>}
+          {found > 0 && (
+            <pre className="max-h-48 overflow-auto rounded-md bg-muted p-2.5 font-mono text-xs break-all whitespace-pre-wrap">
+              {preview.text}
+            </pre>
+          )}
           <p className="text-xs text-muted-foreground">
             {found === 0 && !warned && !preview.blocked && t('privacy.try.none')}
             {warned && t('privacy.try.warned', { kinds: warned })}
@@ -130,7 +215,12 @@ export function PrivacySection() {
     <>
       <Heading title={t('settings.section.privacy')} sub={t('privacy.sub')} />
       <div>
-        <Group id="mask" title={t('privacy.group.mask')} sub={t('privacy.group.mask.sub')} tip={t('privacy.group.mask.tip')}>
+        <Group
+          id="mask"
+          title={t('privacy.group.mask')}
+          sub={t('privacy.group.mask.sub')}
+          tip={t('privacy.group.mask.tip')}
+        >
           <Panel>
             <Row title={t('privacy.secrets')} hint={t('privacy.secrets.hint')}>
               <Switch checked={redact.secrets} onCheckedChange={(v) => void saveRedact({ secrets: v })} />
@@ -139,13 +229,35 @@ export function PrivacySection() {
               <Switch checked={redact.personal} onCheckedChange={(v) => void saveRedact({ personal: v })} />
             </Row>
             <Row title={t('privacy.words')} hint={t('privacy.words.hint')}>
-              <ListInput label={t('privacy.words')} value={redact.words.join(', ')} onCommit={(v) => void saveRedact({ words: v.split(/[,，\n]/).map((w) => w.trim()).filter(Boolean) })} />
+              <ListInput
+                label={t('privacy.words')}
+                value={redact.words.join(', ')}
+                onCommit={(v) =>
+                  void saveRedact({
+                    words: v
+                      .split(/[,，\n]/)
+                      .map((w) => w.trim())
+                      .filter(Boolean),
+                  })
+                }
+              />
             </Row>
             <Row title={t('privacy.rules')} tip={t('privacy.rules.tip')}>
-              <ListInput multiline label={t('privacy.rules')} value={redact.rules.map(ruleToLine).join('\n')} placeholder="gw_&#10;re:ID-\d{4}" onCommit={(v) => void saveRedact({ rules: lines(v).map(lineToRule) })} />
+              <ListInput
+                multiline
+                label={t('privacy.rules')}
+                value={redact.rules.map(ruleToLine).join('\n')}
+                placeholder="gw_&#10;re:ID-\d{4}"
+                onCommit={(v) => void saveRedact({ rules: lines(v).map(lineToRule) })}
+              />
             </Row>
             <Row title={t('privacy.allow')} tip={t('privacy.allow.tip')}>
-              <ListInput multiline label={t('privacy.allow')} value={redact.allow.join('\n')} onCommit={(v) => void saveRedact({ allow: lines(v) })} />
+              <ListInput
+                multiline
+                label={t('privacy.allow')}
+                value={redact.allow.join('\n')}
+                onCommit={(v) => void saveRedact({ allow: lines(v) })}
+              />
             </Row>
             <TryIt redact={redact} />
           </Panel>
@@ -156,7 +268,12 @@ export function PrivacySection() {
             <Panel>
               {shown.map((kind) => (
                 <Row key={kind} title={t(KIND_LABEL[kind])}>
-                  <Segmented value={redact.actions[kind] ?? MASK_ACTION.mask} options={ACTIONS.map((id) => ({ id, label: t(ACTION_LABEL[id]) }))} onChange={(a) => void setAction(kind, a)} compact />
+                  <Segmented
+                    value={redact.actions[kind] ?? MASK_ACTION.mask}
+                    options={ACTIONS.map((id) => ({ id, label: t(ACTION_LABEL[id]) }))}
+                    onChange={(a) => void setAction(kind, a)}
+                    compact
+                  />
                 </Row>
               ))}
             </Panel>
@@ -173,7 +290,6 @@ export function PrivacySection() {
             </Row>
           </Panel>
         </Group>
-
       </div>
     </>
   );

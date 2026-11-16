@@ -27,7 +27,8 @@ export interface Scaffolded {
 }
 
 const PAGE_ID = 'home';
-const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+const escapeHtml = (text: string) =>
+  text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
 function manifest(input: ScaffoldInput, id: string, withHost: boolean) {
   const piDesktop: Record<string, unknown> = {
@@ -37,16 +38,20 @@ function manifest(input: ScaffoldInput, id: string, withHost: boolean) {
     contributions: { pages: [{ id: PAGE_ID, title: input.title, entry: 'ui/index.html' }] },
   };
   if (withHost) piDesktop.host = './host.js';
-  return `${JSON.stringify({
-    name: `pi-plugin-${id}`,
-    version: '0.1.0',
-    description: input.description,
-    keywords: ['pi-package', 'pi-desktop-plugin'],
-    private: true,
-    type: 'module',
-    files: [...(withHost ? ['host.js'] : []), 'ui'],
-    piDesktop,
-  }, null, 2)}\n`;
+  return `${JSON.stringify(
+    {
+      name: `pi-plugin-${id}`,
+      version: '0.1.0',
+      description: input.description,
+      keywords: ['pi-package', 'pi-desktop-plugin'],
+      private: true,
+      type: 'module',
+      files: [...(withHost ? ['host.js'] : []), 'ui'],
+      piDesktop,
+    },
+    null,
+    2,
+  )}\n`;
 }
 
 const HOST_JS = `// Runs in the agent process, once per app run. It answers \`pidesk.host.call\` from the page and
@@ -110,14 +115,18 @@ pidesk.session.onChange((session) => {
 });
 
 pidesk.ready().then(async () => {
-${withHost ? `  try {
+${
+  withHost
+    ? `  try {
     const answer = await pidesk.host.call('hello', 'Pi Desktop');
     $('out').textContent = JSON.stringify(answer, null, 2);
   } catch (err) {
     $('out').textContent = String(err.message ?? err);
   }
-` : `  $('out').textContent = 'Edit ui/page.js and host.js to build this plugin.';
-`}});
+`
+    : `  $('out').textContent = 'Edit ui/page.js and host.js to build this plugin.';
+`
+}});
 `;
 }
 

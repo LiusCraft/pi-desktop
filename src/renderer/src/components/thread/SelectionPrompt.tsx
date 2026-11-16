@@ -13,7 +13,14 @@ const WIDTH = 360;
  * A small draggable window for what to say about a selected passage. Both modes type
  * here; they differ in where Enter sends it: a side chat question, or a card in the composer.
  */
-export function SelectionPrompt({ mode, quote, x, y, onSubmit, onClose }: {
+export function SelectionPrompt({
+  mode,
+  quote,
+  x,
+  y,
+  onSubmit,
+  onClose,
+}: {
   mode: PromptMode;
   quote: string;
   x: number;
@@ -60,17 +67,31 @@ export function SelectionPrompt({ mode, quote, x, y, onSubmit, onClose }: {
       style={{ ...drag.style, left, top, width: WIDTH }}
       className="fixed z-50 flex max-w-[calc(100vw-1rem)] flex-col rounded-xl border bg-popover shadow-xl"
     >
-      <header {...drag.handle} className={cn(drag.handle.className, 'flex items-center gap-1.5 border-b py-1.5 pr-1.5 pl-3 text-sm font-medium')}>
+      <header
+        {...drag.handle}
+        className={cn(
+          drag.handle.className,
+          'flex items-center gap-1.5 border-b py-1.5 pr-1.5 pl-3 text-sm font-medium',
+        )}
+      >
         <Icon className="size-3.5 text-muted-foreground" />
         <span className="flex-1">{t(side ? 'selection.sideTitle' : 'selection.replyTitle')}</span>
-        <Button variant="ghost" size="icon" className="size-6 text-muted-foreground" aria-label={t('selection.close')} onClick={onClose}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6 text-muted-foreground"
+          aria-label={t('selection.close')}
+          onClick={onClose}
+        >
           <XIcon className="size-3.5" />
         </Button>
       </header>
       <div className="flex flex-col gap-2 p-2.5">
         <div className="flex items-start gap-1.5 rounded-md bg-muted/60 px-2 py-1.5 text-xs">
           <QuoteIcon className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
-          <div data-selectable className="line-clamp-4 min-w-0 flex-1 whitespace-pre-wrap text-muted-foreground">{quote}</div>
+          <div data-selectable className="line-clamp-4 min-w-0 flex-1 whitespace-pre-wrap text-muted-foreground">
+            {quote}
+          </div>
         </div>
         <div className="flex items-end gap-1.5 rounded-lg border bg-background px-2.5 py-1.5">
           <textarea
@@ -86,9 +107,15 @@ export function SelectionPrompt({ mode, quote, x, y, onSubmit, onClose }: {
                 void submit();
               }
             }}
-            className="max-h-32 min-h-12 flex-1 resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground [field-sizing:content]"
+            className="[field-sizing:content] max-h-32 min-h-12 flex-1 resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-muted-foreground"
           />
-          <Button size="icon" className="size-7 shrink-0 rounded-full" disabled={!ready || busy} aria-label={t(side ? 'selection.ask' : 'selection.addReply')} onClick={() => void submit()}>
+          <Button
+            size="icon"
+            className="size-7 shrink-0 rounded-full"
+            disabled={!ready || busy}
+            aria-label={t(side ? 'selection.ask' : 'selection.addReply')}
+            onClick={() => void submit()}
+          >
             <ArrowUpIcon className="size-4" />
           </Button>
         </div>

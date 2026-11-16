@@ -36,13 +36,19 @@ export interface BranchWork {
 /** A prompt starts a sentence: an optional lead-in may have put a lowercase verb first. */
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
-export function gitActions({ branch, baseBranch, st, pr, forge, strategy }: BranchWork): { actions: GitActionItem[]; primary: GitAction | null } {
+export function gitActions({ branch, baseBranch, st, pr, forge, strategy }: BranchWork): {
+  actions: GitActionItem[];
+  primary: GitAction | null;
+} {
   const w = forgeWords(forge);
   const onBase = !baseBranch || branch === baseBranch;
   const dirty = st?.dirty.length ?? 0;
   const ahead = st?.ahead ?? 0;
+  // The field is optional while a fresh session is still loading its first git state.
+  // Treat that as unknown; a reported false is the only state that rules out remote actions.
+  const hasRemote = st?.hasRemote !== false;
   // A branch with no upstream still owes its first push.
-  const unpushed = ahead > 0 || (!!st && !st.upstream);
+  const unpushed = hasRemote && (ahead > 0 || (!!st && !st.upstream));
   const work = dirty > 0 || unpushed;
   const open = !!pr && (pr.state === 'open' || pr.state === 'draft');
   const target = baseBranch ? tr('gitact.target', { base: baseBranch }) : '';
@@ -64,18 +70,52 @@ export function gitActions({ branch, baseBranch, st, pr, forge, strategy }: Bran
     prCommand = 'new-pr';
     const merged = pr.state === 'merged';
     prHint = tr(merged ? 'gitact.newHintMerged' : 'gitact.newHintClosed', { num: pr.num });
-    prPrompt = tr(merged ? 'gitact.newPromptMerged' : 'gitact.newPromptClosed', { num: pr.num, first, create: w.create, target });
+    prPrompt = tr(merged ? 'gitact.newPromptMerged' : 'gitact.newPromptClosed', {
+      num: pr.num,
+      first,
+      create: w.create,
+      target,
+    });
   } else if (onBase) {
     prHint = tr(dirty > 0 ? 'gitact.branchHintDirty' : 'gitact.branchHint');
-    prPrompt = tr(dirty > 0 ? 'gitact.branchPromptDirty' : 'gitact.branchPrompt', { base: baseBranch ?? '', create: w.create, target });
+    prPrompt = tr(dirty > 0 ? 'gitact.branchPromptDirty' : 'gitact.branchPrompt', {
+      base: baseBranch ?? '',
+      create: w.create,
+      target,
+    });
   } else {
     prPrompt = sentence(tr('gitact.createPrompt', { first, branch, create: w.create, target }));
   }
   const actions: GitActionItem[] = [
     // With a PR already open, a fresh one only makes sense once there is something new to put in it.
-    { act: 'pr', label: prLabel, hint: prHint, command: prCommand, prompt: prPrompt, enabled: pr ? work : work || !onBase },
-    { act: 'commit', label: tr('gitact.commit'), hint: dirty > 0 ? tr('gitact.commitHint', { n: dirty }) : tr('gitact.commitNone'), command: 'commit', prompt: commitPrompt, enabled: dirty > 0 },
-    { act: 'push', label: tr('gitact.push'), hint: unpushed ? (ahead > 0 ? tr('gitact.pushHintAhead', { n: ahead }) : tr('gitact.pushHintFirst')) : tr('gitact.pushNone'), command: 'push', prompt: pushPrompt, enabled: unpushed },
+    {
+      act: 'pr',
+      label: prLabel,
+      hint: prHint,
+      command: prCommand,
+      prompt: prPrompt,
+      enabled: hasRemote && (pr ? work : work || !onBase),
+    },
+    {
+      act: 'commit',
+      label: tr('gitact.commit'),
+      hint: dirty > 0 ? tr('gitact.commitHint', { n: dirty }) : tr('gitact.commitNone'),
+      command: 'commit',
+      prompt: commitPrompt,
+      enabled: dirty > 0,
+    },
+    {
+      act: 'push',
+      label: tr('gitact.push'),
+      hint: unpushed
+        ? ahead > 0
+          ? tr('gitact.pushHintAhead', { n: ahead })
+          : tr('gitact.pushHintFirst')
+        : tr('gitact.pushNone'),
+      command: 'push',
+      prompt: pushPrompt,
+      enabled: hasRemote && unpushed,
+    },
   ];
   // Only a feature branch can fall behind its base; the action never becomes the default button.
   if (!onBase) {
@@ -95,9 +135,23 @@ export function gitActions({ branch, baseBranch, st, pr, forge, strategy }: Bran
   // Submit the PR by default; on the base branch itself that would mean branching off, so
   // the default there is the smaller direct git step instead.
   const primary: GitAction | null = pr
-    ? (work ? 'pr' : null)
+    ? hasRemote
+      ? work
+        ? 'pr'
+        : null
+      : dirty > 0
+        ? 'commit'
+        : null
     : onBase
-      ? (dirty > 0 ? 'commit' : unpushed ? 'push' : null)
-      : 'pr';
+      ? dirty > 0
+        ? 'commit'
+        : unpushed
+          ? 'push'
+          : null
+      : hasRemote
+        ? 'pr'
+        : dirty > 0
+          ? 'commit'
+          : null;
   return { actions, primary };
 }

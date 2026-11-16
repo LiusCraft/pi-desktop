@@ -26,10 +26,16 @@ describe('fuzzyScore', () => {
   it('is case-insensitive for path and title searches', () => {
     expect(score('login', 'Fix-Login-Bug')).toBeGreaterThan(0);
   });
+
+  it('matches model initials as an in-order subsequence', () => {
+    expect(score('ds', 'DeepSeek')).toBeGreaterThan(0);
+  });
 });
 
 describe('fuzzyRank', () => {
-  const entries = ['src/components/Login.tsx', 'src/store/logout.ts', 'docs/login.md', 'src/app.ts'].map((p) => fuzzyEntry(p, p));
+  const entries = ['src/components/Login.tsx', 'src/store/logout.ts', 'docs/login.md', 'src/app.ts'].map((p) =>
+    fuzzyEntry(p, p),
+  );
 
   it('keeps the best matches and drops the rest', () => {
     const ranked = fuzzyRank(entries, 'logout', 3);
@@ -42,7 +48,9 @@ describe('fuzzyRank', () => {
   });
 
   it('stays usable with thousands of entries', () => {
-    const many = Array.from({ length: 5000 }, (_, i) => fuzzyEntry(`src/module-${i}/file-${i}.tsx`, `src/module-${i}/file-${i}.tsx`));
+    const many = Array.from({ length: 5000 }, (_, i) =>
+      fuzzyEntry(`src/module-${i}/file-${i}.tsx`, `src/module-${i}/file-${i}.tsx`),
+    );
     const started = performance.now();
     const ranked = fuzzyRank(many, 'module-4999', 20);
     expect(performance.now() - started).toBeLessThan(200);

@@ -27,24 +27,72 @@ export interface Effects {
 }
 
 let seq = 0;
+const ESTIMATED_CHARS_PER_TOKEN = 3;
 export const newKey = () => `i${++seq}`;
 
 export function emptySession(meta: SessionMeta): SessionView {
   return {
-    meta, items: [], loaded: false, running: false, compacting: false, t0: 0, tokens: 0, statusText: '', ctxPct: null, cacheRate: null, cost: null,
-    model: meta.model ?? null, thinking: meta.thinking ?? null, levels: [], commands: [], waiting: null, unread: false,
-    todosKey: null, lastTodos: [], outputs: [], changes: [], gitState: null, pr: meta.pr, prThreads: [], prHidden: false, files: null, fileTabs: [],
-    panels: readPanels(meta.id), arrangement: readArrangement(meta.id), expanded: null, expandedWide: false, detail: null, previewUrl: null,
-    pendingUser: [], stopping: false, historyBusy: false, setup: null, hostEpoch: 0, cur: null,
+    meta,
+    items: [],
+    loaded: false,
+    running: false,
+    compacting: false,
+    t0: 0,
+    tokens: 0,
+    streamTokens: 0,
+    streamMs: 0,
+    sessionTokens: 0,
+    sessionStreamMs: 0,
+    statusText: '',
+    ctxPct: null,
+    cacheRate: null,
+    cost: null,
+    model: meta.model ?? null,
+    thinking: meta.thinking ?? null,
+    levels: [],
+    commands: [],
+    waiting: null,
+    unread: false,
+    todosKey: null,
+    lastTodos: [],
+    outputs: [],
+    changes: [],
+    gitState: null,
+    pr: meta.pr,
+    prThreads: [],
+    prHidden: false,
+    files: null,
+    fileTabs: [],
+    panels: readPanels(meta.id),
+    arrangement: readArrangement(meta.id),
+    expanded: null,
+    expandedWide: false,
+    detail: null,
+    previewUrl: null,
+    pendingUser: [],
+    scrollRequest: null,
+    stopping: false,
+    historyBusy: false,
+    setup: null,
+    hostEpoch: 0,
+    cur: null,
   };
 }
 
 const textOf = (c: unknown) =>
-  typeof c === 'string' ? c : Array.isArray(c) ? c.filter((x) => x?.type === 'text').map((x) => x.text).join('') : '';
+  typeof c === 'string'
+    ? c
+    : Array.isArray(c)
+      ? c
+          .filter((x) => x?.type === 'text')
+          .map((x) => x.text)
+          .join('')
+      : '';
 
 export const find = <K extends Item['kind']>(s: SessionView, kind: K, pred: (item: ItemOf<K>) => boolean) =>
   s.items.find((i): i is ItemOf<K> => i.kind === kind && pred(i as ItemOf<K>));
-export const findByKey = (s: SessionView, key: string | null | undefined) => (key ? s.items.find((i) => i.key === key) : undefined);
+export const findByKey = (s: SessionView, key: string | null | undefined) =>
+  key ? s.items.find((i) => i.key === key) : undefined;
 
 /** The group and tool for a tool call id, newest first. */
 export function findTool(s: SessionView, id: string) {
@@ -59,10 +107,21 @@ export function findTool(s: SessionView, id: string) {
 
 const verbose = (v: ViewMode) => v === 'verbose';
 
+/** A `!command` is running in the session's own shell: Stop interrupts it, like the model's own turn. */
+export const bashRunning = (s: SessionView | undefined) => !!s?.items.some((i) => i.kind === 'bash' && i.running);
+
 /** Append an item; a finished, untouched tool group folds itself away first (except in Verbose). */
 export function push<T extends Item>(s: SessionView, item: T, view: ViewMode): T {
   const last = s.items.at(-1);
-  if (!verbose(view) && item.kind !== 'group' && item.kind !== 'perm' && last?.kind === 'group' && last.open && !last.userToggled && !last.tools.some((t) => t.status === 'running')) {
+  if (
+    !verbose(view) &&
+    item.kind !== 'group' &&
+    item.kind !== 'perm' &&
+    last?.kind === 'group' &&
+    last.open &&
+    !last.userToggled &&
+    !last.tools.some((t) => t.status === 'running')
+  ) {
     last.open = false;
   }
   s.items.push(item);
@@ -94,32 +153,68 @@ export function addOutputs(s: SessionView, files: string[]) {
   }
 }
 
-export function toolStart(s: SessionView, ev: { toolCallId: string; toolName: string; args?: any }, view: ViewMode, replay = false) {
+export function toolStart(
+  s: SessionView,
+  ev: { toolCallId: string; toolName: string; args?: any },
+  view: ViewMode,
+  replay = false,
+) {
   if (bareName(ev.toolName) === 'todo_write') return;
   if (bareName(ev.toolName) === 'exit_plan_mode') {
-    push(s, { kind: 'plan', key: newKey(), title: ev.args?.title || 'Plan', md: ev.args?.plan || '', toolCallId: ev.toolCallId, requestId: null, resolved: replay ? 'done' : null }, view);
+    push(
+      s,
+      {
+        kind: 'plan',
+        key: newKey(),
+        title: ev.args?.title || 'Plan',
+        md: ev.args?.plan || '',
+        toolCallId: ev.toolCallId,
+        requestId: null,
+        resolved: replay ? 'done' : null,
+      },
+      view,
+    );
     return;
   }
   if (bareName(ev.toolName) === 'ask_question') {
     const questions: Question[] = (Array.isArray(ev.args?.questions) ? ev.args.questions : [])
       .filter((q: any) => q?.question && Array.isArray(q.options))
-      .map((q: any) => ({ question: q.question, header: q.header ?? '', multiSelect: !!q.multiSelect, options: q.options }));
+      .map((q: any) => ({
+        question: q.question,
+        header: q.header ?? '',
+        multiSelect: !!q.multiSelect,
+        options: q.options,
+      }));
     if (questions.length) {
       const request: UiRequest = { id: '', kind: 'questions', toolCallId: ev.toolCallId, title: '', questions };
-      push(s, { kind: 'ask', key: newKey(), requestId: null, request, toolCallId: ev.toolCallId, resolved: replay ? 'cancelled' : null }, view);
+      push(
+        s,
+        {
+          kind: 'ask',
+          key: newKey(),
+          requestId: null,
+          request,
+          toolCallId: ev.toolCallId,
+          resolved: replay ? 'cancelled' : null,
+        },
+        view,
+      );
     }
     return;
   }
   if (bareName(ev.toolName) === 'suggest_task') {
     const tasks = (Array.isArray(ev.args?.tasks) ? ev.args.tasks : [])
       .filter((t: any) => t?.title && t?.prompt)
-      .map(({ code_folder, ...t }: any) => (typeof code_folder === 'string' && code_folder ? { ...t, codeFolder: code_folder } : t));
+      .map(({ code_folder, ...t }: any) =>
+        typeof code_folder === 'string' && code_folder ? { ...t, codeFolder: code_folder } : t,
+      );
     if (tasks.length) push(s, { kind: 'suggest', key: newKey(), toolCallId: ev.toolCallId, tasks }, view);
     return;
   }
   const g = currentGroup(s, view);
   const tool = toolFromArgs(ev.toolCallId, ev.toolName, ev.args);
-  if (tool.kind === 'agent' && !replay) tool.sub = { startedAt: Date.now(), tokens: 0, toolUses: 0, activity: 'Starting', steps: [] };
+  if (tool.kind === 'agent' && !replay)
+    tool.sub = { startedAt: Date.now(), tokens: 0, toolUses: 0, activity: 'Starting', steps: [] };
   g.tools.push(tool);
   if (!replay) s.statusText = `${toolLabel(tool)}…`;
 }
@@ -162,19 +257,32 @@ export function toolEnd(
   const blocked = !!ev.isError && /denied|Plan mode|blocked|not approved|no UI|nobody answered/i.test(text);
   t.status = blocked ? 'denied' : ev.isError ? 'err' : 'done';
   if (t.kind === 'read' || t.kind === 'edit' || t.kind === 'write') {
-    const preview = previews[t.kind](t.args, ev.result ?? {}, !!ev.isError);
+    const preview =
+      t.kind === 'read'
+        ? previews.read(t.args, ev.result ?? {}, !!ev.isError)
+        : t.kind === 'edit'
+          ? previews.edit(t.args, ev.result ?? {}, !!ev.isError)
+          : previews.write(t.args, ev.result ?? {}, !!ev.isError);
     t.preview = preview;
     if ('firstChangedLine' in preview) t.firstChangedLine = preview.firstChangedLine;
-    if (preview.type === 'diff') { t.add = preview.add; t.del = preview.del; }
+    if (preview.type === 'diff') {
+      t.add = preview.add;
+      t.del = preview.del;
+    }
   }
   if (t.kind === 'websearch' && !ev.isError) t.count = ev.result?.details?.hits?.length;
   if (bareName(ev.toolName) === CODEMODE_TOOL) t.calls = nestedCalls(ev.result?.details?.calls);
   // Live, the host pushes these as they happen (also from inside a script); this rebuilds them when a transcript is replayed.
-  if (replay && bareName(ev.toolName) === 'present_files' && !ev.isError) addOutputs(s, ev.result?.details?.files ?? []);
+  if (replay && bareName(ev.toolName) === 'present_files' && !ev.isError)
+    addOutputs(s, ev.result?.details?.files ?? []);
   if (replay && bareName(ev.toolName) === CODEMODE_TOOL) {
     for (const call of nestedCalls(ev.result?.details?.calls)) {
       if (bareName(call.name) !== 'present_files' || call.status !== 'ok') continue;
-      try { addOutputs(s, JSON.parse(call.args).paths ?? []); } catch { /* the host shortened the arguments */ }
+      try {
+        addOutputs(s, JSON.parse(call.args).paths ?? []);
+      } catch {
+        /* the host shortened the arguments */
+      }
     }
   }
   if (t.kind === 'bash') t.output = text;
@@ -196,13 +304,16 @@ export function toolEnd(
     t.md = ev.result?.details?.text || text;
     t.summary = ev.result?.details?.summary || '';
     if (ev.result?.details?.progress) t.sub = ev.result.details.progress;
-    else if (t.sub && !t.sub.endedAt) t.sub = { ...t.sub, endedAt: Date.now(), activity: ev.isError ? 'Stopped' : 'Done' };
+    else if (t.sub && !t.sub.endedAt)
+      t.sub = { ...t.sub, endedAt: Date.now(), activity: ev.isError ? 'Stopped' : 'Done' };
   } else if (t.kind !== 'read') t.output = text.slice(0, 8000);
 
   if (t.kind === 'bash' && !replay) {
     if (!ev.isError && /\b(?:gh\s+pr|glab\s+mr)\s+(?:create|merge|close|reopen|ready|edit|update)\b/i.test(t.cmd)) {
       // gh / glab can take a moment to expose a just-created PR through `pr view`.
-      const created = /\b(?:gh\s+pr|glab\s+mr)\s+create\b/i.test(t.cmd) && text.match(/https?:\/\/[^\s<>"'`]+\/(?:pull|merge_requests)\/(\d+)/i);
+      const created =
+        /\b(?:gh\s+pr|glab\s+mr)\s+create\b/i.test(t.cmd) &&
+        text.match(/https?:\/\/[^\s<>"'`]+\/(?:pull|merge_requests)\/(\d+)/i);
       if (created) {
         const pr = { num: Number(created[1]), url: created[0], state: 'open', draft: /(?:^|\s)--draft\b/.test(t.cmd) };
         s.pr = { ...pr, forge: forgeOfUrl(pr.url) ?? undefined, ci: 'none', checks: [], comments: 0 };
@@ -232,8 +343,37 @@ export function applyTaskUpdate(s: SessionView, u: TaskUpdate) {
 
 // ------------------------------------------------------------ streaming
 
+function beginStream(c: NonNullable<SessionView['cur']>) {
+  if (!c.streamT0) c.streamT0 = Date.now();
+}
+
+function closeStream(s: SessionView, c: NonNullable<SessionView['cur']>) {
+  if (!c.streamT0) return;
+  s.streamMs += Math.max(0, Date.now() - c.streamT0);
+  c.streamT0 = 0;
+}
+
+function addStreamDelta(s: SessionView, c: NonNullable<SessionView['cur']>, delta: string) {
+  if (!delta) return;
+  beginStream(c);
+  const previous = c.streamTokens;
+  c.streamChars += delta.length;
+  c.streamTokens = Math.ceil(c.streamChars / ESTIMATED_CHARS_PER_TOKEN);
+  const added = c.streamTokens - previous;
+  s.tokens += added;
+  s.streamTokens += added;
+}
+
 function assistantDelta(s: SessionView, ame: any, view: ViewMode) {
-  const c = (s.cur ??= { thinkGroup: null, thinkIndex: -1, text: null });
+  const c = (s.cur ??= {
+    thinkGroup: null,
+    thinkIndex: -1,
+    text: null,
+    streamChars: 0,
+    streamTextChars: 0,
+    streamTokens: 0,
+    streamT0: 0,
+  });
   const thought = () => {
     const g = findByKey(s, c.thinkGroup);
     return g?.kind === 'group' ? g.thoughts[c.thinkIndex] : undefined;
@@ -251,12 +391,16 @@ function assistantDelta(s: SessionView, ame: any, view: ViewMode) {
   switch (ame.type) {
     case 'thinking_start':
       addThought();
+      beginStream(c);
       s.statusText = t('status.thinking');
       break;
-    case 'thinking_delta':
+    case 'thinking_delta': {
       if (!thought()) addThought();
-      thought()!.text += ame.delta;
+      const delta = String(ame.delta ?? '');
+      thought()!.text += delta;
+      addStreamDelta(s, c, delta);
       break;
+    }
     case 'thinking_end': {
       const step = thought();
       if (step) {
@@ -267,12 +411,16 @@ function assistantDelta(s: SessionView, ame: any, view: ViewMode) {
     }
     case 'text_start':
       c.text = push(s, { kind: 'text', key: newKey(), text: '', live: true }, view).key;
+      beginStream(c);
       s.statusText = t('status.responding');
       break;
     case 'text_delta': {
+      const delta = String(ame.delta ?? '');
+      if (!delta) break;
       if (!liveText()) c.text = push(s, { kind: 'text', key: newKey(), text: '', live: true }, view).key;
-      liveText()!.text += ame.delta;
-      s.tokens += Math.ceil(String(ame.delta).length / 3);
+      liveText()!.text += delta;
+      c.streamTextChars += delta.length;
+      addStreamDelta(s, c, delta);
       break;
     }
     case 'text_end': {
@@ -280,7 +428,8 @@ function assistantDelta(s: SessionView, ame: any, view: ViewMode) {
       if (t) {
         t.text = ame.content ?? t.text;
         t.live = false;
-        c.text = null;
+        // `c.text` keeps pointing here until message_end reconciles it: another item (the user's `!` command,
+        // a permission card) may land in between, and message_end would then repeat the whole reply.
       }
       break;
     }
@@ -299,9 +448,7 @@ function userFromMessage(s: SessionView, m: AgentMessage, view: ViewMode) {
     push(s, { kind: 'prEvent', key: newKey(), event, at: m.timestamp || Date.now() }, view);
     return;
   }
-  const pending = s.pendingUser
-    .map((key) => findByKey(s, key))
-    .filter((i): i is ItemOf<'user'> => i?.kind === 'user');
+  const pending = s.pendingUser.map((key) => findByKey(s, key)).filter((i): i is ItemOf<'user'> => i?.kind === 'user');
   // pi expands `/skill:name args` into a <skill> block, so compare against what the user typed.
   const typed = typedText(user.text);
   const match = user.clientId
@@ -309,25 +456,53 @@ function userFromMessage(s: SessionView, m: AgentMessage, view: ViewMode) {
     : pending.find((p) => !p.attachments.length && p.text.trim() === typed);
   if (match) {
     s.pendingUser = s.pendingUser.filter((k) => k !== match.key);
-    Object.assign(match, user, { entryId: m.entryId, timestamp: m.timestamp, queued: false, delivered: true, failed: false });
+    Object.assign(match, user, {
+      entryId: m.entryId,
+      timestamp: m.timestamp,
+      queued: false,
+      delivered: true,
+      failed: false,
+    });
   } else if (!user.clientId || !s.items.some((i) => i.kind === 'user' && i.clientId === user.clientId)) {
-    push(s, { kind: 'user', key: newKey(), ...user, entryId: m.entryId, timestamp: m.timestamp, delivered: true }, view);
+    push(
+      s,
+      { kind: 'user', key: newKey(), ...user, entryId: m.entryId, timestamp: m.timestamp, delivered: true },
+      view,
+    );
   }
 }
 
 export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effects {
   switch (ev.type) {
+    case 'bash_execution_update': {
+      // A `!command` the user ran: the host streams its output, keyed by the transcript item it belongs to.
+      // Events are batched, so a chunk can land after the result already replaced the output: drop it then.
+      const item = findByKey(s, ev.id);
+      if (item?.kind === 'bash' && item.running) item.output += String(ev.delta ?? '');
+      return {};
+    }
     case 'agent_start':
       if (!s.running) {
         s.running = true;
         s.t0 = Date.now();
         s.tokens = 0;
+        s.streamTokens = 0;
+        s.streamMs = 0;
       }
       s.todosKey = null;
       s.statusText = t('status.thinking');
       return {};
     case 'message_start':
-      if (ev.message?.role === 'assistant') s.cur = { thinkGroup: null, thinkIndex: -1, text: null };
+      if (ev.message?.role === 'assistant')
+        s.cur = {
+          thinkGroup: null,
+          thinkIndex: -1,
+          text: null,
+          streamChars: 0,
+          streamTextChars: 0,
+          streamTokens: 0,
+          streamT0: 0,
+        };
       return {};
     case 'message_update':
       if (ev.assistantMessageEvent) assistantDelta(s, ev.assistantMessageEvent, view);
@@ -338,20 +513,48 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
       else if (m.role === 'assistant') {
         const c = s.cur;
         // message_end is authoritative: reconcile streamed text/thinking with the final content.
-        const finalText = (Array.isArray(m.content) ? m.content : []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+        const finalText = (Array.isArray(m.content) ? m.content : [])
+          .filter((b) => b.type === 'text')
+          .map((b) => b.text)
+          .join('');
         const live = findByKey(s, c?.text);
         if (live?.kind === 'text') {
           live.text = finalText || live.text;
           live.live = false;
+          live.msgTs = m.timestamp;
         } else if (finalText && !s.items.some((i) => i.kind === 'text' && i.msgTs === m.timestamp)) {
           const last = s.items.at(-1);
-          if (!(last?.kind === 'text' && last.text === finalText)) push(s, { kind: 'text', key: newKey(), text: finalText, live: false, msgTs: m.timestamp }, view);
+          if (!(last?.kind === 'text' && last.text === finalText))
+            push(s, { kind: 'text', key: newKey(), text: finalText, live: false, msgTs: m.timestamp }, view);
         }
         const g = findByKey(s, c?.thinkGroup);
         const step = g?.kind === 'group' ? g.thoughts[c!.thinkIndex] : undefined;
         if (step && !step.done) finishThought(step, view);
-        if (m.usage?.output) s.tokens += Number(m.usage.output) || 0;
-        if (m.stopReason === 'error' && m.errorMessage) push(s, { kind: 'note', key: newKey(), level: 'error', text: `Error: ${m.errorMessage}` }, view);
+        const output = Number(m.usage?.output);
+        if (c) {
+          // Deltas provide a live estimate; replace that estimate with the provider's final count.
+          if (finalText.length > c.streamTextChars) {
+            const addedChars = finalText.length - c.streamTextChars;
+            c.streamTextChars = finalText.length;
+            const previous = c.streamTokens;
+            c.streamChars += addedChars;
+            c.streamTokens = Math.ceil(c.streamChars / ESTIMATED_CHARS_PER_TOKEN);
+            const added = c.streamTokens - previous;
+            s.tokens += added;
+            s.streamTokens += added;
+          }
+          if (Number.isFinite(output) && output >= 0) {
+            const added = output - c.streamTokens;
+            s.tokens += added;
+            if (c.streamTokens > 0 || c.streamTextChars > 0) s.streamTokens += added;
+            c.streamTokens = output;
+          }
+          closeStream(s, c);
+        } else if (Number.isFinite(output) && output >= 0) {
+          s.tokens += output;
+        }
+        if (m.stopReason === 'error' && m.errorMessage)
+          push(s, { kind: 'note', key: newKey(), level: 'error', text: `Error: ${m.errorMessage}` }, view);
         if (m.stopReason === 'aborted') push(s, { kind: 'note', key: newKey(), text: t('status.interrupted') }, view);
         s.cur = null;
       } else if (m.role === 'custom' && m.display) push(s, customItem(m), view);
@@ -376,7 +579,15 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
     case 'tool_execution_end':
       return ev.parentToolCallId ? {} : toolEnd(s, ev as any, view);
     case 'auto_retry_start':
-      push(s, { kind: 'note', key: newKey(), text: t('status.retrying', { attempt: ev.attempt, max: ev.maxAttempts, error: ev.errorMessage || '' }) }, view);
+      push(
+        s,
+        {
+          kind: 'note',
+          key: newKey(),
+          text: t('status.retrying', { attempt: ev.attempt, max: ev.maxAttempts, error: ev.errorMessage || '' }),
+        },
+        view,
+      );
       return {};
     case 'compaction_start':
       s.compacting = true;
@@ -390,7 +601,20 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
           const error = String(ev.errorMessage).replace(/^Compaction failed:\s*/, '');
           push(s, { kind: 'note', key: newKey(), level: 'error', text: t('status.compactionFailed', { error }) }, view);
         } else if (r) {
-          push(s, { kind: 'compaction', key: newKey(), summary: String(r.summary ?? ''), tokensBefore: r.tokensBefore, tokensAfter: r.estimatedTokensAfter, open: false, hidden: 0, openSummary: true }, view);
+          push(
+            s,
+            {
+              kind: 'compaction',
+              key: newKey(),
+              summary: String(r.summary ?? ''),
+              tokensBefore: r.tokensBefore,
+              tokensAfter: r.estimatedTokensAfter,
+              open: false,
+              hidden: 0,
+              openSummary: true,
+            },
+            view,
+          );
         } else {
           push(s, { kind: 'note', key: newKey(), text: t('status.compacted') }, view);
         }
@@ -411,6 +635,7 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
 export function settle(s: SessionView, aborted: boolean, view: ViewMode): Effects {
   if (!s.running) return {};
   s.running = false;
+  if (s.cur) closeStream(s, s.cur);
   s.cur = null;
   for (const item of s.items) {
     if (item.kind === 'text' && item.live) item.live = false;
@@ -428,7 +653,22 @@ export function settle(s: SessionView, aborted: boolean, view: ViewMode): Effect
     const p = findByKey(s, key);
     if (p?.kind === 'user' && !p.queued && !p.delivered) p.failed = true;
   }
-  push(s, { kind: 'foot', key: newKey(), t: Date.now(), usage: t('status.tokens', { dur: fmtDur(Date.now() - s.t0), tokens: fmtTok(s.tokens) }) }, view);
+  const elapsed = Date.now() - s.t0;
+  s.sessionTokens += s.streamTokens;
+  s.sessionStreamMs += s.streamMs;
+  push(
+    s,
+    {
+      kind: 'foot',
+      key: newKey(),
+      t: Date.now(),
+      usage: t('status.tokens', {
+        dur: fmtDur(elapsed),
+        tokens: fmtTok(s.tokens),
+      }),
+    },
+    view,
+  );
   s.meta.updatedAt = Date.now();
   return { settled: { aborted }, refreshStats: true, pruneOutputs: true, scheduleChanges: true };
 }
@@ -446,12 +686,29 @@ export function permissionTitle(tool: ToolState | undefined, raw: string) {
 export function addUiRequest(s: SessionView, req: UiRequest, view: ViewMode): { openPlan?: string } {
   if (s.items.some((i) => 'requestId' in i && i.requestId === req.id)) return {};
   if (req.kind === 'permission') {
-    s.waiting = push(s, { kind: 'perm', key: newKey(), requestId: req.id, toolCallId: req.toolCallId, title: req.title, resolved: null }, view).key;
+    s.waiting = push(
+      s,
+      { kind: 'perm', key: newKey(), requestId: req.id, toolCallId: req.toolCallId, title: req.title, resolved: null },
+      view,
+    ).key;
     return {};
   }
   if (req.kind === 'plan') {
     let plan = find(s, 'plan', (p) => p.toolCallId === req.toolCallId);
-    if (!plan) plan = push(s, { kind: 'plan', key: newKey(), toolCallId: req.toolCallId, title: req.title, md: '', requestId: null, resolved: null }, view);
+    if (!plan)
+      plan = push(
+        s,
+        {
+          kind: 'plan',
+          key: newKey(),
+          toolCallId: req.toolCallId,
+          title: req.title,
+          md: '',
+          requestId: null,
+          resolved: null,
+        },
+        view,
+      );
     plan.requestId = req.id;
     s.waiting = plan.key;
     return { openPlan: plan.key };
@@ -470,7 +727,9 @@ export function addUiRequest(s: SessionView, req: UiRequest, view: ViewMode): { 
 }
 
 export function resolveUi(s: SessionView, requestId: string, label: string) {
-  const item = s.items.find((i) => 'requestId' in i && i.requestId === requestId) as ItemOf<'perm' | 'ask' | 'plan'> | undefined;
+  const item = s.items.find((i) => 'requestId' in i && i.requestId === requestId) as
+    | ItemOf<'perm' | 'ask' | 'plan'>
+    | undefined;
   if (!item) return;
   item.resolved = item.resolved && item.kind === 'plan' ? item.resolved : label;
   item.requestId = null;
@@ -485,6 +744,10 @@ export function replay(s: SessionView, messages: AgentMessage[], view: ViewMode)
   s.todosKey = null;
   s.lastTodos = [];
   s.outputs = [];
+  s.streamTokens = 0;
+  s.streamMs = 0;
+  s.sessionTokens = 0;
+  s.sessionStreamMs = 0;
   s.cur = null;
   s.waiting = null;
   s.detail = null;
@@ -517,7 +780,32 @@ export function transcriptItems(meta: SessionMeta, messages: AgentMessage[], vie
 function customItem(m: AgentMessage): Item {
   if (m.customType !== HANDOFF_CUSTOM_TYPE) return { kind: 'note', key: newKey(), text: textOf(m.content) };
   const d = (m.details ?? {}) as Partial<HandoffDetails>;
-  return { kind: 'handoff', key: newKey(), idle: formatIdle(d.idleMinutes ?? 0), tokensBefore: d.tokensBefore, open: false, hidden: 0 };
+  return {
+    kind: 'handoff',
+    key: newKey(),
+    idle: formatIdle(d.idleMinutes ?? 0),
+    tokensBefore: d.tokensBefore,
+    open: false,
+    hidden: 0,
+  };
+}
+
+/** A `!command` pi recorded in the conversation: replayed like any other item. */
+function bashExecutionItem(m: AgentMessage): ItemOf<'bash'> {
+  const exitCode = Number(m.exitCode);
+  return {
+    kind: 'bash',
+    key: newKey(),
+    command: String(m.command ?? ''),
+    output: String(m.output ?? ''),
+    running: false,
+    exitCode: m.exitCode === null || m.exitCode === undefined || Number.isNaN(exitCode) ? undefined : exitCode,
+    cancelled: !!m.cancelled,
+    truncated: !!m.truncated,
+    fullOutputPath: m.fullOutputPath ? String(m.fullOutputPath) : undefined,
+    excluded: !!m.excludeFromContext,
+    at: m.timestamp || Date.now(),
+  };
 }
 
 function appendMessages(s: SessionView, messages: AgentMessage[], view: ViewMode) {
@@ -534,7 +822,14 @@ function appendMessages(s: SessionView, messages: AgentMessage[], view: ViewMode
         s.items.push({ kind: 'prEvent', key: newKey(), event, at: m.timestamp || Date.now() });
         continue;
       }
-      s.items.push({ kind: 'user', key: newKey(), ...user, entryId: m.entryId, timestamp: m.timestamp, delivered: true });
+      s.items.push({
+        kind: 'user',
+        key: newKey(),
+        ...user,
+        entryId: m.entryId,
+        timestamp: m.timestamp,
+        delivered: true,
+      });
     } else if (m.role === 'assistant') {
       sawAssistant = true;
       for (const b of Array.isArray(m.content) ? m.content : []) {
@@ -545,17 +840,40 @@ function appendMessages(s: SessionView, messages: AgentMessage[], view: ViewMode
             s.items.push(g);
           }
           g.thoughts.push({ text: b.thinking, done: true, t0: 0, open: verbose(view) });
-        } else if (b.type === 'text' && b.text) s.items.push({ kind: 'text', key: newKey(), text: b.text, live: false });
-        else if (b.type === 'toolCall') toolStart(s, { toolCallId: b.id!, toolName: b.name!, args: b.arguments }, view, true);
+        } else if (b.type === 'text' && b.text)
+          s.items.push({ kind: 'text', key: newKey(), text: b.text, live: false });
+        else if (b.type === 'toolCall')
+          toolStart(s, { toolCallId: b.id!, toolName: b.name!, args: b.arguments }, view, true);
       }
-      if (m.stopReason === 'error' && m.errorMessage) s.items.push({ kind: 'note', key: newKey(), level: 'error', text: `Error: ${m.errorMessage}` });
+      if (m.stopReason === 'error' && m.errorMessage)
+        s.items.push({ kind: 'note', key: newKey(), level: 'error', text: `Error: ${m.errorMessage}` });
     } else if (m.role === 'toolResult') {
-      toolEnd(s, { toolCallId: m.toolCallId!, toolName: m.toolName!, result: { content: m.content, details: m.details }, isError: m.isError }, view, true);
+      toolEnd(
+        s,
+        {
+          toolCallId: m.toolCallId!,
+          toolName: m.toolName!,
+          result: { content: m.content, details: m.details },
+          isError: m.isError,
+        },
+        view,
+        true,
+      );
     } else if (m.role === 'custom' && m.display) {
       s.items.push(customItem(m));
+    } else if (m.role === 'bashExecution') {
+      s.items.push(bashExecutionItem(m));
     } else if (m.role === 'compactionSummary') {
       const tokensBefore = Number(m.tokensBefore) || undefined;
-      s.items.push({ kind: 'compaction', key: newKey(), summary: String(m.summary ?? ''), tokensBefore, open: false, hidden: 0, openSummary: true });
+      s.items.push({
+        kind: 'compaction',
+        key: newKey(),
+        summary: String(m.summary ?? ''),
+        tokensBefore,
+        open: false,
+        hidden: 0,
+        openSummary: true,
+      });
     }
   }
   if (sawAssistant) s.items.push({ kind: 'foot', key: newKey(), t: s.meta.updatedAt });
@@ -589,4 +907,5 @@ export function applyViewMode(s: SessionView, view: ViewMode) {
   }
 }
 
-export const hasThinking = (s: SessionView | undefined) => !!s?.items.some((i) => i.kind === 'group' && i.thoughts.length > 0);
+export const hasThinking = (s: SessionView | undefined) =>
+  !!s?.items.some((i) => i.kind === 'group' && i.thoughts.length > 0);

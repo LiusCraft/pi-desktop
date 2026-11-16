@@ -15,15 +15,30 @@ export function ReferencePreview({ reference }: { reference: ContextReference })
   const { copied, copy } = useCopy();
   const text = reference.text ?? '';
   const lineCount = text ? text.split('\n').length : 0;
-  const Icon = reference.kind === 'diff' ? GitCompareIcon : reference.kind === 'session' ? MessageSquareIcon : SquareTerminalIcon;
-  const title = reference.kind === 'session' ? reference.title || t('ref.session') : reference.kind === 'diff' ? t('ref.diff') : t('ref.terminal');
+  const Icon =
+    reference.kind === 'diff' ? GitCompareIcon : reference.kind === 'session' ? MessageSquareIcon : SquareTerminalIcon;
+  const title =
+    reference.kind === 'session'
+      ? reference.title || t('ref.session')
+      : reference.kind === 'diff'
+        ? t('ref.diff')
+        : t('ref.terminal');
   return (
     <div className="w-96 max-w-[80vw] text-sm">
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate font-medium" title={title}>{title}</span>
+        <span className="min-w-0 flex-1 truncate font-medium" title={title}>
+          {title}
+        </span>
         {!!text && (
-          <Button variant="ghost" size="icon" className="size-6" title={t(copied ? 'ref.copied' : 'ref.copy')} aria-label={t('ref.copy')} onClick={() => copy(text)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-6"
+            title={t(copied ? 'ref.copied' : 'ref.copy')}
+            aria-label={t('ref.copy')}
+            onClick={() => copy(text)}
+          >
             {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
           </Button>
         )}
@@ -34,18 +49,34 @@ export function ReferencePreview({ reference }: { reference: ContextReference })
           <p>{t('ref.pointer')}</p>
         </div>
       ) : text ? (
-        <pre data-selectable className="max-h-72 overflow-auto px-3 py-2 font-mono text-xs whitespace-pre-wrap break-words">{text}</pre>
+        <pre
+          data-selectable
+          className="max-h-72 overflow-auto px-3 py-2 font-mono text-xs break-words whitespace-pre-wrap"
+        >
+          {text}
+        </pre>
       ) : (
         <p className="px-3 py-2 text-xs text-muted-foreground">{t('ref.empty')}</p>
       )}
       <div className="flex items-center gap-2 border-t px-3 py-2">
         {reference.kind === 'diff' && (
-          <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={openDiffPanel}>{t('ref.openDiff')}</Button>
+          <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={openDiffPanel}>
+            {t('ref.openDiff')}
+          </Button>
         )}
         {reference.kind === 'session' && reference.sessionId && (
-          <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => void openSession(reference.sessionId!)}>{t('ref.openSession')}</Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="h-7 text-xs"
+            onClick={() => void openSession(reference.sessionId!)}
+          >
+            {t('ref.openSession')}
+          </Button>
         )}
-        {reference.kind === 'terminal' && lineCount > 0 && <span className="text-xs text-muted-foreground">{t('ref.lines', { n: lineCount })}</span>}
+        {reference.kind === 'terminal' && lineCount > 0 && (
+          <span className="text-xs text-muted-foreground">{t('ref.lines', { n: lineCount })}</span>
+        )}
       </div>
     </div>
   );
@@ -56,7 +87,12 @@ function ReferenceChip({ token, reference }: { token: string; reference: Context
   // A path typed by hand has no snapshot; its badge opens the file.
   if (!reference) {
     return (
-      <button type="button" className="chip-inline" title={t('ctx.file')} onClick={() => void openFileRef(token.replace(/^@/, ''))}>
+      <button
+        type="button"
+        className="chip-inline"
+        title={t('ctx.file')}
+        onClick={() => void openFileRef(token.replace(/^@/, ''))}
+      >
         {token}
       </button>
     );
@@ -64,7 +100,9 @@ function ReferenceChip({ token, reference }: { token: string; reference: Context
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button type="button" className="chip-inline" title={t('ref.preview')}>{token}</button>
+        <button type="button" className="chip-inline" title={t('ref.preview')}>
+          {token}
+        </button>
       </PopoverTrigger>
       <PopoverContent side="bottom" align="start" className="w-auto p-0">
         <ReferencePreview reference={reference} />
@@ -81,7 +119,9 @@ export function InlineMessage({ text, references }: { text: string; references: 
         segment.kind === 'text' ? (
           <span key={i}>{segment.text}</span>
         ) : segment.kind === 'command' ? (
-          <span key={i} className="chip-inline">{segment.token}</span>
+          <span key={i} className="chip-inline">
+            {segment.token}
+          </span>
         ) : (
           <ReferenceChip key={i} token={segment.token} reference={segment.reference} />
         ),

@@ -40,8 +40,10 @@ function remarkFileRefs() {
         }
         FILE_REF.lastIndex = 0;
         const m = FILE_REF.exec(child.value);
-        if (m && m[0] === child.value) out.push({ type: 'link', url: `${FILE_SCHEME}${m[1]}:${m[2]}`, children: [child] });
-        else if (BARE_PATH.test(child.value)) out.push({ type: 'link', url: `${FILE_SCHEME}${child.value}:0`, children: [child] });
+        if (m && m[0] === child.value)
+          out.push({ type: 'link', url: `${FILE_SCHEME}${m[1]}:${m[2]}`, children: [child] });
+        else if (BARE_PATH.test(child.value))
+          out.push({ type: 'link', url: `${FILE_SCHEME}${child.value}:0`, children: [child] });
         else out.push(child);
         continue;
       }
@@ -67,7 +69,19 @@ function remarkFileRefs() {
 
 /** `flush`: for a code block that is already inside a bordered panel (tool output): it draws only the separator above itself. */
 /** `collapsible` starts the block folded to its header; the header toggles it. */
-export function CodeBlock({ lang, code, extra, flush, collapsible }: { lang: string; code: string; extra?: ReactNode; flush?: boolean; collapsible?: boolean }) {
+export function CodeBlock({
+  lang,
+  code,
+  extra,
+  flush,
+  collapsible,
+}: {
+  lang: string;
+  code: string;
+  extra?: ReactNode;
+  flush?: boolean;
+  collapsible?: boolean;
+}) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState(!collapsible);
@@ -79,23 +93,40 @@ export function CodeBlock({ lang, code, extra, flush, collapsible }: { lang: str
   };
   return (
     <div className={cn('bg-code', flush ? 'border-t first:border-t-0' : 'my-2 overflow-hidden rounded-lg border')}>
-      <div className={cn('flex items-center justify-between px-3 py-1 text-xs text-muted-foreground', open && 'border-b')}>
+      <div
+        className={cn('flex items-center justify-between px-3 py-1 text-xs text-muted-foreground', open && 'border-b')}
+      >
         {collapsible ? (
-          <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex items-center gap-1 font-mono hover:text-foreground">
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+            className="flex items-center gap-1 font-mono hover:text-foreground"
+          >
             <ChevronRightIcon className={cn('size-3 transition-transform', open && 'rotate-90')} />
             {lang || 'text'}
           </button>
-        ) : <span className="font-mono">{lang || 'text'}</span>}
+        ) : (
+          <span className="font-mono">{lang || 'text'}</span>
+        )}
         <div className="flex items-center gap-1">
           {extra}
-          <button onClick={copy} className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent hover:text-foreground">
+          <button
+            onClick={copy}
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent hover:text-foreground"
+          >
             {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
             {t(copied ? 'md.copied' : 'md.copy')}
           </button>
         </div>
       </div>
       {open && (
-        <pre className={cn('overflow-x-auto px-3 py-2.5 font-mono text-[12.5px] leading-relaxed', flush && 'max-h-80 overflow-y-auto')}>
+        <pre
+          className={cn(
+            'overflow-x-auto px-3 py-2.5 font-mono text-[12.5px] leading-relaxed',
+            flush && 'max-h-80 overflow-y-auto',
+          )}
+        >
           <code dangerouslySetInnerHTML={{ __html: highlight(code, langOfFence(lang)) }} />
         </pre>
       )}
@@ -108,10 +139,18 @@ const components: Components = {
     if (href?.startsWith(FILE_SCHEME)) {
       // Markdown percent-encodes non-ASCII characters in a link target (下午好 → %E4%B8%8B…).
       let ref = href.slice(FILE_SCHEME.length);
-      try { ref = decodeURIComponent(ref); } catch { /* not encoded after all */ }
+      try {
+        ref = decodeURIComponent(ref);
+      } catch {
+        /* not encoded after all */
+      }
       const at = ref.lastIndexOf(':');
       return (
-        <button type="button" className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary" onClick={() => void openFileRef(ref.slice(0, at), Number(ref.slice(at + 1)))}>
+        <button
+          type="button"
+          className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+          onClick={() => void openFileRef(ref.slice(0, at), Number(ref.slice(at + 1)))}
+        >
           {children}
         </button>
       );
@@ -121,7 +160,8 @@ const components: Components = {
         href={href}
         onClick={(e) => {
           e.preventDefault();
-          if (href && /^https?:\/\//i.test(href)) call('app:openExternal', href).catch(() => toast.error(tr('md.openLinkFailed')));
+          if (href && /^https?:\/\//i.test(href))
+            call('app:openExternal', href).catch(() => toast.error(tr('md.openLinkFailed')));
         }}
       >
         {children}
@@ -150,13 +190,28 @@ const urlTransform = (url: string) => (url.startsWith(FILE_SCHEME) ? url : defau
 const FADE = { animation: 'rise', duration: 600, easing: 'ease-out', sep: 'char', stagger: 0 } as const;
 
 /** `animate`: fade in newly arrived text (the reply is still streaming). */
-export const Markdown = memo(function Markdown({ text, className, children, animate }: { text: string; className?: string; children?: ReactNode; animate?: boolean }) {
+export const Markdown = memo(function Markdown({
+  text,
+  className,
+  children,
+  animate,
+}: {
+  text: string;
+  className?: string;
+  children?: ReactNode;
+  animate?: boolean;
+}) {
   // The plugin remembers how much text was already shown, so it lives as long as the component.
   const fade = useMemo(() => createAnimatePlugin(FADE), []);
   useLayoutEffect(() => fade.commit());
   return (
     <div className={cn('prose-chat', className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkTrimAutolinks, remarkFileRefs]} rehypePlugins={animate ? [fade.rehypePlugin] : undefined} components={components} urlTransform={urlTransform}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkTrimAutolinks, remarkFileRefs]}
+        rehypePlugins={animate ? [fade.rehypePlugin] : undefined}
+        components={components}
+        urlTransform={urlTransform}
+      >
         {text}
       </ReactMarkdown>
       {children}

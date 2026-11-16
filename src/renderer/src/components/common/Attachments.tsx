@@ -10,7 +10,11 @@ import { cn } from '@/lib/utils';
 
 type AnyAttachment = Attachment | DecodedAttachment;
 
-export function AttachmentTiles({ attachments, onRemove, disabled }: {
+export function AttachmentTiles({
+  attachments,
+  onRemove,
+  disabled,
+}: {
   attachments: AnyAttachment[];
   onRemove?: (index: number) => void;
   disabled?: boolean;
@@ -29,8 +33,19 @@ export function AttachmentTiles({ attachments, onRemove, disabled }: {
           const src = imageSource(a);
           const missing = 'missing' in a && a.missing;
           return (
-            <div key={a.id} className={cn('group relative flex h-14 max-w-56 items-center gap-2 overflow-hidden rounded-lg border bg-card pr-3 text-left', missing && 'opacity-60')}>
-              <button type="button" onClick={() => open(a)} title={a.kind === 'file' ? t('attach.localRef', { path: a.path }) : a.name} className="flex h-full min-w-0 items-center gap-2">
+            <div
+              key={a.id}
+              className={cn(
+                'group relative flex h-14 max-w-56 items-center gap-2 overflow-hidden rounded-lg border bg-card pr-3 text-left',
+                missing && 'opacity-60',
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => open(a)}
+                title={a.kind === 'file' ? t('attach.localRef', { path: a.path }) : a.name}
+                className="flex h-full min-w-0 items-center gap-2"
+              >
                 {src ? (
                   <img src={src} alt={a.name} className="h-full w-14 shrink-0 object-cover" />
                 ) : (
@@ -41,7 +56,11 @@ export function AttachmentTiles({ attachments, onRemove, disabled }: {
                 <span className="min-w-0">
                   <span className="block truncate text-xs font-medium">{a.name}</span>
                   <span className="block text-[11px] text-muted-foreground">
-                    {missing ? t('attach.unavailable') : a.kind === 'file' ? t('attach.localFile', { size: sizeLabel(a.size) }) : sizeLabel(a.size)}
+                    {missing
+                      ? t('attach.unavailable')
+                      : a.kind === 'file'
+                        ? t('attach.localFile', { size: sizeLabel(a.size) })
+                        : sizeLabel(a.size)}
                   </span>
                 </span>
               </button>

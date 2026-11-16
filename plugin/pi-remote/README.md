@@ -26,3 +26,6 @@ Sessions run inside the pi process, sharing pi's logins (`auth.json`) and models
 keep the default loopback binding behind an SSH tunnel or a VPN, and never expose the port to the internet.
 
 This package is a build of `src/agent/remote/plugin.ts` (`npm run build:plugin` in the Pi Desktop repo).
+It is published from the same tag as Pi Desktop itself, so its version matches the app it was built for; the
+two ends compare a protocol version when they connect and refuse a mismatched pair with a message saying
+which side to update.

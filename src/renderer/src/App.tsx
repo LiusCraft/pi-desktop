@@ -3,16 +3,31 @@ import { useDefaultLayout, usePanelRef } from 'react-resizable-panels';
 import { PERMISSION_CHOICES } from '@shared/protocol';
 import { CommandPalette } from '@/components/dialogs/CommandPalette';
 import { DialogHost } from '@/components/dialogs/DialogHost';
+import { NativeTooltip } from '@/components/common/NativeTooltip';
 import { Main } from '@/components/layout/Main';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { Toaster } from '@/components/ui/sonner';
-import { TooltipProvider } from '@/components/ui/tooltip';
+import { TOOLTIP_DEFAULT_DELAY, TooltipProvider } from '@/components/ui/tooltip';
 import { bridge, call, isMac } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
-import { answerUi, bootstrap, cycleViewMode, fail, handleHostEvent, loadPlugins, openSession, requestFind, showWelcome, stop, toggleSidebar, togglePanel } from '@/store/actions';
+import {
+  answerUi,
+  bootstrap,
+  cycleViewMode,
+  fail,
+  handleHostEvent,
+  loadPlugins,
+  openSession,
+  requestFind,
+  showWelcome,
+  stop,
+  toggleSidebar,
+  togglePanel,
+} from '@/store/actions';
 import { currentSession, getApp, setApp, useApp } from '@/store/app';
 import { activeDraft, drafts } from '@/store/drafts';
+import { bashRunning } from '@/store/transcript';
 import { useDialogs } from '@/store/dialogs';
 import { watchSideWindows } from '@/store/side';
 import { watchCodeSession } from '@/store/refresh';
@@ -45,7 +60,11 @@ function useShortcuts() {
       }
       const s = currentSession();
       if (!s) return;
-      if (e.key === 'Escape' && (s.running || s.compacting) && !document.querySelector('[role=menu],[role=dialog]')) {
+      if (
+        e.key === 'Escape' &&
+        (s.running || s.compacting || bashRunning(s)) &&
+        !document.querySelector('[role=menu],[role=dialog]')
+      ) {
         e.preventDefault();
         return void stop(s.meta.id);
       }
@@ -63,7 +82,13 @@ function useShortcuts() {
       }
       // 1 / 2 / 3 answer a waiting permission card while the composer is empty.
       const waiting = s.waiting ? s.items.find((i) => i.key === s.waiting) : undefined;
-      if (waiting?.kind === 'perm' && ['1', '2', '3'].includes(e.key) && !mod && !activeDraft()?.text.trim() && document.activeElement?.tagName !== 'INPUT') {
+      if (
+        waiting?.kind === 'perm' &&
+        ['1', '2', '3'].includes(e.key) &&
+        !mod &&
+        !activeDraft()?.text.trim() &&
+        document.activeElement?.tagName !== 'INPUT'
+      ) {
         e.preventDefault();
         const v = PERMISSION_CHOICES[Number(e.key) - 1];
         answerUi(s.meta.id, waiting.key, { value: v }, v);
@@ -109,7 +134,9 @@ export function App() {
 
   // A plugin page belongs to a package of the project in view: another project brings another set.
   const pluginProject = useApp((s) => (s.view === 'work' ? null : s.prefs.project));
-  useEffect(() => { loadPlugins(); }, [pluginProject]);
+  useEffect(() => {
+    loadPlugins();
+  }, [pluginProject]);
 
   // The sidebar's collapsed state lives in settings; the panel follows it.
   useEffect(() => {
@@ -120,9 +147,14 @@ export function App() {
   }, [collapsed, sidebar]);
 
   return (
-    <TooltipProvider delayDuration={400}>
+    <TooltipProvider delayDuration={TOOLTIP_DEFAULT_DELAY}>
       <div className="h-screen w-screen" data-platform={bridge.platform}>
-        <ResizablePanelGroup orientation="horizontal" id="shell" defaultLayout={shell.defaultLayout} onLayoutChanged={shell.onLayoutChanged}>
+        <ResizablePanelGroup
+          orientation="horizontal"
+          id="shell"
+          defaultLayout={shell.defaultLayout}
+          onLayoutChanged={shell.onLayoutChanged}
+        >
           <ResizablePanel
             id="sidebar"
             panelRef={sidebar}
@@ -146,6 +178,7 @@ export function App() {
       </div>
       <CommandPalette />
       <DialogHost />
+      <NativeTooltip />
       <Toaster position="bottom-right" />
     </TooltipProvider>
   );

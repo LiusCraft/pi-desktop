@@ -34,7 +34,8 @@ export interface DesktopPluginsOptions {
   packages: (project: string | null) => PluginPackage[];
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
 
 /** Every permission the manifest asks for has been agreed to. */
 const covers = (granted: PluginPermission[], asked: PluginPermission[]) => asked.every((p) => granted.includes(p));
@@ -68,7 +69,12 @@ export class DesktopPlugins {
    * permission in the manifest: a plugin that was granted a subset after an upgrade must be reviewed
    * again, which is what `needsGrant` reports until the user does.
    */
-  setEnabled(project: string | null, id: string, enabled: boolean, granted: PluginPermission[] | null): DesktopPluginInfo[] {
+  setEnabled(
+    project: string | null,
+    id: string,
+    enabled: boolean,
+    granted: PluginPermission[] | null,
+  ): DesktopPluginInfo[] {
     const plugin = this.list(project).find((p) => p.id === id);
     if (!plugin) throw new Error(tr('plugins.err.notFound', { id }));
     // A broken package cannot be turned on, but it can always be turned off.
@@ -77,7 +83,11 @@ export class DesktopPlugins {
     const registry = this.read();
     // What the user agreed to is the manifest's list at this moment; a later manifest that adds a
     // permission no longer matches, and the plugin stops being `ready` until it is reviewed.
-    registry.plugins[id] = { source: plugin.source, enabled, granted: enabled ? plugin.permissions : (registry.plugins[id]?.granted ?? []) };
+    registry.plugins[id] = {
+      source: plugin.source,
+      enabled,
+      granted: enabled ? plugin.permissions : (registry.plugins[id]?.granted ?? []),
+    };
     this.write(registry);
     return this.list(project);
   }
@@ -102,7 +112,9 @@ export class DesktopPlugins {
       plugins[id] = {
         source: value.source,
         enabled: value.enabled === true,
-        granted: Array.isArray(value.granted) ? value.granted.filter((p): p is PluginPermission => typeof p === 'string') : [],
+        granted: Array.isArray(value.granted)
+          ? value.granted.filter((p): p is PluginPermission => typeof p === 'string')
+          : [],
       };
     }
     return { plugins };
@@ -129,10 +141,14 @@ export class DesktopPlugins {
     const enabled = entry?.enabled === true;
     const granted = entry?.granted ?? [];
     const missing = manifest ? missingEntry(pkg.root, manifest) : null;
-    const error = parsed.kind === 'error' ? parsed.error
-      : missing ? tr('plugins.err.missingEntry', { value: missing })
-        : taken.has(id) ? tr('plugins.err.idTaken', { id, source: taken.get(id)! })
-          : null;
+    const error =
+      parsed.kind === 'error'
+        ? parsed.error
+        : missing
+          ? tr('plugins.err.missingEntry', { value: missing })
+          : taken.has(id)
+            ? tr('plugins.err.idTaken', { id, source: taken.get(id)! })
+            : null;
     if (!error) taken.set(id, pkg.source);
     const needsGrant = enabled && !!manifest && !covers(granted, manifest.permissions);
     return {

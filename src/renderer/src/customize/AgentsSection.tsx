@@ -25,7 +25,13 @@ interface Form {
 }
 const blank: Form = { name: '', description: '', model: '', tools: [], body: '', builtin: false };
 const toForm = (a: AgentConfig): Form => ({
-  originalName: a.name, name: a.name, description: a.description, model: a.model ?? '', tools: a.tools ?? [], body: a.body, builtin: a.source === 'builtin',
+  originalName: a.name,
+  name: a.name,
+  description: a.description,
+  model: a.model ?? '',
+  tools: a.tools ?? [],
+  body: a.body,
+  builtin: a.source === 'builtin',
 });
 
 export function AgentsSection() {
@@ -35,7 +41,9 @@ export function AgentsSection() {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
-    void call('agents:list').then(setCatalog).catch((e) => toast.error(errText(e)));
+    void call('agents:list')
+      .then(setCatalog)
+      .catch((e) => toast.error(errText(e)));
   }, []);
   useEffect(load, [load]);
 
@@ -44,8 +52,12 @@ export function AgentsSection() {
     setBusy(true);
     try {
       const draft: AgentDraft = {
-        originalName: form.originalName, name: form.name, description: form.description, body: form.body,
-        model: form.model || null, tools: form.tools,
+        originalName: form.originalName,
+        name: form.name,
+        description: form.description,
+        body: form.body,
+        model: form.model || null,
+        tools: form.tools,
       };
       setCatalog(await call('agents:save', draft));
       setForm(null);
@@ -70,30 +82,69 @@ export function AgentsSection() {
     const existing = catalog?.agents.find((a) => a.name === form.originalName);
     return (
       <>
-        <Heading title={form.originalName ? t('agents.edit', { name: form.originalName }) : t('agents.new')} sub={t('agents.form.sub')} tip={t('agents.form.tip')} />
+        <Heading
+          title={form.originalName ? t('agents.edit', { name: form.originalName }) : t('agents.new')}
+          sub={t('agents.form.sub')}
+          tip={t('agents.form.tip')}
+        />
         <div className="space-y-4 rounded-xl border bg-card p-4">
           <Field label={t('skills.name')} hint={t('agents.name.hint')}>
-            <Input value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="reviewer" disabled={form.builtin} spellCheck={false} />
+            <Input
+              value={form.name}
+              onChange={(e) => set({ name: e.target.value })}
+              placeholder="reviewer"
+              disabled={form.builtin}
+              spellCheck={false}
+            />
           </Field>
           <Field label={t('skills.description')} hint={t('agents.description.hint')}>
-            <Input value={form.description} onChange={(e) => set({ description: e.target.value })} placeholder="Reviews a diff for bugs and risky changes" />
+            <Input
+              value={form.description}
+              onChange={(e) => set({ description: e.target.value })}
+              placeholder="Reviews a diff for bugs and risky changes"
+            />
           </Field>
           <Field label={t('agents.model')}>
-            <ModelPicker value={form.model || null} onChange={(model) => set({ model: model ?? '' })} emptyLabel={t('agents.followMain')} label={t('agents.modelLabel')} />
+            <ModelPicker
+              value={form.model || null}
+              onChange={(model) => set({ model: model ?? '' })}
+              emptyLabel={t('agents.followMain')}
+              label={t('agents.modelLabel')}
+            />
           </Field>
           <Field label={t('agents.tools')} hint={t('agents.tools.hint')} tip={t('agents.tools.tip')}>
             <ToolsInput value={form.tools} onChange={(tools) => set({ tools })} placeholder={t('agents.toolsPh')} />
           </Field>
           <Field label={t('agents.prompt')}>
-            <Textarea value={form.body} onChange={(e) => set({ body: e.target.value })} rows={10} placeholder="You are a meticulous code reviewer…" className="min-h-48 font-mono text-xs" />
+            <Textarea
+              value={form.body}
+              onChange={(e) => set({ body: e.target.value })}
+              rows={10}
+              placeholder="You are a meticulous code reviewer…"
+              className="min-h-48 font-mono text-xs"
+            />
           </Field>
           <div className="flex items-center gap-2 pt-1">
-            <Button onClick={() => void save()} disabled={busy}>{t(form.builtin ? 'agents.saveCustom' : 'agents.save')}</Button>
-            <Button variant="ghost" onClick={() => setForm(null)}>{t('agents.cancel')}</Button>
+            <Button onClick={() => void save()} disabled={busy}>
+              {t(form.builtin ? 'agents.saveCustom' : 'agents.save')}
+            </Button>
+            <Button variant="ghost" onClick={() => setForm(null)}>
+              {t('agents.cancel')}
+            </Button>
             <span className="flex-1" />
             {existing?.source === 'user' && (
               <Button variant="ghost" className="text-destructive" onClick={() => void remove(existing.name)}>
-                {existing.overrides ? <><RotateCcwIcon className="size-4" />{t('agents.restore')}</> : <><Trash2Icon className="size-4" />{t('agents.delete')}</>}
+                {existing.overrides ? (
+                  <>
+                    <RotateCcwIcon className="size-4" />
+                    {t('agents.restore')}
+                  </>
+                ) : (
+                  <>
+                    <Trash2Icon className="size-4" />
+                    {t('agents.delete')}
+                  </>
+                )}
               </Button>
             )}
           </div>
@@ -106,10 +157,19 @@ export function AgentsSection() {
     <>
       <Heading title={t('agents.title')} sub={t('agents.sub')} tip={t('agents.tip')} />
       <div className="mb-3 flex items-center gap-2">
-        <Button size="sm" onClick={() => setForm({ ...blank })}><PlusIcon className="size-4" />{t('agents.new')}</Button>
+        <Button size="sm" onClick={() => setForm({ ...blank })}>
+          <PlusIcon className="size-4" />
+          {t('agents.new')}
+        </Button>
         {!isRemote && (
-          <Button size="sm" variant="outline" disabled={!catalog} onClick={() => catalog && call('app:revealPath', catalog.dir).catch((e) => toast.error(errText(e)))}>
-            <FolderOpenIcon className="size-4" />{t('agents.openFolder')}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!catalog}
+            onClick={() => catalog && call('app:revealPath', catalog.dir).catch((e) => toast.error(errText(e)))}
+          >
+            <FolderOpenIcon className="size-4" />
+            {t('agents.openFolder')}
           </Button>
         )}
         <span className="flex-1" />
@@ -118,16 +178,23 @@ export function AgentsSection() {
       <Panel>
         {catalog?.agents.map((a) => (
           <div key={a.name} className="flex items-start gap-3 px-4 py-3">
-            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/40"><BotIcon className="size-4 text-muted-foreground" /></span>
+            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
+              <BotIcon className="size-4 text-muted-foreground" />
+            </span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="font-mono text-sm font-medium">{a.name}</span>
-                <Badge variant="secondary">{t(a.source === 'builtin' ? 'agents.builtin' : a.overrides ? 'agents.overridden' : 'agents.custom')}</Badge>
+                <Badge variant="secondary">
+                  {t(a.source === 'builtin' ? 'agents.builtin' : a.overrides ? 'agents.overridden' : 'agents.custom')}
+                </Badge>
                 {a.model && <span className="text-xs text-muted-foreground">{a.model}</span>}
               </div>
               <div className="mt-0.5 text-xs text-muted-foreground">{a.description}</div>
             </div>
-            <Button size="sm" variant="outline" onClick={() => setForm(toForm(a))}><PencilIcon className="size-3.5" />{t('agents.editBtn')}</Button>
+            <Button size="sm" variant="outline" onClick={() => setForm(toForm(a))}>
+              <PencilIcon className="size-3.5" />
+              {t('agents.editBtn')}
+            </Button>
           </div>
         ))}
         {!catalog && <div className="px-4 py-3 text-sm text-muted-foreground">{t('customize.loading')}</div>}

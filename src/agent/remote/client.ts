@@ -2,7 +2,13 @@
 // local `AgentClient` so the main process can route the UI to either.
 import type { HostEvent } from '@shared/protocol';
 import {
-  REMOTE_PATHS, REMOTE_RETRY_MS, REMOTE_STALE_MS, type RemoteLinkState, type RemotePing, type RemoteRpcResponse,
+  REMOTE_API_VERSION,
+  REMOTE_PATHS,
+  REMOTE_RETRY_MS,
+  REMOTE_STALE_MS,
+  type RemoteLinkState,
+  type RemotePing,
+  type RemoteRpcResponse,
 } from '@shared/remote';
 
 const PING_TIMEOUT_MS = 5000;
@@ -19,8 +25,19 @@ function reach(err: unknown): Error {
   const code = (err as { cause?: { code?: string } })?.cause?.code;
   if (code === 'ECONNREFUSED') return new Error('Connection refused: remote access is not running at that address.');
   if (code === 'ENOTFOUND') return new Error('The address could not be found.');
-  if ((err as Error)?.name === 'TimeoutError' || (err as Error)?.name === 'AbortError') return new Error('The remote did not answer in time.');
+  if ((err as Error)?.name === 'TimeoutError' || (err as Error)?.name === 'AbortError')
+    return new Error('The remote did not answer in time.');
   return err instanceof Error ? err : new Error(String(err));
+}
+
+/** Which side is the older one, in words for the person who typed the address. */
+function versionMismatch(ping: RemotePing): Error {
+  const there = ping.kind === 'plugin' ? 'the pi-remote plugin there' : 'Pi Desktop there';
+  const version = Number.isInteger(ping.version) ? `protocol v${ping.version}` : 'an unknown protocol';
+  // A server too old to send a number is the older side by definition.
+  if (!Number.isInteger(ping.version) || ping.version < REMOTE_API_VERSION)
+    return new Error(`That remote speaks ${version}, older than v${REMOTE_API_VERSION} here: update ${there}.`);
+  return new Error(`That remote speaks ${version}, newer than v${REMOTE_API_VERSION} here: update Pi Desktop here.`);
 }
 
 export async function pingRemote(url: string): Promise<RemotePing> {
@@ -32,6 +49,8 @@ export async function pingRemote(url: string): Promise<RemotePing> {
   }
   const ping = (await res.json().catch(() => null)) as RemotePing | null;
   if (!ping || ping.app !== 'pi-remote') throw new Error('That address is not a Pi remote.');
+  // The plugin is published on its own and the app ships a copy, so the two sides are updated separately.
+  if (ping.version !== REMOTE_API_VERSION) throw versionMismatch(ping);
   return ping;
 }
 
@@ -113,7 +132,12 @@ export class RemoteClient {
       } catch (err) {
         if ((err as Error).message === 'Wrong access token.') {
           // The token was rotated on the other side: retrying cannot help.
-          this.options.onEvent({ type: 'notify', sessionId: '', message: 'The remote refused the access token.', level: 'error' });
+          this.options.onEvent({
+            type: 'notify',
+            sessionId: '',
+            message: 'The remote refused the access token.',
+            level: 'error',
+          });
         }
         this.set('reconnecting');
       }
@@ -141,7 +165,11 @@ export class RemoteClient {
         while ((end = buffer.indexOf('\n\n')) >= 0) {
           const frame = buffer.slice(0, end);
           buffer = buffer.slice(end + 2);
-          const data = frame.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trimStart()).join('\n');
+          const data = frame
+            .split('\n')
+            .filter((l) => l.startsWith('data:'))
+            .map((l) => l.slice(5).trimStart())
+            .join('\n');
           if (!data) continue;
           try {
             this.options.onEvent(JSON.parse(data) as HostEvent);

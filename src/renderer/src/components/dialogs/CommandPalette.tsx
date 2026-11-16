@@ -1,4 +1,12 @@
-import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from '@/components/ui/command';
+import {
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandShortcut,
+} from '@/components/ui/command';
 import { call, canTerminal, modKey } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { ago, fname } from '@/lib/format';
@@ -15,19 +23,58 @@ export function CommandPalette() {
     setOpen(false);
     fn();
   };
-  const list = Object.values(sessions).filter((s) => !s.meta.archived).sort((a, b) => (b.meta.updatedAt || 0) - (a.meta.updatedAt || 0)).slice(0, 40);
+  const list = Object.values(sessions)
+    .filter((s) => !s.meta.archived)
+    .sort((a, b) => (b.meta.updatedAt || 0) - (a.meta.updatedAt || 0))
+    .slice(0, 40);
   // The diff and the terminal are Code panels: a Work session has no card to show for them.
   const codeSession = useApp((s) => (s.current ? s.sessions[s.current]?.meta.kind : undefined)) === 'code';
   const actions: { label: string; hint?: string; run: () => unknown }[] = [
-    { label: t('palette.newSession'), hint: 'Code', run: () => { setView('code'); showWelcome(); } },
-    { label: t('palette.newTask'), hint: 'Work', run: () => { setView('work'); showWelcome(); } },
+    {
+      label: t('palette.newSession'),
+      hint: 'Code',
+      run: () => {
+        setView('code');
+        showWelcome();
+      },
+    },
+    {
+      label: t('palette.newTask'),
+      hint: 'Work',
+      run: () => {
+        setView('work');
+        showWelcome();
+      },
+    },
     { label: t('palette.openFolder'), run: () => void addProject() },
-    ...(codeSession ? [
-      { label: t('palette.toggleDiff'), hint: `${modKey}D`, run: () => { const s = currentSession(); if (s) togglePanel(s.meta.id, 'diff'); } },
-      ...(canTerminal ? [{ label: t('palette.toggleTerminal'), run: () => { const s = currentSession(); if (s) togglePanel(s.meta.id, 'terminal'); } }] : []),
-    ] : []),
+    ...(codeSession
+      ? [
+          {
+            label: t('palette.toggleDiff'),
+            hint: `${modKey}D`,
+            run: () => {
+              const s = currentSession();
+              if (s) togglePanel(s.meta.id, 'diff');
+            },
+          },
+          ...(canTerminal
+            ? [
+                {
+                  label: t('palette.toggleTerminal'),
+                  run: () => {
+                    const s = currentSession();
+                    if (s) togglePanel(s.meta.id, 'terminal');
+                  },
+                },
+              ]
+            : []),
+        ]
+      : []),
     { label: t('palette.models'), run: () => call('settings:open', 'models') },
-    { label: t('palette.toggleTheme'), run: () => call('settings:set', { theme: getApp().settings.resolvedTheme === 'dark' ? 'light' : 'dark' }) },
+    {
+      label: t('palette.toggleTheme'),
+      run: () => call('settings:set', { theme: getApp().settings.resolvedTheme === 'dark' ? 'light' : 'dark' }),
+    },
     { label: t('palette.settings'), hint: `${modKey},`, run: () => call('settings:open') },
   ];
   return (
@@ -38,9 +85,15 @@ export function CommandPalette() {
         {list.length > 0 && (
           <CommandGroup heading={t('palette.sessions')}>
             {list.map((s) => (
-              <CommandItem key={s.meta.id} value={`${s.meta.title} ${s.meta.id}`} onSelect={() => run(() => void openSession(s.meta.id))}>
+              <CommandItem
+                key={s.meta.id}
+                value={`${s.meta.title} ${s.meta.id}`}
+                onSelect={() => run(() => void openSession(s.meta.id))}
+              >
                 <span className="truncate">{s.meta.title}</span>
-                <CommandShortcut>{s.meta.kind === 'work' ? 'Work' : fname(s.meta.projectPath)} · {ago(s.meta.updatedAt || Date.now())}</CommandShortcut>
+                <CommandShortcut>
+                  {s.meta.kind === 'work' ? 'Work' : fname(s.meta.projectPath)} · {ago(s.meta.updatedAt || Date.now())}
+                </CommandShortcut>
               </CommandItem>
             ))}
           </CommandGroup>

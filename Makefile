@@ -22,7 +22,7 @@ DMG := $(DIST)/Pi-Desktop-$(CURRENT_VERSION)-$(ARCH).dmg
 
 .DEFAULT_GOAL := help
 .PHONY: help check-darwin install dev demo test icon app run dmg dist \
-	release publish clean distclean
+	release publish cask clean distclean
 
 help: ## Show this help
 	@node scripts/make-help.mjs $(MAKEFILE_LIST)
@@ -33,11 +33,14 @@ check-darwin:
 install: ## Install dependencies (npm ci)
 	$(NPM) ci
 
-dev: ## Run from source with hot reload (electron-vite dev)
-	$(NPM) run dev
+# dev/demo get their own Electron profile and app-data folder, so they can run beside the
+# installed app (and each other); they still share out/ in this worktree.
+dev: ## Run from source with hot reload (own profile and data folder)
+	node scripts/isolated-app.mjs dev
 
-demo: ## Build and run against the bundled offline demo
-	$(NPM) run build && $(NPM) run demo
+demo: ## Build and run the offline demo (own profile and data folder)
+	$(NPM) run build
+	node scripts/isolated-app.mjs demo
 
 test: ## Typecheck and run the test suite (real pi sessions, no API key needed)
 	$(NPM) run typecheck
@@ -60,6 +63,9 @@ dmg: check-darwin ## Build a dmg for the host architecture
 dist: check-darwin ## Build dmgs for both arm64 and x64
 	$(NPM) run dist:mac -- --arm64 --x64
 	@ls -lh $(DIST)/Pi-Desktop-*.dmg
+
+cask: ## Print the Homebrew cask for the dmgs in dist/ (CI pushes the same file to the tap)
+	@node scripts/cask.mjs --version="$(CURRENT_VERSION)" --dist="$(DIST)"
 
 win-app: ## Build an unpacked Windows app (dist/win-unpacked)
 	$(NPM) run pack:win

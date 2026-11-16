@@ -19,7 +19,10 @@ export const sidebar = defineMessages({
   'sidebar.more': { en: 'More', zh: '更多' },
   'sidebar.sessionActions': { en: 'Session actions', zh: '会话操作' },
   'sidebar.projects': { en: 'Projects', zh: '项目' },
-  'sidebar.projectsHint': { en: 'Long-running topics with instructions, links and memory', zh: '带着指令、链接和记忆的长期主题' },
+  'sidebar.projectsHint': {
+    en: 'Long-running topics with instructions, links and memory',
+    zh: '带着指令、链接和记忆的长期主题',
+  },
   'sidebar.artifacts': { en: 'Artifacts', zh: '制品' },
   'sidebar.artifactsHint': { en: 'Pages the model made: preview and publish', zh: '模型做的页面，预览与发布' },
   'sidebar.scheduled': { en: 'Scheduled', zh: '定时任务' },
@@ -34,7 +37,10 @@ export const sidebar = defineMessages({
   'sidebar.unpinSession': { en: 'Unpin', zh: '取消置顶' },
   'sidebar.pin': { en: 'Pin to sidebar', zh: '固定到侧边栏' },
   'sidebar.new': { en: 'New', zh: '新建' },
-  'sidebar.moreHint': { en: 'Right-click any item to pin it to the sidebar or move it into More', zh: '右键任意导航项可固定到侧边栏或收进「更多」' },
+  'sidebar.moreHint': {
+    en: 'Right-click any item to pin it to the sidebar or move it into More',
+    zh: '右键任意导航项可固定到侧边栏或收进「更多」',
+  },
   'sidebar.projectActions': { en: 'Project actions', zh: '项目操作' },
   'sidebar.newSessionIn': { en: 'New session in {name}', zh: '在 {name} 中新建会话' },
   'sidebar.showMore': { en: 'Show more', zh: '显示更多' },

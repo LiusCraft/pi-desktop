@@ -36,33 +36,69 @@ export interface ModelAdminOptions {
 
 const label = (source: string | undefined, fallback?: string): string | undefined => {
   switch (source) {
-    case 'stored': return 'auth.json';
-    case 'runtime': return 'runtime key';
-    case 'environment': return fallback ?? 'environment';
-    case 'models_json_key': return 'models.json';
-    case 'models_json_command': return 'models.json command';
-    case 'fallback': return 'models.json';
-    default: return fallback ?? source;
+    case 'stored':
+      return 'auth.json';
+    case 'runtime':
+      return 'runtime key';
+    case 'environment':
+      return fallback ?? 'environment';
+    case 'models_json_key':
+      return 'models.json';
+    case 'models_json_command':
+      return 'models.json command';
+    case 'fallback':
+      return 'models.json';
+    default:
+      return fallback ?? source;
   }
 };
 
 /** Only the wire-safe fields of an auth prompt; the abort signal stays in the host. */
-function wirePrompt(prompt: { type: string; message: string; placeholder?: string; options?: readonly { id: string; label: string; description?: string }[] }): AuthPrompt {
+function wirePrompt(prompt: {
+  type: string;
+  message: string;
+  placeholder?: string;
+  options?: readonly { id: string; label: string; description?: string }[];
+}): AuthPrompt {
   if (prompt.type === 'select') {
-    return { type: 'select', message: prompt.message, options: (prompt.options ?? []).map(({ id, label: l, description }) => ({ id, label: l, description })) };
+    return {
+      type: 'select',
+      message: prompt.message,
+      options: (prompt.options ?? []).map(({ id, label: l, description }) => ({ id, label: l, description })),
+    };
   }
   return { type: prompt.type as AuthPrompt['type'], message: prompt.message, placeholder: prompt.placeholder };
 }
 
 /** Same for the out-of-band login events (readonly arrays become plain arrays). */
-function wireEvent(event: { type: string; message?: string; links?: readonly { url: string; label?: string }[]; url?: string; instructions?: string; userCode?: string; verificationUri?: string; intervalSeconds?: number; expiresInSeconds?: number }): AuthEvent {
+function wireEvent(event: {
+  type: string;
+  message?: string;
+  links?: readonly { url: string; label?: string }[];
+  url?: string;
+  instructions?: string;
+  userCode?: string;
+  verificationUri?: string;
+  intervalSeconds?: number;
+  expiresInSeconds?: number;
+}): AuthEvent {
   switch (event.type) {
     case 'auth_url':
       return { type: 'auth_url', url: String(event.url ?? ''), instructions: event.instructions };
     case 'device_code':
-      return { type: 'device_code', userCode: String(event.userCode ?? ''), verificationUri: String(event.verificationUri ?? ''), intervalSeconds: event.intervalSeconds, expiresInSeconds: event.expiresInSeconds };
+      return {
+        type: 'device_code',
+        userCode: String(event.userCode ?? ''),
+        verificationUri: String(event.verificationUri ?? ''),
+        intervalSeconds: event.intervalSeconds,
+        expiresInSeconds: event.expiresInSeconds,
+      };
     case 'info':
-      return { type: 'info', message: String(event.message ?? ''), links: event.links?.map(({ url, label: l }) => ({ url, label: l })) };
+      return {
+        type: 'info',
+        message: String(event.message ?? ''),
+        links: event.links?.map(({ url, label: l }) => ({ url, label: l })),
+      };
     default:
       return { type: 'progress', message: String(event.message ?? '') };
   }
@@ -110,7 +146,11 @@ export class ModelAdmin {
     const customIds = this.endpoints.ids();
     const status = (id: string): { configured: boolean; authType?: AuthType; source?: string; credential: boolean } => {
       const auth = models.getProviderAuthStatus(id);
-      const authType: AuthType | undefined = auth.configured ? (models.isUsingOAuth(id) ? 'oauth' : 'api_key') : undefined;
+      const authType: AuthType | undefined = auth.configured
+        ? models.isUsingOAuth(id)
+          ? 'oauth'
+          : 'api_key'
+        : undefined;
       return {
         configured: auth.configured,
         authType,
@@ -140,11 +180,20 @@ export class ModelAdmin {
           models: models.getModels(provider.id).length,
         };
       })
-      .sort((a, b) => Number(b.configured) - Number(a.configured) || Number(a.custom) - Number(b.custom) || a.name.localeCompare(b.name));
-    const endpoints = this.endpoints.list(builtinIds, (id) => {
-      const auth = status(id);
-      return { keySet: auth.configured, keySource: auth.source };
-    }, (modelId, providerId) => this.dev.lookup(modelId, providerId));
+      .sort(
+        (a, b) =>
+          Number(b.configured) - Number(a.configured) ||
+          Number(a.custom) - Number(b.custom) ||
+          a.name.localeCompare(b.name),
+      );
+    const endpoints = this.endpoints.list(
+      builtinIds,
+      (id) => {
+        const auth = status(id);
+        return { keySet: auth.configured, keySource: auth.source };
+      },
+      (modelId, providerId) => this.dev.lookup(modelId, providerId),
+    );
     const { error } = this.endpoints.read();
     // Availability failures are background noise, not configuration problems.
     const configErrors = (models.getError() ?? '')
@@ -153,7 +202,11 @@ export class ModelAdmin {
     return {
       providers,
       endpoints,
-      paths: { agentDir: this.opts.agentDir, auth: path.join(this.opts.agentDir, 'auth.json'), models: this.endpoints.file },
+      paths: {
+        agentDir: this.opts.agentDir,
+        auth: path.join(this.opts.agentDir, 'auth.json'),
+        models: this.endpoints.file,
+      },
       catalogAt: this.dev.lastFetched,
       errors: [error, ...configErrors].filter((e): e is string => Boolean(e)),
     };
@@ -191,9 +244,20 @@ export class ModelAdmin {
       if (!provider.auth.apiKey) throw new Error(tr('ag.noApiKey', { name: display }));
       if (!provider.auth.apiKey.login) throw new Error(tr('ag.keyFromEnv', { name: display }));
     }
-    const login: PendingLogin = { id: crypto.randomUUID(), provider: providerId, name: display, controller: new AbortController(), prompts: new Map() };
+    const login: PendingLogin = {
+      id: crypto.randomUUID(),
+      provider: providerId,
+      name: display,
+      controller: new AbortController(),
+      prompts: new Map(),
+    };
     this.logins.set(login.id, login);
-    this.opts.emit({ type: 'auth_event', loginId: login.id, provider: providerId, event: { type: 'progress', message: tr('ag.login', { name: display }) } });
+    this.opts.emit({
+      type: 'auth_event',
+      loginId: login.id,
+      provider: providerId,
+      event: { type: 'progress', message: tr('ag.login', { name: display }) },
+    });
     try {
       await models.login(
         providerId,
@@ -201,7 +265,8 @@ export class ModelAdmin {
         {
           signal: login.controller.signal,
           prompt: (prompt) => this.ask(login, prompt),
-          notify: (event) => this.opts.emit({ type: 'auth_event', loginId: login.id, provider: providerId, event: wireEvent(event) }),
+          notify: (event) =>
+            this.opts.emit({ type: 'auth_event', loginId: login.id, provider: providerId, event: wireEvent(event) }),
         },
         { getDeviceId: this.opts.deviceId },
       );
@@ -215,7 +280,16 @@ export class ModelAdmin {
     this.changed();
   }
 
-  private ask(login: PendingLogin, prompt: { type: string; message: string; placeholder?: string; options?: readonly { id: string; label: string; description?: string }[]; signal?: AbortSignal }): Promise<string> {
+  private ask(
+    login: PendingLogin,
+    prompt: {
+      type: string;
+      message: string;
+      placeholder?: string;
+      options?: readonly { id: string; label: string; description?: string }[];
+      signal?: AbortSignal;
+    },
+  ): Promise<string> {
     const requestId = crypto.randomUUID();
     return new Promise<string>((resolve, reject) => {
       const finish = () => {
@@ -238,7 +312,14 @@ export class ModelAdmin {
           reject(error);
         },
       });
-      this.opts.emit({ type: 'auth_prompt', loginId: login.id, provider: login.provider, providerName: login.name, requestId, prompt: wirePrompt(prompt) });
+      this.opts.emit({
+        type: 'auth_prompt',
+        loginId: login.id,
+        provider: login.provider,
+        providerName: login.name,
+        requestId,
+        prompt: wirePrompt(prompt),
+      });
     });
   }
 
@@ -250,11 +331,15 @@ export class ModelAdmin {
     const login = this.logins.get(loginId);
     if (!login) return;
     login.controller.abort();
+    // A copy: rejecting a prompt removes it from `login.prompts`.
+    // oxlint-disable-next-line unicorn/no-useless-spread
     for (const pending of [...login.prompts.values()]) pending.reject(new Error('Login cancelled'));
   }
 
   /** The settings window closed while a flow was waiting: stop it. */
   cancelAll() {
+    // A copy: cancel() removes from `this.logins`.
+    // oxlint-disable-next-line unicorn/no-useless-spread
     for (const loginId of [...this.logins.keys()]) this.cancel(loginId);
   }
 
@@ -262,7 +347,9 @@ export class ModelAdmin {
     return this.run(async () => {
       const models = this.opts.models();
       await models.logout(providerId, { signal: AbortSignal.timeout(15_000) });
-      await this.opts.refresh({ providers: [providerId], allowNetwork: false, signal: AbortSignal.timeout(15_000) }).catch(() => {});
+      await this.opts
+        .refresh({ providers: [providerId], allowNetwork: false, signal: AbortSignal.timeout(15_000) })
+        .catch(() => {});
       this.changed();
     });
   }
@@ -277,7 +364,11 @@ export class ModelAdmin {
     if (id && models.getProvider(id)) {
       const auth = await models.getAuth(id).catch(() => undefined);
       apiKey ??= auth?.auth.apiKey;
-      headers = Object.fromEntries(Object.entries(auth?.auth.headers ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
+      headers = Object.fromEntries(
+        Object.entries(auth?.auth.headers ?? {}).filter(
+          (entry): entry is [string, string] => typeof entry[1] === 'string',
+        ),
+      );
     }
     const found = await discoverModels({ baseUrl: draft.baseUrl, api: draft.api, apiKey, headers });
     await this.dev.ready();
@@ -299,7 +390,8 @@ export class ModelAdmin {
     if (!validProviderId(id)) throw new Error(tr('ag.providerId'));
     // A built-in override may keep the provider's own API; a new endpoint needs one.
     if (!draft.api.trim() && !builtinIds.has(id)) throw new Error(tr('ag.pickApiType'));
-    if (!builtinIds.has(id) && !draft.models.length && !this.endpoints.ids().has(id)) throw new Error(tr('ag.addModel'));
+    if (!builtinIds.has(id) && !draft.models.length && !this.endpoints.ids().has(id))
+      throw new Error(tr('ag.addModel'));
     if (draft.apiKey?.trim() && builtinIds.has(id)) throw new Error(tr('ag.builtinKey'));
     // Saving manual values must work immediately even without a public catalog.
     this.dev.ensure();
@@ -316,9 +408,16 @@ export class ModelAdmin {
     if (draft.removeKey) await models.logout(id, { signal: AbortSignal.timeout(15_000) }).catch(() => {});
     if (draft.apiKey?.trim()) {
       const key = draft.apiKey.trim();
-      await models.login(id, 'api_key', { prompt: async () => key, notify: () => {} }, { getDeviceId: this.opts.deviceId });
+      await models.login(
+        id,
+        'api_key',
+        { prompt: async () => key, notify: () => {} },
+        { getDeviceId: this.opts.deviceId },
+      );
     }
-    await this.opts.refresh({ providers: [id], allowNetwork: false, signal: AbortSignal.timeout(15_000) }).catch(() => {});
+    await this.opts
+      .refresh({ providers: [id], allowNetwork: false, signal: AbortSignal.timeout(15_000) })
+      .catch(() => {});
     this.changed();
     return this.catalog();
   }

@@ -4,12 +4,27 @@ import { describe, it } from 'vitest';
 import { gitActions, type BranchWork } from '../src/renderer/src/components/composer/pr-actions';
 import { setActiveLocale } from '../src/shared/i18n/runtime';
 
-const state = (p: Partial<{ dirty: string[]; ahead: number; behind: number; baseBehind: number; base: string | null; upstream: string | null }> = {}) =>
-  ({ dirty: [], ahead: 0, behind: 0, baseBehind: 0, base: 'main', upstream: 'origin/feature', ...p });
+const state = (
+  p: Partial<{
+    dirty: string[];
+    ahead: number;
+    behind: number;
+    baseBehind: number;
+    base: string | null;
+    upstream: string | null;
+    hasRemote?: boolean;
+  }> = {},
+) => ({ dirty: [], ahead: 0, behind: 0, baseBehind: 0, base: 'main', upstream: 'origin/feature', ...p });
 const work = (p: Partial<BranchWork> = {}): BranchWork => ({
-  branch: 'feature', baseBranch: 'main', st: state(), pr: null, strategy: 'merge', ...p,
+  branch: 'feature',
+  baseBranch: 'main',
+  st: state(),
+  pr: null,
+  strategy: 'merge',
+  ...p,
 });
-const action = (w: BranchWork, act: 'pr' | 'commit' | 'push' | 'sync') => gitActions(w).actions.find((a) => a.act === act)!;
+const action = (w: BranchWork, act: 'pr' | 'commit' | 'push' | 'sync') =>
+  gitActions(w).actions.find((a) => a.act === act)!;
 
 describe('branch bar actions', () => {
   it('offers to merge a base branch that moved on, or rebase when chosen, without making it the default', () => {
@@ -22,7 +37,10 @@ describe('branch bar actions', () => {
   });
 
   it('has no sync action on the base branch itself', () => {
-    assert.equal(gitActions(work({ branch: 'main' })).actions.some((a) => a.act === 'sync'), false);
+    assert.equal(
+      gitActions(work({ branch: 'main' })).actions.some((a) => a.act === 'sync'),
+      false,
+    );
   });
 
   it('submits the PR by default on a branch of its own', () => {
@@ -81,6 +99,21 @@ describe('branch bar actions', () => {
     assert.equal(action(w, 'push').enabled, true);
     assert.doesNotMatch(action(w, 'push').prompt, /gh pr create/);
     assert.match(action(w, 'pr').prompt, /gh pr create/);
+  });
+
+  it('keeps local commits available but removes remote actions without a remote', () => {
+    const w = work({ st: state({ dirty: ['a.ts'], hasRemote: false }) });
+    assert.equal(gitActions(w).primary, 'commit');
+    assert.equal(action(w, 'commit').enabled, true);
+    assert.equal(action(w, 'push').enabled, false);
+    assert.equal(action(w, 'pr').enabled, false);
+  });
+
+  it('does not invent a first push for a clean branch without a remote', () => {
+    const w = work({ st: state({ hasRemote: false }) });
+    assert.equal(gitActions(w).primary, null);
+    assert.equal(action(w, 'push').enabled, false);
+    assert.equal(action(w, 'pr').enabled, false);
   });
 
   it('does not ask for a commit when only committed work is waiting', () => {

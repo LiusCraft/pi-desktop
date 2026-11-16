@@ -11,12 +11,12 @@ description: 写 Pi Desktop 桌面插件时使用：给侧边栏加页面、给�
 
 调用工具 `pidesk_plugin_create`：
 
-| 参数 | |
-|---|---|
-| `id` | 小写字母、数字、`-`，2–32 字符，全局唯一（如 `todo-board`） |
-| `title` | 侧边栏显示的名字，短 |
-| `description` | 一句话说明这个插件做什么 |
-| `permissions` | 只申请真正用到的，见 §5 |
+| 参数          |                                                             |
+| ------------- | ----------------------------------------------------------- |
+| `id`          | 小写字母、数字、`-`，2–32 字符，全局唯一（如 `todo-board`） |
+| `title`       | 侧边栏显示的名字，短                                        |
+| `description` | 一句话说明这个插件做什么                                    |
+| `permissions` | 只申请真正用到的，见 §5                                     |
 
 它会把包写到 `~/.pi-desktop/plugins/<id>/` 并装成本地 pi 包，返回路径。**不要自己替用户启用**：装完是「未启用」，让用户去 Customize → Plugins 点开关并确认权限。
 
@@ -51,17 +51,17 @@ description: 写 Pi Desktop 桌面插件时使用：给侧边栏加页面、给�
 页面拿不到应用的 bridge、文件系统或网络，只能调这些：
 
 ```js
-await pidesk.ready();                          // 收到第一份 session / theme 之后
-pidesk.session.current();                      // { id, kind, title, cwd } | null
-pidesk.session.onChange((session) => {});      // 订阅：会立刻回放当前值
+await pidesk.ready(); // 收到第一份 session / theme 之后
+pidesk.session.current(); // { id, kind, title, cwd } | null
+pidesk.session.onChange((session) => {}); // 订阅：会立刻回放当前值
 await pidesk.session.prompt('帮我看下这个报错');
-await pidesk.host.call('load', 'arg1', 'arg2');// 转到 host.js 里注册的方法
-pidesk.host.on('items', (items) => {});        // host 用 desktop.emit 推来的数据
-await pidesk.storage.get('key');               // 插件私有 KV
+await pidesk.host.call('load', 'arg1', 'arg2'); // 转到 host.js 里注册的方法
+pidesk.host.on('items', (items) => {}); // host 用 desktop.emit 推来的数据
+await pidesk.storage.get('key'); // 插件私有 KV
 await pidesk.storage.set('key', value);
-pidesk.notify('做完了');                        // toast
-pidesk.theme();                                // 应用主题的 CSS 变量值
-pidesk.onTheme((theme) => {});                 // 主题变了
+pidesk.notify('做完了'); // toast
+pidesk.theme(); // 应用主题的 CSS 变量值
+pidesk.onTheme((theme) => {}); // 主题变了
 ```
 
 SDK 由应用提供：`<script src="/sdk/pidesk.js"></script>`（绝对路径，同源）。
@@ -72,12 +72,12 @@ SDK 由应用提供：`<script src="/sdk/pidesk.js"></script>`（绝对路径，
 
 ```js
 export default function activate(desktop) {
-  desktop.handle('load', async (filter) => items(filter));  // 页面用 host.call 调
-  desktop.emit('items', items);                             // 推给打开着的页面
-  desktop.notify('有 3 条待办', 'warning');                  // info | warning | error
-  desktop.storage.get('lastSeen');                          // 和页面的 pidesk.storage 是同一个
+  desktop.handle('load', async (filter) => items(filter)); // 页面用 host.call 调
+  desktop.emit('items', items); // 推给打开着的页面
+  desktop.notify('有 3 条待办', 'warning'); // info | warning | error
+  desktop.storage.get('lastSeen'); // 和页面的 pidesk.storage 是同一个
   desktop.storage.set('lastSeen', Date.now());
-  desktop.dataDir;                                          // 可写目录，已创建
+  desktop.dataDir; // 可写目录，已创建
 }
 ```
 
@@ -90,13 +90,13 @@ agent 侧能力（工具、命令、钩子）不写在这里：那属于 `pi.ext
 
 ## 5. 权限
 
-| 权限 | 放开什么 |
-|---|---|
-| `session:read` | 当前会话的 id / kind / title / cwd |
-| `session:prompt` | 往当前会话发一条消息 |
-| `notify` | toast |
-| `storage` | 插件私有 KV |
-| `host:call` | 页面调用 `host.js` 里注册的方法 |
+| 权限             | 放开什么                           |
+| ---------------- | ---------------------------------- |
+| `session:read`   | 当前会话的 id / kind / title / cwd |
+| `session:prompt` | 往当前会话发一条消息               |
+| `notify`         | toast                              |
+| `storage`        | 插件私有 KV                        |
+| `host:call`      | 页面调用 `host.js` 里注册的方法    |
 
 没有 fs、没有 shell、没有网络、没有直接 IPC。**不要申请用不到的能力**：用户看到权限清单会犹豫。
 
@@ -109,11 +109,11 @@ agent 侧能力（工具、命令、钩子）不写在这里：那属于 `pi.ext
 
 ## 7. 常见错误
 
-| 现象 | 原因 |
-|---|---|
-| Customize 里那一行标红 | manifest 字段不合法，或 `entry` / `host` 指向的文件不存在 |
-| 侧边栏没有页面 | 没启用、没授权、或 `views` 不包含当前模式 |
-| 页面白屏 / 「没有响应」 | 用了内联 `<script>`（被 CSP 挡），或脚本路径写错 |
-| `host.call` 报「没有方法」 | `host.js` 没注册这个方法，或 `host` 字段没写 |
-| `host.call` 报「没有获得 host:call 权限」 | manifest 里没申请，或用户没同意 |
-| 返回值报「无法传递的值」 | 返回了非 JSON 的东西 |
+| 现象                                      | 原因                                                      |
+| ----------------------------------------- | --------------------------------------------------------- |
+| Customize 里那一行标红                    | manifest 字段不合法，或 `entry` / `host` 指向的文件不存在 |
+| 侧边栏没有页面                            | 没启用、没授权、或 `views` 不包含当前模式                 |
+| 页面白屏 / 「没有响应」                   | 用了内联 `<script>`（被 CSP 挡），或脚本路径写错          |
+| `host.call` 报「没有方法」                | `host.js` 没注册这个方法，或 `host` 字段没写              |
+| `host.call` 报「没有获得 host:call 权限」 | manifest 里没申请，或用户没同意                           |
+| 返回值报「无法传递的值」                  | 返回了非 JSON 的东西                                      |

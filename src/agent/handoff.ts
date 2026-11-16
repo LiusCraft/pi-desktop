@@ -72,7 +72,7 @@ export interface HandoffInput {
 export function declaredCacheMinutes(model: { promptCache?: { short?: number; long?: number } }): number | undefined {
   const long = process.env[CACHE_RETENTION_ENV]?.trim().toLowerCase() === 'long';
   const cache = model.promptCache;
-  const seconds = long ? cache?.long ?? cache?.short : cache?.short ?? cache?.long;
+  const seconds = long ? (cache?.long ?? cache?.short) : (cache?.short ?? cache?.long);
   return seconds && seconds > 0 ? seconds / 60 : undefined;
 }
 
@@ -123,7 +123,8 @@ export function buildHandoff(manager: SessionManager, input: HandoffInput): { te
   if (conclusion) {
     lines.push('## Where it left off', clip(conclusion, MAX_CONCLUSION_CHARS), '');
     const full = conclusion.replace(/\s+/gu, ' ').trim();
-    if (full.length > MAX_CONCLUSION_CHARS) lines.push(`(${full.length - MAX_CONCLUSION_CHARS} more characters were omitted.)`, '');
+    if (full.length > MAX_CONCLUSION_CHARS)
+      lines.push(`(${full.length - MAX_CONCLUSION_CHARS} more characters were omitted.)`, '');
   }
   if (changed.size) {
     lines.push('## Files changed in that work', ...[...changed].slice(0, MAX_FILES).map((f) => `- ${f}`), '');
@@ -136,7 +137,7 @@ export function buildHandoff(manager: SessionManager, input: HandoffInput): { te
     '## Before you answer',
     'The user has not re-read this card for you, and their next message may rely on a decision it does not record. ' +
       'If you are about to guess what was decided, what a file now contains, or what failed earlier, look it up first ' +
-      'with `pidesk_search_session` (this session\'s own earlier transcript) or read the file. Say plainly when you ' +
+      "with `pidesk_search_session` (this session's own earlier transcript) or read the file. Say plainly when you " +
       'could not recover something instead of inventing it.',
   );
 

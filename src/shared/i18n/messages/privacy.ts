@@ -19,7 +19,10 @@ export const privacy = defineMessages({
   'privacy.secrets': { en: 'Mask secrets', zh: '脱敏密钥' },
   'privacy.secrets.hint': { en: 'API keys, tokens, passwords, private keys', zh: 'API Key、令牌、密码、私钥' },
   'privacy.personal': { en: 'Mask personal data', zh: '脱敏个人信息' },
-  'privacy.personal.hint': { en: 'Emails, phone numbers, ID and bank card numbers', zh: '邮箱、手机号、身份证号、银行卡号' },
+  'privacy.personal.hint': {
+    en: 'Emails, phone numbers, ID and bank card numbers',
+    zh: '邮箱、手机号、身份证号、银行卡号',
+  },
   'privacy.words': { en: 'Masked words', zh: '自定义词' },
   'privacy.words.hint': { en: 'Names, codenames, hosts; comma-separated', zh: '名字、代号、域名，逗号分隔' },
   'privacy.rules': { en: 'Masking rules', zh: '脱敏规则' },
@@ -28,7 +31,10 @@ export const privacy = defineMessages({
     zh: '每行一条。普通行是值的开头，如 gw_；以 re: 开头的行是正则表达式。',
   },
   'privacy.allow': { en: 'Never mask', zh: '永不脱敏' },
-  'privacy.allow.tip': { en: 'One value per line, sent as written wherever it is found whole.', zh: '每行一个值，整体出现时原样发送。' },
+  'privacy.allow.tip': {
+    en: 'One value per line, sent as written wherever it is found whole.',
+    zh: '每行一个值，整体出现时原样发送。',
+  },
   'privacy.actions': { en: 'When found', zh: '发现时' },
   'privacy.action.mask': { en: 'Mask', zh: '脱敏' },
   'privacy.action.warn': { en: 'Warn', zh: '仅提示' },
@@ -45,7 +51,10 @@ export const privacy = defineMessages({
   'privacy.kind.CUSTOM': { en: 'Masking rules', zh: '脱敏规则' },
 
   'privacy.try': { en: 'Try it', zh: '试一试' },
-  'privacy.try.tip': { en: 'Shows what the vendor would get. What you paste is not kept.', zh: '显示厂商会收到的内容。粘贴的文本不会保存。' },
+  'privacy.try.tip': {
+    en: 'Shows what the vendor would get. What you paste is not kept.',
+    zh: '显示厂商会收到的内容。粘贴的文本不会保存。',
+  },
   'privacy.try.placeholder': { en: 'Paste text', zh: '粘贴文本' },
   'privacy.try.none': { en: 'Nothing found', zh: '未发现' },
   'privacy.try.warned': { en: 'Found, sent as written: {kinds}', zh: '发现但原样发送：{kinds}' },
@@ -53,14 +62,20 @@ export const privacy = defineMessages({
 
   'privacy.group.log': { en: 'Request log', zh: '请求日志' },
   'privacy.logBody': { en: 'Keep request bodies', zh: '保存请求正文' },
-  'privacy.logBody.tip': { en: 'Bodies hold your prompts and code, so this is off by default. Saved as sent, after masking.', zh: '正文含你的提示词和代码，默认不保存。保存的是脱敏后实际发送的内容。' },
+  'privacy.logBody.tip': {
+    en: 'Bodies hold your prompts and code, so this is off by default. Saved as sent, after masking.',
+    zh: '正文含你的提示词和代码，默认不保存。保存的是脱敏后实际发送的内容。',
+  },
   'privacy.retention': { en: 'Keep for', zh: '保留' },
   'privacy.days': { en: 'days', zh: '天' },
 
   'privacy.range': { en: 'Last {n} days', zh: '近 {n} 天' },
   'privacy.range.today': { en: 'Today', zh: '今天' },
   'privacy.card.token': { en: 'Tokens', zh: 'Token' },
-  'privacy.card.tokenSub': { en: '{input} in · {output} out · {cache} cache', zh: '输入 {input} · 输出 {output} · 缓存 {cache}' },
+  'privacy.card.tokenSub': {
+    en: '{input} in · {output} out · {cache} cache',
+    zh: '输入 {input} · 输出 {output} · 缓存 {cache}',
+  },
   'privacy.card.requests': { en: 'Requests', zh: '请求' },
   'privacy.card.noFail': { en: 'No failures', zh: '没有失败' },
   'privacy.card.failed': { en: '{n} failed', zh: '{n} 次失败' },
@@ -68,7 +83,10 @@ export const privacy = defineMessages({
   'privacy.card.unpriced': { en: '{n} without a known price, not counted', zh: '{n} 次请求没有已知价格，未计入' },
   'privacy.card.cache': { en: 'Cache hit', zh: '缓存命中率' },
   'privacy.card.speed': { en: 'Output speed', zh: '输出速度' },
-  'privacy.card.speedTip': { en: 'Output tokens over the time after the first token. Only finished requests count.', zh: '输出 token 除以首个 token 之后的耗时。只统计已完成的请求。' },
+  'privacy.card.speedTip': {
+    en: 'Output tokens over the time after the first token. Only finished requests count.',
+    zh: '输出 token 除以首个 token 之后的耗时。只统计已完成的请求。',
+  },
   'privacy.card.replies': { en: '{n} replies', zh: '{n} 次回复' },
   'privacy.card.noSpeed': { en: 'No timed replies', zh: '没有可计时的回复' },
   'privacy.unit.tokenPerSec': { en: 'token/s', zh: 'token/秒' },
@@ -110,7 +128,10 @@ export const privacy = defineMessages({
   'privacy.d.firstToken': { en: 'first token', zh: '首字' },
   'privacy.d.model': { en: 'Model sent', zh: '发送模型' },
   'privacy.d.tokens': { en: 'Tokens', zh: 'Token' },
-  'privacy.d.tokensValue': { en: 'In {input} · out {output} · cache read {read} · cache write {write}', zh: '输入 {input} · 输出 {output} · 缓存读取 {read} · 缓存写入 {write}' },
+  'privacy.d.tokensValue': {
+    en: 'In {input} · out {output} · cache read {read} · cache write {write}',
+    zh: '输入 {input} · 输出 {output} · 缓存读取 {read} · 缓存写入 {write}',
+  },
   'privacy.d.cost': { en: 'Cost', zh: '费用' },
   'privacy.d.noPrice': { en: 'No known price', zh: '无已知价格' },
   'privacy.d.session': { en: 'Session ID', zh: '会话 ID' },

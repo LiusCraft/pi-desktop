@@ -21,5 +21,6 @@ export function subscribeResource(resource: HostResource, load: Load): () => voi
 /** The host changed this resource: every view of it reads it again. A view that is not mounted is not told. */
 export function notifyResource(resource: HostResource) {
   // A copy: a load may unsubscribe (the view unmounted while the request was in flight).
+  // oxlint-disable-next-line unicorn/no-useless-spread
   for (const load of [...(loads.get(resource) ?? [])]) load();
 }

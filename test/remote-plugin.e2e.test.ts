@@ -8,7 +8,9 @@ import type { HostEvent, SessionMeta } from '../src/shared/protocol';
 import { RemoteClient } from '../src/agent/remote/client';
 import piRemote from '../src/agent/remote/plugin';
 
-type Command = { handler: (args: string, ctx: { ui: { notify(message: string, type?: string): void } }) => Promise<void> };
+type Command = {
+  handler: (args: string, ctx: { ui: { notify(message: string, type?: string): void } }) => Promise<void>;
+};
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-remote-e2e-'));
 const project = path.join(root, 'project');
@@ -52,14 +54,23 @@ describe('pi-remote plugin', () => {
     expect(started).toContain('http://127.0.0.1:17431');
 
     const events: HostEvent[] = [];
-    const client = new RemoteClient({ url: 'http://127.0.0.1:17431', token: token!, onEvent: (e) => events.push(e), onState: () => {} });
+    const client = new RemoteClient({
+      url: 'http://127.0.0.1:17431',
+      token: token!,
+      onEvent: (e) => events.push(e),
+      onState: () => {},
+    });
     await client.start();
     try {
       const added = await client.call<{ path: string }>('projects:addPath', project);
       expect(added.path).toBe(project);
       expect(await client.call<unknown[]>('projects:list')).toHaveLength(1);
 
-      const meta = await client.call<SessionMeta>('sessions:create', { kind: 'code', projectPath: project, worktree: false });
+      const meta = await client.call<SessionMeta>('sessions:create', {
+        kind: 'code',
+        projectPath: project,
+        worktree: false,
+      });
       expect(meta.cwd).toBe(project);
       expect((await client.call<{ id: string }[]>('sessions:list')).map((s) => s.id)).toContain(meta.id);
 

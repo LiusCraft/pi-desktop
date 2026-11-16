@@ -20,7 +20,10 @@ export class Tunnel {
   private status: TunnelStatus = { state: 'off' };
 
   /** `command` replaces the cloudflared executable (and any leading arguments); tests use it. */
-  constructor(private readonly env: NodeJS.ProcessEnv = process.env, private readonly command: string[] = [BINARY]) {}
+  constructor(
+    private readonly env: NodeJS.ProcessEnv = process.env,
+    private readonly command: string[] = [BINARY],
+  ) {}
 
   get current(): TunnelStatus {
     return this.status;
@@ -39,7 +42,11 @@ export class Tunnel {
       };
       let child: ChildProcess;
       try {
-        child = spawn(this.command[0], [...this.command.slice(1), 'tunnel', '--no-autoupdate', '--url', `http://127.0.0.1:${port}`], { env: this.env, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+        child = spawn(
+          this.command[0],
+          [...this.command.slice(1), 'tunnel', '--no-autoupdate', '--url', `http://127.0.0.1:${port}`],
+          { env: this.env, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true },
+        );
       } catch (err) {
         return finish({ state: 'error', error: (err as Error).message });
       }
@@ -55,13 +62,22 @@ export class Tunnel {
       });
       child.on('error', (err: NodeJS.ErrnoException) => {
         this.child = null;
-        finish({ state: 'error', error: err.code === 'ENOENT' ? 'cloudflared is not installed or not on PATH. Install it from https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/.' : err.message });
+        finish({
+          state: 'error',
+          error:
+            err.code === 'ENOENT'
+              ? 'cloudflared is not installed or not on PATH. Install it from https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/.'
+              : err.message,
+        });
       });
       child.on('exit', (code) => {
         if (this.child !== child) return;
         this.child = null;
         // A tunnel that ends on its own is a failure; one we stopped is already `off`.
-        finish({ state: 'error', error: `cloudflared exited (${code}). ${tail.trim().split('\n').slice(-2).join(' ')}`.trim() });
+        finish({
+          state: 'error',
+          error: `cloudflared exited (${code}). ${tail.trim().split('\n').slice(-2).join(' ')}`.trim(),
+        });
       });
     });
   }

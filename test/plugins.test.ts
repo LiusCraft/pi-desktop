@@ -28,7 +28,10 @@ function makePackage(name: string, piDesktop: unknown, { page = true } = {}): st
   // A fresh folder: an earlier test may have left a page this one says is missing.
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(path.join(dir, 'ui'), { recursive: true });
-  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name, version: '1.2.3', description: `${name} description`, piDesktop }));
+  fs.writeFileSync(
+    path.join(dir, 'package.json'),
+    JSON.stringify({ name, version: '1.2.3', description: `${name} description`, piDesktop }),
+  );
   if (page) fs.writeFileSync(path.join(dir, 'ui', 'index.html'), '<!doctype html><title>Inbox</title>');
   return dir;
 }
@@ -54,9 +57,17 @@ describe('desktop plugins', () => {
     packages = [{ source: 'npm:pi-plugin-inbox', scope: 'user', root: makePackage('inbox', manifest()) }];
     const plugin = one(service().list(null));
     expect(plugin).toMatchObject({
-      id: 'inbox', name: 'inbox', version: '1.2.3', description: 'inbox description',
-      source: 'npm:pi-plugin-inbox', scope: 'user',
-      permissions: ['session:read', 'notify'], enabled: false, ready: false, needsGrant: false, error: null,
+      id: 'inbox',
+      name: 'inbox',
+      version: '1.2.3',
+      description: 'inbox description',
+      source: 'npm:pi-plugin-inbox',
+      scope: 'user',
+      permissions: ['session:read', 'notify'],
+      enabled: false,
+      ready: false,
+      needsGrant: false,
+      error: null,
     });
     expect(plugin.contributions.pages.map((p) => p.title)).toEqual(['Inbox']);
   });
@@ -78,21 +89,33 @@ describe('desktop plugins', () => {
     expect(on).toMatchObject({ enabled: true, ready: true, granted: ['session:read', 'notify'] });
     // The registry is the only state: a second service reads the same answer back.
     expect(one(service().list(null))).toMatchObject({ enabled: true, ready: true });
-    expect(one(service().setEnabled(null, 'inbox', false, null))).toMatchObject({ enabled: false, ready: false, granted: ['session:read', 'notify'] });
+    expect(one(service().setEnabled(null, 'inbox', false, null))).toMatchObject({
+      enabled: false,
+      ready: false,
+      granted: ['session:read', 'notify'],
+    });
   });
 
   it('stops being ready when an upgrade asks for more than the user agreed to', () => {
     const dir = makePackage('inbox', manifest());
     packages = [{ source: 'npm:pi-plugin-inbox', scope: 'user', root: dir }];
     service().setEnabled(null, 'inbox', true, ['session:read', 'notify']);
-    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'inbox', piDesktop: manifest({ permissions: ['session:read', 'notify', 'storage'] }) }));
+    fs.writeFileSync(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'inbox', piDesktop: manifest({ permissions: ['session:read', 'notify', 'storage'] }) }),
+    );
     expect(one(service().list(null))).toMatchObject({ enabled: true, ready: false, needsGrant: true });
     // Agreeing again is what clears it.
-    expect(one(service().setEnabled(null, 'inbox', true, ['session:read', 'notify', 'storage']))).toMatchObject({ ready: true, needsGrant: false });
+    expect(one(service().setEnabled(null, 'inbox', true, ['session:read', 'notify', 'storage']))).toMatchObject({
+      ready: true,
+      needsGrant: false,
+    });
   });
 
   it('reports a package whose page is missing instead of loading it', () => {
-    packages = [{ source: 'npm:pi-plugin-inbox', scope: 'user', root: makePackage('inbox', manifest(), { page: false }) }];
+    packages = [
+      { source: 'npm:pi-plugin-inbox', scope: 'user', root: makePackage('inbox', manifest(), { page: false }) },
+    ];
     const plugin = one(service().list(null));
     expect(plugin.error).toBe('找不到入口文件：ui/index.html');
     expect(plugin.ready).toBe(false);
@@ -102,7 +125,9 @@ describe('desktop plugins', () => {
   });
 
   it('reports a manifest it cannot read, and keeps it out of the way', () => {
-    packages = [{ source: 'npm:pi-plugin-inbox', scope: 'user', root: makePackage('inbox', manifest({ apiVersion: 9 })) }];
+    packages = [
+      { source: 'npm:pi-plugin-inbox', scope: 'user', root: makePackage('inbox', manifest({ apiVersion: 9 })) },
+    ];
     const plugin = one(service().list(null));
     expect(plugin.error).toBe('需要更新的 Pi Desktop（manifest v9）');
     // Its id is unusable, so the row is keyed by the package name.
@@ -115,7 +140,10 @@ describe('desktop plugins', () => {
       { source: 'npm:b', scope: 'user', root: makePackage('b', manifest()) },
     ];
     const list = service().list(null);
-    expect(list.map((p) => [p.source, p.error])).toEqual([['npm:a', null], ['npm:b', 'inbox 已被 npm:a 使用']]);
+    expect(list.map((p) => [p.source, p.error])).toEqual([
+      ['npm:a', null],
+      ['npm:b', 'inbox 已被 npm:a 使用'],
+    ]);
   });
 
   it('keeps a project package out of another project’s list', () => {

@@ -61,6 +61,8 @@
 
 ## 快速开始
 
+正常使用不用构建：macOS 上 `brew tap liuscraft/tap && brew install --cask pi-desktop`（升级 `brew upgrade --cask pi-desktop`），Windows 用 Release 里的 `Pi-Desktop-<版本>-win-x64-setup.exe`。从源码跑：
+
 ```bash
 npm install
 npm run dev        # electron-vite 开发模式（界面热更新）
@@ -69,6 +71,7 @@ npm run build && npm run demo  # 打开内置演示项目，默认使用离线�
 ```
 
 - 需要 Node 22.12+（构建与测试用）；运行时 agent 跑在 Electron 自带的 Node 上。
+- 想和已安装的 Pi Desktop 同时运行：用 `make dev` / `make demo`，它们各自使用 `~/.pi-desktop-dev` / `~/.pi-desktop-demo` 和对应的 Electron profile；直接 `npm run dev` / `npm run demo` 仍用默认目录（会与已安装版抢单实例锁）。两者仍共用当前目录的 `out/`，同时跑请换一个 worktree。
 - 离线 demo 只在未打包运行（`npm run dev` / `npm run demo` / 测试）时启用，打包产物不含 `demo/` 目录也不注册 demo 模型。启动时会把 `demo/todo-app`（Code 演示项目）和 `demo/work-workspace`（Work 演示文件夹：收件箱、日程、待办）复制到 `~/.pi-desktop/demo`。不配置任何 API Key 也能用 **Demo (offline)** 模型体验完整流程。
 - 接真实模型：打开设置（`Ctrl/⌘+,`）→ **模型管理**，和 pi CLI 用同一套配置：
   - **账号登录**：Anthropic（Claude Pro/Max）、OpenAI（ChatGPT）、GitHub Copilot、xAI、Meta、Kimi、OpenRouter、Radius 等 provider 的 OAuth 登录，浏览器授权或设备码，凭证写入 `~/.pi/agent/auth.json`。
@@ -225,6 +228,7 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 - **树列表右键菜单**：Diff 和 Files 中的文件、文件夹支持附加为上下文，复制绝对路径 / 相对路径 / 名称，用 VS Code / Cursor / Terminal / 默认应用打开，以及在 Finder（其他平台为文件管理器）中显示。Terminal 打开所选文件的所在目录；已删除的文件可从 Diff 快照引用。
 - **添加附件**：Code 和 Work 的输入框都支持粘贴截图、复制的本地文件、拖入文件，以及点击 **+** 多选文件。发送前可以预览和移除，也可以只发附件。多行文字保留换行、制表符和缩进，富文本只提取纯文本，不加载其中的远程内容。
 - **`@` 与 `/` 菜单**：两个菜单都按模糊匹配排序（任意顺序的字符也算命中：前缀优先，其次词首，再次分散字符），项目有几千个文件时也只扫一遍、只留前几十项，不会因为列表变长而卡。`@` 可以引用项目文件、当前会话的终端标签页（抓取最近 N 行，N 在 设置 → Code → 终端）、工作区变更（跟 Diff 面板一致：会话基准以来改动的文件和行数），以及同项目的其它会话（只发标题和 id，模型需要时用 `pidesk_read_session` 去读）。`/` 列出应用自己的命令和 pi 的技能 / 提示模板。
+- **`!` 命令**：以 `!` 开头的消息不发给模型，而是在**会话自己的 shell** 里执行 —— 也就是模型跑命令用的那个 shell，`cd` 和 `export` 会沿用，命令从模型上次停下的目录开始。输出边跑边显示成一条终端块，结束后作为一条 `bashExecution` 消息留在会话里，下一轮模型能看到；`!!` 同样执行，但输出不进模型上下文。执行期间按 `Esc`（或输入框里的 Stop）会中断它。`!` 命令不能携带附件或 `@` 引用；`!` 后面没有命令时只会提示，不会发出去。
 - **内联 badge**：`@` 引用和消息开头的 `/命令` 在输入框里就画成药丸，发送后仍以 badge 嵌在消息气泡里；点 badge 查看当时抓取到的内容（终端快照、变更文件列表、另一个会话），文件 badge 直接打开文件。快照在选中那一刻拍下，所以提示词里的内容和 badge 里看到的完全一致；删掉 badge 的 token，这段上下文就不会随消息发出。
 - **发送与恢复**：附件单独排列在文字气泡上方，图片可点击放大。图片使用 pi 原生 image blocks 传给支持图片的模型并随会话保存；普通文件是供 agent 读取的**本地路径引用**，不会自动解析 PDF / Office，也不会另存一份。移动或删除原文件后，该引用可能失效。
 - **草稿与取消**：会话间草稿互相隔离；导入失败或发送失败不会清空附件。停止运行时，已取消的排队消息可恢复为草稿；有新草稿时显示 Restore / Discard，避免覆盖。未发送草稿仅在本次应用运行期间保留。
@@ -293,11 +297,11 @@ pi 默认每条命令起一个进程，一条命令里的 `cd` 到下一条就�
 一台电脑上的 Pi Desktop 可以遥控另一台电脑上的会话，会话始终在**被遥控的那台**运行（文件、shell、模型凭据都在那边），这边只是界面。有两种被遥控的对象，对 Desktop 客户端来说协议完全相同：
 
 - **另一台 Pi Desktop**：设置 → 远程 →「共享这台电脑」开启，把地址和访问令牌告诉对方。
-- **只装了 pi 命令行的电脑**：安装 `pi-remote` 插件（`pi install npm:@liuscraft/pi-remote`，设置 → 远程 里有现成命令；开发时可 `pi install` 仓库里的 `plugin/pi-remote` 目录），在 pi 里执行 `/remote start [--lan] [--port N]`，或用 `pi --remote` 启动即自动开启；`/remote status | token | rotate | stop`。插件在 pi 进程内跑一个无头的 session hub（共用 pi 的登录与模型配置，状态放 `~/.pi-remote`，`PI_REMOTE_HOME` 可改），pi 退出服务即停止。
+- **只装了 pi 命令行的电脑**：安装 `pi-remote` 插件（`pi install npm:@liuscraft/pi-remote`，设置 → 远程 里有现成命令；开发时可 `pi install` 仓库里的 `plugin/pi-remote` 目录），在 pi 里执行 `/remote start [--lan] [--port N]`，或用 `pi --remote` 启动即自动开启；`/remote status | token | rotate | stop`。插件在 pi 进程内跑一个无头的 session hub（共用 pi 的登录与模型配置，状态放 `~/.pi-remote`，`PI_REMOTE_HOME` 可改），pi 退出服务即停止。插件和 App 由同一个 tag 发布（见「发布一个版本」），所以 npm 上的版本和 dmg 对齐。
 
 连接端：设置 → 远程 →「连接到远程」添加地址 + 令牌并点「连接」，主窗口整体切换为对方的项目与会话（侧边栏底部显示连接状态与「断开」）；断开后回到本机。断线会自动重连，重连后重新读取对方的会话状态。
 
-协议（`src/shared/remote.ts`，实现在 `src/agent/remote/`）：不引入新依赖，纯 HTTP —— `POST /v1/rpc {method,args}` 对应 agent host 的一次调用，`GET /v1/events` 是 SSE 事件流（即 `HostEvent`），`GET /v1/ping` 免令牌用于识别。凭 `Authorization: Bearer <令牌>` 鉴权。服务端只放行 `HOST_CHANNELS`、项目/文件夹列表与 `remote:browse`；浏览器登录类调用（`models:login*`）因需要对方本机界面而不开放。`ProjectBook` 保存对方的项目列表，所以远程添加项目是在对方的目录树里选。
+协议（`src/shared/remote.ts`，实现在 `src/agent/remote/`）：不引入新依赖，纯 HTTP —— `POST /v1/rpc {method,args}` 对应 agent host 的一次调用，`GET /v1/events` 是 SSE 事件流（即 `HostEvent`），`GET /v1/ping` 免令牌用于识别。`ping` 带 `version`（`REMOTE_API_VERSION`），两边对不上时连接直接失败并说明该更新哪一边，不会连上去才在某个调用上莫名其妙地报错。凭 `Authorization: Bearer <令牌>` 鉴权。服务端只放行 `HOST_CHANNELS`、项目/文件夹列表与 `remote:browse`；浏览器登录类调用（`models:login*`）因需要对方本机界面而不开放。`ProjectBook` 保存对方的项目列表，所以远程添加项目是在对方的目录树里选。
 
 跨网络连接：Pi Desktop 的远程功能**默认关闭**（不监听任何端口）。要从外网连，开启「通过 Cloudflare Tunnel 公开」（插件用 `/remote start --tunnel`）：本机用 `cloudflared tunnel --url` 起一个免账号的 `https://xxx.trycloudflare.com` 快速隧道，设置页显示该地址，对方当作连接地址填入即可（HTTPS，无需端口映射）。需先安装 `cloudflared`；地址每次启动都会变。隧道对公网可达，所以令牌就是唯一的门，别泄露。
 
@@ -315,7 +319,7 @@ pi 默认每条命令起一个进程，一条命令里的 `cd` 到下一条就�
 
 | | Code | Work |
 |---|---|---|
-| 工作目录 | 项目的独立 worktree（`claude/<名字>` 分支，默认在 `~/.pi-desktop/.worktree`，可在设置里改根目录） | 选定的文件夹，直接修改；或新建的临时工作区（`~/.pi-desktop/work`） |
+| 工作目录 | 项目的独立 worktree（`pi-desktop/<名字>` 分支，默认在 `~/.pi-desktop/.worktree`，可在设置里改根目录） | 选定的文件夹，直接修改；或新建的临时工作区（`~/.pi-desktop/work`） |
 | 会话配置 | desktop-kit profile `code` | desktop-kit profile `work`，追加系统提示 `src/agent/work-prompt.md` |
 | 右侧面板 | Diff、计划、子 agent、终端、预览 | 进度、生成的文件（可预览、打开、在文件夹中显示）、上下文 |
 | 底部 | PR 条 + CI 状态 | — |
@@ -426,6 +430,16 @@ make release DRY_RUN=1         # 只打印要打的 tag，不真的打、不 pus
 
 不想走 tag 的话，本地直接 `GH_TOKEN=… make publish` 也能上传。
 
+同一个 tag 还会发两样东西，各靠一个仓库 secret（没配时该步骤报警告或失败，不影响 dmg / exe）：
+
+- **pi-remote 插件**（`plugin` job）：`npm run build:plugin` 之后 `scripts/publish-plugin.mjs` 用 tag 版本发布到 npm（`npm publish --access public --provenance`）。认证走 npm 的 **trusted publishing**：workflow 里的 `id-token: write` 换一张一次性 token，仓库里不存任何 npm 凭据（需要 npm 上一次性配好，见下）。版本已在 npm 上就跳过，重跑同一次 release 不失败；比 npm 上的 `latest` 还旧则直接报错（npm 会把 `latest` 移到最后发布的那版，力推旧 tag 会把大家的插件降级）。provenance 把 tarball 绑到这个 commit 和这次 workflow 上。
+- **Homebrew cask**（mac job 的最后一步）：`scripts/cask.mjs` 按两个 dmg 的 sha256 生成 `Casks/pi-desktop.rb`，推到 `liuscraft/homebrew-tap`。凭据是那个仓库上的一把 **deploy key**（只写那一个仓库，别的什么都碰不到），私钥存为 `HOMEBREW_TAP_KEY`；没配时只打印生成的 cask。本地可以 `make cask` 看同一份内容。
+
+两个发布目标各自的一次性配置（都在网页上，只能做一次）：
+
+- npmjs.com → `@liuscraft/pi-remote` → Settings → **Trusted Publisher** → GitHub Actions：Organization `LiusCraft`、Repository `pi-desktop`、Workflow `release.yml`，并允许直接 `npm publish`。不配的话 `plugin` job 会以 `ENEEDAUTH` 失败（dmg/exe 不受影响）。
+- `liuscraft/homebrew-tap` → Settings → Deploy keys：需要一把 write 权限的 key（当前这把的私钥在 `HOMEBREW_TAP_KEY` 里）；丢了就重新生成一对，把公钥加回去、私钥覆盖这个 secret。
+
 `.github/workflows/build.yml` 是 PR 上的打包冒烟测试：跑 `--dir` 打包，然后断言 `Resources/app/node_modules/@earendil-works/pi-coding-agent` 和两个扩展真的进了包。
 
 ### 未签名产物怎么打开
@@ -454,4 +468,4 @@ README 里的界面图由 `npm run build && node scripts/screenshots.mjs` 用离
 - **PR / CI 状态**依赖 `gh`（GitHub）或 `glab`（GitLab，含自建实例）CLI 已登录。按 `origin` 的域名判断用哪个；域名里没有 github/gitlab 字样的自建主机会依次尝试两者。
 - **预览**面板只允许 `localhost` 地址。
 - React 重写版已在 Windows 11 上用真实窗口跑通离线 demo（Code 修 bug + Diff 面板、Work 整理收件箱 + 权限确认），并加载了用户自己的 pi 扩展；macOS 打包版尚未在重写后重新验证。旧版的 Playwright 界面测试（`test/ui-*.js`）随旧界面一起移除，界面自动化测试待补。
-- 没有自动更新：升级靠重新下载 dmg。要接 `electron-updater` 得再产一个 `zip` target（dmg 不能做增量更新），并加一个设置项。
+- 没有自动更新：Homebrew 装的用 `brew upgrade --cask pi-desktop` 升级，其余重新下载 dmg。要接 `electron-updater` 得再产一个 `zip` target（dmg 不能做增量更新），并加一个设置项。

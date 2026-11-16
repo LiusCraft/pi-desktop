@@ -50,7 +50,10 @@ describe('plugin page SDK', () => {
 
   it('remembers the session and replays it to a listener that arrives later', async () => {
     const { pidesk, deliver } = page();
-    deliver({ kind: 'event', event: { type: 'session', payload: { id: 's1', kind: 'code', title: 'Fix the bug', cwd: '/tmp/x' } } });
+    deliver({
+      kind: 'event',
+      event: { type: 'session', payload: { id: 's1', kind: 'code', title: 'Fix the bug', cwd: '/tmp/x' } },
+    });
     await expect(pidesk.ready()).resolves.toBeUndefined();
     expect(pidesk.session.current()).toEqual({ id: 's1', kind: 'code', title: 'Fix the bug', cwd: '/tmp/x' });
 

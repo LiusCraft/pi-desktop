@@ -5,7 +5,14 @@ import { useEffect, useState } from 'react';
 import { CheckIcon, CopyIcon, ExternalLinkIcon, Loader2Icon } from 'lucide-react';
 import type { AuthPrompt, AuthType } from '@shared/protocol';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useCopy } from '@/components/common/Copy';
 import { call } from '@/lib/api';
@@ -35,7 +42,9 @@ function PromptForm({ prompt, onSubmit }: { prompt: AuthPrompt; onSubmit: (value
             className="w-full rounded-lg border px-3 py-2 text-left hover:bg-accent"
           >
             <span className="block text-sm font-medium">{option.label}</span>
-            {option.description && <span className="mt-0.5 block text-xs text-muted-foreground">{option.description}</span>}
+            {option.description && (
+              <span className="mt-0.5 block text-xs text-muted-foreground">{option.description}</span>
+            )}
           </button>
         ))}
       </div>
@@ -60,7 +69,9 @@ function PromptForm({ prompt, onSubmit }: { prompt: AuthPrompt; onSubmit: (value
           value={value}
           onChange={(e) => setValue(e.target.value)}
         />
-        <Button type="submit" disabled={!value.trim()}>{t('login.continue')}</Button>
+        <Button type="submit" disabled={!value.trim()}>
+          {t('login.continue')}
+        </Button>
       </div>
     </form>
   );
@@ -106,9 +117,7 @@ export function LoginDialog({
             <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
             {t('login.title', { name: providerName })}
           </DialogTitle>
-          <DialogDescription>
-            {t(authType === 'oauth' ? 'login.oauth' : 'login.apiKey')}
-          </DialogDescription>
+          <DialogDescription>{t(authType === 'oauth' ? 'login.oauth' : 'login.apiKey')}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
@@ -133,10 +142,15 @@ export function LoginDialog({
             <div className="space-y-1.5 rounded-lg border p-3">
               <p className="text-xs text-muted-foreground">{t('login.visit')}</p>
               <div className="flex items-start gap-1">
-                <span className="min-w-0 flex-1 break-all font-mono text-xs">{state.url}</span>
+                <span className="min-w-0 flex-1 font-mono text-xs break-all">{state.url}</span>
               </div>
               <div className="flex items-center gap-1">
-                <Button type="button" size="sm" variant="outline" onClick={() => void call('app:openExternal', state.url!)}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void call('app:openExternal', state.url!)}
+                >
                   <ExternalLinkIcon className="size-3.5" />
                   {t('login.openBrowser')}
                 </Button>
@@ -163,9 +177,15 @@ export function LoginDialog({
           )}
 
           {state.prompt ? (
-            <PromptForm key={state.prompt.requestId} prompt={state.prompt.prompt} onSubmit={(value) => onRespond(state.prompt!.requestId, value)} />
+            <PromptForm
+              key={state.prompt.requestId}
+              prompt={state.prompt.prompt}
+              onSubmit={(value) => onRespond(state.prompt!.requestId, value)}
+            />
           ) : (
-            !state.device && !state.url && !state.info && (
+            !state.device &&
+            !state.url &&
+            !state.info && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2Icon className="size-3.5 animate-spin" />
                 {progress ?? t('models.preparingLogin')}

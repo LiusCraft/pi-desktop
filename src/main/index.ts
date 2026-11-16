@@ -7,25 +7,85 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MenuItemConstructorOptions } from 'electron';
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, net, Notification, protocol, screen, shell } from 'electron';
 import {
-  HOST_CHANNELS, MAIN_CHANNELS,
-  type ApiArgs, type ApiResult, type AttachmentSource, type BootPayload, type DesktopPluginInfo, type HostEvent, type Palette, type Project, type PushChannel, type PushEvents,
-  type Settings, type SettingsPayload, type WorktreeInfo,
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  net,
+  Notification,
+  protocol,
+  screen,
+  shell,
+} from 'electron';
+import {
+  HOST_CHANNELS,
+  MAIN_CHANNELS,
+  type ApiArgs,
+  type ApiResult,
+  type AttachmentSource,
+  type BootPayload,
+  type DesktopPluginInfo,
+  type HostEvent,
+  type Palette,
+  type Project,
+  type PushChannel,
+  type PushEvents,
+  type Settings,
+  type SettingsPayload,
+  type WindowControlAction,
+  type WindowTarget,
+  type WorktreeInfo,
+  UI_FONT_SIZE_DEFAULT,
+  UI_FONT_SIZE_MAX,
+  UI_FONT_SIZE_MIN,
 } from '@shared/protocol';
 import { DEFAULT_PET_ID } from '@shared/pets';
 import { DEFAULT_SETTINGS } from '@shared/settings';
-import { ARTIFACT_ENTRY, ARTIFACT_ID_PATTERN, ARTIFACT_SITE_DIR, ARTIFACT_THUMBNAIL, artifactThumbnailName } from '@shared/artifacts';
 import {
-  isRemotePort, isTerminalMethod, isTransferMethod, normalizeRemoteUrl, REMOTE_DEFAULT_PORT, REMOTE_PORT_RANGE, REMOTE_TERMINAL_METHODS, REMOTE_WORKSPACE_METHODS,
-  type RemoteActive, type RemoteArtifactSite, type RemoteTerminalMethod, type RemoteConnection, type RemoteConnectionDraft, type RemoteConnectionInfo, type RemoteServeSettings, type RemoteServeState, type RemoteWorkspaceMethod,
+  ARTIFACT_ENTRY,
+  ARTIFACT_ID_PATTERN,
+  ARTIFACT_SITE_DIR,
+  ARTIFACT_THUMBNAIL,
+  artifactThumbnailName,
+} from '@shared/artifacts';
+import {
+  isRemotePort,
+  isTerminalMethod,
+  isTransferMethod,
+  normalizeRemoteUrl,
+  REMOTE_DEFAULT_PORT,
+  REMOTE_PORT_RANGE,
+  REMOTE_TERMINAL_METHODS,
+  REMOTE_WORKSPACE_METHODS,
+  type RemoteActive,
+  type RemoteArtifactSite,
+  type RemoteTerminalMethod,
+  type RemoteConnection,
+  type RemoteConnectionDraft,
+  type RemoteConnectionInfo,
+  type RemoteServeSettings,
+  type RemoteServeState,
+  type RemoteWorkspaceMethod,
 } from '@shared/remote';
 import { childEnv } from '../agent/env';
 import { listPets, removePet, savePet } from '../agent/pets';
 import { ArtifactService } from '../agent/artifacts';
 import { ObjectStorage } from '../agent/storage';
 import {
-  appDataDir, appDemoDir, appExtensionsDir, appPetsDir, appArtifactsDir, appRemoteArtifactsDir, defaultWorktreeDir, expandHome, piAgentDir, worktreeDir,
+  appDataDir,
+  appDemoDir,
+  appExtensionsDir,
+  appPetsDir,
+  appArtifactsDir,
+  appRemoteArtifactsDir,
+  defaultWorktreeDir,
+  expandHome,
+  piAgentDir,
+  worktreeDir,
 } from '../agent/app-paths';
 import { resolveInside } from '../agent/files';
 import { localPath } from '../agent/local-path';
@@ -60,12 +120,16 @@ if (process.platform === 'win32') app.setAppUserModelId('dev.pi-desktop.app');
 const DEMO_ALLOWED = !app.isPackaged;
 const DEMO = DEMO_ALLOWED && process.argv.includes('--demo');
 const isMac = process.platform === 'darwin';
-
 // A plugin page needs a real origin of its own (relative assets, a CSP that means something), so the
 // scheme has to be privileged before the app is ready.
-protocol.registerSchemesAsPrivileged([{ scheme: PLUGIN_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+protocol.registerSchemesAsPrivileged([
+  { scheme: PLUGIN_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+]);
 /** Serves plugin pages and relays their calls; main never runs plugin code itself. */
-const pluginServer = new PluginServer({ call: (plugin, method, args) => agent.call('host:pluginCall', plugin, method, args) });
+const pluginServer = new PluginServer({
+  call: (plugin, method, args) => agent.call('host:pluginCall', plugin, method, args),
+});
+const isWin = process.platform === 'win32';
 let win: BrowserWindow | null = null;
 let settingsWin: BrowserWindow | null = null;
 let store: Store;
@@ -123,7 +187,13 @@ function ensureDemoProject() {
 
 // Preferences live in one place so every window reads the same values.
 function settingsValue(): Settings {
-  return { ...DEFAULT_SETTINGS, ...store.get<Partial<Settings>>('settings', {}) };
+  const settings = { ...DEFAULT_SETTINGS, ...store.get<Partial<Settings>>('settings', {}) };
+  const rawFontSize = settings.fontSize;
+  settings.fontSize =
+    typeof rawFontSize === 'number' && Number.isFinite(rawFontSize)
+      ? Math.min(UI_FONT_SIZE_MAX, Math.max(UI_FONT_SIZE_MIN, Math.round(rawFontSize)))
+      : UI_FONT_SIZE_DEFAULT;
+  return settings;
 }
 /** The language the app runs in: the setting, or the OS language when it follows the system. */
 function currentLocale() {
@@ -131,7 +201,8 @@ function currentLocale() {
 }
 function settingsPayload(): SettingsPayload {
   const s = settingsValue();
-  const resolvedTheme = s.theme === 'light' || s.theme === 'dark' ? s.theme : nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+  const resolvedTheme =
+    s.theme === 'light' || s.theme === 'dark' ? s.theme : nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
   return { ...s, resolvedTheme, locale: currentLocale(), pets: listPets(appPetsDir(dataDir())) };
 }
 function broadcast<K extends PushChannel>(channel: K, payload: PushEvents[K]) {
@@ -214,7 +285,9 @@ const BG: Record<Palette, { light: string; dark: string }> = {
 const bgColor = (dark: boolean) => BG[settingsValue().palette][dark ? 'dark' : 'light'];
 /** The caption buttons sit over the page header, so they take the page background, not the sidebar's. */
 function overlay(dark: boolean) {
-  return dark ? { color: bgColor(true), symbolColor: '#c3c1bb', height: 44 } : { color: bgColor(false), symbolColor: '#55534d', height: 44 };
+  return dark
+    ? { color: bgColor(true), symbolColor: '#c3c1bb', height: 44 }
+    : { color: bgColor(false), symbolColor: '#55534d', height: 44 };
 }
 const isDark = () => settingsPayload().resolvedTheme === 'dark';
 
@@ -222,8 +295,22 @@ function load(w: BrowserWindow, page: 'index' | 'settings' | 'diagram' | 'side',
   if (DEV_URL) void w.loadURL(`${DEV_URL}/${page}.html${hash ? `#${hash}` : ''}`);
   else void w.loadFile(path.join(RENDERER, `${page}.html`), hash ? { hash } : undefined);
 }
-function harden(w: BrowserWindow) {
-  w.webContents.setWindowOpenHandler(({ url }) => {
+type WindowOpenDisposition = 'default' | 'foreground-tab' | 'background-tab' | 'new-window' | 'other';
+
+function harden(
+  w: BrowserWindow,
+  onWindowOpen?: (details: { url: string; disposition: WindowOpenDisposition }) => boolean,
+) {
+  w.webContents.on('will-attach-webview', (_event, webPreferences) => {
+    // The preview accepts arbitrary pages, so never let a page supply a preload with app access.
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.sandbox = true;
+  });
+  w.webContents.setWindowOpenHandler((details) => {
+    if (onWindowOpen?.(details)) return { action: 'deny' };
+    const { url } = details;
     if (/^https?:/.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
@@ -236,18 +323,26 @@ function harden(w: BrowserWindow) {
     const copy = { role: 'copy', label: tr('main.copy') } as const;
     const template: MenuItemConstructorOptions[] = p.isEditable
       ? [
-        { role: 'cut', label: tr('main.cut'), enabled: flags.canCut },
-        { ...copy, enabled: flags.canCopy },
-        { role: 'paste', label: tr('main.paste'), enabled: flags.canPaste },
-        { type: 'separator' },
-        { role: 'selectAll', label: tr('main.selectAll'), enabled: flags.canSelectAll },
-      ]
-      : p.selectionText.trim() ? [copy] : [];
+          { role: 'cut', label: tr('main.cut'), enabled: flags.canCut },
+          { ...copy, enabled: flags.canCopy },
+          { role: 'paste', label: tr('main.paste'), enabled: flags.canPaste },
+          { type: 'separator' },
+          { role: 'selectAll', label: tr('main.selectAll'), enabled: flags.canSelectAll },
+        ]
+      : p.selectionText.trim()
+        ? [copy]
+        : [];
     if (template.length) Menu.buildFromTemplate(template).popup({ window: w });
   });
 }
 
-interface WindowState { x: number; y: number; width: number; height: number; maximized: boolean }
+interface WindowState {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  maximized: boolean;
+}
 
 /** The last size and position, if that spot is still on a connected display. */
 function savedWindowState(): WindowState | null {
@@ -296,13 +391,33 @@ function createWindow() {
     title: 'Pi Desktop',
     backgroundColor: bgColor(dark),
     titleBarStyle: 'hidden',
-    ...(isMac ? { trafficLightPosition: { x: 18, y: 16 } } : { titleBarOverlay: overlay(dark) }),
-    webPreferences: { preload: PRELOAD, contextIsolation: true, sandbox: true, nodeIntegration: false },
+    ...(isMac ? { trafficLightPosition: { x: 18, y: 16 } } : !isWin ? { titleBarOverlay: overlay(dark) } : {}),
+    webPreferences: {
+      preload: PRELOAD,
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+      webviewTag: true,
+    },
   });
   if (saved?.maximized) win.maximize();
   trackWindowState(win);
   load(win, 'index');
-  harden(win);
+  harden(win, ({ url, disposition }) => {
+    win?.webContents.send('preview:open', { partition: '', url, disposition });
+    return true;
+  });
+  const pendingPreviewPartitions: string[] = [];
+  win.webContents.on('will-attach-webview', (_event, _webPreferences, params) => {
+    if (params?.partition) pendingPreviewPartitions.push(params.partition);
+  });
+  win.webContents.on('did-attach-webview', (_event, guest) => {
+    const partition = pendingPreviewPartitions.shift() ?? '';
+    guest.setWindowOpenHandler(({ url, disposition }) => {
+      win?.webContents.send('preview:open', { partition, url, disposition });
+      return { action: 'deny' };
+    });
+  });
   win.on('closed', () => {
     win = null;
     // Secondary windows (settings, pet, popouts) are meaningless without the main window.
@@ -321,7 +436,7 @@ function createSettingsWindow(section?: string) {
     title: tr('settings.title'),
     backgroundColor: bgColor(dark),
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
-    ...(isMac ? { trafficLightPosition: { x: 16, y: 18 } } : { titleBarOverlay: overlay(dark) }),
+    ...(isMac ? { trafficLightPosition: { x: 16, y: 18 } } : !isWin ? { titleBarOverlay: overlay(dark) } : {}),
     show: false,
     maximizable: false,
     fullscreenable: false,
@@ -425,7 +540,9 @@ async function openArtifact(id: string) {
     if (/^https?:/.test(url)) void shell.openExternal(url);
   });
   // Only the font list (settings font picker) is ever granted.
-  w.webContents.session.setPermissionRequestHandler((_wc, permission, allow) => allow((permission as string) === 'local-fonts'));
+  w.webContents.session.setPermissionRequestHandler((_wc, permission, allow) =>
+    allow((permission as string) === 'local-fonts'),
+  );
   w.webContents.on('page-title-updated', (_e, title) => {
     if (title.trim()) w.setTitle(title);
   });
@@ -500,8 +617,17 @@ function renderThumbnail(root: string, version: number): Promise<string | null> 
     const { width, height, scaledWidth, quality, settleMs, timeoutMs } = ARTIFACT_THUMBNAIL;
     const w = new BrowserWindow({
       icon: WINDOW_ICON,
-      width, height, show: false, backgroundColor: '#ffffff',
-      webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, partition: 'artifact-preview', backgroundThrottling: false },
+      width,
+      height,
+      show: false,
+      backgroundColor: '#ffffff',
+      webPreferences: {
+        contextIsolation: true,
+        sandbox: true,
+        nodeIntegration: false,
+        partition: 'artifact-preview',
+        backgroundThrottling: false,
+      },
     });
     try {
       w.webContents.setAudioMuted(true);
@@ -514,7 +640,8 @@ function renderThumbnail(root: string, version: number): Promise<string | null> 
       const image = (await w.webContents.capturePage()).resize({ width: scaledWidth, quality: 'good' });
       const jpeg = image.toJPEG(quality);
       // Older versions' shots are of no use any more.
-      for (const old of fs.readdirSync(path.dirname(file))) if (/^thumbnail-\d+\.jpg$/.test(old)) fs.rmSync(path.join(path.dirname(file), old), { force: true });
+      for (const old of fs.readdirSync(path.dirname(file)))
+        if (/^thumbnail-\d+\.jpg$/.test(old)) fs.rmSync(path.join(path.dirname(file), old), { force: true });
       fs.writeFileSync(file, jpeg);
       return asUrl(jpeg);
     } catch (err) {
@@ -533,7 +660,11 @@ function renderThumbnail(root: string, version: number): Promise<string | null> 
 /** Side chats (/btw) that were popped out of their session, by session id. */
 const sideWindows = new Map<string, BrowserWindow>();
 const dockingSide = new Set<string>();
-const sideState = (sessionId: string, w: BrowserWindow | undefined) => ({ sessionId, pinned: !!w && !w.isDestroyed() && w.isAlwaysOnTop(), open: !!w && !w.isDestroyed() });
+const sideState = (sessionId: string, w: BrowserWindow | undefined) => ({
+  sessionId,
+  pinned: !!w && !w.isDestroyed() && w.isAlwaysOnTop(),
+  open: !!w && !w.isDestroyed(),
+});
 
 /** A side chat opens beside the app as its own window; the window shows the same host-held thread as the embedded panel. */
 function openSide(sessionId: string) {
@@ -572,7 +703,7 @@ function applyThemeToWindows() {
   const dark = isDark();
   for (const w of [win, settingsWin, ...sideWindows.values()]) {
     if (!w || w.isDestroyed()) continue;
-    if (!isMac && (w === win || w === settingsWin)) w.setTitleBarOverlay(overlay(dark));
+    if (!isMac && !isWin && (w === win || w === settingsWin)) w.setTitleBarOverlay(overlay(dark));
     w.setBackgroundColor(bgColor(dark));
   }
 }
@@ -590,7 +721,8 @@ interface ActiveRemote {
 let activeRemote: ActiveRemote | null = null;
 
 const connections = () => store.get<RemoteConnection[]>(REMOTE_CONNECTIONS_KEY, []);
-const connectionInfos = (): RemoteConnectionInfo[] => connections().map(({ token, ...rest }) => ({ ...rest, hasToken: !!token }));
+const connectionInfos = (): RemoteConnectionInfo[] =>
+  connections().map(({ token, ...rest }) => ({ ...rest, hasToken: !!token }));
 
 /** Windows drop everything they show of the old host and boot again against the new one. */
 function resetWindows() {
@@ -624,7 +756,10 @@ async function connectRemote(id: string): Promise<RemoteActive> {
   });
   await client.start();
   closeRemote();
-  activeRemote = { client, info: { id: conn.id, name: conn.name, kind: ping.kind, host: ping.host, state: 'connected' } };
+  activeRemote = {
+    client,
+    info: { id: conn.id, name: conn.name, kind: ping.kind, host: ping.host, state: 'connected' },
+  };
   resetWindows();
   return activeRemote.info;
 }
@@ -639,13 +774,21 @@ function saveConnection(draft: RemoteConnectionDraft): RemoteConnectionInfo[] {
   const token = draft.token?.trim() || existing?.token || '';
   if (!token) throw new Error('Enter the access token shown by the remote.');
   const url = normalizeRemoteUrl(draft.url);
-  const entry: RemoteConnection = { id: existing?.id ?? randomUUID(), name: draft.name.trim() || new URL(url).host, url, token };
+  const entry: RemoteConnection = {
+    id: existing?.id ?? randomUUID(),
+    name: draft.name.trim() || new URL(url).host,
+    url,
+    token,
+  };
   store.set(REMOTE_CONNECTIONS_KEY, existing ? list.map((c) => (c.id === entry.id ? entry : c)) : [...list, entry]);
   return connectionInfos();
 }
 function removeConnection(id: string): RemoteConnectionInfo[] {
   if (activeRemote?.info.id === id) disconnectRemote();
-  store.set(REMOTE_CONNECTIONS_KEY, connections().filter((c) => c.id !== id));
+  store.set(
+    REMOTE_CONNECTIONS_KEY,
+    connections().filter((c) => c.id !== id),
+  );
   return connectionInfos();
 }
 
@@ -691,13 +834,20 @@ const remoteTerminals = new Terminals({
 });
 async function remoteTerminalCall(method: RemoteTerminalMethod, args: unknown[]): Promise<unknown> {
   switch (method) {
-    case 'terminal:list': return remoteTerminals.list(String(args[0]));
-    case 'terminal:create': return remoteTerminals.create(String(args[0]), await sessionCwd(String(args[0])), settingsValue().terminalShell);
-    case 'terminal:attach': return remoteTerminals.attach(String(args[0]));
-    case 'terminal:text': return remoteTerminals.text(String(args[0]), Number(args[1]));
-    case 'terminal:write': return remoteTerminals.write(String(args[0]), String(args[1]));
-    case 'terminal:resize': return remoteTerminals.resize(String(args[0]), Number(args[1]), Number(args[2]));
-    case 'terminal:close': return remoteTerminals.close(String(args[0]));
+    case 'terminal:list':
+      return remoteTerminals.list(String(args[0]));
+    case 'terminal:create':
+      return remoteTerminals.create(String(args[0]), await sessionCwd(String(args[0])), settingsValue().terminalShell);
+    case 'terminal:attach':
+      return remoteTerminals.attach(String(args[0]));
+    case 'terminal:text':
+      return remoteTerminals.text(String(args[0]), Number(args[1]));
+    case 'terminal:write':
+      return remoteTerminals.write(String(args[0]), String(args[1]));
+    case 'terminal:resize':
+      return remoteTerminals.resize(String(args[0]), Number(args[1]), Number(args[2]));
+    case 'terminal:close':
+      return remoteTerminals.close(String(args[0]));
   }
 }
 /** What other machines may ask of this one: the agent host and the project lists. */
@@ -706,7 +856,8 @@ const serveBackend = {
   call: async (method: string, args: unknown[]) => {
     if (isTerminalMethod(method)) return remoteTerminalCall(method, args);
     if (isTransferMethod(method)) return agent.call('host:transfer', method, args);
-    if ((REMOTE_WORKSPACE_METHODS as readonly string[]).includes(method)) return workspaceCall(book, method as RemoteWorkspaceMethod, args);
+    if ((REMOTE_WORKSPACE_METHODS as readonly string[]).includes(method))
+      return workspaceCall(book, method as RemoteWorkspaceMethod, args);
     if (method === 'sessions:remove') remoteTerminals.closeSession(String(args[0]));
     return agent.call(method as Parameters<AgentClient['call']>[0], ...args);
   },
@@ -720,7 +871,12 @@ async function applyServe(): Promise<RemoteServeState> {
   remoteServeError = undefined;
   const settings = serveSettings();
   if (settings.enabled) {
-    const server = new RemoteServer({ backend: serveBackend, token: settings.token, port: settings.port, lan: settings.lan });
+    const server = new RemoteServer({
+      backend: serveBackend,
+      token: settings.token,
+      port: settings.port,
+      lan: settings.lan,
+    });
     remoteServer = server;
     try {
       await server.start();
@@ -729,7 +885,10 @@ async function applyServe(): Promise<RemoteServeState> {
       if (settings.tunnel) void remoteTunnel.start(server.port);
     } catch (err) {
       remoteServer = null;
-      remoteServeError = (err as NodeJS.ErrnoException).code === 'EADDRINUSE' ? `Port ${settings.port} is already in use.` : (err as Error).message;
+      remoteServeError =
+        (err as NodeJS.ErrnoException).code === 'EADDRINUSE'
+          ? `Port ${settings.port} is already in use.`
+          : (err as Error).message;
     }
   }
   return serveState();
@@ -750,22 +909,33 @@ function knownRoot(target: string) {
   const abs = path.resolve(String(target || ''));
   const dir = dataDir();
   const roots = [
-    dir, appExtensionsDir(dir), piAgentDir(),
-    worktreeDir(dir, settingsValue().worktreeDir), defaultWorktreeDir(dir),
-    ...projects().map((p) => p.path), ...workFolders().map((p) => p.path),
+    dir,
+    appExtensionsDir(dir),
+    piAgentDir(),
+    worktreeDir(dir, settingsValue().worktreeDir),
+    defaultWorktreeDir(dir),
+    ...projects().map((p) => p.path),
+    ...workFolders().map((p) => p.path),
   ];
-  if (!roots.some((r) => abs === path.resolve(r) || abs.startsWith(path.resolve(r) + path.sep))) throw new Error('Path outside the app folders');
+  if (!roots.some((r) => abs === path.resolve(r) || abs.startsWith(path.resolve(r) + path.sep)))
+    throw new Error('Path outside the app folders');
   return abs;
 }
 async function pickFolder() {
-  const r = win ? await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] }) : await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
+  const r = win
+    ? await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] })
+    : await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
   return r.canceled ? null : r.filePaths[0];
 }
 const importAttachments = (sources: AttachmentSource[]) =>
-  activeRemote ? uploadAttachments(activeRemote.client, sources) : agent.call<ApiResult<'attachments:import'>>('host:importAttachments', sources);
+  activeRemote
+    ? uploadAttachments(activeRemote.client, sources)
+    : agent.call<ApiResult<'attachments:import'>>('host:importAttachments', sources);
 const sessionCwd = async (id: string) => (await agent.call<{ cwd: string }>('host:meta', id)).cwd;
 
-type MainHandlers = { [K in (typeof MAIN_CHANNELS)[number]]: (...args: ApiArgs<K>) => ApiResult<K> | Promise<ApiResult<K>> };
+type MainHandlers = {
+  [K in (typeof MAIN_CHANNELS)[number]]: (...args: ApiArgs<K>) => ApiResult<K> | Promise<ApiResult<K>>;
+};
 
 /** Notifications must stay referenced until dismissed, or their click handlers are collected. */
 const live = new Set<Notification>();
@@ -803,7 +973,12 @@ async function installUpdate() {
     const { available } = await checkForUpdate(app.getVersion(), net.fetch);
     if (!available) throw new Error(tr('update.upToDate'));
     if (!available.asset) throw new Error(tr('update.noInstaller'));
-    const file = await downloadInstaller(available.asset, path.join(app.getPath('temp'), 'pi-desktop-update'), net.fetch, (p) => broadcast('update:progress', p));
+    const file = await downloadInstaller(
+      available.asset,
+      path.join(app.getPath('temp'), 'pi-desktop-update'),
+      net.fetch,
+      (p) => broadcast('update:progress', p),
+    );
     broadcast('update:progress', { stage: 'launching', received: 0, total: 0 });
     if (process.platform === 'win32') {
       spawn(file, [], { detached: true, stdio: 'ignore' }).unref();
@@ -818,7 +993,8 @@ async function installUpdate() {
 }
 
 const handlers: MainHandlers = {
-  'plugin:call': (pluginId, method, args) => pluginServer.call(String(pluginId), String(method), Array.isArray(args) ? args : []),
+  'plugin:call': (pluginId, method, args) =>
+    pluginServer.call(String(pluginId), String(method), Array.isArray(args) ? args : []),
   'app:info': () => ({
     platform: process.platform,
     version: app.getVersion(),
@@ -829,6 +1005,15 @@ const handlers: MainHandlers = {
     defaultWorktreeDir: defaultWorktreeDir(dataDir()),
     versions: { electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node },
   }),
+  'window:control': (target: WindowTarget, action: WindowControlAction) => {
+    const w = target === 'settings' ? settingsWin : win;
+    if (!w || w.isDestroyed()) return;
+    if (action === 'minimize') w.minimize();
+    else if (action === 'maximize') {
+      if (w.isMaximized()) w.unmaximize();
+      else w.maximize();
+    } else w.close();
+  },
   'app:notify': ({ title, body, sessionId }) => {
     if (settingsValue().notify === false) return;
     if (!Notification.isSupported() || (win && !win.isDestroyed() && win.isFocused())) return;
@@ -883,7 +1068,10 @@ const handlers: MainHandlers = {
     dockingSide.add(sessionId);
     w.close();
   },
-  'side:windows': () => [...sideWindows].filter(([, w]) => !w.isDestroyed()).map(([id, w]) => ({ sessionId: id, pinned: w.isAlwaysOnTop() })),
+  'side:windows': () =>
+    [...sideWindows]
+      .filter(([, w]) => !w.isDestroyed())
+      .map(([id, w]) => ({ sessionId: id, pinned: w.isAlwaysOnTop() })),
   'diagram:get': (token) => diagrams.get(token) ?? null,
   'artifacts:preview': (id) => openArtifact(String(id)),
   'artifacts:thumbnail': (id) => artifactThumbnail(String(id)),
@@ -897,7 +1085,11 @@ const handlers: MainHandlers = {
     const info = await agent.call<WorktreeInfo | null>('host:worktree', dir).catch(() => null);
     if (info && fs.existsSync(info.mainRoot)) {
       pendingWorktree = info;
-      return { kind: 'worktree', info, known: store.get<Project[]>('projects', []).some((p) => p.path === info.mainRoot) };
+      return {
+        kind: 'worktree',
+        info,
+        known: store.get<Project[]>('projects', []).some((p) => p.path === info.mainRoot),
+      };
     }
     return { kind: 'added', project: addProject(dir) };
   },
@@ -905,10 +1097,15 @@ const handlers: MainHandlers = {
     const info = pendingWorktree;
     pendingWorktree = null;
     if (!info) return null;
-    return choice === 'session' ? { project: addProject(info.mainRoot), adopt: info } : { project: addProject(info.path), adopt: null };
+    return choice === 'session'
+      ? { project: addProject(info.mainRoot), adopt: info }
+      : { project: addProject(info.path), adopt: null };
   },
   'projects:remove': (dir) => {
-    store.set('projects', store.get<Project[]>('projects', []).filter((p) => p.path !== dir));
+    store.set(
+      'projects',
+      store.get<Project[]>('projects', []).filter((p) => p.path !== dir),
+    );
     listsChanged('projects');
     return projects();
   },
@@ -943,17 +1140,23 @@ const handlers: MainHandlers = {
   'attachments:import': (sources) => importAttachments(sources),
   'attachments:pick': async () => {
     const options = { title: tr('composer.addFiles'), properties: ['openFile', 'multiSelections'] as const };
-    const r = win ? await dialog.showOpenDialog(win, { ...options, properties: [...options.properties] }) : await dialog.showOpenDialog({ ...options, properties: [...options.properties] });
+    const r = win
+      ? await dialog.showOpenDialog(win, { ...options, properties: [...options.properties] })
+      : await dialog.showOpenDialog({ ...options, properties: [...options.properties] });
     return r.canceled ? { attachments: [], errors: [] } : importAttachments(r.filePaths.map((p) => ({ path: p })));
   },
   // SAFETY: Electron's async clipboard.read is available at runtime but absent from its bundled type declarations.
   'attachments:clipboard': () =>
-    clipboardAttachments(() => (clipboard as unknown as { read(): Promise<ClipboardItemLike[]> }).read(), importAttachments),
+    clipboardAttachments(
+      () => (clipboard as unknown as { read(): Promise<ClipboardItemLike[]> }).read(),
+      importAttachments,
+    ),
 
   'app:openTargets': () => openTargets(),
   'terminal:shells': () => terminalShells(),
   'terminal:list': (sessionId) => terminals.list(sessionId),
-  'terminal:create': async (sessionId) => terminals.create(sessionId, await sessionCwd(sessionId), settingsValue().terminalShell),
+  'terminal:create': async (sessionId) =>
+    terminals.create(sessionId, await sessionCwd(sessionId), settingsValue().terminalShell),
   'terminal:attach': (id) => terminals.attach(id),
   'terminal:text': (id, lines) => terminals.text(id, lines),
   'terminal:write': (id, data) => terminals.write(id, data),
@@ -979,7 +1182,14 @@ const handlers: MainHandlers = {
 /** Main-handled calls a remote host answers itself. */
 const REMOTE_ROUTED = new Set<string>([...REMOTE_WORKSPACE_METHODS, ...REMOTE_TERMINAL_METHODS]);
 /** Calls that act on this machine's own files and windows, and so have no remote counterpart. */
-const LOCAL_ONLY = new Set<string>(['projects:add', 'projects:adoptWorktree', 'work:addFolder', 'sessions:openIn', 'sessions:openPath', 'update:install']);
+const LOCAL_ONLY = new Set<string>([
+  'projects:add',
+  'projects:adoptWorktree',
+  'work:addFolder',
+  'sessions:openIn',
+  'sessions:openPath',
+  'update:install',
+]);
 
 function registerIpc() {
   // Read synchronously by the preload: every window boots with the right theme,
@@ -1025,10 +1235,18 @@ function registerIpc() {
 
 // ------------------------------------------------------------ app
 
-if (!app.requestSingleInstanceLock()) app.quit();
+// The lock is per Electron profile. `make dev` / `make demo` give each run its own profile (see
+// scripts/isolated-app.mjs); everything else shares the installed app's, so a second copy quits.
+const primary = app.requestSingleInstanceLock();
+if (!primary) {
+  console.log('[main] another instance is already running; this one will quit');
+  app.quit();
+}
 app.on('second-instance', showMainWindow);
 
 void app.whenReady().then(async () => {
+  // quit() does not cancel whenReady: stop before the store, windows and the agent host are made.
+  if (!primary) return;
   store = new Store(dataDir());
   setActiveLocale(currentLocale());
   book = new ProjectBook(store);
@@ -1043,7 +1261,9 @@ void app.whenReady().then(async () => {
     // An unmounted custom worktree volume must not keep the app from starting.
     console.error('[main] cannot create the worktree folder:', err);
   }
-  nativeTheme.themeSource = ['light', 'dark'].includes(String(settingsValue().theme)) ? (settingsValue().theme as 'light' | 'dark') : 'system';
+  nativeTheme.themeSource = ['light', 'dark'].includes(String(settingsValue().theme))
+    ? (settingsValue().theme as 'light' | 'dark')
+    : 'system';
   agent = new AgentClient(
     path.join(here, 'agent.mjs'),
     () => ({ dataDir: dataDir(), agentDir: piAgentDir(), demo: DEMO_ALLOWED, locale: currentLocale() }),
@@ -1085,4 +1305,3 @@ app.on('before-quit', async (e) => {
 app.on('window-all-closed', () => {
   if (!isMac) app.quit();
 });
-

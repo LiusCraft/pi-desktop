@@ -2,7 +2,18 @@
 // in the app store; pi events are folded in by transcript.ts.
 import { toast } from 'sonner';
 import { buildMessage, decodeUserContent, type Attachment } from '@shared/attachments';
-import type { HostEvent, OutputStyle, PermissionMode, PrThread, SessionKind, SessionMeta, SpawnTask, ThinkingLevel, UiResponse, WorkProjectPatch } from '@shared/protocol';
+import type {
+  HostEvent,
+  OutputStyle,
+  PermissionMode,
+  PrThread,
+  SessionKind,
+  SessionMeta,
+  SpawnTask,
+  ThinkingLevel,
+  UiResponse,
+  WorkProjectPatch,
+} from '@shared/protocol';
 import { referencePrompt, type ContextReference } from '@shared/context-reference';
 import { cacheHitRate } from '@shared/usage';
 import { revealItem } from '@/lib/quote-links';
@@ -10,6 +21,7 @@ import { positiveLine } from '@shared/tool-previews';
 import { encodeTaskMessage } from '@shared/task-message';
 import { typedText } from '@shared/skill-message';
 import { call, errText, modKey } from '@/lib/api';
+import { bashCommand } from '@/lib/bash';
 import { t } from '@/lib/i18n';
 import { cuePet } from '@/lib/pet-cue';
 import { playSound } from '@/lib/sounds';
@@ -25,7 +37,21 @@ import { notifyPluginEvent } from '@/plugin/events';
 import { forgetScroll } from './scroll';
 import { askSide, showSide } from './side';
 import {
-  addOutputs, addUiRequest, applyPiEvent, applyTaskUpdate, applyViewMode, emptySession, findByKey, hasThinking, newKey, push, replay, resolveUi, settle, transcriptItems, type Effects,
+  addOutputs,
+  addUiRequest,
+  applyPiEvent,
+  applyTaskUpdate,
+  applyViewMode,
+  emptySession,
+  findByKey,
+  hasThinking,
+  newKey,
+  push,
+  replay,
+  resolveUi,
+  settle,
+  transcriptItems,
+  type Effects,
 } from './transcript';
 import type { Arrangement, CardId, ChangedFile, Column, DropPlace, Item, ItemOf, Panels, SessionView } from './types';
 
@@ -35,7 +61,9 @@ export const fail = (err: unknown) => toast.error(errText(err));
 
 export { sessionDraftKey };
 export function welcomeDraftKey(st: AppState = getApp()) {
-  return st.view === 'work' ? `welcome:work:${st.prefs.workFolder || 'scratch'}` : `welcome:code:${st.prefs.project || 'none'}`;
+  return st.view === 'work'
+    ? `welcome:work:${st.prefs.workFolder || 'scratch'}`
+    : `welcome:code:${st.prefs.project || 'none'}`;
 }
 const activateDraftFor = () => {
   const st = getApp();
@@ -89,7 +117,14 @@ function flushEvents() {
     const view = st.prefs.viewMode;
     for (const ev of events) {
       if (ev.type === 'changed') continue;
-      if (ev.type === 'auth_prompt' || ev.type === 'auth_event' || ev.type === 'remote_link' || ev.type === 'terminal_data' || ev.type === 'terminal_exit') continue;
+      if (
+        ev.type === 'auth_prompt' ||
+        ev.type === 'auth_event' ||
+        ev.type === 'remote_link' ||
+        ev.type === 'terminal_data' ||
+        ev.type === 'terminal_exit'
+      )
+        continue;
       if (ev.type === 'host_exit') {
         for (const s of Object.values(st.sessions)) {
           if (s.running) settle(s, true, view);
@@ -98,7 +133,7 @@ function flushEvents() {
           s.compacting = false;
           s.setup = null;
           s.waiting = null;
-          for (const key of [...s.pendingUser]) {
+          for (const key of s.pendingUser) {
             const p = findByKey(s, key);
             if (p?.kind !== 'user') continue;
             p.exited = true;
@@ -108,18 +143,32 @@ function flushEvents() {
             s.items = s.items.filter((i) => i.key !== key);
           }
           s.pendingUser = [];
-          for (const i of s.items) if ((i.kind === 'perm' || i.kind === 'ask' || i.kind === 'plan') && i.requestId) { i.requestId = null; i.resolved ??= 'cancelled'; }
+          for (const i of s.items)
+            if ((i.kind === 'perm' || i.kind === 'ask' || i.kind === 'plan') && i.requestId) {
+              i.requestId = null;
+              i.resolved ??= 'cancelled';
+            }
         }
         const cur = st.current && st.sessions[st.current];
         if (cur) {
           const tail = ev.stderr.trim().split('\n').slice(-6).join('\n');
-          push(cur, { kind: 'note', key: newKey(), level: 'error', text: `${t('act.hostExit', { code: String(ev.code) })}${tail ? `\n${tail}` : ''}` }, view);
+          push(
+            cur,
+            {
+              kind: 'note',
+              key: newKey(),
+              level: 'error',
+              text: `${t('act.hostExit', { code: String(ev.code) })}${tail ? `\n${tail}` : ''}`,
+            },
+            view,
+          );
         }
         continue;
       }
       let s = st.sessions[ev.sessionId];
       if (ev.type === 'meta') {
-        if (s) s.meta = { ...ev.meta, pr: s.meta.pr ?? ev.meta.pr }; else st.sessions[ev.sessionId] = emptySession(ev.meta);
+        if (s) s.meta = { ...ev.meta, pr: s.meta.pr ?? ev.meta.pr };
+        else st.sessions[ev.sessionId] = emptySession(ev.meta);
         continue;
       }
       if (!s) continue;
@@ -155,6 +204,7 @@ function flushEvents() {
             s.meta.pr = { num: ev.status.num, url: ev.status.url, state: ev.status.state, draft: ev.status.draft };
           } else {
             s.pr = null;
+            s.meta.pr = null;
           }
           break;
         case 'git_fetched':
@@ -207,7 +257,11 @@ function runEffects(id: string, fx: Effects) {
   const away = !isCur || document.hidden || !document.hasFocus();
   if (fx.settled && away) {
     if (!isCur) updateSession(id, (x) => void (x.unread = true));
-    call('app:notify', { title: s.meta.title, body: fx.settled.aborted ? 'Interrupted' : 'Pi Desktop finished', sessionId: id }).catch(() => {});
+    call('app:notify', {
+      title: s.meta.title,
+      body: fx.settled.aborted ? 'Interrupted' : 'Pi Desktop finished',
+      sessionId: id,
+    }).catch(() => {});
   }
   // A finished turn is the moment the user is likely to type again. An interrupted
   // run is not: there is no natural follow-up to guess.
@@ -222,7 +276,11 @@ function runEffects(id: string, fx: Effects) {
 
 export async function bootstrap() {
   const [info, projects, sessions, folders, tasks] = await Promise.all([
-    call('app:info'), call('projects:list'), call('sessions:list'), call('work:folders'), call('tasks:list'),
+    call('app:info'),
+    call('projects:list'),
+    call('sessions:list'),
+    call('work:folders'),
+    call('tasks:list'),
   ]);
   setApp((st) => {
     st.info = info;
@@ -248,7 +306,11 @@ export async function bootstrap() {
 /** After the link to a remote host came back: its sessions moved on without us, so read them again. */
 async function resyncRemote() {
   try {
-    const [sessions, projects, folders] = await Promise.all([call('sessions:list'), call('projects:list'), call('work:folders')]);
+    const [sessions, projects, folders] = await Promise.all([
+      call('sessions:list'),
+      call('projects:list'),
+      call('work:folders'),
+    ]);
     setApp((st) => {
       st.projects = projects;
       st.workFolders = folders;
@@ -283,7 +345,11 @@ export async function loadModels() {
       if (!st.prefs.model || !ids.includes(st.prefs.model)) {
         // Prefer a real model when one is configured; otherwise the offline demo model.
         const real = ids.find((i) => !i.startsWith('demo/'));
-        st.prefs.model = info?.demo ? 'demo/demo-coder' : defaultModel && !defaultModel.startsWith('demo/') ? defaultModel : real || 'demo/demo-coder';
+        st.prefs.model = info?.demo
+          ? 'demo/demo-coder'
+          : defaultModel && !defaultModel.startsWith('demo/')
+            ? defaultModel
+            : real || 'demo/demo-coder';
       }
     });
     const levels = await call('models:levels', getApp().prefs.model).catch(() => []);
@@ -300,9 +366,19 @@ export async function loadModels() {
  * composer's effort menu follows the configuration; pi clamps a level the model no longer offers.
  */
 async function reloadSessionLevels() {
-  const wanted = [...new Set(Object.values(getApp().sessions).filter((s) => s.loaded && s.model).map((s) => s.model as string))];
+  const wanted = [
+    ...new Set(
+      Object.values(getApp().sessions)
+        .filter((s) => s.loaded && s.model)
+        .map((s) => s.model as string),
+    ),
+  ];
   if (!wanted.length) return;
-  const read = new Map(await Promise.all(wanted.map(async (model) => [model, await call('models:levels', model).catch(() => null)] as const)));
+  const read = new Map(
+    await Promise.all(
+      wanted.map(async (model) => [model, await call('models:levels', model).catch(() => null)] as const),
+    ),
+  );
   setApp((st) => {
     for (const s of Object.values(st.sessions)) {
       const levels = s.model ? read.get(s.model) : null;
@@ -463,10 +539,12 @@ export async function openSession(id: string, fresh = false) {
     st.current = id;
     st.view = view;
     // Starting a session is slow (extensions, MCP): show that it is happening instead of an empty page.
-    if (!st.sessions[id].loaded && !st.sessions[id].setup) st.sessions[id].setup = [{ id: 'agent', label: t('act.stepAgent'), state: 'running' }];
+    if (!st.sessions[id].loaded && !st.sessions[id].setup)
+      st.sessions[id].setup = [{ id: 'agent', label: t('act.stepAgent'), state: 'running' }];
     st.lastByView[view] = id;
     st.sessions[id].unread = false;
-    if (st.sessions[id].detail?.type === 'file' && (st.sessions[id].detail as any).loading) st.sessions[id].detail = null;
+    if (st.sessions[id].detail?.type === 'file' && (st.sessions[id].detail as any).loading)
+      st.sessions[id].detail = null;
   });
   try {
     localStorage.setItem('cc_mode', JSON.stringify(view));
@@ -511,12 +589,17 @@ export async function openSession(id: string, fresh = false) {
       for (const req of r.pending) addUiRequest(x, req, st.prefs.viewMode);
     });
     void loadCommands(id);
-    if (s.meta.kind === 'code') void loadChanges(id);  } catch (err) {
+    if (s.meta.kind === 'code') void loadChanges(id);
+  } catch (err) {
     setApp((st) => {
       const x = st.sessions[id];
       if (!x) return;
       x.setup = null;
-      push(x, { kind: 'note', key: newKey(), level: 'error', text: t('act.openFailed', { error: errText(err) }) }, st.prefs.viewMode);
+      push(
+        x,
+        { kind: 'note', key: newKey(), level: 'error', text: t('act.openFailed', { error: errText(err) }) },
+        st.prefs.viewMode,
+      );
     });
   }
 }
@@ -524,7 +607,11 @@ export async function openSession(id: string, fresh = false) {
 /** The slash commands and skills an open session offers; the host composes them from what is installed now. */
 async function loadCommands(id: string) {
   const commands = await call('sessions:commands', id).catch(() => null);
-  if (commands) updateSession(id, (x) => void (x.commands = commands.filter((c) => !['desktop-mode', 'desktop-output-style'].includes(c.name))));
+  if (commands)
+    updateSession(
+      id,
+      (x) => void (x.commands = commands.filter((c) => !['desktop-mode', 'desktop-output-style'].includes(c.name))),
+    );
 }
 
 /**
@@ -553,7 +640,13 @@ async function revalidateSession(id: string) {
 /** Reply to a passage of the conversation: it joins the composer as a card, with the reply typed in the popup. */
 export function replyWith(sid: string, passage: string, comment = '') {
   const key = sessionDraftKey(sid);
-  const added = drafts.addReference(key, { id: crypto.randomUUID(), kind: 'quote', path: '', text: passage.trim(), comment: comment.trim() || undefined });
+  const added = drafts.addReference(key, {
+    id: crypto.randomUUID(),
+    kind: 'quote',
+    path: '',
+    text: passage.trim(),
+    comment: comment.trim() || undefined,
+  });
   if (!added) throw new Error(getDraft(key).errors.at(-1) ?? t('act.replyFailed'));
   requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('textarea[data-composer-input]')?.focus());
 }
@@ -565,7 +658,10 @@ export function quotePrThread(thread: PrThread, note?: string) {
   const key = sessionDraftKey(s.meta.id);
   const text = thread.comments.map((c) => `${c.author}: ${c.body}`).join('\n\n');
   const added = drafts.addReference(key, {
-    id: crypto.randomUUID(), kind: 'comment', path: thread.path, text,
+    id: crypto.randomUUID(),
+    kind: 'comment',
+    path: thread.path,
+    text,
     ...(note ? { comment: note } : {}),
     ...(thread.line ? { startLine: thread.line, endLine: thread.line } : {}),
     side: thread.side,
@@ -617,8 +713,16 @@ async function slashCommand(s: SessionView | undefined, head: string, text: stri
       toast.warning(t('act.startSessionFirst'));
       return true;
     }
-    const lines = [...desktopCommands(), ...s.commands.map((c) => [`/${c.name}`, c.description || c.source] as [string, string])];
-    pushItem(s.meta.id, { kind: 'text', key: newKey(), text: `### ${t('act.commands')}\n${lines.map(([k, d]) => `- \`${k}\` ${d}`).join('\n')}\n\n${HELP()}`, live: false });
+    const lines = [
+      ...desktopCommands(),
+      ...s.commands.map((c) => [`/${c.name}`, c.description || c.source] as [string, string]),
+    ];
+    pushItem(s.meta.id, {
+      kind: 'text',
+      key: newKey(),
+      text: `### ${t('act.commands')}\n${lines.map(([k, d]) => `- \`${k}\` ${d}`).join('\n')}\n\n${HELP()}`,
+      live: false,
+    });
     return true;
   }
   if (!s || !['/clear', '/compact', '/context', '/export'].includes(head)) return false;
@@ -645,6 +749,49 @@ async function slashCommand(s: SessionView | undefined, head: string, text: stri
     fail(err);
   }
   return true;
+}
+
+/**
+ * `!command`: runs in the shell the session's own commands use, so it starts where the model left that
+ * shell; pi keeps the result in the conversation, so the next turn sees it.
+ */
+export async function runBash(id: string, command: string, excludeFromContext: boolean) {
+  const key = newKey();
+  /** Change the item this run owns; the store hands out the draft to write to. */
+  const edit = (fn: (item: ItemOf<'bash'>) => void) =>
+    setApp((st) => {
+      const s = st.sessions[id];
+      const found = s && findByKey(s, key);
+      if (found?.kind === 'bash') fn(found);
+    });
+  setApp((st) => {
+    const s = st.sessions[id];
+    if (!s) return;
+    push(
+      s,
+      { kind: 'bash', key, command, output: '', running: true, excluded: excludeFromContext, at: Date.now() },
+      st.prefs.viewMode,
+    );
+  });
+  try {
+    // The output streams in as `bash_execution_update` events carrying this key; the result is final.
+    const r = await call('sessions:bash', id, command, { excludeFromContext, id: key });
+    edit((it) =>
+      Object.assign(it, {
+        running: false,
+        output: r.output,
+        exitCode: r.exitCode,
+        cancelled: r.cancelled,
+        truncated: r.truncated,
+        fullOutputPath: r.fullOutputPath,
+      }),
+    );
+  } catch (err) {
+    edit((it) => {
+      it.running = false;
+      it.error = errText(err);
+    });
+  }
 }
 
 /** Summarise older messages to free context (/compact, or the context popover). */
@@ -687,16 +834,18 @@ async function toggleHiddenHistory(
   const s = getApp().sessions[id];
   const card = findByKey(s, key);
   if (!card || card.kind !== kind || card.loading) return;
-  const set = (patch: { open: boolean }) => updateSession(id, (x) => {
-    const c = findByKey(x, key);
-    if (c?.kind === kind) Object.assign(c, patch);
-  });
+  const set = (patch: { open: boolean }) =>
+    updateSession(id, (x) => {
+      const c = findByKey(x, key);
+      if (c?.kind === kind) Object.assign(c, patch);
+    });
   // Once loaded (or when the live transcript still holds them), the items are already above the card.
   if (s.items.findIndex((i) => i.key === key) > 0 || card.open || !card.hidden) return set({ open: !card.open });
-  const busy = (loading: boolean) => updateSession(id, (x) => {
-    const c = findByKey(x, key);
-    if (c?.kind === kind) c.loading = loading;
-  });
+  const busy = (loading: boolean) =>
+    updateSession(id, (x) => {
+      const c = findByKey(x, key);
+      if (c?.kind === kind) c.loading = loading;
+    });
   busy(true);
   try {
     const messages = await call(channel, id);
@@ -759,7 +908,7 @@ async function createSession(firstPrompt: string, draftKey: string) {
     projectPath: work ? st.prefs.workFolder || null : st.prefs.project,
     worktree: !work && st.prefs.worktree,
     adoptPath: !work && st.adopt && st.adopt.mainRoot === st.prefs.project ? st.adopt.path : undefined,
-    baseRef: !work && st.prefs.worktree && st.baseRef && st.baseRef !== st.projectBranch ? st.baseRef : undefined,
+    baseRef: !work && st.prefs.worktree ? (st.baseRef ?? undefined) : undefined,
     title: firstPrompt.replace(/@\S+/g, '').trim().slice(0, 60) || 'New session',
     autoName: true,
     model: st.prefs.model,
@@ -775,7 +924,15 @@ async function createSession(firstPrompt: string, draftKey: string) {
     x.sessions[meta.id].levels = st.levels;
     // The worktree and the agent come up in the background; the conversation opens straight away.
     x.sessions[meta.id].setup = [
-      ...(meta.worktreeSetup ? [{ id: 'worktree' as const, label: t('act.stepWorktree', { branch: meta.branch ?? '' }), state: 'running' as const }] : []),
+      ...(meta.worktreeSetup
+        ? [
+            {
+              id: 'worktree' as const,
+              label: t('act.stepWorktree', { branch: meta.branch ?? '' }),
+              state: 'running' as const,
+            },
+          ]
+        : []),
       { id: 'agent', label: t('act.stepAgent'), state: meta.worktreeSetup ? 'pending' : 'running' },
     ];
     x.adopt = null;
@@ -798,6 +955,17 @@ export async function send(queueOnly = false) {
   const references = draft.references.filter((reference) => !reference.token || text.includes(reference.token));
   let s = currentSession();
   if (s?.stopping || s?.historyBusy) return;
+  // `!command` / `!!command`: the session's own shell, not the model. A running turn or compaction does
+  // not matter here: the shell serializes whatever it is asked to run.
+  const shell = bashCommand(text);
+  if (shell) {
+    if (!s) return void toast.warning(t('act.startSessionFirst'));
+    if (files.length || references.length) return void toast.warning(t('act.bashNoAttach'));
+    if (!shell.command) return void toast.warning(t('act.bashEmpty'));
+    drafts.clear(draft.key);
+    void runBash(s.meta.id, shell.command, shell.excludeFromContext);
+    return;
+  }
   if (!text.trim() && !files.length && !references.length) {
     if (s?.running || s?.compacting) void stop(s.meta.id);
     return;
@@ -805,7 +973,8 @@ export async function send(queueOnly = false) {
   if (s?.compacting) return void toast.warning(t('act.waitCompaction'));
   const head = text.trim().split(/\s+/)[0];
   // Commands the app handles itself (and pi's /skill) take no attachments; a skill may still carry @ context.
-  if ((files.length || references.length) && desktopCommands().some(([name]) => name === head)) return void toast.warning(t('act.slashNoAttach'));
+  if ((files.length || references.length) && desktopCommands().some(([name]) => name === head))
+    return void toast.warning(t('act.slashNoAttach'));
   if (await slashCommand(s, head, text)) return;
 
   const st = getApp();
@@ -835,26 +1004,46 @@ export async function send(queueOnly = false) {
     return void drafts.error(key, err);
   }
   const wasRunning = !!getApp().sessions[id]?.running;
+  const requestStartedAt = Date.now();
   const itemKey = newKey();
   const optimistic = !wasRunning && !text.startsWith('/');
   setApp((x) => {
     const v = x.sessions[id];
     if (!v) return;
-    push(v, { kind: 'user', key: itemKey, text: payload.text, attachments: files, clientId, submission, wire, queued: wasRunning, acknowledged: false }, x.prefs.viewMode);
+    push(
+      v,
+      {
+        kind: 'user',
+        key: itemKey,
+        text: payload.text,
+        attachments: files,
+        clientId,
+        submission,
+        wire,
+        queued: wasRunning,
+        acknowledged: false,
+      },
+      x.prefs.viewMode,
+    );
     v.pendingUser.push(itemKey);
+    v.scrollRequest = itemKey;
     if (optimistic) {
       v.running = true;
-      v.t0 = Date.now();
+      v.t0 = requestStartedAt;
       v.tokens = 0;
+      v.streamTokens = 0;
+      v.streamMs = 0;
+      v.cur = null;
       v.todosKey = null;
       v.statusText = t('status.thinking');
     }
   });
   const item = () => findByKey(getApp().sessions[id], itemKey) as (Item & { kind: 'user' }) | undefined;
-  const removeUser = () => updateSession(id, (v) => {
-    v.pendingUser = v.pendingUser.filter((k) => k !== itemKey);
-    v.items = v.items.filter((i) => i.key !== itemKey);
-  });
+  const removeUser = () =>
+    updateSession(id, (v) => {
+      v.pendingUser = v.pendingUser.filter((k) => k !== itemKey);
+      v.items = v.items.filter((i) => i.key !== itemKey);
+    });
   try {
     const r = await call('sessions:prompt', id, payload, queueOnly ? 'followUp' : 'steer');
     if (item()?.exited || getApp().sessions[id]?.hostEpoch !== epoch) {
@@ -904,12 +1093,21 @@ export async function stop(id: string) {
     for (const wire of [...q.steering, ...q.followUp]) {
       const decoded = decodeUserContent(wire);
       const v = getApp().sessions[id];
-      const p = v?.pendingUser.map((k) => findByKey(v, k)).find((i): i is Item & { kind: 'user' } => i?.kind === 'user' && (decoded.clientId ? i.clientId === decoded.clientId : i.wire === wire));
-      const snapshot = p?.submission ?? { text: typedText(decoded.text), attachments: decoded.attachments.filter((a): a is any => a.kind === 'file' || !!(a as any).data) };
-      if (p) updateSession(id, (x) => {
-        x.pendingUser = x.pendingUser.filter((k) => k !== p.key);
-        x.items = x.items.filter((i) => i.key !== p.key);
-      });
+      const p = v?.pendingUser
+        .map((k) => findByKey(v, k))
+        .find(
+          (i): i is Item & { kind: 'user' } =>
+            i?.kind === 'user' && (decoded.clientId ? i.clientId === decoded.clientId : i.wire === wire),
+        );
+      const snapshot = p?.submission ?? {
+        text: typedText(decoded.text),
+        attachments: decoded.attachments.filter((a): a is any => a.kind === 'file' || !!(a as any).data),
+      };
+      if (p)
+        updateSession(id, (x) => {
+          x.pendingUser = x.pendingUser.filter((k) => k !== p.key);
+          x.items = x.items.filter((i) => i.key !== p.key);
+        });
       drafts.recover(sessionDraftKey(id), snapshot);
     }
     if (getApp().sessions[id]?.hostEpoch === epoch) await call('sessions:abort', id);
@@ -1038,7 +1236,10 @@ export async function archiveSession(id: string, quiet = false) {
       v.setup = null;
     });
     if (getApp().current === id) showWelcome();
-    if (!quiet) toast(t('act.archived', { title: s.meta.title }), { action: { label: t('act.undo'), onClick: () => void unarchiveSession(id) } });
+    if (!quiet)
+      toast(t('act.archived', { title: s.meta.title }), {
+        action: { label: t('act.undo'), onClick: () => void unarchiveSession(id) },
+      });
   } catch (err) {
     fail(err);
   }
@@ -1058,7 +1259,9 @@ export async function archiveSessions(ids: string[]) {
   if (ids.length < 2) return void (ids[0] && archiveSession(ids[0]));
   const done = ids.filter((id) => getApp().sessions[id] && !getApp().sessions[id].meta.archived);
   await Promise.all(done.map((id) => archiveSession(id, true)));
-  toast(t('act.archivedMany', { n: done.length }), { action: { label: t('act.undo'), onClick: () => void Promise.all(done.map(unarchiveSession)) } });
+  toast(t('act.archivedMany', { n: done.length }), {
+    action: { label: t('act.undo'), onClick: () => void Promise.all(done.map(unarchiveSession)) },
+  });
 }
 
 export async function pinSessions(ids: string[], pinned: boolean) {
@@ -1087,7 +1290,10 @@ export async function deleteSession(id: string) {
       if (lost.dirty) lines.push(t('act.deleteDirty', { n: lost.dirty }));
       if (lost.unpushed) lines.push(t('act.deleteUnpushed', { branch: lost.branch ?? '', n: lost.unpushed }));
     }
-    if (!(await dialogs.confirm(t('act.deleteTitle', { title: s.meta.title }), lines.join('\n'), t('act.delete'), true))) return;
+    if (
+      !(await dialogs.confirm(t('act.deleteTitle', { title: s.meta.title }), lines.join('\n'), t('act.delete'), true))
+    )
+      return;
     const removed = await call('sessions:remove', id);
     dropSession(id);
     if (removed.branchKept) toast(t('act.branchKept', { branch: removed.branchKept }));
@@ -1105,7 +1311,8 @@ export async function deleteSessions(ids: string[]) {
     const dirty = lost.reduce((n, l) => n + (l.dirty || 0), 0);
     if (trees) lines.push(t('act.deleteWorktrees', { n: trees }));
     if (dirty) lines.push(t('act.deleteDirty', { n: dirty }));
-    if (!(await dialogs.confirm(t('act.deleteManyTitle', { n: ids.length }), lines.join('\n'), t('act.delete'), true))) return;
+    if (!(await dialogs.confirm(t('act.deleteManyTitle', { n: ids.length }), lines.join('\n'), t('act.delete'), true)))
+      return;
     for (const id of ids) {
       const removed = await call('sessions:remove', id);
       dropSession(id);
@@ -1125,7 +1332,7 @@ export async function userMessageAction(id: string, entryId: string, action: 're
     const result = await call('sessions:messageAction', id, entryId, action);
     const { session, draft } = result;
     setApp((st) => {
-      const target = st.sessions[session.meta.id] ??= emptySession(session.meta);
+      const target = (st.sessions[session.meta.id] ??= emptySession(session.meta));
       target.meta = session.meta;
       replay(target, session.messages, st.prefs.viewMode);
       markCompactionHistory(target, session.hiddenMessages);
@@ -1138,8 +1345,17 @@ export async function userMessageAction(id: string, entryId: string, action: 're
       target.cacheRate = session.stats ? cacheHitRate(session.stats.tokens) : null;
       target.cost = session.stats?.cost ?? null;
     });
-    const attachments = restoreDraft ? draft.attachments.filter((attachment): attachment is Attachment => attachment.kind === 'file' || typeof attachment.data === 'string') : [];
-    if (restoreDraft) drafts.recover(sessionDraftKey(session.meta.id), { text: typedText(draft.text), attachments, label: t(action === 'rewind' ? 'act.rewoundMessage' : 'act.branchStart') });
+    const attachments = restoreDraft
+      ? draft.attachments.filter(
+          (attachment): attachment is Attachment => attachment.kind === 'file' || typeof attachment.data === 'string',
+        )
+      : [];
+    if (restoreDraft)
+      drafts.recover(sessionDraftKey(session.meta.id), {
+        text: typedText(draft.text),
+        attachments,
+        label: t(action === 'rewind' ? 'act.rewoundMessage' : 'act.branchStart'),
+      });
     if (restoreDraft && draft.notice) drafts.error(sessionDraftKey(session.meta.id), draft.notice);
     // Navigate only if the user has stayed on the source session during the request.
     if (getApp().current === id) await openSession(session.meta.id);
@@ -1178,7 +1394,10 @@ export function togglePanel(id: string, panel: keyof Panels, open?: boolean) {
  */
 export function moveCard(id: string, card: CardId, target: CardId, place: DropPlace, columns: Arrangement) {
   if (card === target) return;
-  const next: Arrangement = { primary: columns.primary.filter((c) => c !== card), secondary: columns.secondary.filter((c) => c !== card) };
+  const next: Arrangement = {
+    primary: columns.primary.filter((c) => c !== card),
+    secondary: columns.secondary.filter((c) => c !== card),
+  };
   if (place === 'left' || place === 'right') {
     // The side edge sends the card to the left or right column, at its bottom; an empty side opens a new column.
     next[place === 'left' ? 'primary' : 'secondary'].push(card);
@@ -1253,18 +1472,35 @@ export async function openFileRef(path: string, line?: number, fallbackImage?: s
   try {
     if (IMAGE_FILE.test(rel) || fallbackImage) {
       const image = (await call('sessions:readImage', id, rel).catch(() => null))?.src ?? fallbackImage ?? null;
-      if (stillShowing()) updateSession(id, (v) => void (v.detail = { type: 'file', path: rel, line: target, loading: false, image }));
+      if (stillShowing())
+        updateSession(id, (v) => void (v.detail = { type: 'file', path: rel, line: target, loading: false, image }));
       return;
     }
     if (MEDIA_FILE.test(rel)) {
       const media = (await call('sessions:readMedia', id, rel).catch(() => null)) ?? null;
-      if (stillShowing()) updateSession(id, (v) => void (v.detail = { type: 'file', path: rel, line: target, loading: false, media: media && { kind: media.kind, src: media.src } }));
+      if (stillShowing())
+        updateSession(
+          id,
+          (v) =>
+            void (v.detail = {
+              type: 'file',
+              path: rel,
+              line: target,
+              loading: false,
+              media: media && { kind: media.kind, src: media.src },
+            }),
+        );
       return;
     }
     const text = await call('sessions:readFile', id, rel);
-    if (stillShowing()) updateSession(id, (v) => void (v.detail = { type: 'file', path: rel, line: target, loading: false, text }));
+    if (stillShowing())
+      updateSession(id, (v) => void (v.detail = { type: 'file', path: rel, line: target, loading: false, text }));
   } catch (err) {
-    if (stillShowing()) updateSession(id, (v) => void (v.detail = { type: 'file', path: rel, line: target, loading: false, error: errText(err) }));
+    if (stillShowing())
+      updateSession(
+        id,
+        (v) => void (v.detail = { type: 'file', path: rel, line: target, loading: false, error: errText(err) }),
+      );
   }
 }
 /** Keep a previewed file's tab (a double click on the tab or the file). */
@@ -1315,7 +1551,13 @@ export function requestFind(scope: 'file' | 'all') {
 }
 
 /** Open the Diff panel scrolled to one file, or to the first PR review thread (`thread`). */
-export const diffTarget = { path: null as string | null, line: undefined as number | undefined, side: undefined as 'additions' | 'deletions' | undefined, thread: false, seq: 0 };
+export const diffTarget = {
+  path: null as string | null,
+  line: undefined as number | undefined,
+  side: undefined as 'additions' | 'deletions' | undefined,
+  thread: false,
+  seq: 0,
+};
 export function openDiffRef(path: string, line?: number, side?: 'old' | 'new' | 'mixed') {
   const s = currentSession();
   if (!s) return;
@@ -1375,8 +1617,14 @@ export async function loadPrThreads(id: string) {
   }
   try {
     const prThreads = await call('sessions:prThreads', id);
-    updateSession(id, (v) => { if (JSON.stringify(v.prThreads) !== JSON.stringify(prThreads)) v.prThreads = prThreads; });
-    try { localStorage.setItem(threadCacheKey(id), JSON.stringify(prThreads)); } catch { /* storage full or blocked */ }
+    updateSession(id, (v) => {
+      if (JSON.stringify(v.prThreads) !== JSON.stringify(prThreads)) v.prThreads = prThreads;
+    });
+    try {
+      localStorage.setItem(threadCacheKey(id), JSON.stringify(prThreads));
+    } catch {
+      /* storage full or blocked */
+    }
   } catch {
     // Without gh the diff keeps whatever it last knew.
   }
@@ -1399,9 +1647,13 @@ async function pruneOutputs(id: string) {
 const changeTimers = new Map<string, ReturnType<typeof setTimeout>>();
 function scheduleChanges(id: string) {
   clearTimeout(changeTimers.get(id));
-  changeTimers.set(id, setTimeout(() => void loadChanges(id), 250));
+  changeTimers.set(
+    id,
+    setTimeout(() => void loadChanges(id), 250),
+  );
 }
-const changesKey = (files: ChangedFile[]) => files.map((f) => `${f.path}:${f.status}:${f.add}:${f.del}:${f.binary}:${f.rev}`).join('\n');
+const changesKey = (files: ChangedFile[]) =>
+  files.map((f) => `${f.path}:${f.status}:${f.add}:${f.del}:${f.binary}:${f.rev}`).join('\n');
 export async function loadChanges(id: string) {
   const s = getApp().sessions[id];
   if (!s || isWork(s)) return;
@@ -1495,7 +1747,8 @@ async function pickRemoteFolder(): Promise<string | null> {
       if (typed.trim()) return typed.trim();
       continue;
     }
-    const target = choice === 2 && listing.parent ? listing.parent : listing.dirs[choice - (listing.parent ? 3 : 2)].path;
+    const target =
+      choice === 2 && listing.parent ? listing.parent : listing.dirs[choice - (listing.parent ? 3 : 2)].path;
     listing = await call('remote:browse', target);
   }
 }
@@ -1522,7 +1775,12 @@ export async function addProject() {
       const { info } = added;
       const main = fname(info.mainRoot);
       const choice = await dialogs.choose(t('act.isWorktree', { name: fname(info.path), main }), [
-        { label: t('act.asSession', { main }), hint: t('act.asSessionHint', { branch: info.branch ?? t('act.detached') }) + (added.known ? '' : t('act.asSessionAdd', { main })) },
+        {
+          label: t('act.asSession', { main }),
+          hint:
+            t('act.asSessionHint', { branch: info.branch ?? t('act.detached') }) +
+            (added.known ? '' : t('act.asSessionAdd', { main })),
+        },
         { label: t('act.asProject'), hint: t('act.asProjectHint') },
       ]);
       if (choice === null) return;
@@ -1543,9 +1801,19 @@ export async function addProject() {
 
 /** Take a project out of Pi Desktop's list. The folder stays; its sessions are archived, not deleted. */
 export async function removeProject(path: string) {
-  const sessions = Object.values(getApp().sessions).filter((s) => s.meta.kind === 'code' && s.meta.projectPath === path && !s.meta.archived);
+  const sessions = Object.values(getApp().sessions).filter(
+    (s) => s.meta.kind === 'code' && s.meta.projectPath === path && !s.meta.archived,
+  );
   const note = sessions.length ? t('act.removeProjectNote', { n: sessions.length }) : '';
-  if (!(await dialogs.confirm(t('act.removeProjectTitle', { name: fname(path) }), `${t('act.removeProjectBody')}${note}`, t('act.remove'), true))) return;
+  if (
+    !(await dialogs.confirm(
+      t('act.removeProjectTitle', { name: fname(path) }),
+      `${t('act.removeProjectBody')}${note}`,
+      t('act.remove'),
+      true,
+    ))
+  )
+    return;
   try {
     for (const s of sessions) {
       await call('sessions:archive', s.meta.id);
@@ -1579,7 +1847,9 @@ export async function startSuggested(sid: string, item: { toolCallId: string }, 
   try {
     const meta = await call('sessions:spawn', sid, task, keyOf(item, index));
     setApp((st) => void (st.sessions[meta.id] ??= emptySession(meta)));
-    toast.success(t('act.startedIn', { title: meta.title }), { action: { label: t('act.open'), onClick: () => void openSession(meta.id) } });
+    toast.success(t('act.startedIn', { title: meta.title }), {
+      action: { label: t('act.open'), onClick: () => void openSession(meta.id) },
+    });
   } catch (err) {
     fail(err);
   }
@@ -1591,7 +1861,12 @@ export async function doSuggestedHere(sid: string, item: { toolCallId: string },
     const meta = await call('sessions:update', sid, { suggestion: { key: keyOf(item, index), state: 'here' } });
     updateSession(sid, (v) => void (v.meta = meta));
     const busy = !!getApp().sessions[sid]?.running;
-    await call('sessions:prompt', sid, { text: encodeTaskMessage(task.title, task.prompt), attachments: [], clientId: crypto.randomUUID() }, busy ? 'followUp' : 'steer');
+    await call(
+      'sessions:prompt',
+      sid,
+      { text: encodeTaskMessage(task.title, task.prompt), attachments: [], clientId: crypto.randomUUID() },
+      busy ? 'followUp' : 'steer',
+    );
   } catch (err) {
     fail(err);
   }
@@ -1608,25 +1883,39 @@ export async function dismissSuggested(sid: string, item: { toolCallId: string }
 
 export async function refreshImportable() {
   const project = getApp().prefs.project;
-  if (!project || getApp().view !== 'code') return setApp((st) => void ((st.importable = []), (st.projectBranch = null), (st.projectBranches = []), (st.baseRef = null)));
-  const [list, branch, branches] = await Promise.all([
+  if (!project || getApp().view !== 'code')
+    return setApp(
+      (st) => void ((st.importable = []), (st.projectBranch = null), (st.projectBranches = []), (st.baseRef = null)),
+    );
+  await call('git:refresh', project).catch(() => false);
+  const [list, branch, branches, defaultBranch] = await Promise.all([
     call('sessions:importable', project).catch(() => []),
     call('git:branch', project).catch(() => null),
     call('git:branches', project).catch(() => [] as string[]),
+    call('git:defaultBranch', project).catch(() => null),
   ]);
   setApp((st) => {
     st.importable = list;
     st.projectBranch = branch && branch !== 'HEAD' ? branch : null;
     st.projectBranches = branches;
     // A choice made for another project (or a branch that is gone) does not carry over.
-    if (st.baseRef && !branches.includes(st.baseRef)) st.baseRef = null;
+    if (!st.baseRef || !branches.includes(st.baseRef)) st.baseRef = defaultBranch ?? st.projectBranch;
   });
 }
 
 export async function importCliSession() {
   const list = getApp().importable;
   if (!list.length) return;
-  const index = list.length === 1 ? 0 : await dialogs.choose(t('act.importTitle'), list.map((s) => ({ label: s.name || s.firstPrompt?.slice(0, 60) || s.id, hint: new Date(s.mtime).toLocaleString() })));
+  const index =
+    list.length === 1
+      ? 0
+      : await dialogs.choose(
+          t('act.importTitle'),
+          list.map((s) => ({
+            label: s.name || s.firstPrompt?.slice(0, 60) || s.id,
+            hint: new Date(s.mtime).toLocaleString(),
+          })),
+        );
   if (index == null) return;
   try {
     const meta: SessionMeta = await call('sessions:import', list[index].file);

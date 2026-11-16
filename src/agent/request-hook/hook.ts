@@ -65,15 +65,43 @@ export function recordRequests(models: ModelRuntime, log: RequestLog, redactor =
     };
 
     const source = original(model, context, wrapped);
-    const stream = restoreStream(source, redactor, () => (pass?.total ?? 0) > 0, (ev) => {
-      if (firstTokenMs === undefined && FIRST_TOKEN_EVENTS.has(ev.type)) firstTokenMs = Date.now() - startedAt;
-    });
+    const stream = restoreStream(
+      source,
+      redactor,
+      () => (pass?.total ?? 0) > 0,
+      (ev) => {
+        if (firstTokenMs === undefined && FIRST_TOKEN_EVENTS.has(ev.type)) firstTokenMs = Date.now() - startedAt;
+      },
+    );
     const { input, output, cacheRead, cacheWrite } = model.cost ?? {};
     const unpriced = !(input || output || cacheRead || cacheWrite);
-    const base = { id: randomUUID(), at: startedAt, sessionId: origin?.session ?? options?.sessionId, provider: model.provider, model: model.id };
-    const write = (rec: Omit<RequestRecord, 'id' | 'at' | 'sessionId' | 'provider' | 'model' | 'httpStatus' | 'body' | 'masked' | 'firstTokenMs' | 'origin' | 'subagent'>) =>
+    const base = {
+      id: randomUUID(),
+      at: startedAt,
+      sessionId: origin?.session ?? options?.sessionId,
+      provider: model.provider,
+      model: model.id,
+    };
+    const write = (
+      rec: Omit<
+        RequestRecord,
+        | 'id'
+        | 'at'
+        | 'sessionId'
+        | 'provider'
+        | 'model'
+        | 'httpStatus'
+        | 'body'
+        | 'masked'
+        | 'firstTokenMs'
+        | 'origin'
+        | 'subagent'
+      >,
+    ) =>
       log.append({
-        ...base, ...rec, httpStatus,
+        ...base,
+        ...rec,
+        httpStatus,
         ...(firstTokenMs === undefined ? {} : { firstTokenMs }),
         ...(origin ? { origin: origin.origin, ...(origin.subagent ? { subagent: origin.subagent } : {}) } : {}),
         ...(pass && pass.total > 0 ? { masked: pass.masked } : {}),
@@ -87,7 +115,12 @@ export function recordRequests(models: ModelRuntime, log: RequestLog, redactor =
         write({
           status: STATUS_BY_STOP[msg.stopReason] ?? REQUEST_STATUS.ok,
           durationMs: msg.durationMs ?? Date.now() - startedAt,
-          tokens: { input: msg.usage.input, output: msg.usage.output, cacheRead: msg.usage.cacheRead, cacheWrite: msg.usage.cacheWrite },
+          tokens: {
+            input: msg.usage.input,
+            output: msg.usage.output,
+            cacheRead: msg.usage.cacheRead,
+            cacheWrite: msg.usage.cacheWrite,
+          },
           cost: msg.usage.cost.total,
           ...(unpriced ? { unpriced } : {}),
           error: msg.errorMessage,

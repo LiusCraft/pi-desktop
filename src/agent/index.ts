@@ -39,7 +39,10 @@ let resolveReady!: (hub: SessionHub) => void;
 const ready = new Promise<SessionHub>((resolve) => (resolveReady = resolve));
 
 type Handler = (...args: any[]) => unknown;
-const withHub = (fn: (hub: SessionHub, ...args: any[]) => unknown): Handler => async (...args) => fn(await ready, ...args);
+const withHub =
+  (fn: (hub: SessionHub, ...args: any[]) => unknown): Handler =>
+  async (...args) =>
+    fn(await ready, ...args);
 
 const handlers: Record<HostMethod, Handler> = {
   'host:locale': (locale) => setActiveLocale(locale),
@@ -51,7 +54,9 @@ const handlers: Record<HostMethod, Handler> = {
     hub = new SessionHub({ dataDir, agentDir, demoModel: demo, emit: (event) => send({ kind: 'event', event }) });
     await hub.init();
     // The scheduler writes the task list; the pages showing it read it again (see HOST_RESOURCES).
-    scheduler = new Scheduler(new Store(dataDir), hub, () => send({ kind: 'event', event: { type: 'changed', resource: 'tasks' } }));
+    scheduler = new Scheduler(new Store(dataDir), hub, () =>
+      send({ kind: 'event', event: { type: 'changed', resource: 'tasks' } }),
+    );
     hub.scheduler = scheduler;
     scheduler.start();
     resolveReady(hub);

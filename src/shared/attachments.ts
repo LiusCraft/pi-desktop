@@ -32,9 +32,7 @@ export interface ImageAttachment {
 export type Attachment = FileAttachment | ImageAttachment;
 
 /** An attachment decoded from history; images may have lost their bytes. */
-export type DecodedAttachment =
-  | FileAttachment
-  | (Omit<ImageAttachment, 'data'> & { data?: string; missing?: boolean });
+export type DecodedAttachment = FileAttachment | (Omit<ImageAttachment, 'data'> & { data?: string; missing?: boolean });
 
 export interface PromptSubmission {
   text: string;
@@ -57,7 +55,12 @@ export interface DecodedUserContent {
 
 const START = '[pi-desktop:attachments:v1]\n';
 const END = '\n[/pi-desktop:attachments]';
-const RASTER: Readonly<Record<RasterMime, string>> = Object.freeze({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' });
+const RASTER: Readonly<Record<RasterMime, string>> = Object.freeze({
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+});
 const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 const MIME = /^[a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*\/[a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*$/;
 const OMITTED = new Set([
@@ -72,7 +75,8 @@ const boundedString = (value: unknown, max: number): value is string =>
   typeof value === 'string' && value.length > 0 && value.length <= max && !value.includes('\0');
 export const rasterMime = (value: unknown): value is RasterMime => typeof value === 'string' && own(RASTER, value);
 const absolutePath = (value: unknown) =>
-  boundedString(value, 32768) && (value.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(value) || /^\\\\[^\\/]+[\\/][^\\/]+/.test(value));
+  boundedString(value, 32768) &&
+  (value.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(value) || /^\\\\[^\\/]+[\\/][^\\/]+/.test(value));
 
 function utf8Bytes(value: string) {
   let bytes = 0;
@@ -86,7 +90,14 @@ function utf8Bytes(value: string) {
 // Check canonical raw base64 without decoding/allocating another image copy.
 // Avoid a repeated-group regex: multi-megabyte images can exhaust its stack.
 export function base64Size(data: unknown) {
-  if (typeof data !== 'string' || !data.length || data.length > LIMITS.imageBytes || data.length % 4 || /[^A-Za-z0-9+/=]/.test(data)) return -1;
+  if (
+    typeof data !== 'string' ||
+    !data.length ||
+    data.length > LIMITS.imageBytes ||
+    data.length % 4 ||
+    /[^A-Za-z0-9+/=]/.test(data)
+  )
+    return -1;
   const padding = data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0;
   const firstPadding = data.indexOf('=');
   if (firstPadding !== -1 && firstPadding !== data.length - padding) return -1;
@@ -96,12 +107,22 @@ export function base64Size(data: unknown) {
 }
 
 export function imageSource(attachment: unknown) {
-  if (!record(attachment) || attachment.kind !== 'image' || !rasterMime(attachment.mimeType) || base64Size(attachment.data) < 0) return '';
+  if (
+    !record(attachment) ||
+    attachment.kind !== 'image' ||
+    !rasterMime(attachment.mimeType) ||
+    base64Size(attachment.data) < 0
+  )
+    return '';
   return `data:${attachment.mimeType};base64,${attachment.data as string}`;
 }
 
 function assertKeys(value: unknown, required: string[], optional: string[] = []): asserts value is Rec {
-  if (!record(value) || required.some((key) => !own(value, key)) || Object.keys(value).some((key) => !required.includes(key) && !optional.includes(key))) {
+  if (
+    !record(value) ||
+    required.some((key) => !own(value, key)) ||
+    Object.keys(value).some((key) => !required.includes(key) && !optional.includes(key))
+  ) {
     throw new Error('Invalid attachment schema.');
   }
 }
@@ -109,16 +130,21 @@ function assertKeys(value: unknown, required: string[], optional: string[] = [])
 function validateItems(items: unknown, manifest: boolean) {
   if (!Array.isArray(items)) throw new Error('Attachments must be an array.');
   if (items.length > LIMITS.count) throw new Error(`At most ${LIMITS.count} attachments are allowed.`);
-  let sourceBytes = 0, imageBytes = 0, imageIndex = 0;
+  let sourceBytes = 0,
+    imageBytes = 0,
+    imageIndex = 0;
   const ids = new Set<string>();
   for (const item of items) {
     const extra = item?.kind === 'file' ? 'path' : manifest ? 'imageIndex' : 'data';
     assertKeys(item, ['id', 'kind', 'name', 'mimeType', 'size', extra]);
-    if (!boundedString(item.id, 256) || ids.has(item.id)) throw new Error('Attachment IDs must be unique nonempty strings.');
+    if (!boundedString(item.id, 256) || ids.has(item.id))
+      throw new Error('Attachment IDs must be unique nonempty strings.');
     ids.add(item.id);
     if (!boundedString(item.name, 4096)) throw new Error('Invalid attachment name.');
-    if (!boundedString(item.mimeType, 128) || !MIME.test(item.mimeType)) throw new Error('Invalid attachment MIME type.');
-    if (!Number.isSafeInteger(item.size) || (item.size as number) < 0 || (item.size as number) > LIMITS.fileBytes) throw new Error('Each attachment source must be at most 20 MiB.');
+    if (!boundedString(item.mimeType, 128) || !MIME.test(item.mimeType))
+      throw new Error('Invalid attachment MIME type.');
+    if (!Number.isSafeInteger(item.size) || (item.size as number) < 0 || (item.size as number) > LIMITS.fileBytes)
+      throw new Error('Each attachment source must be at most 20 MiB.');
     sourceBytes += item.size as number;
     if (sourceBytes > LIMITS.sourceBytes) throw new Error('Attachment sources must total at most 50 MiB.');
     if (item.kind === 'file') {
@@ -129,10 +155,12 @@ function validateItems(items: unknown, manifest: boolean) {
         if (item.imageIndex !== imageIndex) throw new Error('Invalid attachment image index.');
         imageIndex++;
       } else {
-        if (typeof item.data !== 'string' || item.data.length > LIMITS.imageBytes) throw new Error('Each inline image base64 payload must be at most 4.5 MiB.');
+        if (typeof item.data !== 'string' || item.data.length > LIMITS.imageBytes)
+          throw new Error('Each inline image base64 payload must be at most 4.5 MiB.');
         if (base64Size(item.data) < 0) throw new Error('Invalid inline image base64 payload.');
         imageBytes += item.data.length;
-        if (imageBytes > LIMITS.totalImageBytes) throw new Error('Inline image base64 payloads must total at most 20 MiB.');
+        if (imageBytes > LIMITS.totalImageBytes)
+          throw new Error('Inline image base64 payloads must total at most 20 MiB.');
       }
     } else {
       throw new Error('Invalid attachment kind.');
@@ -162,7 +190,10 @@ interface Manifest {
 }
 
 /** Encode a prompt: text plus a one-line manifest; images travel as native image blocks. */
-export function buildMessage({ text = '', attachments = [], clientId }: Partial<PromptSubmission> = {}): { message: string; images: ImageBlock[] } {
+export function buildMessage({ text = '', attachments = [], clientId }: Partial<PromptSubmission> = {}): {
+  message: string;
+  images: ImageBlock[];
+} {
   if (typeof text !== 'string') throw new Error('Prompt text must be a string.');
   validateAttachments(attachments);
   if (!attachments.length) return { message: text, images: [] };
@@ -181,7 +212,10 @@ export function buildMessage({ text = '', attachments = [], clientId }: Partial<
   const manifest: Manifest = { v: 1, textLength: text.length, items };
   if (clientId !== undefined) manifest.clientId = clientId;
   // JSON must stay on one physical line even for unusual Unix filenames.
-  const json = JSON.stringify(manifest).replace(new RegExp(`[${String.fromCharCode(0x2028, 0x2029)}]`, 'g'), (char) => `\\u${char.charCodeAt(0).toString(16)}`);
+  const json = JSON.stringify(manifest).replace(
+    new RegExp(`[${String.fromCharCode(0x2028, 0x2029)}]`, 'g'),
+    (char) => `\\u${char.charCodeAt(0).toString(16)}`,
+  );
   if (utf8Bytes(json) > LIMITS.manifestBytes) throw new Error('Attachment manifest must be at most 64 KiB.');
   return { message: `${text}\n\n${START}${json}${END}`, images };
 }
@@ -191,13 +225,31 @@ function parseManifest(text: string): { text: string; manifest: Manifest; hints:
   const jsonEnd = text.length - END.length;
   const jsonStart = text.lastIndexOf('\n', jsonEnd - 1) + 1;
   const markerStart = jsonStart - START.length;
-  if (markerStart < 2 || text.slice(markerStart, jsonStart) !== START || text.slice(markerStart - 2, markerStart) !== '\n\n') return null;
+  if (
+    markerStart < 2 ||
+    text.slice(markerStart, jsonStart) !== START ||
+    text.slice(markerStart - 2, markerStart) !== '\n\n'
+  )
+    return null;
   const json = text.slice(jsonStart, jsonEnd);
-  if (json.length > LIMITS.manifestBytes || /[\r\n]/.test(json) || json.includes(String.fromCharCode(0x2028)) || json.includes(String.fromCharCode(0x2029)) || utf8Bytes(json) > LIMITS.manifestBytes) return null;
+  if (
+    json.length > LIMITS.manifestBytes ||
+    /[\r\n]/.test(json) ||
+    json.includes(String.fromCharCode(0x2028)) ||
+    json.includes(String.fromCharCode(0x2029)) ||
+    utf8Bytes(json) > LIMITS.manifestBytes
+  )
+    return null;
   try {
     const manifest = JSON.parse(json);
     assertKeys(manifest, ['v', 'textLength', 'items'], ['clientId']);
-    if (manifest.v !== 1 || !Number.isSafeInteger(manifest.textLength) || (manifest.textLength as number) < 0 || manifest.textLength !== markerStart - 2) return null;
+    if (
+      manifest.v !== 1 ||
+      !Number.isSafeInteger(manifest.textLength) ||
+      (manifest.textLength as number) < 0 ||
+      manifest.textLength !== markerStart - 2
+    )
+      return null;
     if (own(manifest, 'clientId') && !boundedString(manifest.clientId, 256)) return null;
     validateItems(manifest.items, true);
     if (!(manifest.items as unknown[]).length) return null;
@@ -209,12 +261,21 @@ function parseManifest(text: string): { text: string; manifest: Manifest; hints:
 
 function hintKind(line: string) {
   if (OMITTED.has(line)) return 'omitted';
-  const converted = /^\[Image converted from (image\/[a-z0-9][a-z0-9.+-]*) to (image\/(?:png|jpeg|gif|webp))\.\]$/.exec(line);
+  const converted = /^\[Image converted from (image\/[a-z0-9][a-z0-9.+-]*) to (image\/(?:png|jpeg|gif|webp))\.\]$/.exec(
+    line,
+  );
   if (converted && converted[1] !== converted[2]) return 'converted';
-  const dimension = /^\[Image: original ([1-9]\d*)x([1-9]\d*), displayed at ([1-9]\d*)x([1-9]\d*)\. Multiply coordinates by (\d+\.\d{2}) to map to original image\.\]$/.exec(line);
+  const dimension =
+    /^\[Image: original ([1-9]\d*)x([1-9]\d*), displayed at ([1-9]\d*)x([1-9]\d*)\. Multiply coordinates by (\d+\.\d{2}) to map to original image\.\]$/.exec(
+      line,
+    );
   if (dimension) {
     const [width, height, displayedWidth, displayedHeight] = dimension.slice(1, 5).map(Number);
-    if ([width, height, displayedWidth, displayedHeight].every(Number.isSafeInteger) && (width / displayedWidth).toFixed(2) === dimension[5]) return 'dimension';
+    if (
+      [width, height, displayedWidth, displayedHeight].every(Number.isSafeInteger) &&
+      (width / displayedWidth).toFixed(2) === dimension[5]
+    )
+      return 'dimension';
   }
   return '';
 }
@@ -226,7 +287,8 @@ function manifestWithHints(text: string) {
   // Only remove them if the remaining suffix is a valid, length-matched
   // manifest. Ordinary text containing these phrases is never normalized.
   let end = text.length;
-  const hints: string[] = [], kinds: string[] = [];
+  const hints: string[] = [],
+    kinds: string[] = [];
   while (hints.length < LIMITS.count * 2) {
     const newline = text.lastIndexOf('\n', end - 1);
     if (newline < 0) break;
@@ -242,7 +304,12 @@ function manifestWithHints(text: string) {
   if (!parsed) return null;
   const imageCount = parsed.manifest.items.filter((item) => item.kind === 'image').length;
   const omitted = kinds.filter((kind) => kind === 'omitted').length;
-  if (!imageCount || omitted > imageCount || ['converted', 'dimension'].some((kind) => kinds.filter((value) => value === kind).length > imageCount - omitted)) return null;
+  if (
+    !imageCount ||
+    omitted > imageCount ||
+    ['converted', 'dimension'].some((kind) => kinds.filter((value) => value === kind).length > imageCount - omitted)
+  )
+    return null;
   parsed.hints = hints;
   return parsed;
 }
@@ -266,9 +333,16 @@ function genericImages(images: NativeImage[], usedIds = new Set<string>()): Deco
     let id = `native-image-${index + 1}`;
     while (usedIds.has(id)) id += '-native';
     usedIds.add(id);
-    const mimeType = boundedString(image.mimeType, 128) && MIME.test(image.mimeType) ? image.mimeType : 'application/octet-stream';
+    const mimeType =
+      boundedString(image.mimeType, 128) && MIME.test(image.mimeType) ? image.mimeType : 'application/octet-stream';
     const extension = rasterMime(mimeType) ? `.${RASTER[mimeType]}` : '';
-    const attachment: DecodedAttachment = { id, kind: 'image', name: `Image ${index + 1}${extension}`, mimeType, size: image.valid ? base64Size(image.data) : 0 };
+    const attachment: DecodedAttachment = {
+      id,
+      kind: 'image',
+      name: `Image ${index + 1}${extension}`,
+      mimeType,
+      size: image.valid ? base64Size(image.data) : 0,
+    };
     if (image.valid) attachment.data = image.data as string;
     else attachment.missing = true;
     return attachment;
@@ -278,14 +352,21 @@ function genericImages(images: NativeImage[], usedIds = new Set<string>()): Deco
 /** Turn a persisted user message back into its text and attachments. */
 export function decodeUserContent(content: unknown): DecodedUserContent {
   const blocks: Rec[] = Array.isArray(content) ? content.filter(record) : [];
-  const text = typeof content === 'string' ? content : blocks.filter((block) => block.type === 'text' && typeof block.text === 'string').map((block) => block.text as string).join('');
+  const text =
+    typeof content === 'string'
+      ? content
+      : blocks
+          .filter((block) => block.type === 'text' && typeof block.text === 'string')
+          .map((block) => block.text as string)
+          .join('');
   const images = blocks.filter((block) => block.type === 'image').map(nativeImage);
   const parsed = manifestWithHints(text);
   const imageCount = parsed ? parsed.manifest.items.filter((item) => item.kind === 'image').length : 0;
   if (!parsed || images.length > imageCount) {
     const attachments = genericImages(images);
     const result: DecodedUserContent = { text, attachments };
-    if (attachments.some((attachment) => 'missing' in attachment && attachment.missing)) result.notice = 'Some attached images are unavailable in this message.';
+    if (attachments.some((attachment) => 'missing' in attachment && attachment.missing))
+      result.notice = 'Some attached images are unavailable in this message.';
     return result;
   }
 
@@ -293,8 +374,15 @@ export function decodeUserContent(content: unknown): DecodedUserContent {
   // which input failed. Do not assign a surviving thumbnail to a wrong name.
   const ambiguous = images.length > 0 && images.length < imageCount;
   const attachments = parsed.manifest.items.map((item): DecodedAttachment => {
-    if (item.kind === 'file') return { id: item.id, kind: 'file', name: item.name, mimeType: item.mimeType, size: item.size, path: item.path! };
-    const attachment: DecodedAttachment = { id: item.id, kind: 'image', name: item.name, mimeType: item.mimeType, size: item.size };
+    if (item.kind === 'file')
+      return { id: item.id, kind: 'file', name: item.name, mimeType: item.mimeType, size: item.size, path: item.path! };
+    const attachment: DecodedAttachment = {
+      id: item.id,
+      kind: 'image',
+      name: item.name,
+      mimeType: item.mimeType,
+      size: item.size,
+    };
     const image = ambiguous ? null : images[item.imageIndex!];
     if (image?.valid) {
       attachment.mimeType = image.mimeType as string;
@@ -306,8 +394,10 @@ export function decodeUserContent(content: unknown): DecodedUserContent {
   const result: DecodedUserContent = { text: parsed.text, attachments };
   if (own(parsed.manifest, 'clientId')) result.clientId = parsed.manifest.clientId;
   const notices = [...parsed.hints];
-  if (ambiguous) notices.push('Some image data is missing; surviving images could not be reliably matched to attachment names.');
-  else if (attachments.some((attachment) => 'missing' in attachment && attachment.missing)) notices.push('Some attached images are unavailable in this message.');
+  if (ambiguous)
+    notices.push('Some image data is missing; surviving images could not be reliably matched to attachment names.');
+  else if (attachments.some((attachment) => 'missing' in attachment && attachment.missing))
+    notices.push('Some attached images are unavailable in this message.');
   if (notices.length) result.notice = notices.join('\n');
   return result;
 }

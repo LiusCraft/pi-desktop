@@ -9,17 +9,25 @@ export function useTextSelection(path: string, inPage = true) {
   const [commenting, setCommenting] = useState(false);
   const typing = useRef(false);
   typing.current = commenting;
-  const reset = useCallback(() => { setReference(null); setCommenting(false); }, []);
+  const reset = useCallback(() => {
+    setReference(null);
+    setCommenting(false);
+  }, []);
   // An empty pick means the selection was cleared: that closes the bar, unless a comment is being written (focusing its box clears the selection too).
-  const pick = useCallback((text: string) => {
-    const picked = text.trim();
-    if (picked) setReference({ path, text: picked });
-    else if (!typing.current) setReference(null);
-  }, [path]);
+  const pick = useCallback(
+    (text: string) => {
+      const picked = text.trim();
+      if (picked) setReference({ path, text: picked });
+      else if (!typing.current) setReference(null);
+    },
+    [path],
+  );
   // Selections made in this page itself.
   useEffect(() => {
     if (!inPage) return;
-    const onChange = () => { if (window.getSelection()?.isCollapsed) pick(''); };
+    const onChange = () => {
+      if (window.getSelection()?.isCollapsed) pick('');
+    };
     document.addEventListener('selectionchange', onChange);
     return () => document.removeEventListener('selectionchange', onChange);
   }, [pick, inPage]);
@@ -27,7 +35,17 @@ export function useTextSelection(path: string, inPage = true) {
 }
 
 /** A rendered file whose text can be selected and attached to the chat, with or without a comment. */
-export function SelectableContent({ sid, path, children, className }: { sid: string; path: string; children: ReactNode; className?: string }) {
+export function SelectableContent({
+  sid,
+  path,
+  children,
+  className,
+}: {
+  sid: string;
+  path: string;
+  children: ReactNode;
+  className?: string;
+}) {
   const root = useRef<HTMLDivElement>(null);
   const picker = useTextSelection(path);
   return (
@@ -41,7 +59,8 @@ export function SelectableContent({ sid, path, children, className }: { sid: str
           const selected = window.getSelection();
           if (!selected || selected.isCollapsed || !selected.rangeCount) return;
           const range = selected.getRangeAt(0);
-          if (root.current?.contains(range.startContainer) && root.current.contains(range.endContainer)) picker.pick(selected.toString());
+          if (root.current?.contains(range.startContainer) && root.current.contains(range.endContainer))
+            picker.pick(selected.toString());
         }}
       >
         {children}
@@ -52,7 +71,10 @@ export function SelectableContent({ sid, path, children, className }: { sid: str
           reference={picker.reference}
           commenting={picker.commenting}
           onCommenting={picker.setCommenting}
-          onDone={(attached) => { if (attached) window.getSelection()?.removeAllRanges(); picker.reset(); }}
+          onDone={(attached) => {
+            if (attached) window.getSelection()?.removeAllRanges();
+            picker.reset();
+          }}
         />
       )}
     </div>

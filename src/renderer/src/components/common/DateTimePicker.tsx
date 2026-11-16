@@ -13,32 +13,76 @@ const pad = (n: number) => String(n).padStart(2, '0');
 const HOURS = Array.from({ length: 24 }, (_, i) => pad(i));
 const MINUTES = Array.from({ length: 60 }, (_, i) => pad(i));
 
-function Part({ value, options, label, onChange }: { value: string; options: string[]; label: string; onChange: (v: string) => void }) {
+function Part({
+  value,
+  options,
+  label,
+  onChange,
+}: {
+  value: string;
+  options: string[];
+  label: string;
+  onChange: (v: string) => void;
+}) {
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="w-[4.5rem] tabular-nums" aria-label={label}><SelectValue /></SelectTrigger>
-      <SelectContent position="popper" className="max-h-64"><SelectGroup>
-        {options.map((o) => <SelectItem key={o} value={o} className="tabular-nums">{o}</SelectItem>)}
-      </SelectGroup></SelectContent>
+      <SelectTrigger className="w-[4.5rem] tabular-nums" aria-label={label}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent position="popper" className="max-h-64">
+        <SelectGroup>
+          {options.map((o) => (
+            <SelectItem key={o} value={o} className="tabular-nums">
+              {o}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
     </Select>
   );
 }
 
 /** `HH:MM`, 24-hour. */
-export function TimePicker({ value, onChange, className }: { value: string; onChange: (time: string) => void; className?: string }) {
+export function TimePicker({
+  value,
+  onChange,
+  className,
+}: {
+  value: string;
+  onChange: (time: string) => void;
+  className?: string;
+}) {
   const t = useT();
   const [h = '09', m = '00'] = value.split(':');
   return (
     <div className={cn('flex items-center gap-1.5', className)}>
-      <Part value={pad(Number(h) || 0)} options={HOURS} label={t('time.hour')} onChange={(v) => onChange(`${v}:${pad(Number(m) || 0)}`)} />
+      <Part
+        value={pad(Number(h) || 0)}
+        options={HOURS}
+        label={t('time.hour')}
+        onChange={(v) => onChange(`${v}:${pad(Number(m) || 0)}`)}
+      />
       <span className="text-muted-foreground">:</span>
-      <Part value={pad(Number(m) || 0)} options={MINUTES} label={t('time.minute')} onChange={(v) => onChange(`${pad(Number(h) || 0)}:${v}`)} />
+      <Part
+        value={pad(Number(m) || 0)}
+        options={MINUTES}
+        label={t('time.minute')}
+        onChange={(v) => onChange(`${pad(Number(h) || 0)}:${v}`)}
+      />
     </div>
   );
 }
 
 /** A moment as epoch milliseconds: pick the day in a calendar, then the time. */
-export function DateTimePicker({ value, onChange, className }: { value: number; onChange: (at: number) => void; className?: string }) {
+export function DateTimePicker({
+  value,
+  onChange,
+  className,
+}: {
+  value: number;
+  onChange: (at: number) => void;
+  className?: string;
+}) {
   const d = new Date(value);
   const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   const setDay = (day: Date | undefined) => {
@@ -65,7 +109,14 @@ export function DateTimePicker({ value, onChange, className }: { value: number; 
           </Button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-auto p-2">
-          <Calendar mode="single" locale={zhCN} selected={d} defaultMonth={d} onSelect={setDay} disabled={{ before: startOfToday }} />
+          <Calendar
+            mode="single"
+            locale={zhCN}
+            selected={d}
+            defaultMonth={d}
+            onSelect={setDay}
+            disabled={{ before: startOfToday }}
+          />
         </PopoverContent>
       </Popover>
       <TimePicker value={time} onChange={setTime} />

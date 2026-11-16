@@ -3,7 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { diffStats } from '../src/shared/tool-previews';
 import { changeStats, FOLD_BYTES, FOLD_LINES, isLargeDiff } from '../src/renderer/src/lib/diff';
 
-const change = (over: Partial<Parameters<typeof isLargeDiff>[0]> = {}) => ({ add: 3, del: 1, before: 'a\nb', after: 'a\nc', ...over });
+const change = (over: Partial<Parameters<typeof isLargeDiff>[0]> = {}) => ({
+  add: 3,
+  del: 1,
+  before: 'a\nb',
+  after: 'a\nc',
+  ...over,
+});
 
 describe('isLargeDiff', () => {
   it('leaves an ordinary edit open', () => {

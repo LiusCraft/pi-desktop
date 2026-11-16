@@ -104,7 +104,10 @@ export class PluginServer {
     try {
       if (!fs.statSync(file).isFile()) return NOT_FOUND();
       return new Response(fs.readFileSync(file), {
-        headers: { 'content-type': TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream', 'content-security-policy': CSP },
+        headers: {
+          'content-type': TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream',
+          'content-security-policy': CSP,
+        },
       });
     } catch {
       return NOT_FOUND();

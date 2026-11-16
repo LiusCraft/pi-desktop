@@ -27,20 +27,25 @@ export function useCopy(resetMs = 1400) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(timer.current), []);
-  const copy = useCallback((text: string) => {
-    void copyText(text).then((ok) => {
-      if (!ok) return;
-      setCopied(true);
-      window.clearTimeout(timer.current);
-      timer.current = window.setTimeout(() => setCopied(false), resetMs);
-    });
-  }, [resetMs]);
+  const copy = useCallback(
+    (text: string) => {
+      void copyText(text).then((ok) => {
+        if (!ok) return;
+        setCopied(true);
+        window.clearTimeout(timer.current);
+        timer.current = window.setTimeout(() => setCopied(false), resetMs);
+      });
+    },
+    [resetMs],
+  );
   return { copied, copy };
 }
 
 /** Copy/check glyph shared by every icon-sized copy control. */
 export function CopyGlyph({ copied, className }: { copied: boolean; className?: string }) {
-  return copied
-    ? <CheckIcon className={cn('size-3.5 text-success', className)} />
-    : <CopyIcon className={cn('size-3.5', className)} />;
+  return copied ? (
+    <CheckIcon className={cn('size-3.5 text-success', className)} />
+  ) : (
+    <CopyIcon className={cn('size-3.5', className)} />
+  );
 }

@@ -22,11 +22,14 @@ pidesk.ready().then(() => showSession(pidesk.session.current()));
 pidesk.host.on('count', (count) => {
   $('count').textContent = String(count);
 });
-pidesk.host.call('count').then((count) => {
-  $('count').textContent = String(count);
-}).catch((err) => {
-  $('out').textContent = String(err.message ?? err);
-});
+pidesk.host
+  .call('count')
+  .then((count) => {
+    $('count').textContent = String(count);
+  })
+  .catch((err) => {
+    $('out').textContent = String(err.message ?? err);
+  });
 
 $('greet').addEventListener('click', async () => {
   try {
@@ -47,9 +50,12 @@ $('prompt').addEventListener('click', async () => {
 });
 
 // What the user typed last time lives in the plugin's own storage, not the app's.
-pidesk.storage.get('name').then((name) => {
-  if (typeof name === 'string') $('name').value = name;
-}).catch(() => {});
+pidesk.storage
+  .get('name')
+  .then((name) => {
+    if (typeof name === 'string') $('name').value = name;
+  })
+  .catch(() => {});
 $('name').addEventListener('change', () => {
   pidesk.storage.set('name', $('name').value).catch(() => {});
 });

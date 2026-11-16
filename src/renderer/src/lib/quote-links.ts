@@ -56,14 +56,18 @@ export function findRange(root: HTMLElement, quote: string): Range | null {
   const needle = squash(quote);
   if (!needle) return null;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode: (node) => (node.parentElement?.closest('[data-quote-pins]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    acceptNode: (node) =>
+      node.parentElement?.closest('[data-quote-pins]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
   });
   let flat = '';
   const at: { node: Text; offset: number }[] = [];
   for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
     const data = node.data;
     for (let i = 0; i < data.length; i++) {
-      if (squash(data[i])) { flat += data[i]; at.push({ node, offset: i }); }
+      if (squash(data[i])) {
+        flat += data[i];
+        at.push({ node, offset: i });
+      }
     }
   }
   const start = flat.indexOf(needle);

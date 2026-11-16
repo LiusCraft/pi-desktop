@@ -21,9 +21,25 @@ beforeAll(() => {
 });
 afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 
-const texts = { read: (p: string) => `read ${p}`, write: (p: string) => `write ${p}`, run: (c: string, p: string) => `run ${c} ${p}` };
-const check = (tool: string, input: Record<string, unknown>, opts: { allowed?: string[]; readOnlyCommand?: boolean } = {}): ScopeCheck =>
-  checkScope({ cwd: work, readable: () => [code] }, new Set(opts.allowed ?? []), tool, input, work, opts.readOnlyCommand ?? false, texts);
+const texts = {
+  read: (p: string) => `read ${p}`,
+  write: (p: string) => `write ${p}`,
+  run: (c: string, p: string) => `run ${c} ${p}`,
+};
+const check = (
+  tool: string,
+  input: Record<string, unknown>,
+  opts: { allowed?: string[]; readOnlyCommand?: boolean } = {},
+): ScopeCheck =>
+  checkScope(
+    { cwd: work, readable: () => [code] },
+    new Set(opts.allowed ?? []),
+    tool,
+    input,
+    work,
+    opts.readOnlyCommand ?? false,
+    texts,
+  );
 
 describe('Work scope', () => {
   it('lets files in the working folder be read and written', () => {
@@ -58,7 +74,9 @@ describe('Work scope', () => {
   it('leaves ordinary shell commands alone', () => {
     expect(check('bash', { command: 'ls -la' }, { readOnlyCommand: true }).kind).toBe('inside');
     expect(check('bash', { command: 'python make_report.py > report.md 2>/dev/null' }).kind).toBe('inside');
-    expect(check('bash', { command: `sed -n '/start/,/end/p' notes.md` }, { readOnlyCommand: true }).kind).toBe('inside');
+    expect(check('bash', { command: `sed -n '/start/,/end/p' notes.md` }, { readOnlyCommand: true }).kind).toBe(
+      'inside',
+    );
     expect(check('bash', { command: 'curl https://example.com/a/b -o page.html' }).kind).toBe('inside');
     expect(check('bash', { command: `cat ${path.join(work, 'a.md')}` }, { readOnlyCommand: true }).kind).toBe('inside');
   });

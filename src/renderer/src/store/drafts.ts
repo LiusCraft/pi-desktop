@@ -35,7 +35,18 @@ interface DraftState {
 
 export const useDrafts = create<DraftState>()(immer(() => ({ drafts: {}, active: null })));
 
-const blank = (key: string): Draft => ({ key, text: '', attachments: [], references: [], revision: 0, suggestion: null, preparing: 0, sending: false, errors: [], recoveries: [] });
+const blank = (key: string): Draft => ({
+  key,
+  text: '',
+  attachments: [],
+  references: [],
+  revision: 0,
+  suggestion: null,
+  preparing: 0,
+  sending: false,
+  errors: [],
+  recoveries: [],
+});
 
 /** Composer drafts are keyed per session (and per welcome screen). */
 export const sessionDraftKey = (id: string) => `session:${id}`;
@@ -104,7 +115,10 @@ export const drafts = {
       // refreshes it instead of sending its context twice.
       const live = d.references.filter((item) => !item.token || d.text.includes(item.token));
       const kept = reference.token ? live.filter((item) => item.token !== reference.token) : live;
-      const size = [...kept, reference].reduce((total, item) => total + (item.text?.length ?? 0) + (item.comment?.length ?? 0) + item.path.length, 0);
+      const size = [...kept, reference].reduce(
+        (total, item) => total + (item.text?.length ?? 0) + (item.comment?.length ?? 0) + item.path.length,
+        0,
+      );
       if (kept.length >= MAX_CONTEXT_ITEMS || size > MAX_CONTEXT_CHARS) {
         d.errors.push(t('draft.contextLimit', { n: MAX_CONTEXT_ITEMS, chars: MAX_CONTEXT_CHARS.toLocaleString() }));
         return;
@@ -192,7 +206,13 @@ export const drafts = {
         d.references = s.references?.slice() ?? [];
         d.suggestion = null;
         d.revision++;
-      } else d.recoveries.push({ text: s.text, attachments: s.attachments.slice(), references: s.references?.slice(), label: s.label });
+      } else
+        d.recoveries.push({
+          text: s.text,
+          attachments: s.attachments.slice(),
+          references: s.references?.slice(),
+          label: s.label,
+        });
     });
   },
   restore(key: string, index: number) {

@@ -8,7 +8,11 @@ describe('compacted history', () => {
     const manager = SessionManager.inMemory('/p');
     manager.appendMessage({ role: 'user', content: 'summarized away', timestamp: 1 } as any);
     const kept = manager.appendMessage({ role: 'user', content: 'kept', timestamp: 2 } as any);
-    manager.appendMessage({ role: 'assistant', content: [{ type: 'text', text: 'still in context' }], timestamp: 3 } as any);
+    manager.appendMessage({
+      role: 'assistant',
+      content: [{ type: 'text', text: 'still in context' }],
+      timestamp: 3,
+    } as any);
     manager.appendCompaction('the summary', kept, 1000);
 
     const hidden = compactedMessages(manager);

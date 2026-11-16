@@ -19,5 +19,5 @@ export function subscribePluginEvent(pluginId: string, listener: Listener): () =
 
 export function notifyPluginEvent(pluginId: string, event: PluginEvent) {
   // A copy: a listener may unsubscribe while the notification runs (its page unmounted).
-  for (const listener of [...(listeners.get(pluginId) ?? [])]) listener(event);
+  for (const listener of Array.from(listeners.get(pluginId) ?? [])) listener(event);
 }

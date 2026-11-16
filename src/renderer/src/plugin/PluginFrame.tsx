@@ -15,7 +15,17 @@ import { subscribePluginEvent } from './events';
 const LOAD_TIMEOUT_MS = 8000;
 
 /** The app's colours as CSS values, so a page looks like part of the app without knowing the theme. */
-const TOKENS = ['--background', '--foreground', '--card', '--border', '--primary', '--primary-foreground', '--muted', '--muted-foreground', '--radius'];
+const TOKENS = [
+  '--background',
+  '--foreground',
+  '--card',
+  '--border',
+  '--primary',
+  '--primary-foreground',
+  '--muted',
+  '--muted-foreground',
+  '--radius',
+];
 function themeTokens(): Record<string, JsonValue> {
   const style = getComputedStyle(document.documentElement);
   const tokens: Record<string, JsonValue> = { dark: document.documentElement.classList.contains('dark') };
@@ -51,39 +61,47 @@ export function PluginFrame({ plugin, page }: { plugin: DesktopPluginInfo; page:
     send({ type: 'theme', payload: themeTokens() });
   }, [plugin.permissions, send]);
 
-  const run = useCallback<Runner>(async (method, args) => {
-    const allow = (permission: PluginPermission) => {
-      if (!plugin.permissions.includes(permission)) throw new Error(t('pluginPage.noPermission', { permission }));
-    };
-    switch (method) {
-      case 'session.current':
-        allow('session:read');
-        return sessionInfo(currentSession());
-      case 'session.prompt': {
-        allow('session:prompt');
-        const s = currentSession();
-        if (!s) throw new Error(t('pluginPage.noSession'));
-        await call('sessions:prompt', s.meta.id, { text: String(args[0] ?? ''), attachments: [], clientId: crypto.randomUUID() }, 'followUp');
-        return null;
+  const run = useCallback<Runner>(
+    async (method, args) => {
+      const allow = (permission: PluginPermission) => {
+        if (!plugin.permissions.includes(permission)) throw new Error(t('pluginPage.noPermission', { permission }));
+      };
+      switch (method) {
+        case 'session.current':
+          allow('session:read');
+          return sessionInfo(currentSession());
+        case 'session.prompt': {
+          allow('session:prompt');
+          const s = currentSession();
+          if (!s) throw new Error(t('pluginPage.noSession'));
+          await call(
+            'sessions:prompt',
+            s.meta.id,
+            { text: String(args[0] ?? ''), attachments: [], clientId: crypto.randomUUID() },
+            'followUp',
+          );
+          return null;
+        }
+        case 'notify':
+          allow('notify');
+          toast(String(args[0] ?? ''));
+          return null;
+        case 'storage.get':
+          allow('storage');
+          return call('plugin:call', plugin.id, '#storage.get', [String(args[0] ?? '')]);
+        case 'storage.set':
+          allow('storage');
+          await call('plugin:call', plugin.id, '#storage.set', [String(args[0] ?? ''), args[1] ?? null]);
+          return null;
+        case 'host.call':
+          allow('host:call');
+          return call('plugin:call', plugin.id, String(args[0] ?? ''), Array.isArray(args[1]) ? args[1] : []);
+        default:
+          throw new Error(t('pluginPage.unknownMethod', { method }));
       }
-      case 'notify':
-        allow('notify');
-        toast(String(args[0] ?? ''));
-        return null;
-      case 'storage.get':
-        allow('storage');
-        return call('plugin:call', plugin.id, '#storage.get', [String(args[0] ?? '')]);
-      case 'storage.set':
-        allow('storage');
-        await call('plugin:call', plugin.id, '#storage.set', [String(args[0] ?? ''), args[1] ?? null]);
-        return null;
-      case 'host.call':
-        allow('host:call');
-        return call('plugin:call', plugin.id, String(args[0] ?? ''), Array.isArray(args[1]) ? args[1] : []);
-      default:
-        throw new Error(t('pluginPage.unknownMethod', { method }));
-    }
-  }, [plugin.id, plugin.permissions, t]);
+    },
+    [plugin.id, plugin.permissions, t],
+  );
 
   // The page's calls. `event.source` is checked so another frame cannot answer for this one.
   useEffect(() => {
@@ -102,9 +120,13 @@ export function PluginFrame({ plugin, page }: { plugin: DesktopPluginInfo; page:
   }, [run]);
 
   // What the plugin itself sends out: its open page hears it.
-  useEffect(() => subscribePluginEvent(plugin.id, (event) => {
-    if (event.kind === 'data') send({ type: 'data', name: event.name, payload: event.payload });
-  }), [plugin.id, send]);
+  useEffect(
+    () =>
+      subscribePluginEvent(plugin.id, (event) => {
+        if (event.kind === 'data') send({ type: 'data', name: event.name, payload: event.payload });
+      }),
+    [plugin.id, send],
+  );
 
   // A new session or a new theme reaches the page without a reload.
   useEffect(() => {
@@ -137,7 +159,15 @@ export function PluginFrame({ plugin, page }: { plugin: DesktopPluginInfo; page:
       {crashed && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background text-sm text-muted-foreground">
           {t('pluginPage.crashed')}
-          <Button size="sm" variant="outline" onClick={() => { setLoaded(false); setCrashed(false); setAttempt((n) => n + 1); }}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setLoaded(false);
+              setCrashed(false);
+              setAttempt((n) => n + 1);
+            }}
+          >
             {t('pluginPage.reload')}
           </Button>
         </div>

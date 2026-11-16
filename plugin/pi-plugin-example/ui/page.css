@@ -20,7 +20,11 @@ body {
   padding: 28px;
   background: var(--background);
   color: var(--foreground);
-  font: 14px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  font:
+    14px/1.55 system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
 }
 
 main {
@@ -95,7 +99,11 @@ pre {
   border-radius: calc(var(--radius) - 2px);
   background: var(--background);
   border: 1px solid var(--border);
-  font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace;
+  font:
+    12px/1.5 ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
   white-space: pre-wrap;
   min-height: 1em;
 }

@@ -3,7 +3,11 @@ import type { OpenTarget, OpenTargetEntry } from '@shared/protocol';
 import { call, isMac } from '@/lib/api';
 import { t } from '@/lib/i18n';
 
-export interface OpenTargetInfo { label: string; badge: string; color: string }
+export interface OpenTargetInfo {
+  label: string;
+  badge: string;
+  color: string;
+}
 
 export const OPEN_TARGET_INFO: Record<OpenTarget, OpenTargetInfo> = {
   vscode: { label: 'VS Code', badge: 'VS', color: '#2f80ed' },
@@ -22,8 +26,20 @@ export const OPEN_TARGET_INFO: Record<OpenTarget, OpenTargetInfo> = {
   rustrover: { label: 'RustRover', badge: 'RR', color: '#ff7a00' },
   clion: { label: 'CLion', badge: 'CL', color: '#1fa37a' },
   phpstorm: { label: 'PhpStorm', badge: 'PS', color: '#b345f1' },
-  terminal: { get label() { return t('open.terminal'); }, badge: '>_', color: '#444' },
-  folder: { get label() { return t(isMac ? 'open.finder' : 'open.explorer'); }, badge: 'F', color: '#e3a21a' },
+  terminal: {
+    get label() {
+      return t('open.terminal');
+    },
+    badge: '>_',
+    color: '#444',
+  },
+  folder: {
+    get label() {
+      return t(isMac ? 'open.finder' : 'open.explorer');
+    },
+    badge: 'F',
+    color: '#e3a21a',
+  },
 };
 
 const REFRESH_AFTER = 30_000;
@@ -35,13 +51,23 @@ const listeners = new Set<() => void>();
 export function refreshOpenTargets() {
   if (Date.now() - loadedAt < REFRESH_AFTER) return;
   loadedAt = Date.now();
-  call('app:openTargets').then((next) => {
-    targets = next;
-    listeners.forEach((l) => l());
-  }).catch(() => { loadedAt = 0; });
+  call('app:openTargets')
+    .then((next) => {
+      targets = next;
+      listeners.forEach((l) => l());
+    })
+    .catch(() => {
+      loadedAt = 0;
+    });
 }
 
 export function useOpenTargets(): OpenTargetEntry[] {
   useEffect(refreshOpenTargets, []);
-  return useSyncExternalStore((l) => { listeners.add(l); return () => void listeners.delete(l); }, () => targets);
+  return useSyncExternalStore(
+    (l) => {
+      listeners.add(l);
+      return () => void listeners.delete(l);
+    },
+    () => targets,
+  );
 }

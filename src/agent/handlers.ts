@@ -11,8 +11,14 @@ export type HostChannel = (typeof HOST_CHANNELS)[number];
 type Handler = (...args: any[]) => unknown;
 
 /** `getScheduler` is null where there is none (the plugin): the scheduled-task calls then say so. */
-export function sessionHandlers(ready: Promise<SessionHub>, getScheduler: () => Scheduler | null): Record<HostChannel, Handler> {
-  const withHub = (fn: (hub: SessionHub, ...args: any[]) => unknown): Handler => async (...args) => fn(await ready, ...args);
+export function sessionHandlers(
+  ready: Promise<SessionHub>,
+  getScheduler: () => Scheduler | null,
+): Record<HostChannel, Handler> {
+  const withHub =
+    (fn: (hub: SessionHub, ...args: any[]) => unknown): Handler =>
+    async (...args) =>
+      fn(await ready, ...args);
   const scheduler = () => {
     const s = getScheduler();
     if (!s) throw new Error('Scheduled tasks are not available on this host.');
@@ -33,6 +39,7 @@ export function sessionHandlers(ready: Promise<SessionHub>, getScheduler: () => 
       return result;
     }),
     'sessions:respond': withHub((h, id, requestId, response) => h.respond(id, requestId, response)),
+    'sessions:bash': withHub((h, id, command, options) => h.bash(id, command, options)),
     'sessions:setMode': withHub((h, id, mode) => h.setMode(id, mode)),
     'sessions:setStyle': withHub((h, id, style) => h.setStyle(id, style)),
     'sessions:update': withHub((h, id, patch) => h.update(id, patch)),
@@ -82,33 +89,49 @@ export function sessionHandlers(ready: Promise<SessionHub>, getScheduler: () => 
     'sessions:import': withHub((h, file) => h.importSession(file)),
     'git:branch': (dir) => git.currentBranch(dir),
     'git:branches': (dir) => git.branches(dir),
+    'git:defaultBranch': (dir) => git.defaultBranch(dir),
+    'git:refresh': (dir) => git.fetchBase(dir),
     'agents:list': withHub((h) => h.agentCatalog()),
     'agents:tools': withHub((h) => h.toolOptions()),
     'agents:save': withHub((h, draft) => h.saveAgent(draft)),
     'agents:remove': withHub((h, name) => h.removeAgent(name)),
     'customize:list': withHub((h, project) => h.customize.list(project)),
     'customize:readFile': (file) => readCustomizeFile(file),
-    'customize:skillSetDisabled': withHub((h, file, disabled, project) => h.customize.setSkillDisabled(file, disabled, project)),
+    'customize:skillSetDisabled': withHub((h, file, disabled, project) =>
+      h.customize.setSkillDisabled(file, disabled, project),
+    ),
     'customize:skillCreate': withHub((h, draft, project) => h.customize.createSkill(draft, project)),
     'customize:promptCreate': withHub((h, draft, project) => h.customize.createPrompt(draft, project)),
     'customize:promptDelete': withHub((h, file, project) => h.customize.deletePrompt(file, project)),
     'customize:claudeImport': withHub((h, project) => h.customize.importClaudeSkills(project)),
     'customize:claudeDismiss': withHub((h, project) => h.customize.dismissClaudeSkills(project)),
     'customize:connectorSave': withHub((h, draft, project) => h.customize.saveConnector(draft, project)),
-    'customize:connectorSetEnabled': withHub((h, name, scope, enabled, project) => h.customize.setConnectorEnabled(name, scope, enabled, project)),
-    'customize:connectorRemove': withHub((h, name, scope, project) => h.customize.removeConnector(name, scope, project)),
+    'customize:connectorSetEnabled': withHub((h, name, scope, enabled, project) =>
+      h.customize.setConnectorEnabled(name, scope, enabled, project),
+    ),
+    'customize:connectorRemove': withHub((h, name, scope, project) =>
+      h.customize.removeConnector(name, scope, project),
+    ),
     'customize:skillDelete': withHub((h, file, project) => h.customize.deleteSkill(file, project)),
     'customize:skillsFromGitRemove': withHub((h, repo, project) => h.customize.removeSkillRepo(repo, project)),
-    'customize:skillsFromGit': withHub((h, repo, subdir, project) => h.customize.installSkillRepo(repo, subdir, project)),
-    'customize:pluginInstall': withHub((h, source, scope, project) => h.customize.installPlugin(source, scope, project)),
+    'customize:skillsFromGit': withHub((h, repo, subdir, project) =>
+      h.customize.installSkillRepo(repo, subdir, project),
+    ),
+    'customize:pluginInstall': withHub((h, source, scope, project) =>
+      h.customize.installPlugin(source, scope, project),
+    ),
     'customize:pluginRemove': withHub((h, source, scope, project) => h.customize.removePlugin(source, scope, project)),
     'customize:pluginUpdate': withHub((h, source, project) => h.customize.updatePlugins(source, project)),
-    'customize:pluginResources': withHub((h, source, scope, project) => h.customize.pluginResources(source, scope, project)),
-    'customize:pluginSetResource': withHub((h, source, scope, resource, enabled, project) => h.customize.setPluginResource(source, scope, resource, enabled, project)),
+    'customize:pluginResources': withHub((h, source, scope, project) =>
+      h.customize.pluginResources(source, scope, project),
+    ),
+    'customize:pluginSetResource': withHub((h, source, scope, resource, enabled, project) =>
+      h.customize.setPluginResource(source, scope, resource, enabled, project),
+    ),
     'plugins:list': withHub((h, project) => h.plugins.list(project)),
     'plugins:setEnabled': withHub((h, id, enabled, granted, project) => {
       const plugins = h.plugins.setEnabled(project, id, enabled, granted);
-      // The Customize page shows the switch it just flipped; from the next step the sidebar reads it too.
+      // The Customize page shows the switch it just flipped; the sidebar reads it too.
       h.resourceChanged('plugins');
       return plugins;
     }),

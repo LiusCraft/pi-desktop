@@ -39,7 +39,9 @@ export function parseIdeas(raw: unknown): WorkIdea[] | null {
   if (!Array.isArray(list)) return null;
   const ideas: WorkIdea[] = [];
   for (const item of list) {
-    const label = String((item as any)?.label ?? '').replace(/\s+/g, ' ').trim();
+    const label = String((item as any)?.label ?? '')
+      .replace(/\s+/g, ' ')
+      .trim();
     const prompt = String((item as any)?.prompt ?? '').trim();
     if (!label || !prompt || label.length > MAX_LABEL || prompt.length > MAX_PROMPT) continue;
     ideas.push({ label, prompt });

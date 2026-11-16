@@ -2,7 +2,13 @@
 // terminal tab's output and the working-tree changes. Content is captured when the
 // item is picked (a snapshot), so a badge shows exactly what the model receives.
 import { TERMINAL_DEFAULT_LINES, type FileChange, type SessionKind, type TerminalInfo } from '@shared/protocol';
-import { DIFF_TOKEN, diffSummaryText, sessionToken, terminalToken, type ContextReference } from '@shared/context-reference';
+import {
+  DIFF_TOKEN,
+  diffSummaryText,
+  sessionToken,
+  terminalToken,
+  type ContextReference,
+} from '@shared/context-reference';
 import { call } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { fname } from '@/lib/format';
@@ -48,13 +54,17 @@ export function loadSources(id: string, done: () => void) {
   loading.add(id);
   void Promise.all([
     call('terminal:list', id).catch((): TerminalInfo[] => []),
-    call('sessions:changes', id).then((set) => ({ repo: set.repo, changes: set.files })).catch(() => ({ repo: false, changes: [] as FileChange[] })),
+    call('sessions:changes', id)
+      .then((set) => ({ repo: set.repo, changes: set.files }))
+      .catch(() => ({ repo: false, changes: [] as FileChange[] })),
   ])
     .then(([terminals, { repo, changes }]) => {
       sources.set(id, { at: Date.now(), value: { terminals, changes, repo } });
-      done();
     })
-    .finally(() => loading.delete(id));
+    .finally(() => {
+      done();
+      loading.delete(id);
+    });
 }
 
 /** The lines a terminal snapshot takes, from the setting. */
@@ -96,7 +106,9 @@ export const terminalMentions = (terminals: TerminalInfo[]): Mention[] =>
 export function sessionMentions(projectPath: string | null, kind: SessionKind, currentId: string): Mention[] {
   const views = Object.values(getApp().sessions);
   return views
-    .filter((s) => s.meta.id !== currentId && s.meta.kind === kind && s.meta.projectPath === projectPath && !s.meta.archived)
+    .filter(
+      (s) => s.meta.id !== currentId && s.meta.kind === kind && s.meta.projectPath === projectPath && !s.meta.archived,
+    )
     .sort((a, b) => (b.meta.updatedAt || 0) - (a.meta.updatedAt || 0))
     .map((s) => ({
       kind: 'session',
@@ -110,11 +122,22 @@ export function sessionMentions(projectPath: string | null, kind: SessionKind, c
 }
 
 /** What the picked item stands for; null when there is nothing to attach. */
-export async function mentionReference(mention: Mention, current: MentionSources = EMPTY_SOURCES): Promise<ContextReference | null> {
+export async function mentionReference(
+  mention: Mention,
+  current: MentionSources = EMPTY_SOURCES,
+): Promise<ContextReference | null> {
   const id = crypto.randomUUID();
-  if (mention.kind === 'diff') return { id, kind: 'diff', path: '', token: DIFF_TOKEN, text: diffSummaryText(current.changes) };
+  if (mention.kind === 'diff')
+    return { id, kind: 'diff', path: '', token: DIFF_TOKEN, text: diffSummaryText(current.changes) };
   if (mention.kind === 'session' && mention.sessionId) {
-    return { id, kind: 'session', path: '', token: mention.insert.trim(), title: mention.title ?? '', sessionId: mention.sessionId };
+    return {
+      id,
+      kind: 'session',
+      path: '',
+      token: mention.insert.trim(),
+      title: mention.title ?? '',
+      sessionId: mention.sessionId,
+    };
   }
   if (mention.kind === 'terminal' && mention.terminalId) {
     const text = await call('terminal:text', mention.terminalId, terminalLines());

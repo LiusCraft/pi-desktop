@@ -5,7 +5,15 @@ import { tr } from '@shared/i18n/runtime';
 import crypto from 'node:crypto';
 import type { PromptSubmission } from '@shared/attachments';
 import type { CreateSessionOptions, SessionMeta } from '@shared/protocol';
-import { CATCH_UP_MS, MAX_TASK_RUNS, nextRun, validateSchedule, type ScheduledTask, type TaskDraft, type TaskRun } from '@shared/schedule';
+import {
+  CATCH_UP_MS,
+  MAX_TASK_RUNS,
+  nextRun,
+  validateSchedule,
+  type ScheduledTask,
+  type TaskDraft,
+  type TaskRun,
+} from '@shared/schedule';
 import type { Store } from './store';
 
 /** What the scheduler needs from the session hub. */
@@ -70,10 +78,17 @@ export class Scheduler {
     const bad = validateSchedule(draft.schedule, this.now());
     if (bad) throw new Error(bad);
     const existing = draft.id ? this.find(draft.id) : null;
-    if (this.tasks.some((t) => t.id !== existing?.id && t.kind === draft.kind && t.name === name)) throw new Error(tr('ag.taskExists', { name }));
+    if (this.tasks.some((t) => t.id !== existing?.id && t.kind === draft.kind && t.name === name))
+      throw new Error(tr('ag.taskExists', { name }));
     const fields = {
-      name, prompt, kind: draft.kind, projectPath: draft.projectPath, worktree: draft.kind === 'code' && draft.worktree,
-      mode: draft.mode, model: draft.model, schedule: draft.schedule,
+      name,
+      prompt,
+      kind: draft.kind,
+      projectPath: draft.projectPath,
+      worktree: draft.kind === 'code' && draft.worktree,
+      mode: draft.mode,
+      model: draft.model,
+      schedule: draft.schedule,
     };
     if (existing) {
       Object.assign(existing, fields);
@@ -82,8 +97,13 @@ export class Scheduler {
       existing.nextRunAt = existing.enabled ? nextRun(existing.schedule, this.now()) : null;
     } else {
       this.tasks.unshift({
-        id: crypto.randomUUID(), ...fields, enabled: true, createdAt: this.now(),
-        nextRunAt: nextRun(draft.schedule, this.now()), lastRunAt: null, runs: [],
+        id: crypto.randomUUID(),
+        ...fields,
+        enabled: true,
+        createdAt: this.now(),
+        nextRunAt: nextRun(draft.schedule, this.now()),
+        lastRunAt: null,
+        runs: [],
       });
     }
     return this.commit();
@@ -153,7 +173,12 @@ export class Scheduler {
     try {
       const at = this.now();
       const meta = await this.hub.create({
-        kind: t.kind, projectPath: t.projectPath, worktree: t.worktree, title: t.name, model: t.model, mode: t.mode,
+        kind: t.kind,
+        projectPath: t.projectPath,
+        worktree: t.worktree,
+        title: t.name,
+        model: t.model,
+        mode: t.mode,
       });
       this.hub.announce(meta);
       this.record(t, { at, sessionId: meta.id, status: 'started', note: catchUp ? tr('ag.taskCatchUp') : undefined });

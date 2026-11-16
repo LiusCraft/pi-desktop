@@ -8,7 +8,11 @@ const WHEEL_STEP = 1.15;
 /** Scale a double click zooms to from the fitted size. */
 const DOUBLE_CLICK_SCALE = 2.5;
 
-interface View { scale: number; x: number; y: number }
+interface View {
+  scale: number;
+  x: number;
+  y: number;
+}
 const FIT: View = { scale: 1, x: 0, y: 0 };
 
 /** An image fitted to its box that zooms with the wheel (around the cursor), pans by dragging, and toggles zoom on double click. */
@@ -20,12 +24,13 @@ export function ZoomImage({ src, alt, className }: { src: string; alt: string; c
   useEffect(() => setView(FIT), [src]);
 
   // Offsets are measured from the box center; zooming keeps the point under `(px, py)` fixed.
-  const zoomAt = (px: number, py: number, to: (scale: number) => number) => setView((v) => {
-    const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, to(v.scale)));
-    if (scale === MIN_SCALE) return FIT;
-    const k = scale / v.scale;
-    return { scale, x: px - (px - v.x) * k, y: py - (py - v.y) * k };
-  });
+  const zoomAt = (px: number, py: number, to: (scale: number) => number) =>
+    setView((v) => {
+      const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, to(v.scale)));
+      if (scale === MIN_SCALE) return FIT;
+      const k = scale / v.scale;
+      return { scale, x: px - (px - v.x) * k, y: py - (py - v.y) * k };
+    });
   const local = (clientX: number, clientY: number) => {
     const r = box.current!.getBoundingClientRect();
     return [clientX - r.left - r.width / 2, clientY - r.top - r.height / 2] as const;
@@ -68,7 +73,11 @@ export function ZoomImage({ src, alt, className }: { src: string; alt: string; c
         const [px, py] = local(e.clientX, e.clientY);
         zoomAt(px, py, (s) => (s === MIN_SCALE ? DOUBLE_CLICK_SCALE : MIN_SCALE));
       }}
-      className={cn('flex touch-none items-center justify-center overflow-hidden select-none', view.scale > MIN_SCALE ? 'cursor-grab active:cursor-grabbing' : 'cursor-zoom-in', className)}
+      className={cn(
+        'flex touch-none items-center justify-center overflow-hidden select-none',
+        view.scale > MIN_SCALE ? 'cursor-grab active:cursor-grabbing' : 'cursor-zoom-in',
+        className,
+      )}
     >
       <img
         src={src}

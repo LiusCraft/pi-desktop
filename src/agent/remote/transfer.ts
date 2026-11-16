@@ -7,7 +7,14 @@ import path from 'node:path';
 import { ARTIFACT_ID_PATTERN } from '@shared/artifacts';
 import { LIMITS } from '@shared/attachments';
 import type { AttachmentImportResult, AttachmentSource } from '@shared/protocol';
-import { REMOTE_ARTIFACT_MAX_BYTES, REMOTE_UPLOAD_KEEP_MS, REMOTE_UPLOAD_MAX_BYTES, type RemoteArtifactSite, type RemoteTransferMethod, type RemoteUpload } from '@shared/remote';
+import {
+  REMOTE_ARTIFACT_MAX_BYTES,
+  REMOTE_UPLOAD_KEEP_MS,
+  REMOTE_UPLOAD_MAX_BYTES,
+  type RemoteArtifactSite,
+  type RemoteTransferMethod,
+  type RemoteUpload,
+} from '@shared/remote';
 import { tr } from '@shared/i18n/runtime';
 import { appUploadsDir } from '../app-paths';
 import { ArtifactService } from '../artifacts';
@@ -26,7 +33,8 @@ export async function pruneUploads(dataDir: string, now = Date.now()): Promise<v
   for (const name of names) {
     const dir = path.join(root, name);
     try {
-      if (now - (await fs.promises.stat(dir)).mtimeMs > REMOTE_UPLOAD_KEEP_MS) await fs.promises.rm(dir, { recursive: true, force: true });
+      if (now - (await fs.promises.stat(dir)).mtimeMs > REMOTE_UPLOAD_KEEP_MS)
+        await fs.promises.rm(dir, { recursive: true, force: true });
     } catch {
       // Gone or busy: the next upload tries again.
     }
@@ -46,7 +54,8 @@ export async function receiveUploads(dataDir: string, uploads: unknown): Promise
       if (typeof upload?.data !== 'string') throw new Error(tr('remote.upload.invalid'));
       const bytes = Buffer.from(upload.data, 'base64');
       total += bytes.length;
-      if (bytes.length > LIMITS.fileBytes || total > REMOTE_UPLOAD_MAX_BYTES) throw new Error(tr('remote.upload.tooBig'));
+      if (bytes.length > LIMITS.fileBytes || total > REMOTE_UPLOAD_MAX_BYTES)
+        throw new Error(tr('remote.upload.tooBig'));
       const mimeType = sniffImage(bytes);
       if (mimeType) {
         sources.push({ name, mimeType, data: bytes.toString('base64') });
@@ -87,7 +96,9 @@ export function readArtifactSite(dataDir: string, id: unknown, have: unknown): R
 
 export async function transferCall(dataDir: string, method: RemoteTransferMethod, args: unknown[]): Promise<unknown> {
   switch (method) {
-    case 'attachments:upload': return receiveUploads(dataDir, args[0]);
-    case 'artifacts:site': return readArtifactSite(dataDir, args[0], args[1]);
+    case 'attachments:upload':
+      return receiveUploads(dataDir, args[0]);
+    case 'artifacts:site':
+      return readArtifactSite(dataDir, args[0], args[1]);
   }
 }

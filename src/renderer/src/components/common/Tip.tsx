@@ -5,13 +5,18 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 
 export function Tip({ children }: { children: ReactNode }) {
   return (
-    <Tooltip>
+    <Tooltip delayDuration={0}>
       <TooltipTrigger asChild>
-        <span tabIndex={0} className="inline-flex shrink-0 cursor-help rounded text-muted-foreground/70 outline-none hover:text-foreground focus-visible:text-foreground">
+        <button
+          type="button"
+          className="inline-flex shrink-0 cursor-help appearance-none rounded border-0 bg-transparent p-0 text-muted-foreground/70 outline-none hover:text-foreground focus-visible:text-foreground"
+        >
           <InfoIcon className="size-3.5" />
-        </span>
+        </button>
       </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-xs font-normal">{children}</TooltipContent>
+      <TooltipContent side="top" className="max-w-xs font-normal">
+        {children}
+      </TooltipContent>
     </Tooltip>
   );
 }

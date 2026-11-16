@@ -9,7 +9,11 @@ export const UPDATE_HISTORY_LIMIT = 20;
 export const UPDATE_FIRST_CHECK_MS = 10_000;
 export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
-export interface ReleaseAsset { name: string; url: string; size: number }
+export interface ReleaseAsset {
+  name: string;
+  url: string;
+  size: number;
+}
 export interface ReleaseNote {
   version: string;
   name: string;
@@ -30,7 +34,11 @@ export interface UpdateCheck {
 }
 
 export type UpdateStage = 'downloading' | 'launching';
-export interface UpdateProgress { stage: UpdateStage; received: number; total: number }
+export interface UpdateProgress {
+  stage: UpdateStage;
+  received: number;
+  total: number;
+}
 
 type Triple = [number, number, number];
 

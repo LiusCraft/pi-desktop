@@ -6,7 +6,13 @@ import { tr } from '@shared/i18n/runtime';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { EndpointDiscovery, EndpointDraft, EndpointInfo, EndpointModel, ModelMeta } from '@shared/protocol';
-import { alignModel, cleanThinkingLevelMap, COST_FIELDS, nonNegativePrice, positiveLimit } from '@shared/model-metadata';
+import {
+  alignModel,
+  cleanThinkingLevelMap,
+  COST_FIELDS,
+  nonNegativePrice,
+  positiveLimit,
+} from '@shared/model-metadata';
 
 /** pi's documented placeholder for endpoints that ignore the key (Ollama, llama.cpp, vLLM…). */
 export const LOCAL_KEY = 'local';
@@ -88,10 +94,11 @@ export function isLocalUrl(baseUrl: string): boolean {
   } catch {
     return false;
   }
-  if (['localhost', '::1', '0.0.0.0'].includes(host) || host.endsWith('.local') || host.endsWith('.localhost')) return true;
-  if (/^127\./.test(host)) return true;
-  if (/^10\./.test(host)) return true;
-  if (/^192\.168\./.test(host)) return true;
+  if (['localhost', '::1', '0.0.0.0'].includes(host) || host.endsWith('.local') || host.endsWith('.localhost'))
+    return true;
+  if (host.startsWith('127.')) return true;
+  if (host.startsWith('10.')) return true;
+  if (host.startsWith('192.168.')) return true;
   const m = /^172\.(\d+)\./.exec(host);
   return Boolean(m && Number(m[1]) >= 16 && Number(m[1]) <= 31);
 }
@@ -107,7 +114,12 @@ export function validProviderId(id: string): boolean {
 function costEntry(cost: EndpointModel['cost']): Json | undefined {
   if (!cost) return undefined;
   const value = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : 0);
-  return { input: value(cost.input), output: value(cost.output), cacheRead: value(cost.cacheRead), cacheWrite: value(cost.cacheWrite) };
+  return {
+    input: value(cost.input),
+    output: value(cost.output),
+    cacheRead: value(cost.cacheRead),
+    cacheWrite: value(cost.cacheWrite),
+  };
 }
 
 /**
@@ -143,14 +155,15 @@ function cleanModels(list: unknown): EndpointModel[] {
       reasoning: typeof model.reasoning === 'boolean' ? model.reasoning : undefined,
       thinkingLevelMap: cleanThinkingLevelMap(model.thinkingLevelMap),
       input: Array.isArray(model.input) ? model.input.filter((v): v is string => typeof v === 'string') : undefined,
-      cost: model.cost && typeof model.cost === 'object'
-        ? {
-            input: nonNegativePrice((model.cost as Json).input),
-            output: nonNegativePrice((model.cost as Json).output),
-            cacheRead: nonNegativePrice((model.cost as Json).cacheRead),
-            cacheWrite: nonNegativePrice((model.cost as Json).cacheWrite),
-          }
-        : undefined,
+      cost:
+        model.cost && typeof model.cost === 'object'
+          ? {
+              input: nonNegativePrice((model.cost as Json).input),
+              output: nonNegativePrice((model.cost as Json).output),
+              cacheRead: nonNegativePrice((model.cost as Json).cacheRead),
+              cacheWrite: nonNegativePrice((model.cost as Json).cacheWrite),
+            }
+          : undefined,
       source: 'manual',
     });
   }
@@ -171,7 +184,10 @@ export class EndpointStore {
     try {
       const data = JSON.parse(stripJsonComments(text.replace(/^\uFEFF/, ''))) as ModelsFile;
       if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error(tr('ag.modelsTopLevel'));
-      if (data.providers !== undefined && (typeof data.providers !== 'object' || data.providers === null || Array.isArray(data.providers))) {
+      if (
+        data.providers !== undefined &&
+        (typeof data.providers !== 'object' || data.providers === null || Array.isArray(data.providers))
+      ) {
         throw new Error(tr('ag.modelsProviders'));
       }
       return { data };
@@ -185,7 +201,11 @@ export class EndpointStore {
     return new Set(Object.keys(this.read().data.providers ?? {}));
   }
 
-  list(builtinIds: Set<string>, status: (id: string) => { keySet: boolean; keySource?: string }, align: (id: string, providerId: string) => ModelMeta | undefined): EndpointInfo[] {
+  list(
+    builtinIds: Set<string>,
+    status: (id: string) => { keySet: boolean; keySource?: string },
+    align: (id: string, providerId: string) => ModelMeta | undefined,
+  ): EndpointInfo[] {
     const { data } = this.read();
     const out: EndpointInfo[] = [];
     for (const [id, raw] of Object.entries(data.providers ?? {})) {
@@ -218,7 +238,7 @@ export class EndpointStore {
 
     const { data, error } = this.read();
     if (error) throw new Error(tr('ag.fixFirst', { error }));
-    const providers = { ...(data.providers ?? {}) };
+    const providers = { ...data.providers };
     const previous = (providers[id] && typeof providers[id] === 'object' ? providers[id] : {}) as ModelsJsonProvider;
 
     // Keep hand-edited fields on models that stay, and the editor's values on the rest.
@@ -271,7 +291,7 @@ export class EndpointStore {
   remove(id: string) {
     const { data, error } = this.read();
     if (error) throw new Error(tr('ag.fixFirst', { error }));
-    const providers = { ...(data.providers ?? {}) };
+    const providers = { ...data.providers };
     if (!(id in providers)) return;
     delete providers[id];
     this.write({ ...data, providers });
@@ -297,7 +317,8 @@ const listAt = (payload: unknown): unknown[] => {
     for (const key of ['data', 'models', 'result']) {
       const value = obj[key];
       if (Array.isArray(value)) return value;
-      if (value && typeof value === 'object' && Array.isArray((value as Json).data)) return (value as Json).data as unknown[];
+      if (value && typeof value === 'object' && Array.isArray((value as Json).data))
+        return (value as Json).data as unknown[];
     }
   }
   return [];
@@ -325,11 +346,21 @@ export function parseModelList(payload: unknown): DiscoveredModel[] {
       id: modelId,
       name,
       contextWindow:
-        num(raw.context_length) ?? num(raw.context_window) ?? num(raw.max_model_len) ?? num(raw.max_context_length) ?? num(raw.max_input_tokens) ??
-        num(raw.inputTokenLimit) ?? num(top.context_length) ?? num(limit.context),
+        num(raw.context_length) ??
+        num(raw.context_window) ??
+        num(raw.max_model_len) ??
+        num(raw.max_context_length) ??
+        num(raw.max_input_tokens) ??
+        num(raw.inputTokenLimit) ??
+        num(top.context_length) ??
+        num(limit.context),
       maxTokens:
-        num(raw.max_completion_tokens) ?? num(raw.max_output_tokens) ?? num(raw.output_token_limit) ??
-        num(raw.outputTokenLimit) ?? num(top.max_completion_tokens) ?? num(limit.output),
+        num(raw.max_completion_tokens) ??
+        num(raw.max_output_tokens) ??
+        num(raw.output_token_limit) ??
+        num(raw.outputTokenLimit) ??
+        num(top.max_completion_tokens) ??
+        num(limit.output),
       source: 'endpoint',
     });
   }

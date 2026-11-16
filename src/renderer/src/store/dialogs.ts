@@ -2,8 +2,22 @@
 import { create } from 'zustand';
 
 export type DialogSpec =
-  | { kind: 'prompt'; title: string; value: string; placeholder?: string; action?: string; resolve: (v: string | null) => void }
-  | { kind: 'confirm'; title: string; body: string; action: string; destructive?: boolean; resolve: (v: boolean) => void }
+  | {
+      kind: 'prompt';
+      title: string;
+      value: string;
+      placeholder?: string;
+      action?: string;
+      resolve: (v: string | null) => void;
+    }
+  | {
+      kind: 'confirm';
+      title: string;
+      body: string;
+      action: string;
+      destructive?: boolean;
+      resolve: (v: boolean) => void;
+    }
   | { kind: 'choose'; title: string; options: { label: string; hint?: string }[]; resolve: (v: number | null) => void };
 
 export const useDialogs = create<{ current: DialogSpec | null }>(() => ({ current: null }));

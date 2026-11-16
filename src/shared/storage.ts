@@ -31,7 +31,13 @@ export interface ObjectStorageDraft extends ObjectStorageConfig {
 }
 
 export const EMPTY_STORAGE: ObjectStorageConfig = {
-  endpoint: '', region: 'auto', bucket: '', accessKeyId: '', publicBaseUrl: '', prefix: '', pathStyle: true,
+  endpoint: '',
+  region: 'auto',
+  bucket: '',
+  accessKeyId: '',
+  publicBaseUrl: '',
+  prefix: '',
+  pathStyle: true,
 };
 
 /** The first missing setting, or null when the config is complete enough to use. */

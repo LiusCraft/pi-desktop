@@ -30,9 +30,18 @@ test('a plugin page runs sandboxed and calls its host entry', async () => {
   // The package is installed from a folder, and the user already agreed to what it asks for: this test
   // is about the page and its calls, not about the consent dialog.
   fs.writeFileSync(path.join(agentDir, 'settings.json'), JSON.stringify({ packages: [plugin] }));
-  fs.writeFileSync(path.join(dataDir, 'plugins.json'), JSON.stringify({
-    plugins: { example: { source: plugin, enabled: true, granted: ['session:read', 'session:prompt', 'notify', 'storage', 'host:call'] } },
-  }));
+  fs.writeFileSync(
+    path.join(dataDir, 'plugins.json'),
+    JSON.stringify({
+      plugins: {
+        example: {
+          source: plugin,
+          enabled: true,
+          granted: ['session:read', 'session:prompt', 'notify', 'storage', 'host:call'],
+        },
+      },
+    }),
+  );
 
   let app: ElectronApplication | undefined;
   try {

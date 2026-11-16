@@ -11,8 +11,16 @@ import { setActiveLocale } from '../src/shared/i18n/runtime';
 setActiveLocale('zh');
 
 const status = (p: Partial<PrStatus> = {}): PrStatus => ({
-  num: 4, url: 'https://github.com/owner/repo/pull/4', state: 'open', draft: false,
-  ci: 'pass', checks: [], comments: 0, mergeable: 'unknown', review: 'approved', head: 'abc',
+  num: 4,
+  url: 'https://github.com/owner/repo/pull/4',
+  state: 'open',
+  draft: false,
+  ci: 'pass',
+  checks: [],
+  comments: 0,
+  mergeable: 'unknown',
+  review: 'approved',
+  head: 'abc',
   ...p,
 });
 
@@ -20,7 +28,10 @@ const note = (id: string, author = 'alice', body = 'please fix'): PrNote => ({ i
 
 const snap = (p: Partial<PrStatus> = {}, notes: PrNote[] = []): PrSnapshot => ({ status: status(p), notes });
 
-const failing = { ci: 'fail' as const, checks: [{ n: 'build (ubuntu)', st: 'fail' as const, url: 'https://example.com/log' }] };
+const failing = {
+  ci: 'fail' as const,
+  checks: [{ n: 'build (ubuntu)', st: 'fail' as const, url: 'https://example.com/log' }],
+};
 const auto = { autoFixCi: true };
 const withMerge = { autoFixCi: true, autoMerge: true };
 
@@ -46,9 +57,15 @@ describe('PR watcher, CI', () => {
     const r = w.observe(snap(failing, [note('c1'), note('c2', 'bob')]), auto);
     assert.equal(r.pending?.event.kind, 'ci-fail');
     assert.match(r.pending!.event.summary, /条新评论/);
-    assert.deepEqual(r.pending?.event.notes?.map((n) => n.id), ['c2']);
+    assert.deepEqual(
+      r.pending?.event.notes?.map((n) => n.id),
+      ['c2'],
+    );
     w.accept(r.pending!);
-    assert.equal(w.observe(snap(failing, [note('c1'), note('c2', 'bob')]), { ...auto, done: { fix: '4:abc' } }).pending, null);
+    assert.equal(
+      w.observe(snap(failing, [note('c1'), note('c2', 'bob')]), { ...auto, done: { fix: '4:abc' } }).pending,
+      null,
+    );
   });
 
   it('stays quiet when auto-fix is off, but still reports the status', () => {
@@ -74,7 +91,10 @@ describe('PR watcher, comments', () => {
     const r = w.observe(snap({}, [note('c1'), note('c2', 'bob', 'this loop is wrong')]), auto);
     assert.equal(r.pending?.event.kind, 'notes');
     assert.equal(r.pending?.event.summary, '1 条新评论 · @bob');
-    assert.deepEqual(r.pending?.event.notes?.map((n) => n.id), ['c2']);
+    assert.deepEqual(
+      r.pending?.event.notes?.map((n) => n.id),
+      ['c2'],
+    );
     // Accepted: the same comment never raises another turn.
     w.accept(r.pending!);
     assert.equal(w.observe(snap({}, [note('c1'), note('c2', 'bob')]), auto).pending, null);
@@ -83,7 +103,10 @@ describe('PR watcher, comments', () => {
   it('ignores its own replies and bots, so a fix turn cannot trigger itself', () => {
     const w = new PrWatcher();
     w.observe(snap(), auto);
-    const r = w.observe(snap({}, [{ ...note('c9'), self: true }, note('c10', 'dependabot[bot]'), note('c11', 'ci[bot]')]), auto);
+    const r = w.observe(
+      snap({}, [{ ...note('c9'), self: true }, note('c10', 'dependabot[bot]'), note('c11', 'ci[bot]')]),
+      auto,
+    );
     assert.equal(r.pending, null);
   });
 
@@ -103,7 +126,10 @@ describe('PR watcher, merging and the loop', () => {
     assert.equal(ready.pending?.event.kind, 'merge');
     assert.deepEqual(ready.pending?.mark, { merge: 4 });
     // Recorded on the session: no second request for the same PR.
-    assert.equal(w.observe(snap({ ci: 'pass', mergeable: 'clean' }), { ...withMerge, done: { merge: 4 } }).pending, null);
+    assert.equal(
+      w.observe(snap({ ci: 'pass', mergeable: 'clean' }), { ...withMerge, done: { merge: 4 } }).pending,
+      null,
+    );
   });
 
   it('does not merge over a change request', () => {

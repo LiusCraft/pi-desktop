@@ -8,7 +8,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import {
-  ARTIFACT_ENTRY, ARTIFACT_ID_PATTERN, ARTIFACT_LIMITS, ARTIFACT_SITE_DIR, ARTIFACT_SKIP, artifactKey, type ArtifactMeta,
+  ARTIFACT_ENTRY,
+  ARTIFACT_ID_PATTERN,
+  ARTIFACT_LIMITS,
+  ARTIFACT_SITE_DIR,
+  ARTIFACT_SKIP,
+  artifactKey,
+  type ArtifactMeta,
 } from '@shared/artifacts';
 import { appArtifactsDir } from './app-paths';
 import type { ObjectStorage } from './storage';
@@ -24,7 +30,12 @@ export interface SaveArtifactInput {
 }
 
 const slug = (s: string) =>
-  s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  s
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
 
 /** Everything under `dir` as forward-slash relative paths; throws when it is too big to be an artifact. */
 function walk(dir: string, rel = '', out: { rel: string; size: number }[] = []) {
@@ -34,13 +45,17 @@ function walk(dir: string, rel = '', out: { rel: string; size: number }[] = []) 
     // Links could point anywhere on the machine: only real files and folders are taken.
     if (entry.isDirectory()) walk(dir, r, out);
     else if (entry.isFile()) out.push({ rel: r, size: fs.statSync(path.join(dir, r)).size });
-    if (out.length > ARTIFACT_LIMITS.files) throw new Error(`An artifact can have at most ${ARTIFACT_LIMITS.files} files`);
+    if (out.length > ARTIFACT_LIMITS.files)
+      throw new Error(`An artifact can have at most ${ARTIFACT_LIMITS.files} files`);
   }
   return out;
 }
 
 export class ArtifactService {
-  constructor(private readonly dataDir: string, private readonly storage: ObjectStorage) {}
+  constructor(
+    private readonly dataDir: string,
+    private readonly storage: ObjectStorage,
+  ) {}
 
   private get root() {
     return appArtifactsDir(this.dataDir);
@@ -108,7 +123,8 @@ export class ArtifactService {
     // One list of what to copy: [path inside the artifact, absolute path of the source].
     let files: { rel: string; abs: string; size: number }[];
     if (stat.isDirectory()) {
-      if (!fs.existsSync(path.join(source, ARTIFACT_ENTRY))) throw new Error(`${input.source} has no ${ARTIFACT_ENTRY}; an artifact folder needs one`);
+      if (!fs.existsSync(path.join(source, ARTIFACT_ENTRY)))
+        throw new Error(`${input.source} has no ${ARTIFACT_ENTRY}; an artifact folder needs one`);
       files = walk(source).map((f) => ({ ...f, abs: path.join(source, f.rel) }));
     } else {
       if (!/\.html?$/i.test(source)) throw new Error(`${input.source} is not an HTML file`);
@@ -117,10 +133,14 @@ export class ArtifactService {
     const total = files.reduce((n, f) => n + f.size, 0);
     const big = files.find((f) => f.size > ARTIFACT_LIMITS.fileBytes);
     if (big) throw new Error(`${big.rel} is over ${ARTIFACT_LIMITS.fileBytes / 1024 / 1024} MB`);
-    if (total > ARTIFACT_LIMITS.totalBytes) throw new Error(`An artifact can be at most ${ARTIFACT_LIMITS.totalBytes / 1024 / 1024} MB`);
+    if (total > ARTIFACT_LIMITS.totalBytes)
+      throw new Error(`An artifact can be at most ${ARTIFACT_LIMITS.totalBytes / 1024 / 1024} MB`);
 
     const existing = input.id ? this.get(input.id) : null;
-    const title = (input.title ?? existing?.title ?? path.basename(source, path.extname(source))).trim().slice(0, ARTIFACT_LIMITS.title) || 'Untitled';
+    const title =
+      (input.title ?? existing?.title ?? path.basename(source, path.extname(source)))
+        .trim()
+        .slice(0, ARTIFACT_LIMITS.title) || 'Untitled';
     const id = existing?.id ?? this.newId(title);
 
     const site = this.siteDir(id);
@@ -132,10 +152,17 @@ export class ArtifactService {
     }
     const now = Date.now();
     const meta: ArtifactMeta = {
-      id, title, files: files.map((f) => f.rel).sort(), bytes: total,
-      version: (existing?.version ?? 0) + 1, createdAt: existing?.createdAt ?? now, updatedAt: now,
-      publishedVersion: existing?.publishedVersion ?? null, publishedAt: existing?.publishedAt ?? null,
-      publishedUrl: existing?.publishedUrl ?? null, publishedFiles: existing?.publishedFiles ?? [],
+      id,
+      title,
+      files: files.map((f) => f.rel).sort(),
+      bytes: total,
+      version: (existing?.version ?? 0) + 1,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      publishedVersion: existing?.publishedVersion ?? null,
+      publishedAt: existing?.publishedAt ?? null,
+      publishedUrl: existing?.publishedUrl ?? null,
+      publishedFiles: existing?.publishedFiles ?? [],
     };
     this.write(meta);
     return meta;
@@ -163,10 +190,18 @@ export class ArtifactService {
     const site = this.siteDir(id);
     // Asks for the configuration first: nothing is read or sent while the storage is not set up.
     const url = this.storage.url(artifactKey(id, ARTIFACT_ENTRY));
-    for (const file of meta.files) await this.storage.put(artifactKey(id, file), fs.readFileSync(path.join(site, file)));
+    for (const file of meta.files)
+      await this.storage.put(artifactKey(id, file), fs.readFileSync(path.join(site, file)));
     // Best effort: a leftover file in the bucket must not fail a publish that otherwise worked.
-    for (const old of meta.publishedFiles.filter((f) => !meta.files.includes(f))) await this.storage.remove(artifactKey(id, old)).catch(() => {});
-    const next: ArtifactMeta = { ...meta, publishedVersion: meta.version, publishedAt: Date.now(), publishedUrl: url, publishedFiles: [...meta.files] };
+    for (const old of meta.publishedFiles.filter((f) => !meta.files.includes(f)))
+      await this.storage.remove(artifactKey(id, old)).catch(() => {});
+    const next: ArtifactMeta = {
+      ...meta,
+      publishedVersion: meta.version,
+      publishedAt: Date.now(),
+      publishedUrl: url,
+      publishedFiles: [...meta.files],
+    };
     this.write(next);
     return next;
   }
@@ -175,7 +210,13 @@ export class ArtifactService {
   async unpublish(id: string): Promise<ArtifactMeta> {
     const meta = this.get(id);
     for (const file of meta.publishedFiles) await this.storage.remove(artifactKey(id, file));
-    const next: ArtifactMeta = { ...meta, publishedVersion: null, publishedAt: null, publishedUrl: null, publishedFiles: [] };
+    const next: ArtifactMeta = {
+      ...meta,
+      publishedVersion: null,
+      publishedAt: null,
+      publishedUrl: null,
+      publishedFiles: [],
+    };
     this.write(next);
     return next;
   }

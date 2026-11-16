@@ -16,35 +16,56 @@ describe('native tool preview normalization', () => {
     for (const suffix of ['', ' (50.0KB limit)']) {
       const source = 'first\n\nlast';
       const footer = `[Showing lines 601-603 of 980${suffix}. Use offset=604 to continue.]`;
-      const p = previews.read({ offset: 601 }, text(`${source}\n\n${footer}`, { truncation: { truncated: true, content: source } }));
+      const p = previews.read(
+        { offset: 601 },
+        text(`${source}\n\n${footer}`, { truncation: { truncated: true, content: source } }),
+      );
       assert.deepEqual(p.lines, ['first', '', 'last']);
       assert.equal(p.footer, footer);
       assert.equal(p.startLine, 601);
       assert.equal(p.totalLines, 980);
       assert.equal(p.nextOffset, 604);
     }
-    const limited = previews.read({ offset: 4, limit: 2 }, text('a\nb\n\n[9 more lines in file. Use offset=6 to continue.]'));
+    const limited = previews.read(
+      { offset: 4, limit: 2 },
+      text('a\nb\n\n[9 more lines in file. Use offset=6 to continue.]'),
+    );
     assert.deepEqual(limited.lines, ['a', 'b']);
     assert.equal(limited.totalLines, 14);
     assert.equal(limited.nextOffset, 6);
   });
   it('uses structured truncation content and leaves non-terminal lookalikes untouched', () => {
-    const p = previews.read({}, text('do not infer the source here', { truncation: { truncated: true, content: 'actual\nsource' } }));
+    const p = previews.read(
+      {},
+      text('do not infer the source here', { truncation: { truncated: true, content: 'actual\nsource' } }),
+    );
     assert.deepEqual(p.lines, ['actual', 'source']);
     const literal = '[Showing lines 1-2 of 9. Use offset=3 to continue.]\ncode';
     assert.deepEqual(previews.read({}, text(literal)).lines, literal.split('\n'));
   });
   it('never renders read failures or oversized-first-line notices as numbered source', () => {
     assert.equal(previews.read({}, text('ENOENT'), true).type, 'error');
-    assert.equal(previews.read({}, text('[Line 1 is too long]', { truncation: { firstLineExceedsLimit: true, content: '' } })).type, 'notice');
+    assert.equal(
+      previews.read({}, text('[Line 1 is too long]', { truncation: { firstLineExceedsLimit: true, content: '' } }))
+        .type,
+      'notice',
+    );
     assert.equal(previews.read({ offset: -5 }, text('a')).startLine, 1);
   });
   it('keeps read images as controlled raster data, never fabricated source rows', () => {
-    const result = { content: [{ type: 'text', text: 'Read image file [image/png]' }, { type: 'image', mimeType: 'image/png', data: 'aGVsbG8=' }] };
+    const result = {
+      content: [
+        { type: 'text', text: 'Read image file [image/png]' },
+        { type: 'image', mimeType: 'image/png', data: 'aGVsbG8=' },
+      ],
+    };
     const p = previews.read({}, result);
     assert.equal(p.type, 'image');
     assert.equal(p.images[0].src, 'data:image/png;base64,aGVsbG8=');
-    for (const block of [{ type: 'image', mimeType: 'image/svg+xml', data: 'aGVsbG8=' }, { type: 'image', mimeType: 'image/png', data: 'https://bad.test/x' }]) {
+    for (const block of [
+      { type: 'image', mimeType: 'image/svg+xml', data: 'aGVsbG8=' },
+      { type: 'image', mimeType: 'image/png', data: 'https://bad.test/x' },
+    ]) {
       assert.deepEqual(previews.read({}, { content: [block] }).images, []);
     }
     assert.equal(previews.read({}, result, true).type, 'error');
@@ -59,7 +80,10 @@ describe('native tool preview normalization', () => {
     assert.deepEqual(p.rows[2], { t: '-', o: 43, s: '  old' });
     assert.deepEqual(p.rows[3], { t: '+', n: 43, s: '  new' });
     assert.deepEqual(p.rows[0], { gap: true });
-    assert.equal(previews.edit({}, text('ok', { diff: '--- a/file\n+++ b/file\n@@ -1 +1 @@\n-old\n+new' })).type, 'notice');
+    assert.equal(
+      previews.edit({}, text('ok', { diff: '--- a/file\n+++ b/file\n@@ -1 +1 @@\n-old\n+new' })).type,
+      'notice',
+    );
   });
   it('counts the full native diff even when rendering will bound its preview', () => {
     const diff = Array.from({ length: 500 }, (_, i) => `+${i + 2201} line${i}`).join('\n');

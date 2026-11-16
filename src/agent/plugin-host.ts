@@ -43,7 +43,10 @@ export interface PluginHostsOptions {
 
 /** One JSON file per plugin. Writes are whole-file: these are settings, not a database. */
 class PluginStorage {
-  constructor(readonly dir: string, private readonly file: string) {
+  constructor(
+    readonly dir: string,
+    private readonly file: string,
+  ) {
     fs.mkdirSync(dir, { recursive: true });
   }
 
@@ -109,11 +112,13 @@ export class PluginHosts {
   }
 
   private allow(plugin: DesktopPluginInfo, permission: PluginPermission) {
-    if (!plugin.permissions.includes(permission)) throw new Error(tr('plugins.err.notGranted', { id: plugin.id, permission }));
+    if (!plugin.permissions.includes(permission))
+      throw new Error(tr('plugins.err.notGranted', { id: plugin.id, permission }));
     // The registry, not the listing: a switch the user just flipped applies to the next call.
     const decision = this.opts.decision(plugin.id);
     if (!decision?.enabled) throw new Error(tr('plugins.err.notEnabled', { id: plugin.id }));
-    if (!decision.granted.includes(permission)) throw new Error(tr('plugins.err.notGranted', { id: plugin.id, permission }));
+    if (!decision.granted.includes(permission))
+      throw new Error(tr('plugins.err.notGranted', { id: plugin.id, permission }));
   }
 
   private async load(plugin: DesktopPluginInfo) {
@@ -144,7 +149,10 @@ export class PluginHosts {
     return runtime;
   }
 
-  private api(plugin: DesktopPluginInfo, runtime: { handlers: Map<string, Handler>; storage: PluginStorage }): DesktopHostApi {
+  private api(
+    plugin: DesktopPluginInfo,
+    runtime: { handlers: Map<string, Handler>; storage: PluginStorage },
+  ): DesktopHostApi {
     const emit = (event: PluginEvent) => this.opts.emit({ type: 'plugin', pluginId: plugin.id, event });
     return {
       handle: (method, fn) => {

@@ -8,7 +8,9 @@ describe('tool output rendering', () => {
     assert.deepEqual(splitFences('line one\nline two'), [{ kind: 'text', text: 'line one\nline two' }]);
   });
   it('splits a fenced block and highlights its language', () => {
-    const segments = splitFences('codemode tool declaration:\n```ts\ndeclare const tools: {\n  run(): void;\n};\n```\n');
+    const segments = splitFences(
+      'codemode tool declaration:\n```ts\ndeclare const tools: {\n  run(): void;\n};\n```\n',
+    );
     assert.deepEqual(segments, [
       { kind: 'text', text: 'codemode tool declaration:' },
       { kind: 'code', lang: 'ts', code: 'declare const tools: {\n  run(): void;\n};' },
@@ -16,7 +18,10 @@ describe('tool output rendering', () => {
   });
   it('handles a fence without a language and text on both sides', () => {
     const segments = splitFences('before\n```\ncode\n```\nafter');
-    assert.deepEqual(segments.map((s) => s.kind), ['text', 'code', 'text']);
+    assert.deepEqual(
+      segments.map((s) => s.kind),
+      ['text', 'code', 'text'],
+    );
     assert.deepEqual(segments[1], { kind: 'code', lang: '', code: 'code' });
   });
   it('leaves an unclosed fence as text', () => {

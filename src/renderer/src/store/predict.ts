@@ -30,7 +30,7 @@ export async function primeSuggestion(id: string) {
   const options: SuggestionOptions = {
     model: settings.suggestionModel ?? 'session',
     modelId: settings.suggestionModelId ?? null,
-    context: settings.suggestionFullContext ? 'all' : settings.suggestionContext ?? SUGGESTION_DEFAULT_CONTEXT,
+    context: settings.suggestionFullContext ? 'all' : (settings.suggestionContext ?? SUGGESTION_DEFAULT_CONTEXT),
   };
   const result = await call('sessions:suggest', id, options).catch(() => null);
   if (requests.get(id) !== token) return;

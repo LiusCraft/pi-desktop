@@ -74,12 +74,17 @@ function walkMax(track: HTMLElement) {
   let max = Math.max(EDGE, track.offsetWidth - PET_W - EDGE);
   for (const el of document.querySelectorAll<HTMLElement>(`[${PET_BLOCK_ATTR}]`)) {
     const r = el.getBoundingClientRect();
-    if (r.bottom > t.top && r.top < t.bottom && r.right > t.left && r.left < t.right) max = Math.min(max, r.left - t.left - PET_W - EDGE / 2);
+    if (r.bottom > t.top && r.top < t.bottom && r.right > t.left && r.left < t.right)
+      max = Math.min(max, r.left - t.left - PET_W - EDGE / 2);
   }
   return Math.max(EDGE, max);
 }
 
-interface Ledge { l: number; r: number; h: number }
+interface Ledge {
+  l: number;
+  r: number;
+  h: number;
+}
 
 /** The things above the composer the pet can stand on, as spans of the track and their height over its floor. */
 function ledgesOf(track: HTMLElement): Ledge[] {
@@ -88,7 +93,8 @@ function ledgesOf(track: HTMLElement): Ledge[] {
   for (const el of document.querySelectorAll<HTMLElement>(`[${PET_GROUND_ATTR}]`)) {
     const r = el.getBoundingClientRect();
     const h = t.bottom - r.top;
-    if (r.width > 0 && h > MIN_LEDGE && r.bottom <= t.bottom + 1) out.push({ l: r.left - t.left - LEDGE_GAP / 2, r: r.right - t.left + LEDGE_GAP / 2, h });
+    if (r.width > 0 && h > MIN_LEDGE && r.bottom <= t.bottom + 1)
+      out.push({ l: r.left - t.left - LEDGE_GAP / 2, r: r.right - t.left + LEDGE_GAP / 2, h });
   }
   return out;
 }
@@ -98,8 +104,18 @@ const groundAt = (ledges: Ledge[], x: number) => {
   return ledges.reduce((top, l) => (mid + FOOT > l.l && mid - FOOT < l.r ? Math.max(top, l.h) : top), 0);
 };
 
-interface Body { x: number | null; y: number; vy: number; air: boolean; facing: 1 | -1 }
-interface Gait { facing: 1 | -1; walking: boolean; arrived: boolean }
+interface Body {
+  x: number | null;
+  y: number;
+  vy: number;
+  air: boolean;
+  facing: 1 | -1;
+}
+interface Gait {
+  facing: 1 | -1;
+  walking: boolean;
+  arrived: boolean;
+}
 
 /**
  * Where the pet is, simulated frame by frame: it walks at a steady pace, hops up onto ledges in its way
@@ -109,7 +125,12 @@ interface Gait { facing: 1 | -1; walking: boolean; arrived: boolean }
  * (`grab` / `dragTo` / `drop`): where it is put down it stays until its job changes (working) or it wanders
  * off again (idle). Position is written straight to `pos`; React only hears about the gait.
  */
-function usePatrol(enabled: boolean, working: boolean, track: React.RefObject<HTMLDivElement | null>, pos: React.RefObject<HTMLDivElement | null>) {
+function usePatrol(
+  enabled: boolean,
+  working: boolean,
+  track: React.RefObject<HTMLDivElement | null>,
+  pos: React.RefObject<HTMLDivElement | null>,
+) {
   const body = useRef<Body>({ x: null, y: 0, vy: 0, air: false, facing: -1 });
   const [gait, setGait] = useState<Gait>({ facing: -1, walking: false, arrived: false });
   const [held, setHeld] = useState(false);
@@ -135,7 +156,11 @@ function usePatrol(enabled: boolean, working: boolean, track: React.RefObject<HT
       b.vy = Math.sqrt(2 * GRAVITY * (rise + JUMP_ARC));
     };
     const publish = (walking: boolean, arrived: boolean) =>
-      setGait((p) => (p.facing === b.facing && p.walking === walking && p.arrived === arrived ? p : { facing: b.facing, walking, arrived }));
+      setGait((p) =>
+        p.facing === b.facing && p.walking === walking && p.arrived === arrived
+          ? p
+          : { facing: b.facing, walking, arrived },
+      );
 
     /** Advance the simulation; true while something is still moving. */
     const step = (dt: number) => {
@@ -321,7 +346,23 @@ function MonitorProp() {
 }
 
 /** One frame of the pet. The composer animates it by mood; the settings page shows it still. */
-export function PetSprite({ pet, mood = 'idle', walking = false, held = false, joy = false, facing = 1, size = 1 }: { pet: PetDef; mood?: Mood; walking?: boolean; held?: boolean; joy?: boolean; facing?: 1 | -1; size?: number }) {
+export function PetSprite({
+  pet,
+  mood = 'idle',
+  walking = false,
+  held = false,
+  joy = false,
+  facing = 1,
+  size = 1,
+}: {
+  pet: PetDef;
+  mood?: Mood;
+  walking?: boolean;
+  held?: boolean;
+  joy?: boolean;
+  facing?: 1 | -1;
+  size?: number;
+}) {
   return (
     <svg
       className={cn('clawd', `mood-${mood}`, walking && 'walking', held && 'held', joy && 'joy')}
@@ -358,7 +399,9 @@ export function PetSprite({ pet, mood = 'idle', walking = false, held = false, j
           <rect x="26" y="6" width="2" height="1" />
         </g>
       </g>
-      <g className="pet"><Body pet={pet} /></g>
+      <g className="pet">
+        <Body pet={pet} />
+      </g>
     </svg>
   );
 }
@@ -368,7 +411,8 @@ const GREETING_COUNT = 3;
 
 function greetingFor(date: Date) {
   const h = date.getHours();
-  const period = h >= 5 && h < 12 ? 'morning' : h >= 12 && h < 18 ? 'afternoon' : h >= 18 && h < 23 ? 'evening' : 'night';
+  const period =
+    h >= 5 && h < 12 ? 'morning' : h >= 12 && h < 18 ? 'afternoon' : h >= 18 && h < 23 ? 'evening' : 'night';
   return tr(`greet.${period}.${1 + Math.floor(Math.random() * GREETING_COUNT)}` as MessageKey);
 }
 
@@ -462,9 +506,14 @@ export function Clawd({ mood }: { mood: Mood }) {
   const left = (el: HTMLElement) => el.getBoundingClientRect().left - track.current!.getBoundingClientRect().left;
   return (
     <div ref={track} className="pointer-events-none absolute inset-x-0 bottom-full h-[34px]" aria-hidden>
+      {/* A decorative drag handle: pointer-only by design. */}
+      {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         ref={pos}
-        className={cn('clawd-pos pointer-events-auto absolute bottom-0 touch-none select-none', held ? 'cursor-grabbing' : 'cursor-grab')}
+        className={cn(
+          'clawd-pos pointer-events-auto absolute bottom-0 touch-none select-none',
+          held ? 'cursor-grabbing' : 'cursor-grab',
+        )}
         // Hidden until the first step has put it somewhere; position is written by `usePatrol`.
         style={{ left: 0, bottom: 0, visibility: 'hidden' }}
         onClick={(e) => e.stopPropagation()}
@@ -504,7 +553,14 @@ export function Clawd({ mood }: { mood: Mood }) {
             {greeting}
           </div>
         )}
-        <PetSprite pet={pet} mood={walking || !arrived ? 'idle' : cue ?? mood} walking={walking} held={held} joy={joy} facing={facing} />
+        <PetSprite
+          pet={pet}
+          mood={walking || !arrived ? 'idle' : (cue ?? mood)}
+          walking={walking}
+          held={held}
+          joy={joy}
+          facing={facing}
+        />
       </div>
     </div>
   );

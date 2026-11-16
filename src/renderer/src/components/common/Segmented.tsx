@@ -9,7 +9,13 @@ export interface SegmentedOption<T extends string> {
   disabled?: boolean;
 }
 
-export function Segmented<T extends string>({ value, onChange, options, className, compact }: {
+export function Segmented<T extends string>({
+  value,
+  onChange,
+  options,
+  className,
+  compact,
+}: {
   value: T;
   onChange: (id: T) => void;
   options: readonly SegmentedOption<T>[];
@@ -32,7 +38,10 @@ export function Segmented<T extends string>({ value, onChange, options, classNam
           value={o.id}
           title={o.hint}
           disabled={o.disabled}
-          className={cn('h-auto rounded-md focus-visible:border-transparent focus-visible:ring-0 font-normal text-muted-foreground transition-[color,background-color,box-shadow] duration-200 hover:bg-transparent hover:text-foreground data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm', compact ? 'px-2 py-0 text-xs' : 'px-3 py-1')}
+          className={cn(
+            'h-auto rounded-md font-normal text-muted-foreground transition-[color,background-color,box-shadow] duration-200 hover:bg-transparent hover:text-foreground focus-visible:border-transparent focus-visible:ring-0 data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm',
+            compact ? 'px-2 py-0 text-xs' : 'px-3 py-1',
+          )}
         >
           {o.label}
         </ToggleGroupItem>

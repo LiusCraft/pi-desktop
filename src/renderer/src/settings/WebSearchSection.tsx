@@ -3,7 +3,15 @@
 // to the next when that one fails (free quota used up), so the free tiers add up.
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { ENGINE_AUTO, ENGINE_INFO, KEYLESS_ENGINES, SEARCH_ENGINES, type EngineChoice, type SearchEngine, type WebSearchInfo } from '@shared/web-search';
+import {
+  ENGINE_AUTO,
+  ENGINE_INFO,
+  KEYLESS_ENGINES,
+  SEARCH_ENGINES,
+  type EngineChoice,
+  type SearchEngine,
+  type WebSearchInfo,
+} from '@shared/web-search';
 import { Segmented } from '@/components/common/Segmented';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,8 +22,15 @@ import { Panel } from './ui';
 
 const fail = (err: unknown) => toast.error(errText(err));
 
-
-function EngineRow({ engine, info, onChange }: { engine: SearchEngine; info: WebSearchInfo; onChange: (info: WebSearchInfo) => void }) {
+function EngineRow({
+  engine,
+  info,
+  onChange,
+}: {
+  engine: SearchEngine;
+  info: WebSearchInfo;
+  onChange: (info: WebSearchInfo) => void;
+}) {
   const t = useT();
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState<'save' | 'test' | 'remove' | null>(null);
@@ -30,7 +45,10 @@ function EngineRow({ engine, info, onChange }: { engine: SearchEngine; info: Web
         await call('web:test', engine, key.trim() || undefined);
         toast.success(t('web.works', { engine: meta.label }));
       } else {
-        const next = await call('web:save', { engine: info.engine, keys: { [engine]: what === 'remove' ? null : key } });
+        const next = await call('web:save', {
+          engine: info.engine,
+          keys: { [engine]: what === 'remove' ? null : key },
+        });
         setKey('');
         onChange(next);
         toast.success(t(what === 'remove' ? 'web.removed' : 'web.saved'));
@@ -46,8 +64,23 @@ function EngineRow({ engine, info, onChange }: { engine: SearchEngine; info: Web
     <div className="flex flex-col gap-2 px-4 py-3.5">
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium">{meta.label}</span>
-        {(saved || keyless) && <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{info.current === engine && info.engine === ENGINE_AUTO ? t('web.configured.current') : saved ? t('web.configured') : t('web.keyless')}</span>}
-        <a className="ml-auto text-xs text-muted-foreground underline-offset-2 hover:underline" href={meta.signup} target="_blank" rel="noreferrer">{t('web.getKey')}</a>
+        {(saved || keyless) && (
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+            {info.current === engine && info.engine === ENGINE_AUTO
+              ? t('web.configured.current')
+              : saved
+                ? t('web.configured')
+                : t('web.keyless')}
+          </span>
+        )}
+        <a
+          className="ml-auto text-xs text-muted-foreground underline-offset-2 hover:underline"
+          href={meta.signup}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {t('web.getKey')}
+        </a>
       </div>
       <div className="text-xs text-muted-foreground">{t(meta.free)}</div>
       <div className="flex items-center gap-2">
@@ -60,9 +93,22 @@ function EngineRow({ engine, info, onChange }: { engine: SearchEngine; info: Web
           spellCheck={false}
           onChange={(e) => setKey(e.target.value)}
         />
-        <Button size="sm" variant="outline" disabled={busy !== null || (!saved && !keyless && !key.trim())} onClick={() => void run('test')}>{busy === 'test' ? t('web.testing') : t('web.test')}</Button>
-        <Button size="sm" disabled={busy !== null || !key.trim()} onClick={() => void run('save')}>{t('web.save')}</Button>
-        {saved && <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void run('remove')}>{t('web.remove')}</Button>}
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy !== null || (!saved && !keyless && !key.trim())}
+          onClick={() => void run('test')}
+        >
+          {busy === 'test' ? t('web.testing') : t('web.test')}
+        </Button>
+        <Button size="sm" disabled={busy !== null || !key.trim()} onClick={() => void run('save')}>
+          {t('web.save')}
+        </Button>
+        {saved && (
+          <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => void run('remove')}>
+            {t('web.remove')}
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -90,10 +136,11 @@ export function WebSearchSection() {
 
   return (
     <section className="mt-7">
-      <h3 className="flex items-center gap-1.5 px-1 text-sm font-semibold">{t('web.title')}<Tip>{t('web.tip')}</Tip></h3>
-      <p className="mt-0.5 px-1 text-xs text-muted-foreground">
-        {t('web.sub')}
-      </p>
+      <h3 className="flex items-center gap-1.5 px-1 text-sm font-semibold">
+        {t('web.title')}
+        <Tip>{t('web.tip')}</Tip>
+      </h3>
+      <p className="mt-0.5 px-1 text-xs text-muted-foreground">{t('web.sub')}</p>
       <div className="mt-3 flex flex-col gap-2 px-1">
         <Segmented value={info.engine} options={choices} onChange={(id) => void choose(id)} className="self-start" />
         <p className="text-xs text-muted-foreground">
@@ -104,7 +151,9 @@ export function WebSearchSection() {
       </div>
       <div className="mt-2">
         <Panel>
-          {SEARCH_ENGINES.map((e) => <EngineRow key={e} engine={e} info={info} onChange={setInfo} />)}
+          {SEARCH_ENGINES.map((e) => (
+            <EngineRow key={e} engine={e} info={info} onChange={setInfo} />
+          ))}
         </Panel>
       </div>
     </section>

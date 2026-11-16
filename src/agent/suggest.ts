@@ -63,9 +63,14 @@ export const contentText = textOf;
  */
 export function transcriptExcerpt(messages: readonly MessageLike[], options: ExcerptOptions = {}): Excerpt | null {
   const full = options.context === 'all';
-  const limit = full ? Infinity : Math.min(SUGGESTION_MAX_CONTEXT, Math.max(1, Math.round(Number(options.context) || SUGGESTION_DEFAULT_CONTEXT)));
+  const limit = full
+    ? Infinity
+    : Math.min(SUGGESTION_MAX_CONTEXT, Math.max(1, Math.round(Number(options.context) || SUGGESTION_DEFAULT_CONTEXT)));
   const windowChars = options.contextWindow ? Math.floor(options.contextWindow * 0.6) : 0;
-  const budget = Math.min(full ? MAX_FULL_EXCERPT_CHARS : MAX_FINITE_EXCERPT_CHARS, Math.max(1_000, windowChars || MAX_FULL_EXCERPT_CHARS));
+  const budget = Math.min(
+    full ? MAX_FULL_EXCERPT_CHARS : MAX_FINITE_EXCERPT_CHARS,
+    Math.max(1_000, windowChars || MAX_FULL_EXCERPT_CHARS),
+  );
   const turns: { role: 'user' | 'assistant'; text: string }[] = [];
   for (const message of messages) {
     if (message.role !== 'user' && message.role !== 'assistant') continue;
@@ -111,12 +116,21 @@ const REFUSAL = /^(?:sorry|i'?m sorry|i can'?t|i cannot|as an ai|unable to|抱�
 
 /** Turn a model reply into one line of ghost text, or null when it is not usable. */
 export function cleanSuggestion(raw: unknown, lastAssistant?: string | null) {
-  let text = String(raw ?? '').replace(/\r/g, '').trim();
+  let text = String(raw ?? '')
+    .replace(/\r/g, '')
+    .trim();
   if (!text) return null;
   // A code fence is just wrapping; the prediction is the first real line inside it.
-  text = text.split('\n').map((line) => line.trim()).find((line) => line && !line.startsWith('```')) ?? '';
+  text =
+    text
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line && !line.startsWith('```')) ?? '';
   text = text
-    .replace(/^(?:next (?:user )?message|next|user|you|reply|response|prediction|用户|你|下一句|下一条)\s*[:：\-–—]\s*/i, '')
+    .replace(
+      /^(?:next (?:user )?message|next|user|you|reply|response|prediction|用户|你|下一句|下一条)\s*[:：\-–—]\s*/i,
+      '',
+    )
     .replace(/^[\s"'“”‘’「」『』`*_>#\-–—]+/, '')
     .replace(/[\s"'“”‘’「」『』`*_]+$/, '')
     .replace(/\s+/g, ' ')

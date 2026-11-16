@@ -17,7 +17,12 @@ beforeEach(() => {
 afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
 const input = (over: Partial<ScaffoldInput> = {}): ScaffoldInput => ({
-  dataDir: root, id: 'todo-board', title: 'Todo', description: 'A board of todos', permissions: ['session:read', 'storage', 'host:call'], ...over,
+  dataDir: root,
+  id: 'todo-board',
+  title: 'Todo',
+  description: 'A board of todos',
+  permissions: ['session:read', 'storage', 'host:call'],
+  ...over,
 });
 const packageJson = (dir: string) => JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
 
