@@ -10,8 +10,8 @@ export const thread = defineMessages({
   'thread.copiedMessage': { en: 'Message copied', zh: '已复制消息' },
   'thread.rewind': { en: 'Rewind to here', zh: '回退到这里' },
   'thread.rewind.tip': {
-    en: 'Rewind to here: removes this message and everything after it, and puts the text back in the input box. File changes are kept.',
-    zh: '回退到这里：移除此消息及后续对话，原文放回输入框。文件改动会保留。',
+    en: 'Rewind to here: removes this message and everything after it, restores their file changes, and puts the text back in the input box.',
+    zh: '回退到这里：移除此消息及后续对话，撤销期间的文件改动，并把原文放回输入框。',
   },
   'thread.fork': { en: 'Branch from here', zh: '从这里创建分支' },
   'thread.fork.tip': {
@@ -82,6 +82,8 @@ export const thread = defineMessages({
   'foot.copied': { en: 'Copied', zh: '已复制' },
   'foot.fork': { en: 'Fork session', zh: '分叉会话' },
   'thread.filesChanged': { en: '{n} files changed', zh: '已变更 {n} 个文件' },
+  'thread.filesShowAll': { en: 'Show all', zh: '显示全部' },
+  'thread.filesCollapse': { en: 'Show less', zh: '收起' },
 
   'tool.preview': { en: 'Preview', zh: '预览' },
   'tool.running': { en: 'Running…', zh: '运行中…' },

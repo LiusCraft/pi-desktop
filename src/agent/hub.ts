@@ -170,6 +170,46 @@ const EXTRA_TOOLS = ['+grep', '+find', '+ls'];
 /** Tools whose successful paths become files the current session can open from Work's output list. */
 const OUTPUT_TOOLS = new Set(['write', 'edit']);
 const PRESENT_FILES_TOOL = 'pidesk_present_files';
+const UNDO_ENTRY_TYPE = 'pi-desktop-undo';
+/** Avoid putting unbounded file snapshots into a session's undo history. */
+const UNDO_SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024;
+
+type FileSnapshot = { exists: boolean; data: string | null; recoverable: boolean };
+type UndoRecord = { toolCallId: string; path: string; before: FileSnapshot; after: FileSnapshot };
+
+function snapshotFile(file: string): FileSnapshot {
+  try {
+    const stat = fs.statSync(file);
+    if (!stat.isFile()) return { exists: false, data: null, recoverable: true };
+    if (stat.size > UNDO_SNAPSHOT_MAX_BYTES) return { exists: true, data: null, recoverable: false };
+    return { exists: true, data: fs.readFileSync(file).toString('base64'), recoverable: true };
+  } catch (err: any) {
+    return err?.code === 'ENOENT'
+      ? { exists: false, data: null, recoverable: true }
+      : { exists: true, data: null, recoverable: false };
+  }
+}
+
+function sameSnapshot(file: string, expected: FileSnapshot) {
+  if (!expected.recoverable) return false;
+  const actual = snapshotFile(file);
+  return actual.recoverable && actual.exists === expected.exists && actual.data === expected.data;
+}
+
+function restoreSnapshot(file: string, snapshot: FileSnapshot) {
+  if (!snapshot.recoverable) throw new Error(`The file is too large to undo safely: ${file}`);
+  if (!snapshot.exists) {
+    try {
+      fs.unlinkSync(file);
+    } catch (err: any) {
+      if (err?.code !== 'ENOENT') throw err;
+    }
+    return;
+  }
+  if (snapshot.data === null) throw new Error(`The previous contents could not be saved: ${file}`);
+  fs.writeFileSync(file, Buffer.from(snapshot.data, 'base64'));
+}
+
 /** Store key: the user said no to importing Claude Code's skills. */
 const CLAUDE_SKILLS_DECLINED = 'claudeSkillsDeclined';
 /** Defaults minus editing; MCP and other extension tools stay (the plan-mode gate lets only read-only ones run). */
@@ -210,6 +250,8 @@ interface Live {
   outputPaths: Set<string>;
   /** Write/edit paths waiting for their tool result, so failed calls are not authorized. */
   pendingOutputPaths: Map<string, string>;
+  /** File snapshots captured before a write/edit tool finishes. */
+  pendingUndo: Map<string, { path: string; before: FileSnapshot }>;
 }
 
 /** Rough token count for text the SDK does not measure for us. */
@@ -707,6 +749,7 @@ export class SessionHub {
       reviewedCommands: new Set(),
       outputPaths: new Set(),
       pendingOutputPaths: new Map(),
+      pendingUndo: new Map(),
     };
     const resumed = m.sessionFile && fs.existsSync(m.sessionFile);
     const sessionManager = resumed
@@ -999,13 +1042,33 @@ export class SessionHub {
     if (!m) return;
     if (event.type === 'tool_execution_start' && OUTPUT_TOOLS.has(event.toolName) && event.toolCallId) {
       const file = event.args?.path ?? event.args?.file_path;
-      if (typeof file === 'string') live.pendingOutputPaths.set(event.toolCallId, file);
+      if (typeof file === 'string') {
+        live.pendingOutputPaths.set(event.toolCallId, file);
+        const absolute = path.resolve(m.cwd, file);
+        const relative = path.relative(path.resolve(m.cwd), absolute);
+        if (relative && !relative.startsWith('..') && !path.isAbsolute(relative))
+          live.pendingUndo.set(event.toolCallId, { path: absolute, before: snapshotFile(absolute) });
+      }
     }
     if (event.type === 'tool_execution_end' && OUTPUT_TOOLS.has(event.toolName) && event.toolCallId) {
       const file = live.pendingOutputPaths.get(event.toolCallId);
-      if (!event.isError) this.rememberOutput(live, file ?? event.args?.path ?? event.args?.file_path);
+      const pending = live.pendingUndo.get(event.toolCallId);
+      if (!event.isError) {
+        this.rememberOutput(live, file ?? event.args?.path ?? event.args?.file_path);
+        if (pending) {
+          const record: UndoRecord = {
+            toolCallId: event.toolCallId,
+            path: pending.path,
+            before: pending.before,
+            after: snapshotFile(pending.path),
+          };
+          live.runtime.session.sessionManager.appendCustomEntry(UNDO_ENTRY_TYPE, record);
+        }
+      }
       live.pendingOutputPaths.delete(event.toolCallId);
+      live.pendingUndo.delete(event.toolCallId);
     }
+
     if (event.type === 'agent_start') this.setStatus(live, 'running');
     if (event.type === 'agent_settled') {
       this.setStatus(live, 'idle');
@@ -1414,6 +1477,34 @@ export class SessionHub {
     ) as unknown as OpenSessionResult['messages'];
   }
 
+  private undoFilesForRewind(live: Live, targetId: string) {
+    const manager = live.runtime.session.sessionManager;
+    const branch = manager.getBranch();
+    const target = branch.findIndex((entry) => entry.id === targetId);
+    if (target < 0) throw new Error(tr('ag.messageGone'));
+    const records = branch
+      .slice(target + 1)
+      .filter((entry: any) => entry.type === 'custom' && entry.customType === UNDO_ENTRY_TYPE)
+      .map((entry: any) => entry.data as Partial<UndoRecord>)
+      .filter(
+        (record): record is UndoRecord =>
+          typeof record?.toolCallId === 'string' &&
+          typeof record.path === 'string' &&
+          !!record.before &&
+          !!record.after,
+      );
+    for (const record of records.reverse()) {
+      const current = path.resolve(record.path);
+      const root = path.resolve(this.meta(live.id).cwd);
+      const relative = path.relative(root, current);
+      if (!relative || relative.startsWith('..') || path.isAbsolute(relative))
+        throw new Error(`Cannot undo a file outside the session: ${record.path}`);
+      if (!sameSnapshot(current, record.after))
+        throw new Error(`The file changed after this message, so it was not undone: ${record.path}`);
+      restoreSnapshot(current, record.before);
+    }
+  }
+
   async messageAction(id: string, entryId: string, action: 'rewind' | 'fork') {
     if (action !== 'rewind' && action !== 'fork') throw new Error('Unknown history action');
     const live = await this.ensure(id);
@@ -1432,6 +1523,8 @@ export class SessionHub {
     live.generation++;
     try {
       if (action === 'rewind') {
+        // Restore files before moving the session leaf, while the branch still contains the undo records.
+        this.undoFilesForRewind(live, entryId);
         const result = await session.navigateTree(entryId, { summarize: false });
         if (result.cancelled) throw new Error(tr('ag.rewindCancelled'));
         // Branch navigation alone only changes memory. A state-only entry makes
