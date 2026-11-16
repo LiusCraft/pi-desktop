@@ -81,6 +81,7 @@ export const thread = defineMessages({
   'foot.copy': { en: 'Copy', zh: '复制' },
   'foot.copied': { en: 'Copied', zh: '已复制' },
   'foot.fork': { en: 'Fork session', zh: '分叉会话' },
+  'thread.filesChanged': { en: '{n} files changed', zh: '已变更 {n} 个文件' },
 
   'tool.preview': { en: 'Preview', zh: '预览' },
   'tool.running': { en: 'Running…', zh: '运行中…' },
