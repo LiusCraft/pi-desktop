@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f7f4ef" />
+    <meta name="description" content="Pi Desktop：把 pi coding agent 带到桌面，Work 与 Code 双模式，专注地完成真实工作。" />
+    <meta property="og:title" content="Pi Desktop — pi coding agent 的桌面工作台" />
+    <meta property="og:description" content="在桌面端管理 pi 的项目上下文、权限、代码交付、Work 任务和远程会话。" />
+    <meta property="og:image" content="./favicon.svg" />
+    <title>Pi Desktop — pi coding agent 的桌面工作台</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="site-header" data-header>
+        <a class="brand" href="#top" aria-label="Pi Desktop 首页">
+          <span class="brand-mark" aria-hidden="true"><i></i></span>
+          <span>Pi Desktop</span>
+        </a>
+        <button class="menu-toggle" type="button" aria-label="打开导航" aria-expanded="false" data-menu-toggle>
+          <span></span><span></span>
+        </button>
+        <nav class="main-nav" data-nav>
+          <a href="#modules">能力</a>
+          <a href="#features">Work / Code</a>
+          <a href="#product">新建会话</a>
+          <a href="#get-started">下载</a>
+          <a class="nav-github" href="https://github.com/LiusCraft/pi-desktop" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+          <button class="theme-toggle" type="button" aria-label="切换主题" data-theme-toggle>
+            <span class="theme-sun" aria-hidden="true">☼</span><span class="theme-moon" aria-hidden="true">☾</span>
+          </button>
+          <button class="language-toggle" type="button" aria-label="Switch language" data-lang-toggle>EN</button>
+        </nav>
+      </header>
+
+      <main id="top">
+        <section class="hero section-wrap" aria-labelledby="hero-title">
+          <div class="hero-copy reveal">
+            <div class="eyebrow"><span class="eyebrow-dot"></span> desktop client for pi coding agent</div>
+            <h1 id="hero-title">pi 的桌面<br /><em>工作台。</em></h1>
+            <p class="hero-lede">Pi Desktop 把 pi coding agent 放进可管理的桌面工作流：项目上下文、权限确认、代码交付和远程会话都在同一个应用里。</p>
+            <div class="hero-actions">
+              <a class="button button-primary" href="#get-started">开始使用 <span>→</span></a>
+              <a class="button button-quiet" href="https://github.com/LiusCraft/pi-desktop" target="_blank" rel="noreferrer">查看源码 <span>↗</span></a>
+            </div>
+            <div class="hero-note"><span class="status-dot"></span> macOS · Windows <span class="note-sep">·</span> open source · MIT</div>
+          </div>
+          <div class="hero-art reveal reveal-delay-1" aria-label="Pi Desktop Work 与 Code 模式预览">
+            <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+            <div class="hero-spark spark-a">✦</div><div class="hero-spark spark-b">✧</div>
+            <div class="app-window product-demo" data-demo="code">
+              <div class="window-bar"><span class="window-dot red"></span><span class="window-dot yellow"></span><span class="window-dot green"></span><span class="window-title">Pi Desktop</span><span class="window-command">⌘ K</span></div>
+              <div class="window-body">
+                <aside class="mini-sidebar"><div class="mini-brand"><span class="mini-mark"></span><span>Pi Desktop</span></div><div class="mini-mode-tabs"><button class="mini-mode-tab" type="button" data-demo-mode="work"><span class="mini-mode-icon">☷</span>Work</button><button class="mini-mode-tab active" type="button" data-demo-mode="code"><span class="mini-mode-icon">⌘</span>Code</button></div><div class="mini-nav active">✦ <span>新建会话</span></div><div class="mini-nav">◫ <span>项目</span></div><div class="mini-nav">◷ <span>活动</span></div><div class="mini-spacer"></div><div class="mini-nav">⚙ <span>设置</span></div></aside>
+                <div class="mini-content">
+                  <div class="mini-top"><span data-demo-title>Code</span><span class="mini-model">● Demo · offline</span></div>
+                  <div class="demo-code-panel" data-demo-panel="code"><div class="demo-welcome"><span class="mini-kicker">GOOD MORNING</span><strong>今天想一起<br />完成什么？</strong><p>从一个问题开始。Pi 会先理解，再行动。</p></div><div class="demo-inbox"><div class="demo-section-title"><span>待处理</span><b>2</b></div><div class="demo-row"><span class="demo-row-icon warning">!</span><span><strong>需要你的确认</strong><small>整理收件箱中的旧发票</small></span><time>刚刚</time></div><div class="demo-row"><span class="demo-row-icon message">●</span><span><strong>新的会话回复</strong><small>修复认证流程 · 已完成</small></span><time>8m</time></div><div class="demo-section-title prs"><span>Pull requests</span><b>3</b></div><div class="demo-row"><span class="demo-row-icon pr">⌘</span><span><strong>Improve session restore</strong><small>#142 · Ready to merge</small></span><span class="demo-badge ready">Ready</span></div><div class="demo-row"><span class="demo-row-icon pr muted">⌘</span><span><strong>Update onboarding copy</strong><small>#139 · Draft</small></span><span class="demo-badge draft">Draft</span></div></div><div class="mini-input"><span>输入消息…</span><span>↑</span></div></div>
+                  <div class="demo-work-panel" data-demo-panel="work"><div class="demo-work-welcome"><span class="mini-kicker">WORKSPACE</span><strong>今天，一起<br />把事情理顺。</strong><p>从一个任务开始，Pi 会帮你拆解并推进。</p></div><div class="work-preview-card"><div class="demo-section-title"><span>今日进度</span><b>3 / 5</b></div><div class="progress-track"><span></span></div><div class="work-preview-row"><i class="work-check checked">✓</i><span>整理本周收件箱</span></div><div class="work-preview-row"><i class="work-check checked">✓</i><span>生成项目简报</span></div><div class="work-preview-row"><i class="work-check"></i><span>确认移动文件</span><em>需要确认</em></div></div><div class="mini-input"><span>告诉 Pi 接下来做什么…</span><span>↑</span></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="trust-row section-wrap reveal" aria-label="项目特性">
+          <span>Built on</span><strong>pi coding agent</strong><i></i><span>Config</span><strong>shared with pi CLI</strong><i></i><span>License</span><strong>MIT</strong>
+        </section>
+
+        <section class="intro section-wrap" id="why">
+          <div class="section-label reveal">01 / WHY PI DESKTOP</div>
+          <div class="intro-grid">
+            <h2 class="reveal">从 agent<br /><em>到工作流。</em></h2>
+            <div class="intro-body reveal reveal-delay-1"><p>pi 负责理解任务、调用模型和执行工具。Pi Desktop 负责把这些动作组织起来：知道在哪个项目里做、哪些操作需要批准、结果如何回到你手上。</p><p class="muted">这就是桌面端增加的部分。</p><a class="text-link" href="#modules">查看能力清单 <span>→</span></a></div>
+          </div>
+        </section>
+
+        <section class="modules section-wrap" id="modules">
+          <div class="section-label reveal">02 / WHAT WE ADDED TO PI</div>
+          <div class="modules-heading"><h2 class="reveal">Pi Desktop<br /><em>补上了什么？</em></h2><p class="reveal reveal-delay-1">四个能力层，分别解决执行边界、代码交付、长期任务和外部连接。</p></div>
+          <div class="module-grid">
+            <article class="module-card module-code reveal"><div class="module-meta"><span>01 / CONTROL</span><span class="module-icon">◌</span></div><h3>可控地执行</h3><p>给 pi 加上权限模式和审批边界。它可以行动，也知道什么时候必须停下来问你。</p><div class="module-tags"><span>Auto</span><span>Ask</span><span>Plan</span><span>Bypass</span></div><div class="module-ui code-ui"><div class="module-ui-title"><span>Permission mode</span><b>Ask</b></div><div class="module-ui-row"><i class="mini-dot warning"></i><span>移动文件</span><small>等待确认</small></div><div class="module-ui-row"><i class="mini-dot green"></i><span>读取项目文件</span><small>已允许</small></div></div></article>
+            <article class="module-card module-work reveal reveal-delay-1"><div class="module-meta"><span>02 / DELIVER</span><span class="module-icon">⌘</span></div><h3>可审阅地交付</h3><p>给 pi 一个安全的 Code 工作区：独立 worktree、Diff、终端、PR 和 CI 状态都在同一处。</p><div class="module-tags"><span>Worktree</span><span>Diff</span><span>PR / CI</span></div><div class="module-ui work-ui"><div class="module-ui-title"><span>session / fix-auth</span><b>ready</b></div><div class="module-progress"><span></span></div><div class="module-ui-row"><i class="mini-check">✓</i><span>3 files changed</span></div><div class="module-ui-row"><i class="mini-check">✓</i><span>tests passed</span></div></div></article>
+            <article class="module-card module-customize reveal"><div class="module-meta"><span>03 / CONTINUE</span><span class="module-icon">↻</span></div><h3>持续地协作</h3><p>让 pi 不只完成一轮对话：后台任务、子 agent、定时任务和会话状态都能继续推进。</p><div class="module-tags"><span>Subagents</span><span>Background</span><span>Schedule</span></div><div class="module-ui customize-ui"><div class="module-ui-row"><i class="mini-dot coral"></i><span>explore · background</span><small>running</small></div><div class="module-ui-row"><i class="mini-dot blue"></i><span>weekly brief</span><small>明天 09:00</small></div><div class="module-ui-row"><i class="mini-dot violet"></i><span>plan review</span><small>waiting</small></div></div></article>
+            <article class="module-card module-remote reveal reveal-delay-1"><div class="module-meta"><span>04 / CONNECT</span><span class="module-icon">↗</span></div><h3>连接更多能力</h3><p>把 pi 的技能、MCP、插件和远程会话接进来，让它能在更多环境里工作。</p><div class="module-tags"><span>Customize</span><span>Remote</span><span>MCP</span></div><div class="module-ui remote-ui"><div class="remote-status"><i></i><span>GitHub MCP</span><small>connected</small></div><div class="remote-line"></div><div class="remote-status"><i></i><span>pi-remote</span><small>available</small></div></div></article>
+          </div>
+        </section>
+
+        <section class="feature-section section-wrap" id="features">
+          <div class="section-label reveal">03 / WORK MODES</div>
+          <div class="feature-heading"><h2 class="reveal">同一个 agent，<br /><em>两种工作场景。</em></h2><p class="reveal reveal-delay-1">Code 面向软件项目，Work 面向文件和知识任务。两者共享模型、会话和 pi 的配置；等待你处理的事项都回到同一个入口。</p></div>
+          <div class="feature-grid">
+            <article class="feature-card reveal"><span class="feature-icon coral">⌘</span><h3>Code：从项目到 PR</h3><p>每个会话使用独立 worktree，右侧查看 Diff、终端和预览，底部跟踪 PR 与 CI。</p><span class="feature-index">01</span></article>
+            <article class="feature-card reveal reveal-delay-1"><span class="feature-icon blue">☷</span><h3>Work：从任务到文件</h3><p>在指定文件夹或临时工作区里整理资料、写文档、生成简报，移动和删除操作会先请求确认。</p><span class="feature-index">02</span></article>
+            <article class="feature-card reveal reveal-delay-2"><span class="feature-icon green">◷</span><h3>新建会话页</h3><p>Code 会列出待回复会话和未合并 PR；Work 会保留任务进度、生成文件和下一步。</p><span class="feature-index">03</span></article>
+            <article class="feature-card reveal"><span class="feature-icon violet">◌</span><h3>每一步都能确认</h3><p>权限请求、计划审批、Diff 和文件操作都以卡片呈现，结果交给你决定。</p><span class="feature-index">04</span></article>
+          </div>
+        </section>
+
+        <section class="product-section section-wrap" id="product">
+          <div class="section-label reveal">04 / IN THE APP</div>
+          <div class="product-heading"><h2 class="reveal">打开应用，<br /><em>先处理等待你的事。</em></h2><p class="reveal reveal-delay-1">Code 的新建会话页聚合待回复会话和未合并 PR。Work 则从任务、文件夹和最近生成的内容继续。</p></div>
+          <div class="product-detail reveal"><div class="detail-copy"><span class="detail-kicker">CODE / NEW SESSION</span><h3>先看全局，<br />再开始写代码。</h3><p>Code 新建会话页会把等待你回复的会话、未合并的 Pull request 和状态一次列出来。你可以从一条消息直接回到上下文。</p><div class="detail-points"><span><i>✓</i> 待处理新消息</span><span><i>⌘</i> Pull request 状态</span><span><i>↗</i> 一键回到会话</span></div></div><div class="detail-mini-window"><div class="detail-window-top"><span class="mini-mode-tab active">⌘ Code</span><span class="detail-window-meta">2 replies · 3 PRs</span></div><div class="detail-list-title">需要你的回复 <b>2</b></div><div class="detail-list-row"><span class="demo-row-icon warning">!</span><span><strong>需要你的确认</strong><small>移动旧文件前先问你</small></span><time>now</time></div><div class="detail-list-row"><span class="demo-row-icon message">●</span><span><strong>认证流程已修复</strong><small>打开会话查看变更</small></span><time>8m</time></div><div class="detail-list-title">Pull requests <b>3</b></div><div class="detail-list-row"><span class="demo-row-icon pr">⌘</span><span><strong>Improve session restore</strong><small>#142 · Ready to merge</small></span><span class="demo-badge ready">Ready</span></div><div class="detail-list-row"><span class="demo-row-icon pr muted">⌘</span><span><strong>Update onboarding copy</strong><small>#139 · Draft</small></span><span class="demo-badge draft">Draft</span></div></div></div>
+        </section>
+
+        <section class="sponsor-section section-wrap reveal" aria-label="SurgeCode sponsor">
+          <a class="sponsor-card" href="https://surgecode.org" target="_blank" rel="noreferrer">
+            <span class="sponsor-logo-wrap"><img src="./surgecode-logo.svg" alt="SurgeCode" /></span>
+            <span class="sponsor-copy"><small data-i18n="sponsor.label">赞助商</small><strong data-i18n="sponsor.title">SurgeCode</strong><span data-i18n="sponsor.description">为 OpenAI、Claude 等模型提供兼容 API 接入。</span></span>
+            <span class="sponsor-arrow">↗</span>
+          </a>
+        </section>
+
+        <section class="cta-section download-section section-wrap" id="get-started">
+          <div class="cta-orb"></div><div class="section-label reveal">05 / DOWNLOAD</div>
+          <div class="download-layout">
+            <div class="cta-content reveal"><span class="cta-mark">✦</span><h2>获取 Pi Desktop，<br /><em>从一个会话开始。</em></h2><p>安装包来自 GitHub 最新 Release；如果你使用 pi CLI，也可以直接安装 pi-remote。</p><div class="latest-release"><span class="release-pulse"></span><span>Latest release</span><strong data-release-version>Latest</strong></div><a class="text-link light-link" href="https://github.com/LiusCraft/pi-desktop" target="_blank" rel="noreferrer">阅读源码与更新日志 <span>↗</span></a></div>
+            <div class="download-panel reveal reveal-delay-1"><div class="download-panel-head"><span>DOWNLOADS</span><a href="https://github.com/LiusCraft/pi-desktop/releases" target="_blank" rel="noreferrer">全部版本 ↗</a></div><a class="download-option" data-platform="macos" href="https://github.com/LiusCraft/pi-desktop/releases/latest" target="_blank" rel="noreferrer"><span class="download-platform-icon">●</span><span class="download-option-copy"><strong>macOS</strong><small data-platform-detail>Apple Silicon / Intel · .dmg</small></span><span class="download-recommend" data-recommend-label></span><span class="download-arrow">下载 ↓</span></a><a class="download-option" data-platform="windows" href="https://github.com/LiusCraft/pi-desktop/releases/latest" target="_blank" rel="noreferrer"><span class="download-platform-icon windows-icon">▦</span><span class="download-option-copy"><strong>Windows</strong><small>x64 · .exe installer</small></span><span class="download-recommend" data-recommend-label></span><span class="download-arrow">下载 ↓</span></a><button class="download-option plugin-download" type="button" data-copy="pi install npm:@liuscraft/pi-remote"><span class="download-platform-icon plugin-icon">↗</span><span class="download-option-copy"><strong>pi-remote plugin</strong><small>pi install npm:@liuscraft/pi-remote · <span data-plugin-version>latest</span></small></span><span class="download-copy-label" data-copy-label>复制安装命令</span></button><span class="copy-feedback download-feedback" data-copy-feedback role="status" aria-live="polite"></span></div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer section-wrap"><a class="brand" href="#top"><span class="brand-mark" aria-hidden="true"><i></i></span><span>Pi Desktop</span></a><span class="footer-note">Desktop client for pi coding agent.</span><div class="footer-links"><a href="https://github.com/LiusCraft/pi-desktop" target="_blank" rel="noreferrer">GitHub ↗</a><a href="https://github.com/LiusCraft/pi-desktop/blob/main/LICENSE" target="_blank" rel="noreferrer">MIT License</a><button class="theme-toggle footer-theme" type="button" aria-label="切换主题" data-theme-toggle><span class="theme-sun" aria-hidden="true">☼</span><span class="theme-moon" aria-hidden="true">☾</span></button></div></footer>
+    </div>
+    <script src="./script.js"></script>
+  </body>
+</html>

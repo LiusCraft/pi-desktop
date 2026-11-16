@@ -18,6 +18,14 @@
 ![node](https://img.shields.io/badge/Node-%E2%89%A522.12-339933?logo=nodedotjs&logoColor=white)
 ![tests](https://img.shields.io/badge/tests-vitest%20%2B%20playwright-6E9F18?logo=vitest&logoColor=white)
 
+<p align="center">
+  <a href="https://surgecode.org">
+    <img src="docs/surgecode-logo.svg" alt="SurgeCode" width="190">
+  </a>
+  <br>
+  <sub>SurgeCode 赞助 · Sponsored by SurgeCode · OpenAI / Claude compatible API access</sub>
+</p>
+
 ---
 
 <p align="center">
