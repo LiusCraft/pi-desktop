@@ -55,6 +55,16 @@ describe('Work scope', () => {
     expect(check('write', { path: path.join(code, 'main.ts') }).kind).toBe('ask');
   });
 
+  it('requires approval before presenting a file outside the work scope', () => {
+    expect(check('pidesk_present_files', { paths: ['report.md'] }).kind).toBe('inside');
+    expect(check('pidesk_present_files', { paths: [path.join(code, 'main.ts')] }).kind).toBe('inside');
+    expect(check('pidesk_present_files', { paths: [path.join(other, 'notes.md')] }).kind).toBe('ask');
+    expect(
+      check('pidesk_present_files', { paths: [path.join(other, 'notes.md')] }, { allowed: [`${SCOPE_KEY}${other}`] })
+        .kind,
+    ).toBe('granted');
+  });
+
   it('asks before touching anything else', () => {
     expect(check('read', { path: path.join(other, 'notes.md') }).kind).toBe('ask');
     expect(check('ls', { path: other }).kind).toBe('ask');

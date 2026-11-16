@@ -63,6 +63,7 @@ const handlers: Record<HostMethod, Handler> = {
   },
   'host:cancelLogins': withHub((h) => h.admin.cancelAll()),
   'host:meta': withHub((h, id) => ({ ...h.meta(id) })),
+  'host:sessionPath': withHub((h, id, rel) => h.resolvePath(id, rel)),
   'host:importAttachments': (sources) => importAttachments(sources),
   'host:transfer': (method, args) => {
     if (!isTransferMethod(method)) throw new Error(`Unknown transfer: ${method}`);

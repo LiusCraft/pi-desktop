@@ -129,7 +129,7 @@ import {
   readSessionFile,
   readSessionImage,
   readSessionMedia,
-  resolveInside,
+  resolveSessionPath,
   searchSessionFiles,
 } from './files';
 import * as git from './git';
@@ -160,6 +160,9 @@ const NAMES = [
 ];
 /** Tools on top of pi's defaults (read, bash, edit, write). */
 const EXTRA_TOOLS = ['+grep', '+find', '+ls'];
+/** Tools whose successful paths become files the current session can open from Work's output list. */
+const OUTPUT_TOOLS = new Set(['write', 'edit']);
+const PRESENT_FILES_TOOL = 'pidesk_present_files';
 /** Store key: the user said no to importing Claude Code's skills. */
 const CLAUDE_SKILLS_DECLINED = 'claudeSkillsDeclined';
 /** Defaults minus editing; MCP and other extension tools stay (the plan-mode gate lets only read-only ones run). */
@@ -192,6 +195,10 @@ interface Live {
   tasks: Map<string, AbortController>;
   /** The shell behind the session's `bash` tool; the composer's `!command` runs in the same one. */
   shell?: ShellCommands;
+  /** Exact files this session successfully wrote, edited, or presented to the user. */
+  outputPaths: Set<string>;
+  /** Write/edit paths waiting for their tool result, so failed calls are not authorized. */
+  pendingOutputPaths: Map<string, string>;
 }
 
 /** Rough token count for text the SDK does not measure for us. */
@@ -685,6 +692,8 @@ export class SessionHub {
       historyBusy: false,
       disposed: false,
       tasks: new Map(),
+      outputPaths: new Set(),
+      pendingOutputPaths: new Map(),
     };
     const resumed = m.sessionFile && fs.existsSync(m.sessionFile);
     const sessionManager = resumed
@@ -696,6 +705,7 @@ export class SessionHub {
       agentDir: this.agentDir,
       sessionManager,
     });
+    this.restoreOutputPaths(live);
     live.runtime.setRebindSession(() => this.bind(live));
     await this.bind(live);
     this.live.set(id, live);
@@ -706,6 +716,50 @@ export class SessionHub {
     }
     this.startPrWatch(id);
     return live;
+  }
+
+  /** Remember one exact path without widening the session's general file scope. */
+  private rememberOutput(live: Live, file: unknown) {
+    if (typeof file !== 'string' || !file.trim()) return;
+    live.outputPaths.add(path.resolve(this.meta(live.id).cwd, file));
+  }
+
+  /** Restore output paths from the transcript after the host or session was reopened. */
+  private restoreOutputPaths(live: Live) {
+    const manager = live.runtime.session.sessionManager;
+    const messages = [
+      ...compactedMessages(manager),
+      ...live.runtime.session.messages,
+      ...omittedMessages(manager),
+    ] as any[];
+    const failed = new Set(
+      messages
+        .filter((message) => message?.role === 'toolResult' && message.isError && message.toolCallId)
+        .map((message) => message.toolCallId),
+    );
+    for (const message of messages) {
+      if (message?.role === 'toolResult' && message.toolName === PRESENT_FILES_TOOL && !message.isError) {
+        for (const file of message.details?.files ?? []) this.rememberOutput(live, file);
+      }
+      if (message?.role !== 'assistant' || !Array.isArray(message.content)) continue;
+      for (const block of message.content) {
+        if (block?.type !== 'toolCall' || failed.has(block.id)) continue;
+        const args =
+          typeof block.arguments === 'string'
+            ? (() => {
+                try {
+                  return JSON.parse(block.arguments);
+                } catch {
+                  return null;
+                }
+              })()
+            : block.arguments;
+        if (OUTPUT_TOOLS.has(block.name)) this.rememberOutput(live, args?.path);
+        if (block.name === PRESENT_FILES_TOOL) {
+          for (const file of Array.isArray(args?.paths) ? args.paths : []) this.rememberOutput(live, file);
+        }
+      }
+    }
   }
 
   /** The folders of the skills this session has loaded. */
@@ -790,7 +844,10 @@ export class SessionHub {
       ask: (request, signal) => this.ask(live, request, signal),
       setMode: (mode) => this.applyMode(live.id, mode),
       runSubagent: (run) => this.runSubagent(live, run),
-      present: (files) => this.emit({ type: 'session_outputs', sessionId: live.id, files }),
+      present: (files) => {
+        for (const file of files) this.rememberOutput(live, file);
+        this.emit({ type: 'session_outputs', sessionId: live.id, files });
+      },
       rename: (title) => void this.update(live.id, { title }),
       peers: {
         list: (scope, query) => this.peerList(live.id, scope, query),
@@ -926,6 +983,15 @@ export class SessionHub {
   private onEvent(live: Live, event: any) {
     const m = this.metas.find((x) => x.id === live.id);
     if (!m) return;
+    if (event.type === 'tool_execution_start' && OUTPUT_TOOLS.has(event.toolName) && event.toolCallId) {
+      const file = event.args?.path ?? event.args?.file_path;
+      if (typeof file === 'string') live.pendingOutputPaths.set(event.toolCallId, file);
+    }
+    if (event.type === 'tool_execution_end' && OUTPUT_TOOLS.has(event.toolName) && event.toolCallId) {
+      const file = live.pendingOutputPaths.get(event.toolCallId);
+      if (!event.isError) this.rememberOutput(live, file ?? event.args?.path ?? event.args?.file_path);
+      live.pendingOutputPaths.delete(event.toolCallId);
+    }
     if (event.type === 'agent_start') this.setStatus(live, 'running');
     if (event.type === 'agent_settled') {
       this.setStatus(live, 'idle');
@@ -2457,7 +2523,8 @@ export class SessionHub {
   }
   async readFile(id: string, rel: string) {
     const cwd = this.meta(id).cwd;
-    return readSessionFile(cwd, await locateSessionFile(cwd, rel, () => git.listFiles(cwd)));
+    const allowed = this.live.get(id)?.outputPaths ?? [];
+    return readSessionFile(cwd, await locateSessionFile(cwd, rel, () => git.listFiles(cwd)), [...allowed]);
   }
   async search(id: string, query: string, caseSensitive: boolean) {
     const cwd = this.meta(id).cwd;
@@ -2465,15 +2532,18 @@ export class SessionHub {
   }
   async readMedia(id: string, rel: string) {
     const cwd = this.meta(id).cwd;
-    return readSessionMedia(cwd, await locateSessionFile(cwd, rel, () => git.listFiles(cwd)));
+    const allowed = this.live.get(id)?.outputPaths ?? [];
+    return readSessionMedia(cwd, await locateSessionFile(cwd, rel, () => git.listFiles(cwd)), [...allowed]);
   }
   async readImage(id: string, rel: string) {
     const cwd = this.meta(id).cwd;
-    return readSessionImage(cwd, await locateSessionFile(cwd, rel, () => git.listFiles(cwd)));
+    const allowed = this.live.get(id)?.outputPaths ?? [];
+    return readSessionImage(cwd, await locateSessionFile(cwd, rel, () => git.listFiles(cwd)), [...allowed]);
   }
-  /** Absolute path of something inside the session folder (for main to open or reveal). */
+  /** Absolute path of a session file, or an exact file this session operated on, for main to open or reveal. */
   resolvePath(id: string, rel: string) {
-    return resolveInside(this.meta(id).cwd, rel);
+    const live = this.live.get(id);
+    return resolveSessionPath(this.meta(id).cwd, rel, live ? [...live.outputPaths] : []);
   }
 
   // ------------------------------------------------------------ PR watch

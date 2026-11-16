@@ -11,12 +11,22 @@ export function inside(root: string, candidate: string) {
   return relative === '' || (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith('..' + path.sep));
 }
 
-/** Resolve `rel` inside `root`, refusing anything that escapes it. */
-export function resolveInside(root: string, rel: string) {
+/** Path equality that follows the platform's filesystem semantics (notably Windows casing). */
+function samePath(left: string, right: string) {
+  return inside(path.resolve(left), path.resolve(right)) && inside(path.resolve(right), path.resolve(left));
+}
+
+/** Resolve a path inside `root`, optionally allowing exact files the session has operated on. */
+export function resolveSessionPath(root: string, rel: string, allowedFiles: readonly string[] = []) {
   const base = path.resolve(root),
     abs = path.resolve(base, rel || '.');
-  if (!inside(base, abs)) throw new Error('Path outside the session');
-  return abs;
+  if (inside(base, abs) || allowedFiles.some((file) => samePath(file, abs))) return abs;
+  throw new Error('Path outside the session');
+}
+
+/** Resolve `rel` inside `root`, refusing anything that escapes it. */
+export function resolveInside(root: string, rel: string) {
+  return resolveSessionPath(root, rel);
 }
 
 /**
@@ -37,14 +47,22 @@ export async function locateSessionFile(root: string, rel: string, list: () => P
   return match ?? rel;
 }
 
-/** Bytes of a regular file inside `root`, or null when it is not a file or larger than `max`. */
-function readSessionBytes(root: string, rel: string, max: number): Buffer | null {
+/** Bytes of a regular file in the session or an exact session output, or null when it is not a file or larger than `max`. */
+function readSessionBytes(root: string, rel: string, max: number, allowedFiles: readonly string[] = []): Buffer | null {
   if (typeof root !== 'string' || typeof rel !== 'string' || !rel || rel.includes('\0'))
     throw new Error('Invalid session file path');
-  const absolute = resolveInside(root, rel);
+  const absolute = resolveSessionPath(root, rel, allowedFiles);
   const realRoot = fs.realpathSync(path.resolve(root)),
     realFile = fs.realpathSync(absolute);
-  if (!inside(realRoot, realFile)) throw new Error('Path outside the session');
+  const allowedRealFiles = allowedFiles.flatMap((file) => {
+    try {
+      return [fs.realpathSync(file)];
+    } catch {
+      return [];
+    }
+  });
+  const allowed = inside(realRoot, realFile) || allowedRealFiles.some((file) => samePath(file, realFile));
+  if (!allowed) throw new Error('Path outside the session');
   // NONBLOCK prevents special files (e.g. named pipes) from hanging before fstat.
   const fd = fs.openSync(
     realFile,
@@ -55,7 +73,8 @@ function readSessionBytes(root: string, rel: string, max: number): Buffer | null
     if (!stat.isFile() || stat.size > max) return null;
     // Recheck after opening, so a swapped symlink cannot supply an outside file.
     const current = fs.realpathSync(absolute);
-    if (!inside(realRoot, current) || current !== realFile) throw new Error('Path outside the session');
+    const currentAllowed = inside(realRoot, current) || allowedRealFiles.some((file) => samePath(file, current));
+    if (!currentAllowed || current !== realFile) throw new Error('Path outside the session');
     const currentStat = fs.statSync(current);
     if (currentStat.dev !== stat.dev || currentStat.ino !== stat.ino) throw new Error('File changed while opening');
     const buffer = Buffer.alloc(max + 1);
@@ -71,8 +90,8 @@ function readSessionBytes(root: string, rel: string, max: number): Buffer | null
   }
 }
 
-export function readSessionFile(root: string, rel: string): string | null {
-  const content = readSessionBytes(root, rel, MAX_FILE_BYTES);
+export function readSessionFile(root: string, rel: string, allowedFiles: readonly string[] = []): string | null {
+  const content = readSessionBytes(root, rel, MAX_FILE_BYTES, allowedFiles);
   if (!content || content.includes(0)) return null;
   try {
     return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(content);
@@ -144,17 +163,22 @@ const MEDIA_TYPES: Record<string, { mimeType: string; kind: 'audio' | 'video' }>
 export function readSessionMedia(
   root: string,
   rel: string,
+  allowedFiles: readonly string[] = [],
 ): { kind: 'audio' | 'video'; mimeType: string; src: string } | null {
   const type = MEDIA_TYPES[path.extname(rel).slice(1).toLowerCase()];
   if (!type) return null;
-  const content = readSessionBytes(root, rel, MAX_MEDIA_BYTES);
+  const content = readSessionBytes(root, rel, MAX_MEDIA_BYTES, allowedFiles);
   return content ? { ...type, src: `data:${type.mimeType};base64,${content.toString('base64')}` } : null;
 }
 
 /** A raster image inside `root` as a data URL; the bytes, not the extension, decide the type. SVG is never served. */
-export function readSessionImage(root: string, rel: string): { mimeType: string; src: string } | null {
+export function readSessionImage(
+  root: string,
+  rel: string,
+  allowedFiles: readonly string[] = [],
+): { mimeType: string; src: string } | null {
   if (!isImagePath(rel)) return null;
-  const content = readSessionBytes(root, rel, MAX_IMAGE_BYTES);
+  const content = readSessionBytes(root, rel, MAX_IMAGE_BYTES, allowedFiles);
   const mimeType = content && MAGIC.find(([, test]) => test(content))?.[0];
   return mimeType ? { mimeType, src: `data:${mimeType};base64,${content!.toString('base64')}` } : null;
 }
