@@ -91,13 +91,26 @@ import { BUILTIN_PET_IDS } from '@shared/pets';
 import { DEFAULT_SETTINGS } from '@shared/settings';
 import { HANDOFF_CUSTOM_TYPE, MINUTE_MS, IDLE_RESET_MIN_TOKENS, idleResetMinutes, modelKey } from '@shared/idle-reset';
 import { buildHandoff, declaredCacheMinutes } from './handoff';
-import { appAgentsDir, appPetsDir, appWorkDir, appExtensionsDir, worktreeDir as resolveWorktreeDir } from './app-paths';
+import {
+  appAgentsDir,
+  appPetsDir,
+  appPluginDataDir,
+  appPluginsFile,
+  appSkillsDir,
+  appWorkDir,
+  appExtensionsDir,
+  worktreeDir as resolveWorktreeDir,
+} from './app-paths';
+import { writeBuiltinSkills } from './builtin-skills';
+import { scaffoldPlugin } from './plugin-scaffold';
 import { validatePromptPayload } from './attachments';
 import toolsPrompt from './tools-prompt.md?raw';
 import workPrompt from './work-prompt.md?raw';
 import { registerDemoModel } from './demo-model';
 import { applyChildPath } from './env';
 import * as customize from './customize';
+import { DesktopPlugins } from './plugins';
+import { PluginHosts } from './plugin-host';
 import { agentCatalog, agentPrompt, loadAgents, removeAgent, saveAgent } from './agents';
 import type { CustomizeHost, ScheduleHost, SettingsHost } from './manage-tools';
 import { listPets, removePet, savePet } from './pets';
@@ -362,6 +375,8 @@ export class SessionHub {
     // Pi Desktop's own extension folder (distinct from pi's <agentDir>/extensions).
     fs.mkdirSync(appExtensionsDir(this.opts.dataDir), { recursive: true });
     fs.mkdirSync(appAgentsDir(this.opts.dataDir), { recursive: true });
+    // Skills that ship with the app, refreshed here so an update reaches every project.
+    writeBuiltinSkills(appSkillsDir(this.opts.dataDir));
     this.models = await ModelRuntime.create({
       authPath: path.join(this.agentDir, 'auth.json'),
       modelsPath: path.join(this.agentDir, 'models.json'),
@@ -737,6 +752,8 @@ export class SessionHub {
           ],
           // Pi Desktop's own extensions; pi's <agentDir>/extensions still load as before.
           additionalExtensionPaths: [appExtensionsDir(this.opts.dataDir)],
+          // The app's own skills (see `builtin-skills.ts`), on top of pi's folders and the project's.
+          additionalSkillPaths: [appSkillsDir(this.opts.dataDir)],
           appendSystemPrompt: m.kind === 'work' ? [toolsPrompt, workPrompt] : [toolsPrompt],
         },
       });
@@ -815,6 +832,8 @@ export class SessionHub {
           removeConnector: (name, scope) => hub.afterChange('customize', () => c.removeConnector(name, scope, project)),
           installPlugin: (source, scope) => hub.afterChange('customize', () => c.installPlugin(source, scope, project)),
           removePlugin: (source, scope) => hub.afterChange('customize', () => c.removePlugin(source, scope, project)),
+          // The package lands in the app's own folder; installing it right after is the tool's job.
+          scaffoldPlugin: async (input) => scaffoldPlugin({ dataDir: hub.opts.dataDir, ...input }),
         };
       },
       web: this.web,
@@ -1068,6 +1087,27 @@ export class SessionHub {
       projectTrusted: !!dir && (!hasTrustRequiringProjectResources(dir) || this.trust.get(dir) === true),
       claudeSkillsDeclined: this.store.get<boolean>(CLAUDE_SKILLS_DECLINED, false),
     };
+  }
+  /**
+   * The desktop plugins of the configured packages. Only manifests and the on/off registry live here;
+   * their code starts loading with the host entries, and only for the ones this reports as ready.
+   * Built on first use: the registry file lives in the data folder the constructor receives.
+   */
+  private pluginsService: DesktopPlugins | null = null;
+  get plugins(): DesktopPlugins {
+    return (this.pluginsService ??= new DesktopPlugins({
+      file: appPluginsFile(this.opts.dataDir),
+      packages: (project) => customize.configuredPackages(this.customizeEnv(project)),
+    }));
+  }
+  /** The running host entries of the plugins: their code, not their manifests. */
+  private pluginHostsService: PluginHosts | null = null;
+  get pluginHosts(): PluginHosts {
+    return (this.pluginHostsService ??= new PluginHosts({
+      dataDir: appPluginDataDir(this.opts.dataDir),
+      decision: (id) => this.plugins.decision(id),
+      emit: (event) => this.emit(event),
+    }));
   }
   customize = {
     list: (project: string | null) => customize.catalog(this.customizeEnv(project)),

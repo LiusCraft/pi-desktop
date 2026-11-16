@@ -124,6 +124,8 @@ describe('pidesk_customize_*', () => {
   let root: string;
   let env: CustomizeEnv;
   let tools: Map<string, any>;
+  /** What `pidesk_plugin_create` asked the package manager to install. */
+  const installed: string[] = [];
   beforeAll(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-manage-'));
     env = {
@@ -142,8 +144,13 @@ describe('pidesk_customize_*', () => {
       saveConnector: async (d) => saveConnector(env, d),
       setConnectorEnabled: async (n, s, e) => setConnectorEnabled(env, n, s, e),
       removeConnector: async (n, s) => removeConnector(env, n, s),
-      installPlugin: async () => {},
+      installPlugin: async (source) => void installed.push(source),
       removePlugin: async () => {},
+      scaffoldPlugin: async (input) => ({
+        dir: path.join(root, 'plugins', input.id),
+        id: input.id,
+        host: input.permissions.includes('host:call'),
+      }),
     };
     registerManageTools({ registerTool: (t: any) => tools.set(t.name, t) } as any, { customize });
   });
@@ -179,6 +186,21 @@ describe('pidesk_customize_*', () => {
     expect((await tools.get('pidesk_customize_list').execute()).content[0].text).toContain('docs · user · http · off');
     await manage.execute('c', { action: 'remove_connector', name: 'docs' });
     expect((await tools.get('pidesk_customize_list').execute()).content[0].text).not.toContain('docs · user');
+  });
+
+  it('scaffolds a plugin package and installs the folder it wrote', async () => {
+    const create = tools.get('pidesk_plugin_create');
+    const out = await create.execute('c', {
+      id: 'board',
+      title: 'Board',
+      description: 'A board',
+      permissions: ['host:call'],
+    });
+    const dir = path.join(root, 'plugins', 'board');
+    expect(out.content[0].text).toContain(dir);
+    expect(installed).toContain(dir);
+    // The tool tells the model to leave enabling (and the permissions) to the user.
+    expect(out.content[0].text).toContain('Customize → Plugins');
   });
 
   it('names the missing field instead of guessing', async () => {

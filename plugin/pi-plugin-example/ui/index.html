@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Example plugin</title>
+    <link rel="stylesheet" href="./page.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Example plugin</h1>
+      <p class="muted">
+        A page from <code>@pi-desktop/plugin-example</code>. Its code runs in the agent host; this page only talks to it
+        through <code>pidesk</code>.
+      </p>
+
+      <section>
+        <h2>Session</h2>
+        <p id="session" class="value">…</p>
+        <button id="prompt" disabled>Send a message to it</button>
+      </section>
+
+      <section>
+        <h2>Host call</h2>
+        <p class="muted">
+          The counter lives in the plugin's own storage and is pushed back with <code>desktop.emit</code>.
+        </p>
+        <p>Count: <span id="count" class="value">–</span></p>
+        <div class="row">
+          <input id="name" placeholder="Your name" spellcheck="false" />
+          <button id="greet">Greet</button>
+        </div>
+        <pre id="out"></pre>
+      </section>
+    </main>
+    <script src="/sdk/pidesk.js"></script>
+    <script src="./page.js"></script>
+  </body>
+</html>

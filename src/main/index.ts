@@ -17,6 +17,7 @@ import {
   nativeTheme,
   net,
   Notification,
+  protocol,
   screen,
   shell,
 } from 'electron';
@@ -27,6 +28,7 @@ import {
   type ApiResult,
   type AttachmentSource,
   type BootPayload,
+  type DesktopPluginInfo,
   type HostEvent,
   type Palette,
   type Project,
@@ -100,6 +102,7 @@ import { clipboardAttachments, type ClipboardItemLike } from './clipboard';
 import { openIn, openTargets } from './open-in';
 import { uploadAttachments } from './remote-upload';
 import { Terminals, terminalShells } from './terminal';
+import { PluginServer, PLUGIN_SCHEME } from './plugins';
 import { checkForUpdate, downloadInstaller } from './updater';
 import { UPDATE_CHECK_INTERVAL_MS, UPDATE_FIRST_CHECK_MS } from '@shared/update';
 
@@ -117,6 +120,15 @@ if (process.platform === 'win32') app.setAppUserModelId('dev.pi-desktop.app');
 const DEMO_ALLOWED = !app.isPackaged;
 const DEMO = DEMO_ALLOWED && process.argv.includes('--demo');
 const isMac = process.platform === 'darwin';
+// A plugin page needs a real origin of its own (relative assets, a CSP that means something), so the
+// scheme has to be privileged before the app is ready.
+protocol.registerSchemesAsPrivileged([
+  { scheme: PLUGIN_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+]);
+/** Serves plugin pages and relays their calls; main never runs plugin code itself. */
+const pluginServer = new PluginServer({
+  call: (plugin, method, args) => agent.call('host:pluginCall', plugin, method, args),
+});
 const isWin = process.platform === 'win32';
 let win: BrowserWindow | null = null;
 let settingsWin: BrowserWindow | null = null;
@@ -981,6 +993,8 @@ async function installUpdate() {
 }
 
 const handlers: MainHandlers = {
+  'plugin:call': (pluginId, method, args) =>
+    pluginServer.call(String(pluginId), String(method), Array.isArray(args) ? args : []),
   'app:info': () => ({
     platform: process.platform,
     version: app.getVersion(),
@@ -1206,7 +1220,15 @@ function registerIpc() {
         terminals.closeSession(String(args[0]));
         remoteTerminals.closeSession(String(args[0]));
       }
-      return agent.call(channel, ...args);
+      const result = agent.call(channel, ...args);
+      // The plugin list the windows read is also what main serves files and relays calls from: keep it.
+      if (channel === 'plugins:list' || channel === 'plugins:setEnabled') {
+        return result.then((list) => {
+          pluginServer.remember(list as DesktopPluginInfo[]);
+          return list;
+        });
+      }
+      return result;
     });
   }
 }
@@ -1254,6 +1276,7 @@ void app.whenReady().then(async () => {
   void agent.start().catch((err) => console.error('[main] agent host failed to start:', err));
   if (DEMO || (DEMO_ALLOWED && !projects().length)) ensureDemoProject();
   if (DEMO || (DEMO_ALLOWED && !workFolders().length)) ensureDemoWork();
+  protocol.handle(PLUGIN_SCHEME, (request) => pluginServer.handle(request.url));
   registerIpc();
   void applyServe();
   nativeTheme.on('updated', () => {

@@ -14,7 +14,7 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self' data:",
-  'frame-src http: https: file:',
+  'frame-src http: https: file: pidesk-plugin:',
   "connect-src 'none'",
 ].join('; ');
 const csp: Plugin = {

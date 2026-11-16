@@ -23,6 +23,7 @@ Pi Desktop 的界面约定。改渲染进程、加页面或面板、加一类要
 | `models` | agent | `ModelAdmin.changed()`：登录、登出、端点保存/删除、刷新 |
 | `tasks` | agent | `src/agent/index.ts` 里的 `Scheduler` 回调 |
 | `customize` | agent | `hub` 的 `CustomizeHost` 包装，走 `afterChange('customize', …)` |
+| `plugins` | agent（`~/.pi-desktop/plugins.json`） | `plugins:setEnabled` handler，写成功后 `hub.resourceChanged('plugins')`；装/删包走 `customize` 那条 |
 | `artifacts` | agent | `hub` 的 `ArtifactHost` 包装，以及 `artifacts:fromFile` handler |
 | `activity` | agent | `sessions:prompt` handler，`recordPrompt` 之后 |
 | `workFolders` | main（列表）+ agent（模型写的笔记/编辑） | `src/main/index.ts` 的 `listsChanged('workFolders')`；`pidesk_remember` / `pidesk_project_manage` 后 `hub.resourceChanged('workFolders')` |

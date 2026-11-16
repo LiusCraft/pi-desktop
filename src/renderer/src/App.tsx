@@ -17,6 +17,7 @@ import {
   cycleViewMode,
   fail,
   handleHostEvent,
+  loadPlugins,
   openSession,
   requestFind,
   showWelcome,
@@ -130,6 +131,12 @@ export function App() {
       offSettings();
     };
   }, []);
+
+  // A plugin page belongs to a package of the project in view: another project brings another set.
+  const pluginProject = useApp((s) => (s.view === 'work' ? null : s.prefs.project));
+  useEffect(() => {
+    loadPlugins();
+  }, [pluginProject]);
 
   // The sidebar's collapsed state lives in settings; the panel follows it.
   useEffect(() => {

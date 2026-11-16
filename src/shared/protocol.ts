@@ -421,6 +421,79 @@ export interface PluginResource {
   name: string;
   enabled: boolean;
 }
+/**
+ * A desktop plugin: a pi package whose package.json carries a `piDesktop` section, so one install can
+ * bring agent capabilities (`pi.extensions`) and desktop ones (pages, and later cards and actions).
+ */
+export const PLUGIN_API_VERSION = 1;
+/**
+ * What a plugin may do; anything outside this list is refused where it is used. Only capabilities this
+ * app actually implements are listed: a permission a plugin could ask for but never get would be a lie.
+ */
+export const PLUGIN_PERMISSIONS = ['session:read', 'session:prompt', 'notify', 'storage', 'host:call'] as const;
+export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number];
+export const isPluginPermission = (value: unknown): value is PluginPermission =>
+  typeof value === 'string' && (PLUGIN_PERMISSIONS as readonly string[]).includes(value);
+
+/** A value a plugin's own code may hand back over the RPC: what survives the IPC and postMessage boundary. */
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+/**
+ * What a plugin sends out: a message for the user, data for its own pages, or the reason it could not
+ * load. It travels the same stream as session events, so a remote window would see it too.
+ */
+export type PluginEvent =
+  | { kind: 'notify'; message: string; level: 'info' | 'warning' | 'error' }
+  | { kind: 'data'; name: string; payload: JsonValue }
+  | { kind: 'error'; message: string };
+
+/** One sidebar page a plugin brings; `entry` is an HTML file inside the package. */
+export interface PluginPage {
+  id: string;
+  title: string;
+  entry: string;
+  /** The sidebar modes that show it; both when omitted. */
+  views?: SessionKind[];
+}
+export interface PluginContributions {
+  pages: PluginPage[];
+}
+/** The parsed `piDesktop` section, as `@shared/plugin-manifest` accepts it. */
+export interface DesktopPluginManifest {
+  apiVersion: number;
+  id: string;
+  permissions: PluginPermission[];
+  /** The module that runs in the agent host and answers `pidesk.host.call`; null when it has none. */
+  host: string | null;
+  contributions: PluginContributions;
+}
+/** One installed plugin, as the Customize page lists it; the registry adds what the user decided. */
+export interface DesktopPluginInfo {
+  id: string;
+  /** The pi package it came from (`npm:…`, `git:…` or a folder). */
+  source: string;
+  scope: 'user' | 'project';
+  /** The installed package folder. */
+  root: string;
+  name: string;
+  description: string;
+  version: string;
+  permissions: PluginPermission[];
+  /** Path of the host entry inside the package; null when it has none. */
+  host: string | null;
+  contributions: PluginContributions;
+  /** The user turned it on. */
+  enabled: boolean;
+  /** What the user agreed to; a permission outside it is refused. */
+  granted: PluginPermission[];
+  /** Enabled, fully granted and free of errors: the plugins that actually load. */
+  ready: boolean;
+  /** Enabled, but the manifest now asks for more than the user agreed to (after an upgrade). */
+  needsGrant: boolean;
+  /** Why it cannot load; null when nothing is wrong with the package itself. */
+  error: string | null;
+}
+
 export interface PromptInfo {
   name: string;
   description: string;
@@ -704,6 +777,7 @@ export const HOST_RESOURCES = [
   'projects',
   'workFolders',
   'customize',
+  'plugins',
   'artifacts',
   'activity',
 ] as const;
@@ -740,6 +814,8 @@ export type HostEvent =
   /** The model listed result files (absolute paths) for the Files panel. */
   | { type: 'session_outputs'; sessionId: string; files: string[] }
   | { type: 'extension_error'; sessionId: string; error: string }
+  /** A desktop plugin said something: its pages and the windows react (see `PluginEvent`). */
+  | { type: 'plugin'; pluginId: string; event: PluginEvent }
   /** The link to the remote host the windows are showing changed (only while one is active). */
   | { type: 'remote_link'; state: RemoteLinkState }
   /** Output and exit of a terminal the serving Desktop runs for a remote client; the client turns them into its own `terminal:*` pushes. */
@@ -1291,6 +1367,21 @@ export interface Api {
     enabled: boolean,
     project: string | null,
   ): CustomizeCatalog;
+  /** The desktop plugins of the packages configured for this project (Customize → Plugins). */
+  'plugins:list'(project: string | null): DesktopPluginInfo[];
+  /** Turn one on or off; turning it on passes the permissions the user just agreed to. */
+  'plugins:setEnabled'(
+    id: string,
+    enabled: boolean,
+    granted: PluginPermission[] | null,
+    project: string | null,
+  ): DesktopPluginInfo[];
+  /**
+   * A call from a plugin's own page: main checks the plugin is ready and hands it to the agent host,
+   * which runs the method the plugin registered. The page cannot name another plugin: the frame that
+   * relays it supplies the id.
+   */
+  'plugin:call'(pluginId: string, method: string, args: unknown[]): JsonValue;
   'activity:get'(): ActivityLog;
   'tasks:list'(): ScheduledTask[];
   'tasks:save'(draft: TaskDraft): ScheduledTask[];
@@ -1433,6 +1524,8 @@ export const HOST_CHANNELS = [
   'customize:pluginUpdate',
   'customize:pluginResources',
   'customize:pluginSetResource',
+  'plugins:list',
+  'plugins:setEnabled',
   'activity:get',
   'tasks:list',
   'tasks:save',
@@ -1525,6 +1618,7 @@ export const MAIN_CHANNELS = [
   'side:pin',
   'side:dock',
   'side:windows',
+  'plugin:call',
 ] as const satisfies readonly ApiChannel[];
 
 export const API_CHANNELS: readonly ApiChannel[] = [...MAIN_CHANNELS, ...HOST_CHANNELS];
@@ -1577,6 +1671,11 @@ export interface HostInternal {
   /** A file-moving call of a remote client (see `REMOTE_TRANSFER_METHODS`). */
   'host:transfer'(method: string, args: unknown[]): unknown;
   'host:worktree'(dir: string): WorktreeInfo | null;
+  /**
+   * A call from one of a plugin's pages: `method` is one the plugin's host entry registered, or a
+   * reserved `#storage.*` one. Only main makes this call, and only for a plugin that is ready.
+   */
+  'host:pluginCall'(plugin: DesktopPluginInfo, method: string, args: unknown[]): Promise<JsonValue>;
   'host:shutdown'(): void;
 }
 export interface HostInitOptions {

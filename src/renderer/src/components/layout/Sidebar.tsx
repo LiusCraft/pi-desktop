@@ -24,6 +24,7 @@ import {
   PinIcon,
   PinOffIcon,
   PlusIcon,
+  PuzzleIcon,
   SearchIcon,
   SettingsIcon,
   ShapesIcon,
@@ -66,6 +67,7 @@ import {
   showArchived,
   showArtifacts,
   showCustomize,
+  showPluginPage,
   showProjects,
   showScheduled,
   showWelcome,
@@ -618,6 +620,10 @@ function writeStored(key: string, value: unknown) {
 function TopNav({ view }: { view: SessionKind }) {
   const t = useT();
   const page = usePage();
+  // Pages a desktop plugin brings: not pinnable (they come and go with the plugin), listed under the fixed ones.
+  const pluginPages = useApp((s) => s.plugins)
+    .filter((p) => p.ready)
+    .flatMap((plugin) => plugin.contributions.pages.map((def) => ({ plugin, def })));
   const [pinned, setPinned] = useState<Record<SessionKind, NavId[]>>(() => ({
     ...DEFAULT_PINNED,
     ...readStored<Partial<Record<SessionKind, NavId[]>>>(NAV_PINNED_KEY, {}),
@@ -665,6 +671,19 @@ function TopNav({ view }: { view: SessionKind }) {
         {t('sidebar.new')}
       </NavItem>
       {items.filter((i) => isPinned(i.id)).map(row)}
+      {pluginPages
+        .filter(({ def }) => !def.views || def.views.includes(view))
+        .map(({ plugin, def }) => (
+          <NavItem
+            key={`${plugin.id}:${def.id}`}
+            icon={<PuzzleIcon className="size-4" />}
+            active={page === `plugin:${plugin.id}:${def.id}`}
+            onClick={() => showPluginPage(`${plugin.id}:${def.id}`)}
+            hint={plugin.name}
+          >
+            {def.title}
+          </NavItem>
+        ))}
       {held.length > 0 && (
         <Collapsible
           open={shown}
@@ -707,7 +726,9 @@ const usePage = () =>
               ? 'artifacts'
               : s.workProjects
                 ? 'projects'
-                : null,
+                : s.pluginPage
+                  ? `plugin:${s.pluginPage}`
+                  : null,
   );
 
 function FolderHeader({

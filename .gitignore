@@ -1,4 +1,5 @@
-node_modules/
+# Also matches a symlink: a worktree that borrows another checkout's node_modules must not commit it.
+node_modules
 dist/
 out/
 out/

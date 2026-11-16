@@ -63,6 +63,7 @@ import { ArchivedPage } from '@/archived/ArchivedPage';
 import { ArtifactsPage } from '@/artifacts/ArtifactsPage';
 import { RecentArtifacts } from '@/artifacts/RecentArtifacts';
 import { ProjectsPage } from '@/projects/ProjectsPage';
+import { PluginPage } from '@/plugin/PluginPage';
 import { SidebarToggle } from './Sidebar';
 import { Inbox } from './Inbox';
 import { SideChatView } from '@/components/side/SideChat';
@@ -512,46 +513,48 @@ export function Main() {
   const activity = useApp((st) => st.activity);
   const artifacts = useApp((st) => st.artifacts);
   const projects = useApp((st) => st.workProjects);
+  const pluginPage = useApp((st) => st.pluginPage);
+  const plugins = useApp((st) => st.plugins);
+  // The plugin page's title is the plugin's own (its manifest names it); the others have a fixed one.
+  const [pluginId, pluginPageId] = (pluginPage ?? '').split(':');
+  const pluginTitle = plugins
+    .find((p) => p.id === pluginId)
+    ?.contributions.pages.find((p) => p.id === pluginPageId)?.title;
+  const title = customize
+    ? t('page.customize')
+    : scheduled
+      ? t('page.scheduled')
+      : archived
+        ? t('page.archived')
+        : activity
+          ? t('page.activity')
+          : artifacts
+            ? t('page.artifacts')
+            : projects
+              ? t('page.projects')
+              : pluginPage
+                ? pluginTitle
+                : undefined;
+  const page = customize ? (
+    <CustomizePage />
+  ) : scheduled ? (
+    <ScheduledPage />
+  ) : archived ? (
+    <ArchivedPage />
+  ) : activity ? (
+    <ActivityPage />
+  ) : artifacts ? (
+    <ArtifactsPage />
+  ) : projects ? (
+    <ProjectsPage />
+  ) : pluginPage ? (
+    <PluginPage />
+  ) : null;
   return (
     <main className="flex h-full min-w-0 flex-col bg-background">
-      <Header
-        s={customize || scheduled || archived || activity || artifacts || projects ? undefined : s}
-        title={
-          customize
-            ? t('page.customize')
-            : scheduled
-              ? t('page.scheduled')
-              : archived
-                ? t('page.archived')
-                : activity
-                  ? t('page.activity')
-                  : artifacts
-                    ? t('page.artifacts')
-                    : projects
-                      ? t('page.projects')
-                      : undefined
-        }
-      />
+      <Header s={page ? undefined : s} title={title} />
       <div className="flex min-h-0 flex-1 flex-col">
-        {customize ? (
-          <CustomizePage />
-        ) : scheduled ? (
-          <ScheduledPage />
-        ) : archived ? (
-          <ArchivedPage />
-        ) : activity ? (
-          <ActivityPage />
-        ) : artifacts ? (
-          <ArtifactsPage />
-        ) : projects ? (
-          <ProjectsPage />
-        ) : s ? (
-          <Thread key={s.meta.id} s={s} />
-        ) : view === 'work' ? (
-          <WorkWelcome />
-        ) : (
-          <CodeWelcome />
-        )}
+        {page ?? (s ? <Thread key={s.meta.id} s={s} /> : view === 'work' ? <WorkWelcome /> : <CodeWelcome />)}
       </div>
     </main>
   );
