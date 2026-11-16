@@ -1667,6 +1667,8 @@ export interface HostInternal {
   'host:locale'(locale: Locale): void;
   'host:cancelLogins'(): void;
   'host:meta'(id: string): SessionMeta;
+  /** Resolve a session file for main-process opening, including an exact session output path. */
+  'host:sessionPath'(id: string, rel: string): string;
   'host:importAttachments'(sources: AttachmentSource[]): AttachmentImportResult;
   /** A file-moving call of a remote client (see `REMOTE_TRANSFER_METHODS`). */
   'host:transfer'(method: string, args: unknown[]): unknown;

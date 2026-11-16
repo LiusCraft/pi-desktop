@@ -1163,14 +1163,13 @@ const handlers: MainHandlers = {
   'terminal:resize': (id, cols, rows) => terminals.resize(id, cols, rows),
   'terminal:close': (id) => terminals.close(id),
   'sessions:openIn': async (id, target, rel) => {
-    const cwd = await sessionCwd(id);
-    const resource = rel ? resolveInside(cwd, rel) : cwd;
+    const resource = await agent.call<string>('host:sessionPath', id, rel || '.');
     const directory = fs.statSync(resource).isDirectory() ? resource : path.dirname(resource);
     return openIn(target, directory, resource);
   },
-  // Open or reveal a file the agent produced, constrained to the session folder.
+  // Open or reveal a file the agent produced, constrained to the session or an exact session output.
   'sessions:openPath': async (id, rel, reveal) => {
-    const abs = resolveInside(await sessionCwd(id), rel || '.');
+    const abs = await agent.call<string>('host:sessionPath', id, rel || '.');
     if (reveal) shell.showItemInFolder(abs);
     else {
       const error = await shell.openPath(abs);

@@ -17,6 +17,7 @@ export type ScopeCheck = { kind: 'inside' } | { kind: 'granted' } | { kind: 'ask
 
 const FILE_READ_TOOLS = new Set(['read', 'grep', 'find', 'ls']);
 const FILE_WRITE_TOOLS = new Set(['edit', 'write']);
+const PRESENT_FILES_TOOL = 'pidesk_present_files';
 const SHELL_TOOLS = new Set(['bash', 'powershell', 'pidesk_bg_shell']);
 
 /** The key a granted folder is remembered under in the session's "always allow" set. */
@@ -118,6 +119,12 @@ export function checkScope(
   let title: (p: string) => string;
   if (FILE_READ_TOOLS.has(tool)) {
     targets = typeof input.path === 'string' && input.path ? [path.resolve(base, input.path)] : [];
+    readOnly = true;
+    title = texts.read;
+  } else if (tool === PRESENT_FILES_TOOL) {
+    targets = Array.isArray(input.paths)
+      ? input.paths.filter((p): p is string => typeof p === 'string' && !!p).map((p) => path.resolve(base, p))
+      : [];
     readOnly = true;
     title = texts.read;
   } else if (FILE_WRITE_TOOLS.has(tool)) {

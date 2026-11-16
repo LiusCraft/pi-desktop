@@ -43,6 +43,11 @@ describe('session current-file reader', () => {
     fs.writeFileSync(path.join(root, 'same.txt'), 'worktree version');
     assert.equal(readSessionFile(root, 'same.txt'), 'worktree version');
   });
+  it('allows an exact file the session operated on without allowing its folder', () => {
+    const external = path.join(sibling, 'private.txt');
+    assert.equal(readSessionFile(root, external, [external]), 'outside');
+    assert.throws(() => readSessionFile(root, path.join(sibling, 'missing.txt'), [external]), /outside the session/);
+  });
   it('rejects lexical escapes, sibling-prefix confusion and invalid paths', () => {
     for (const rel of [
       '../session-other/private.txt',
