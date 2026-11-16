@@ -1,7 +1,7 @@
 import { useState, useSyncExternalStore } from 'react';
 import {
   ArchiveIcon, BoxIcon, ChevronDownIcon, ChevronRightIcon, ClockIcon, EllipsisIcon, CodeXmlIcon, FlameIcon, GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon, BrainIcon,
-  ListChecksIcon, MonitorSmartphoneIcon, MoonIcon, MoreHorizontalIcon, PanelLeftIcon, PencilIcon, PinIcon, PinOffIcon, PlusIcon, SearchIcon, SettingsIcon, ShapesIcon, SunIcon,
+  ListChecksIcon, MonitorSmartphoneIcon, MoonIcon, MoreHorizontalIcon, PanelLeftIcon, PencilIcon, PinIcon, PinOffIcon, PlusIcon, PuzzleIcon, SearchIcon, SettingsIcon, ShapesIcon, SunIcon,
   Trash2Icon, TriangleAlertIcon,
 } from 'lucide-react';
 import {
@@ -17,7 +17,7 @@ import { ago, fname } from '@/lib/format';
 import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import {
-  archiveSessions, collapseSidebarIfCompact, deleteSessions, openSession, pinSessions, removeProject, selectProject, setSessionTitle, setView, showActivity, showArchived, showArtifacts, showCustomize, showProjects, showScheduled, showWelcome, toggleSidebar,
+  archiveSessions, collapseSidebarIfCompact, deleteSessions, openSession, pinSessions, removeProject, selectProject, setSessionTitle, setView, showActivity, showArchived, showArtifacts, showCustomize, showPluginPage, showProjects, showScheduled, showWelcome, toggleSidebar,
 } from '@/store/actions';
 import { setApp, useApp } from '@/store/app';
 import { InlineEdit } from '@/components/common/InlineEdit';
@@ -300,6 +300,10 @@ function writeStored(key: string, value: unknown) {
 function TopNav({ view }: { view: SessionKind }) {
   const t = useT();
   const page = usePage();
+  // Pages a desktop plugin brings: not pinnable (they come and go with the plugin), listed under the fixed ones.
+  const pluginPages = useApp((s) => s.plugins)
+    .filter((p) => p.ready)
+    .flatMap((plugin) => plugin.contributions.pages.map((def) => ({ plugin, def })));
   const [pinned, setPinned] = useState<Record<SessionKind, NavId[]>>(() => ({ ...DEFAULT_PINNED, ...readStored<Partial<Record<SessionKind, NavId[]>>>(NAV_PINNED_KEY, {}) }));
   const [open, setOpen] = useState(() => readStored(NAV_MORE_KEY, false));
   const items = NAV_ITEMS.filter((i) => i.views.includes(view));
@@ -328,6 +332,17 @@ function TopNav({ view }: { view: SessionKind }) {
     <nav className="space-y-0.5 px-2">
       <NavItem icon={<PlusIcon className="size-4" />} onClick={showWelcome}>{t('sidebar.new')}</NavItem>
       {items.filter((i) => isPinned(i.id)).map(row)}
+      {pluginPages.filter(({ def }) => !def.views || def.views.includes(view)).map(({ plugin, def }) => (
+        <NavItem
+          key={`${plugin.id}:${def.id}`}
+          icon={<PuzzleIcon className="size-4" />}
+          active={page === `plugin:${plugin.id}:${def.id}`}
+          onClick={() => showPluginPage(`${plugin.id}:${def.id}`)}
+          hint={plugin.name}
+        >
+          {def.title}
+        </NavItem>
+      ))}
       {held.length > 0 && (
         <Collapsible open={shown} onOpenChange={(v) => { setOpen(v); writeStored(NAV_MORE_KEY, v); }}>
           <CollapsibleTrigger
@@ -348,7 +363,7 @@ function TopNav({ view }: { view: SessionKind }) {
 }
 
 /** Which full-page view (if any) replaces the conversation. */
-const usePage = () => useApp((s) => (s.scheduled ? 'scheduled' : s.customize ? 'customize' : s.archived ? 'archived' : s.activity ? 'activity' : s.artifacts ? 'artifacts' : s.workProjects ? 'projects' : null));
+const usePage = () => useApp((s) => (s.scheduled ? 'scheduled' : s.customize ? 'customize' : s.archived ? 'archived' : s.activity ? 'activity' : s.artifacts ? 'artifacts' : s.workProjects ? 'projects' : s.pluginPage ? `plugin:${s.pluginPage}` : null));
 
 function FolderHeader({ path, folded, ids, onToggle }: { path: string; folded: boolean; ids: string[]; onToggle: () => void }) {
   const t = useT();

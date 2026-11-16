@@ -1,10 +1,13 @@
 // Customize → Plugins: pi packages (npm, git or local folders) listed in settings.json. A
-// package can bring skills, prompt templates, extensions and MCP servers in one install.
+// package can bring skills, prompt templates, extensions and MCP servers in one install, and —
+// when it declares `piDesktop` — desktop capabilities the app itself shows (see docs/plugins.md).
 import { useEffect, useState } from 'react';
-import { ChevronRightIcon, DownloadIcon, PackageIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react';
+import { ChevronRightIcon, DownloadIcon, PackageIcon, RefreshCwIcon, SparklesIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
 import { PLUGIN_RESOURCE_KINDS } from '@shared/protocol';
-import type { CustomizeCatalog, PluginInfo, PluginResource } from '@shared/protocol';
+import type { CustomizeCatalog, DesktopPluginInfo, PluginInfo, PluginPermission, PluginResource } from '@shared/protocol';
+import type { MessageKey, MessageParams } from '@shared/i18n';
+import { Tip } from '@/components/common/Tip';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +16,26 @@ import { call, errText } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { fname } from '@/lib/format';
 import { dialogs } from '@/store/dialogs';
+import { showWelcome, welcomeDraftKey } from '@/store/actions';
+import { drafts } from '@/store/drafts';
+import { subscribeResource } from '@/store/resources';
 import { Empty, Heading, Panel, Segmented } from './ui';
+
+type Translate = (key: MessageKey, params?: MessageParams) => string;
+
+/** A label per permission, so the consent dialog says what the plugin actually gets. */
+const PERM_KEYS = {
+  'session:read': 'plugins.perm.session:read',
+  'session:prompt': 'plugins.perm.session:prompt',
+  notify: 'plugins.perm.notify',
+  storage: 'plugins.perm.storage',
+  'host:call': 'plugins.perm.host:call',
+} satisfies Record<PluginPermission, MessageKey>;
+
+/** One permission in the user's words. */
+const permText = (t: Translate, perm: PluginPermission) => t(PERM_KEYS[perm]);
+const permList = (t: Translate, permissions: PluginPermission[]) =>
+  (permissions.length ? permissions.map((p) => permText(t, p)).join(' · ') : t('plugins.desktop.none'));
 
 /** Packages worth suggesting; offered until a configured plugin matches. */
 const RECOMMENDED = [{ source: 'npm:pi-lens', descKey: 'plugins.lensDesc' }] as const;
@@ -62,6 +84,66 @@ function PluginItems({ plugin, project, onCatalog }: { plugin: PluginInfo; proje
   );
 }
 
+/**
+ * A package's desktop plugins: what they add to the app, what they may do, and the switch that decides
+ * it. Turning one on is a permission grant, so the dialog names every permission first.
+ */
+function DesktopItems({ source, scope, project, plugins, onChange }: {
+  source: string; scope: 'user' | 'project'; project: string | null;
+  plugins: DesktopPluginInfo[]; onChange: (list: DesktopPluginInfo[]) => void;
+}) {
+  const t = useT();
+  const mine = plugins.filter((p) => p.source === source && p.scope === scope);
+  if (!mine.length) return null;
+  return (
+    <div className="space-y-2 px-4 pb-3 pl-15">
+      <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        {t('plugins.desktop.title')}
+        <Tip>{t('plugins.desktop.tip')}</Tip>
+      </div>
+      {mine.map((p) => <DesktopRow key={p.id} plugin={p} project={project} onChange={onChange} />)}
+    </div>
+  );
+}
+
+function DesktopRow({ plugin, project, onChange }: { plugin: DesktopPluginInfo; project: string | null; onChange: (list: DesktopPluginInfo[]) => void }) {
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  const set = async (on: boolean) => {
+    if (on && !(await dialogs.confirm(t('plugins.desktop.grantTitle', { id: plugin.id }), t('plugins.desktop.grantBody', { perms: permList(t, plugin.permissions) }), t('plugins.desktop.grant')))) return;
+    setBusy(true);
+    try {
+      onChange(await call('plugins:setEnabled', plugin.id, on, on ? plugin.permissions : null, project));
+    } catch (err) {
+      toast.error(errText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const pages = plugin.contributions.pages.map((p) => p.title).join(' · ');
+  return (
+    <div className="rounded-lg border bg-muted/20 px-3 py-2">
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="truncate text-xs font-medium">{plugin.name || plugin.id}</span>
+            <Badge variant="secondary" className="font-mono">{plugin.id}</Badge>
+            {plugin.version && <span className="text-xs text-muted-foreground">v{plugin.version}</span>}
+            {plugin.needsGrant && <Badge variant="secondary" className="text-warning" title={t('plugins.desktop.needsGrantHint')}>{t('plugins.desktop.needsGrant')}</Badge>}
+            {!plugin.enabled && <Badge variant="secondary">{t('plugins.desktop.off')}</Badge>}
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {pages ? t('plugins.desktop.pages', { list: pages }) : t('plugins.desktop.noPages')}
+          </div>
+          <div className="mt-0.5 text-xs text-muted-foreground">{t('plugins.desktop.permissions', { list: permList(t, plugin.permissions) })}</div>
+          {plugin.error && <div className="mt-1 text-xs text-destructive">{plugin.error}</div>}
+        </div>
+        <Switch checked={plugin.enabled} disabled={busy || (!!plugin.error && !plugin.enabled)} onCheckedChange={(on) => void set(on)} aria-label={plugin.id} />
+      </div>
+    </div>
+  );
+}
+
 export function PluginsSection({ catalog, project, onCatalog }: Props) {
   const t = useT();
   const [source, setSource] = useState('');
@@ -69,6 +151,14 @@ export function PluginsSection({ catalog, project, onCatalog }: Props) {
   /** What is running: installing/updating can take a while, so the whole page says so. */
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState<'installing' | 'updating' | 'removing' | null>(null);
+  /** The desktop plugins of every configured package; installed, enabled or not. */
+  const [desktop, setDesktop] = useState<DesktopPluginInfo[]>([]);
+  useEffect(() => {
+    const load = () => call('plugins:list', project).then(setDesktop, (err) => toast.error(errText(err)));
+    load();
+    // The host owns this list (installs, switches, another window): it announces a change, the page reads again.
+    return subscribeResource('plugins', load);
+  }, [project, catalog]);
 
   const run = async (label: 'installing' | 'updating' | 'removing', fn: () => Promise<CustomizeCatalog>, done?: string) => {
     setBusy(label);
@@ -83,6 +173,11 @@ export function PluginsSection({ catalog, project, onCatalog }: Props) {
   };
   const install = () =>
     run('installing', () => call('customize:pluginInstall', source, scope, project), t('plugins.installed')).then(() => setSource(''));
+  /** Hand the user a new session with the prompt half-written; the plugin-author skill does the rest. */
+  const createWithAi = () => {
+    showWelcome();
+    drafts.setText(welcomeDraftKey(), t('plugins.createWithAiPrompt'));
+  };
   const remove = async (p: PluginInfo) => {
     if (!(await dialogs.confirm(t('plugins.removeTitle', { source: p.source }), t('plugins.removeBody'), t('plugins.remove'), true))) return;
     await run('removing', () => call('customize:pluginRemove', p.source, p.scope, project), t('plugins.removed'));
@@ -95,9 +190,14 @@ export function PluginsSection({ catalog, project, onCatalog }: Props) {
         sub={t('plugins.sub')}
         tip={t('plugins.tip')}
         action={
-          <Button size="sm" variant="outline" className="shrink-0" disabled={!!busy || !catalog.plugins.length} onClick={() => void run('updating', () => call('customize:pluginUpdate', null, project), t('plugins.updatedAll'))}>
-            <RefreshCwIcon className={`size-4 ${busy === 'updating' ? 'animate-spin' : ''}`} />{t('plugins.updateAll')}
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button size="sm" variant="outline" onClick={createWithAi}>
+              <SparklesIcon className="size-4" />{t('plugins.createWithAi')}
+            </Button>
+            <Button size="sm" variant="outline" disabled={!!busy || !catalog.plugins.length} onClick={() => void run('updating', () => call('customize:pluginUpdate', null, project), t('plugins.updatedAll'))}>
+              <RefreshCwIcon className={`size-4 ${busy === 'updating' ? 'animate-spin' : ''}`} />{t('plugins.updateAll')}
+            </Button>
+          </div>
         }
       />
       <div className="mb-5 rounded-xl border bg-card p-4">
@@ -153,7 +253,10 @@ export function PluginsSection({ catalog, project, onCatalog }: Props) {
             <Button size="icon" variant="ghost" className="size-8" title={t('plugins.update')} disabled={!!busy} onClick={() => void run('updating', () => call('customize:pluginUpdate', p.source, project), t('plugins.updated', { source: p.source }))}><RefreshCwIcon className="size-4" /></Button>
             <Button size="icon" variant="ghost" className="size-8 text-destructive" title={t('plugins.remove')} disabled={!!busy} onClick={() => void remove(p)}><Trash2Icon className="size-4" /></Button>
           </div>
-          {open === `${p.scope}:${p.source}` && <PluginItems plugin={p} project={project} onCatalog={onCatalog} />}
+          {open === `${p.scope}:${p.source}` && <>
+            <DesktopItems source={p.source} scope={p.scope} project={project} plugins={desktop} onChange={setDesktop} />
+            <PluginItems plugin={p} project={project} onCatalog={onCatalog} />
+          </>}
           </div>
         ))}
         {!catalog.plugins.length && <Empty>{t('plugins.empty')}</Empty>}

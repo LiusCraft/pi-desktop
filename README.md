@@ -121,6 +121,8 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 | `src/agent/models-dev.ts` | models.dev 目录（按天缓存）：按模型 ID / canonical ID 匹配上下文、输出上限和价格 |
 | `src/agent/scheduler.ts` / `src/shared/schedule.ts` | 定时任务：任务存储与调度循环（host 内）；计划类型、cron 解析、下次运行时间（host 与界面共用的纯函数） |
 | `src/agent/customize.ts` / `src/agent/agents.ts` | Customize 页后端（技能 / MCP / 插件 / 提示模板读写 pi 自己的文件）；子 agent 身份加载 |
+| `src/agent/plugins.ts` / `src/agent/plugin-host.ts` | 桌面插件：清单发现与启用/授权登记（`~/.pi-desktop/plugins.json`）；host 入口在 agent 进程里加载并回答页面的调用 |
+| `src/main/plugins.ts` / `src/shared/plugin-sdk.ts` | `pidesk-plugin://` 文件服务（包内路径 + CSP）与页面调用的转发；iframe 里的 `pidesk` API |
 | `src/agent/pr-watch.ts` | host 内的 PR watcher（轮询 `gh pr view` / `glab mr view`，必要时起 turn） |
 | `src/agent/naming.ts` / `src/agent/suggest.ts` | 后台小请求：会话命名与下一句输入预测（`completeSimple`，不进会话上下文） |
 | `src/agent/side-model.ts` | 给后台请求挑同 provider 里最便宜的小模型 |
@@ -263,6 +265,7 @@ Code 会话输入框上方的 PR 条报告当前分支的 PR：状态颜色、`+
 | Skills | `SKILL.md` 技能目录 |
 | Connectors | MCP 服务器（`mcp.json`，个人级和 `<项目>/.pi/mcp.json`） |
 | Plugins | pi packages（`settings.json` 的 `packages`） |
+| 桌面插件 | 同一个包里的 `piDesktop` 段：侧边栏页面 + 它自己的 host 入口，见 [docs/plugins.md](docs/plugins.md) |
 | Commands | 提示模板（`/` 命令） |
 | Subagents | 子 agent 身份，见下 |
 

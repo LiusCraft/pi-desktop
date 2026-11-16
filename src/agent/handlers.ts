@@ -105,6 +105,13 @@ export function sessionHandlers(ready: Promise<SessionHub>, getScheduler: () => 
     'customize:pluginUpdate': withHub((h, source, project) => h.customize.updatePlugins(source, project)),
     'customize:pluginResources': withHub((h, source, scope, project) => h.customize.pluginResources(source, scope, project)),
     'customize:pluginSetResource': withHub((h, source, scope, resource, enabled, project) => h.customize.setPluginResource(source, scope, resource, enabled, project)),
+    'plugins:list': withHub((h, project) => h.plugins.list(project)),
+    'plugins:setEnabled': withHub((h, id, enabled, granted, project) => {
+      const plugins = h.plugins.setEnabled(project, id, enabled, granted);
+      // The Customize page shows the switch it just flipped; from the next step the sidebar reads it too.
+      h.resourceChanged('plugins');
+      return plugins;
+    }),
     'activity:get': withHub((h) => h.activity.get()),
     'requests:getSettings': withHub((h) => h.requests.getSettings()),
     'requests:saveSettings': withHub((h, draft) => h.requests.saveSettings(draft)),

@@ -54,6 +54,14 @@ export const appWebSearchFile = (dataDir: string) => path.join(dataDir, 'web-sea
 export const appRequestLogDir = (dataDir: string) => path.join(dataDir, 'request-log');
 /** The request hook's own settings. */
 export const appRequestHookFile = (dataDir: string) => path.join(dataDir, 'request-hook.json');
+/** Desktop plugins: on/off and the permissions the user agreed to, by plugin id (see `@shared/protocol`). */
+export const appPluginsFile = (dataDir: string) => path.join(dataDir, 'plugins.json');
+/** Plugin packages this app wrote itself (`pidesk_plugin_create`); installed as local pi packages. */
+export const appPluginsDir = (dataDir: string) => path.join(dataDir, 'plugins');
+/** Skills that ship with the app (written on start, refreshed when the app updates). */
+export const appSkillsDir = (dataDir: string) => path.join(dataDir, 'skills');
+/** Per-plugin private storage, one JSON file each (see `@shared/protocol`'s plugin permissions). */
+export const appPluginDataDir = (dataDir: string) => path.join(dataDir, 'plugin-data');
 /** Scratch workspaces for Work tasks started without a folder. */
 export const appWorkDir = (dataDir: string) => path.join(dataDir, 'work');
 /** Copies of the bundled demo project and demo Work folder. */

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type {
-  AppInfo, ImportableSession, ModelInfo, OutputStyle, PermissionMode, Project, SessionKind, SettingsPayload, SyncStrategy, ThinkingLevel, WorkProject, WorktreeInfo,
+  AppInfo, DesktopPluginInfo, ImportableSession, ModelInfo, OutputStyle, PermissionMode, Project, SessionKind, SettingsPayload, SyncStrategy, ThinkingLevel, WorkProject, WorktreeInfo,
 } from '@shared/protocol';
 import type { RemoteActive } from '@shared/remote';
 import type { ScheduledTask } from '@shared/schedule';
@@ -102,6 +102,10 @@ export interface AppState {
   artifacts: boolean;
   /** The Work Projects page (its projects, or one project's detail) replaces the conversation area while it is open. */
   workProjects: boolean;
+  /** A desktop plugin's page replaces the conversation area: `<pluginId>:<pageId>`. */
+  pluginPage: string | null;
+  /** The desktop plugins of the configured packages (host-owned; `loadPlugins` re-reads it). */
+  plugins: DesktopPluginInfo[];
   /** The project whose detail the Projects page shows (its folder), or null for the list. */
   openProject: string | null;
   /** An existing worktree of the selected project that the next new session will run in. */
@@ -144,6 +148,8 @@ export const useApp = create<AppState>()(
     activity: false,
     artifacts: false,
     workProjects: false,
+    pluginPage: null,
+    plugins: [],
     openProject: null,
     adopt: null,
     tasks: [],

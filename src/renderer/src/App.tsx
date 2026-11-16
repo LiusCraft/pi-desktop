@@ -10,7 +10,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { bridge, call, isMac } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
-import { answerUi, bootstrap, cycleViewMode, fail, handleHostEvent, openSession, requestFind, showWelcome, stop, toggleSidebar, togglePanel } from '@/store/actions';
+import { answerUi, bootstrap, cycleViewMode, fail, handleHostEvent, loadPlugins, openSession, requestFind, showWelcome, stop, toggleSidebar, togglePanel } from '@/store/actions';
 import { currentSession, getApp, setApp, useApp } from '@/store/app';
 import { activeDraft, drafts } from '@/store/drafts';
 import { useDialogs } from '@/store/dialogs';
@@ -106,6 +106,10 @@ export function App() {
       offSettings();
     };
   }, []);
+
+  // A plugin page belongs to a package of the project in view: another project brings another set.
+  const pluginProject = useApp((s) => (s.view === 'work' ? null : s.prefs.project));
+  useEffect(() => { loadPlugins(); }, [pluginProject]);
 
   // The sidebar's collapsed state lives in settings; the panel follows it.
   useEffect(() => {

@@ -21,6 +21,7 @@ import { activeDraft, drafts, getDraft, sessionDraftKey, useDrafts } from './dra
 import { forgetPanels, writeArrangement, writePanels } from './layout';
 import { primeSuggestion, resumeSuggestion } from './predict';
 import { notifyResource, subscribeResource } from './resources';
+import { notifyPluginEvent } from '@/plugin/events';
 import { forgetScroll } from './scroll';
 import { askSide, showSide } from './side';
 import {
@@ -43,7 +44,9 @@ const activateDraftFor = () => {
 
 // ------------------------------------------------------------ host events
 
-let queue: HostEvent[] = [];
+/** What the transcript folds in: everything but the events answered as they arrive. */
+type QueuedEvent = Exclude<HostEvent, { type: 'plugin' }>;
+let queue: QueuedEvent[] = [];
 let scheduled = false;
 
 /** Events arrive one IPC message at a time; fold a frame's worth into one render. */
@@ -60,6 +63,13 @@ export function handleHostEvent(ev: HostEvent) {
     setApp((st) => void (st.remote && (st.remote.state = ev.state)));
     // Events were missed while the link was down: reload what the host holds.
     if (ev.state === 'connected' && was && was !== 'connected') void resyncRemote();
+    return;
+  }
+  // A desktop plugin spoke: its open pages hear it, and the windows show what it asked to show.
+  if (ev.type === 'plugin') {
+    notifyPluginEvent(ev.pluginId, ev.event);
+    if (ev.event.kind === 'notify') toast(ev.event.message);
+    else if (ev.event.kind === 'error') toast.error(ev.event.message);
     return;
   }
   queue.push(ev);
@@ -330,77 +340,85 @@ subscribeResource('projects', () => void reloadProjects());
 subscribeResource('workFolders', () => void reloadWorkFolders());
 subscribeResource('tasks', () => void reloadTasks());
 
+/**
+ * The desktop plugins of the packages configured for the project in view: the sidebar's plugin pages and
+ * the page itself read this one copy. The host owns the list and announces a change.
+ */
+export function loadPlugins() {
+  const st = getApp();
+  void call('plugins:list', st.view === 'work' ? null : st.prefs.project)
+    .then((plugins) => setApp((s) => void (s.plugins = plugins)))
+    .catch(() => {});
+}
+subscribeResource('plugins', () => void loadPlugins());
+
 // ------------------------------------------------------------ navigation
+
+/** Every full-page view off; the caller then turns its own on. */
+const noPage = (st: AppState) => {
+  st.customize = false;
+  st.scheduled = false;
+  st.archived = false;
+  st.activity = false;
+  st.artifacts = false;
+  st.workProjects = false;
+  st.pluginPage = null;
+};
 
 export function showCustomize() {
   setApp((st) => {
+    noPage(st);
     st.customize = true;
-    st.scheduled = false;
-    st.archived = false;
-    st.activity = false;
-    st.artifacts = false;
-    st.workProjects = false;
     st.menu = null;
   });
 }
 
 export function showScheduled() {
   setApp((st) => {
+    noPage(st);
     st.scheduled = true;
-    st.customize = false;
-    st.archived = false;
-    st.activity = false;
-    st.artifacts = false;
-    st.workProjects = false;
     st.menu = null;
   });
 }
 
 export function showActivity() {
   setApp((st) => {
+    noPage(st);
     st.activity = true;
-    st.artifacts = false;
-    st.workProjects = false;
-    st.archived = false;
-    st.customize = false;
-    st.scheduled = false;
     st.menu = null;
   });
 }
 
 export function showProjects(path: string | null = null) {
   setApp((st) => {
+    noPage(st);
     st.workProjects = true;
     st.openProject = path;
-    st.artifacts = false;
-    st.archived = false;
-    st.activity = false;
-    st.customize = false;
-    st.scheduled = false;
     st.menu = null;
   });
 }
 
 export function showArtifacts() {
   setApp((st) => {
+    noPage(st);
     st.artifacts = true;
-    st.workProjects = false;
-    st.archived = false;
-    st.activity = false;
-    st.customize = false;
-    st.scheduled = false;
     st.menu = null;
   });
 }
 
 export function showArchived() {
   setApp((st) => {
+    noPage(st);
     st.archived = true;
-    st.activity = false;
-    st.artifacts = false;
-    st.workProjects = false;
-    st.customize = false;
-    st.scheduled = false;
+    st.menu = null;
+  });
+}
+
+/** A desktop plugin's page, named `<pluginId>:<pageId>` (see `PluginPage`). */
+export function showPluginPage(key: string) {
+  setApp((st) => {
+    noPage(st);
+    st.pluginPage = key;
     st.menu = null;
   });
 }
@@ -409,12 +427,7 @@ export function setView(view: SessionKind) {
   setApp((st) => {
     st.view = view;
     st.menu = null;
-    st.customize = false;
-    st.scheduled = false;
-    st.archived = false;
-    st.activity = false;
-    st.artifacts = false;
-    st.workProjects = false;
+    noPage(st);
   });
   try {
     localStorage.setItem('cc_mode', JSON.stringify(view));
@@ -429,12 +442,7 @@ export function setView(view: SessionKind) {
 
 export function showWelcome() {
   setApp((st) => {
-    st.customize = false;
-    st.scheduled = false;
-    st.archived = false;
-    st.activity = false;
-    st.artifacts = false;
-    st.workProjects = false;
+    noPage(st);
     st.current = null;
     st.lastByView[st.view] = null;
   });
@@ -451,12 +459,7 @@ export async function openSession(id: string, fresh = false) {
   // the place the user left it at; everything else returns to where they were.
   if (s.unread) forgetScroll(id);
   setApp((st) => {
-    st.customize = false;
-    st.scheduled = false;
-    st.archived = false;
-    st.activity = false;
-    st.artifacts = false;
-    st.workProjects = false;
+    noPage(st);
     st.current = id;
     st.view = view;
     // Starting a session is slow (extensions, MCP): show that it is happening instead of an empty page.

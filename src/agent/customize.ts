@@ -544,6 +544,17 @@ export async function setPluginResource(env: CustomizeEnv, source: string, scope
 
 // ------------------------------------------------------------ catalog
 
+/**
+ * The pi packages this environment has configured, with the folder each is installed in. The desktop
+ * plugins are read from the same list: a plugin is just a package that also declares `piDesktop`.
+ */
+export function configuredPackages(env: CustomizeEnv): { source: string; scope: 'user' | 'project'; root: string | null }[] {
+  const manager = packageManager(env);
+  return manager.listConfiguredPackages().map((p) => ({
+    source: p.source, scope: p.scope, root: p.installedPath ?? manager.getInstalledPath(p.source, p.scope) ?? null,
+  }));
+}
+
 export async function catalog(env: CustomizeEnv): Promise<CustomizeCatalog> {
   const { loader } = await loadResources(env);
   const plugins: PluginInfo[] = packageManager(env).listConfiguredPackages().map((p) => ({

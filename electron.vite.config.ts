@@ -14,7 +14,8 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self' data:",
-  'frame-src http://localhost:* http://127.0.0.1:*',
+  // A desktop plugin's page is served from its own scheme (see `src/main/plugins.ts`).
+  'frame-src http://localhost:* http://127.0.0.1:* pidesk-plugin:',
   "connect-src 'none'",
 ].join('; ');
 const csp: Plugin = {

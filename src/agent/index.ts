@@ -64,6 +64,8 @@ const handlers: Record<HostMethod, Handler> = {
     return transferCall(dataDir, method, args);
   },
   'host:worktree': (dir) => git.worktreeInfo(dir),
+  // A desktop plugin's page asked for something: its own host entry answers (see `PluginHosts`).
+  'host:pluginCall': withHub((h, plugin, method, args) => h.pluginHosts.call(plugin, method, args)),
   'host:shutdown': async () => {
     scheduler?.stop();
     await hub?.shutdown();

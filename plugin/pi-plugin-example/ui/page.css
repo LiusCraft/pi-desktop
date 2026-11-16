@@ -1,0 +1,101 @@
+/* The app hands the page its colours (see page.js); the fallbacks are only for the first paint. */
+:root {
+  color-scheme: light dark;
+  --background: #faf9f5;
+  --foreground: #141413;
+  --muted-foreground: #73726c;
+  --border: rgba(31, 30, 29, 0.12);
+  --card: #ffffff;
+  --primary: #c96442;
+  --primary-foreground: #ffffff;
+  --radius: 0.625rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 28px;
+  background: var(--background);
+  color: var(--foreground);
+  font: 14px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+main {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+h1 {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+h2 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+section {
+  margin-top: 22px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.muted {
+  color: var(--muted-foreground);
+}
+
+.value {
+  font-variant-numeric: tabular-nums;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--background);
+  color: inherit;
+  font: inherit;
+}
+
+button {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+pre {
+  margin: 10px 0 0;
+  padding: 10px;
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--background);
+  border: 1px solid var(--border);
+  font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  min-height: 1em;
+}

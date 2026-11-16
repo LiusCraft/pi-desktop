@@ -397,3 +397,14 @@ describe('work sessions', { timeout: 120_000 }, () => {
     expect(fs.existsSync(meta.cwd)).toBe(true);
   });
 });
+
+describe('desktop plugins', { timeout: 120_000 }, () => {
+  it('gives every session the app\'s own authoring skill', async () => {
+    const { meta } = await codeSession();
+    await driver.hub.open(meta.id);
+    const commands = await driver.hub.commands(meta.id);
+    expect(commands.find((c) => c.name === 'skill:plugin-author')).toMatchObject({ source: 'skill' });
+    // Written into the app's own folder, so an app update can refresh it without touching pi's folders.
+    expect(fs.existsSync(path.join(tmp, 'data', 'skills', 'plugin-author', 'SKILL.md'))).toBe(true);
+  });
+});

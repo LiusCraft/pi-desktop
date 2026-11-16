@@ -8,7 +8,8 @@
 import { StringEnum } from '@earendil-works/pi-ai';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { Type, type Static } from 'typebox';
-import type { CustomizeCatalog, SessionKind, Settings, WorkProject } from '@shared/protocol';
+import type { CustomizeCatalog, PluginPermission, SessionKind, Settings, WorkProject } from '@shared/protocol';
+import { PLUGIN_PERMISSIONS } from '@shared/protocol';
 import { AI_SETTING_FIELDS, AI_SETTING_KEYS, checkAiSettingsPatch } from '@shared/ai-settings';
 import { describeSchedule, validateSchedule, type ScheduledTask, type TaskDraft, type TaskSchedule } from '@shared/schedule';
 import { PERMISSION_MODES, PROJECT_LIMITS } from '@shared/protocol';
@@ -40,6 +41,8 @@ export interface CustomizeHost {
   removeConnector(name: string, scope: 'user' | 'project'): Promise<unknown>;
   installPlugin(source: string, scope: 'user' | 'project'): Promise<unknown>;
   removePlugin(source: string, scope: 'user' | 'project'): Promise<unknown>;
+  /** Write a working plugin package into the app's own folder; the caller installs it. */
+  scaffoldPlugin(input: { id: string; title: string; description: string; permissions: PluginPermission[] }): Promise<{ dir: string; id: string; host: boolean }>;
 }
 
 export interface PetHost {
@@ -294,6 +297,36 @@ function registerCustomize(pi: ExtensionAPI, host: CustomizeHost) {
           await host.removePlugin(must(p.source, 'source'), scope);
           return text(`Removed plugin ${p.source}.`);
       }
+    },
+  });
+
+  pi.registerTool({
+    name: 'pidesk_plugin_create',
+    label: 'Create a desktop plugin',
+    description:
+      'Scaffold a Pi Desktop plugin: a page in the sidebar, plus (when it asks for host:call) a small module that runs in the agent process. ' +
+      'Writes a working package to ~/.pi-desktop/plugins/<id> and installs it as a local pi package. ' +
+      'Read the plugin-author skill first: it has the manifest, the page API and the host API. ' +
+      'The plugin stays off until the user enables it under Customize → Plugins and agrees to its permissions.',
+    promptSnippet: 'Create a desktop plugin (sidebar page + host entry)',
+    parameters: Type.Object({
+      id: Type.String({ description: 'Lowercase letters, digits and -, 2-32 characters, unique' }),
+      title: Type.String({ description: 'What the sidebar shows; short' }),
+      description: Type.String({ description: 'One sentence: what the plugin does' }),
+      permissions: Type.Optional(Type.Array(StringEnum([...PLUGIN_PERMISSIONS]), { description: 'Only the ones it actually uses' })),
+    }),
+    annotations: { destructiveHint: true },
+    async execute(_id, p) {
+      const made = await host.scaffoldPlugin({
+        id: p.id, title: p.title, description: p.description, permissions: (p.permissions ?? []) as PluginPermission[],
+      });
+      await host.installPlugin(made.dir, 'user');
+      return text(
+        `Created ${made.dir} and installed it as a personal package.\n` +
+        `Files to change: ui/page.js and ui/page.css${made.host ? ', host.js' : ''}.\n` +
+        'Next: tell the user to open Customize → Plugins, expand this package and turn the plugin on under Desktop — that is where they agree to its permissions.',
+        { dir: made.dir, id: made.id },
+      );
     },
   });
 }
