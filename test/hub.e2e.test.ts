@@ -234,11 +234,13 @@ describe('code sessions', { timeout: 120_000 }, () => {
     ).toBe(true);
   });
 
-  it('auto mode: risky commands still ask (git push)', async () => {
+  it('auto mode sends non-read-only commands through review (git push)', async () => {
     const { meta } = await codeSession();
-    const r = await driver.run(meta.id, '提交并创建 PR', () => ({ value: 'Allow' }));
+    const r = await driver.run(meta.id, '提交并创建 PR');
     const asked = r.ui.filter((u) => u.kind === 'permission').map((u) => u.title);
-    expect(asked.some((t) => /git push/.test(t))).toBe(true);
+    // The offline demo reviewer allows the task-aware review; the push then reaches git and fails
+    // for the expected reason because this test repository has no remote.
+    expect(asked.some((t) => /git push/.test(t))).toBe(false);
     expect(asked.some((t) => /git status/.test(t))).toBe(false);
     expect(r.finalText).toMatch(/推送失败/);
   });

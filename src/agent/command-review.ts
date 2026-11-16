@@ -63,6 +63,16 @@ export function reviewRequest(input: {
   ].join('\n\n');
 }
 
+/** A successful review can be reused while this same task is still active. */
+export function reviewCacheKey(input: {
+  command: string;
+  cwd: string;
+  kind: 'code' | 'work';
+  request: string | null;
+}): string {
+  return [input.kind, input.cwd, input.request?.trim() ?? '', input.command.trim().replace(/\s+/g, ' ')].join('\0');
+}
+
 interface MessageLike {
   role?: string;
   content?: unknown;
