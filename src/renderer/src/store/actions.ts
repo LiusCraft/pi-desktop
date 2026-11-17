@@ -1696,6 +1696,7 @@ export async function loadChanges(id: string) {
       // Panels are the user's: a new change must not rearrange their workspace.
       // An unchanged listing keeps its identity, so the diff on screen (open comments, selections) is left alone.
       if (changesKey(v.changes) !== changesKey(files)) v.changes = files;
+      v.changesVersion++;
       if (JSON.stringify(v.gitState) !== JSON.stringify(state)) v.gitState = state;
     });
   } catch {

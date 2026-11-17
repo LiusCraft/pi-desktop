@@ -1,5 +1,6 @@
 import type { Attachment, DecodedAttachment } from '@shared/attachments';
 import type {
+  DiffBase,
   FileChange,
   GitState,
   PrStatus,
@@ -153,6 +154,8 @@ export interface FileTab {
 
 export type ChangedFile = FileChange;
 
+export type DiffScope = DiffBase['kind'];
+
 /** A file changed by the current conversation turn, including the content available from its tool result. */
 export interface SessionChange extends ChangedFile {
   before: string | null;
@@ -227,6 +230,12 @@ export interface SessionView {
   sessionChanges: SessionChange[];
   /** The cumulative session-base diff when the session is in a git repository. */
   changes: ChangedFile[];
+  /** Every successful Git refresh also invalidates comparisons against other bases. */
+  changesVersion: number;
+  /** Diff-only view selection, kept when the card closes or changes layout. */
+  diffScope: DiffScope;
+  /** Null follows the session base; a picked ref never changes the PR's target. */
+  diffBranch: string | null;
   /** Live git state for the branch bar: uncommitted paths and unpushed commits. */
   gitState: GitState | null;
   pr: PrStatus | (PrSummary & Partial<PrStatus>) | null;

@@ -47,12 +47,6 @@ import { Markdown } from '@/components/common/Markdown';
 import { SelectableContent } from '@/components/common/SelectableContent';
 import { TodoList, PlanActions } from '@/components/thread/Items';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { TooltipHint } from '@/components/ui/tooltip';
@@ -79,16 +73,17 @@ import {
   openDiffRef,
   openFileRef,
   pinFileTab,
-  setDiffBase,
   stopTask,
   togglePanel,
 } from '@/store/actions';
 import { modelName, setPref, updateSession, useApp } from '@/store/app';
 import { findByKey, findTool } from '@/store/transcript';
-import type { CardId, ChangedFile, DropPlace, Item, SessionChange, SessionView } from '@/store/types';
+import type { CardId, ChangedFile, DiffScope, DropPlace, Item, SessionChange, SessionView } from '@/store/types';
+import { DiffSince } from './DiffSince';
 import { FileContextMenu } from './FileContextMenu';
 import { FindBar, SearchResults, type FindScope } from './FindBar';
 import { PathTree, type PathStatus } from './PathTree';
+import { useDiffComparison } from './useDiffComparison';
 
 // ------------------------------------------------------------ card chrome
 
@@ -220,6 +215,7 @@ export function Card({
 export function IconBtn({ children, className, title, ...props }: React.ComponentProps<'button'>) {
   const button = (
     <button
+      aria-label={title}
       {...props}
       className={cn(
         'flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground',
@@ -300,6 +296,8 @@ const GENERATED_LABEL = {
 
 const STATUS_OF_CHANGE: Record<ChangedFile['status'], PathStatus> = { A: 'added', M: 'modified', D: 'deleted' };
 type DiffFile = ChangedFile | SessionChange;
+const NO_DIFF_FILES: ChangedFile[] = [];
+const NO_COMMITS: CommitInfo[] = [];
 
 export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const t = useT();
@@ -309,9 +307,9 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const [flat, setFlat] = useState(false);
   const [active, setActive] = useState<string | null>(null);
   // The commit list under the tree; picking one swaps the panel from "all changes" to just that commit.
-  const [commits, setCommits] = useState<CommitInfo[]>([]);
   const [commit, setCommit] = useState<CommitInfo | null>(null);
   const [commitFiles, setCommitFiles] = useState<ChangedFile[]>([]);
+  const commitRequest = useRef(0);
   const review = useRef<ReviewHandle>(null);
   const finder = useRef<HTMLInputElement>(null);
   const [finding, setFinding] = useState(false);
@@ -320,38 +318,44 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const [hit, setHit] = useState(0);
   const id = s.meta.id;
   const sessionMode = !s.meta.baseCommit;
-  const files: DiffFile[] = commit ? commitFiles : sessionMode ? s.sessionChanges : s.changes;
+  const scope = s.diffScope;
+  const pickedBranch = s.diffBranch;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const branch = pickedBranch ?? s.meta.baseBranch;
+  const branchDiff = useDiffComparison(
+    s,
+    { kind: 'branch', ref: branch },
+    !sessionMode && (scope === 'branch' || menuOpen),
+  );
+  const lastCommitDiff = useDiffComparison(
+    s,
+    { kind: 'lastCommit' },
+    !sessionMode && (scope === 'lastCommit' || menuOpen),
+  );
+  const turnDiff = useDiffComparison(s, { kind: 'lastTurn' }, scope === 'lastTurn' || menuOpen);
+  const comparison = scope === 'lastTurn' ? turnDiff : scope === 'branch' ? branchDiff : lastCommitDiff;
+  const toolChanges = sessionMode && scope === 'branch';
+  const loading = !toolChanges && !comparison.data && !comparison.error;
+  const diffFiles = toolChanges ? s.sessionChanges : comparison.data?.files;
+  const files: DiffFile[] = commit ? commitFiles : (diffFiles ?? NO_DIFF_FILES);
+  const commits = toolChanges ? NO_COMMITS : (comparison.data?.commits ?? NO_COMMITS);
   const hash = commit?.hash ?? null;
+  const base = commit || toolChanges ? undefined : comparison.data?.base;
   const columnLayout = useDefaultLayout({ id: `${id}:diff-column` });
   // Contents are read per file as the viewer reaches it; each arrival re-renders the panel.
   const [arrived, arrive] = useReducer((n: number) => n + 1, 0);
   useEffect(() => onContent(arrive), []);
   const contents = useCallback(
     (f: DiffFile): FileContent | undefined =>
-      sessionMode && !commit && 'before' in f
-        ? { before: f.before, after: f.after, binary: f.binary }
-        : contentOf(id, hash, f),
-    [id, hash, sessionMode, commit],
+      !commit && 'before' in f ? { before: f.before, after: f.after, binary: f.binary } : contentOf(id, hash, f, base),
+    [id, hash, base, commit],
   );
   const isBinary = useCallback((f: ChangedFile) => f.binary || !!contents(f)?.binary, [contents]);
   const byPath = useMemo(() => new Map(files.map((f) => [f.path, f])), [files]);
-  useEffect(() => {
-    if (sessionMode) return void setCommits([]);
-    call('sessions:commits', id)
-      .then(setCommits)
-      .catch(() => setCommits([]));
-  }, [id, s.changes, s.meta.baseBranch, sessionMode]);
-  // Branches a diff can be measured from, read when the picker opens.
-  const [branches, setBranches] = useState<string[]>([]);
-  const loadBranches = (open: boolean) => {
-    if (open && !sessionMode)
-      call('git:branches', s.meta.cwd)
-        .then(setBranches)
-        .catch(() => setBranches([]));
-  };
   // A file that changed under the reader opens again, so its new lines are not hidden in a fold.
   const seenRevs = useRef<Map<string, string> | null>(null);
   useEffect(() => {
+    if (loading) return;
     const prev = seenRevs.current;
     seenRevs.current = new Map(files.map((f) => [f.path, f.rev]));
     if (!prev) return;
@@ -364,18 +368,25 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
         else n.delete(path);
       return n;
     });
-  }, [files]);
-  const pickBase = (ref: string) => {
+  }, [files, loading]);
+  const pickComparison = (next: DiffScope, ref?: string) => {
+    commitRequest.current++;
     seenRevs.current = null;
     setCommit(null);
+    setActive(null);
     setFlipped(new Set());
-    void setDiffBase(id, ref);
+    updateSession(id, (view) => {
+      view.diffScope = next;
+      if (ref) view.diffBranch = ref;
+    });
   };
   const pickCommit = async (next: CommitInfo | null) => {
+    const request = ++commitRequest.current;
     setFlipped(new Set());
     if (!next || next.hash === commit?.hash) return void setCommit(null);
     try {
       const list = await call('sessions:commitChanges', id, next.hash);
+      if (request !== commitRequest.current) return;
       setCommitFiles(list);
       setCommit(next);
     } catch (err) {
@@ -436,8 +447,8 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   // Searching needs every file's text, not just the ones scrolled to.
   useEffect(() => {
     if (finding && query)
-      for (const f of files) if (!f.binary && !('before' in f && 'after' in f)) wantContent(id, hash, f);
-  }, [finding, !!query, files, hash, sessionMode]); // eslint-disable-line react-hooks/exhaustive-deps
+      for (const f of files) if (!f.binary && !('before' in f && 'after' in f)) wantContent(id, hash, f, base);
+  }, [finding, !!query, files, hash, base]); // eslint-disable-line react-hooks/exhaustive-deps
   // Scrolling the viewer can pull focus into it; stepping with Enter needs the box to keep it.
   const keepFindFocus = () => requestAnimationFrame(() => finder.current?.focus({ preventScroll: true }));
   const showHit = (at: number) => {
@@ -481,6 +492,12 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   };
   // "View diff" on a tool row, and the PR bar's chips, jump here.
   useEffect(() => {
+    if ((diffTarget.thread || diffTarget.path) && (scope !== 'branch' || pickedBranch || commit)) {
+      pickComparison('branch');
+      updateSession(id, (view) => void (view.diffBranch = null));
+      return;
+    }
+    if (loading) return;
     if (diffTarget.thread) {
       // The first comment is the first one in the order the panel lists files.
       const first = firstThread(s.changes, s.prThreads);
@@ -497,7 +514,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
       void loadChanges(id).then(() => requestAnimationFrame(() => open(target, line, side)));
     diffTarget.path = null;
     diffTarget.line = undefined;
-  }, [diffTarget.seq, s.diffRequest, files.length, s.prThreads, sessionMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [diffTarget.seq, s.diffRequest, files, s.prThreads, sessionMode, scope, pickedBranch, commit, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const items = useMemo<ReviewItem[]>(() => {
     // `arrived` is a cache-busting counter: contentOf() reads a store outside React.
@@ -520,7 +537,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const need = (ids: string[]) =>
     ids.forEach((p) => {
       const f = byPath.get(p);
-      if (f && !('before' in f && 'after' in f)) wantContent(id, hash, f);
+      if (f && !('before' in f && 'after' in f)) wantContent(id, hash, f, base);
     });
   const statuses = useMemo(() => new Map(files.map((f) => [f.path, STATUS_OF_CHANGE[f.status]])), [files]);
   const decorate = (path: string): FileTreeRowDecoration | null => {
@@ -536,37 +553,20 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
     };
   };
 
-  const title = sessionMode ? (
-    <span className="flex min-w-0 items-center gap-1.5 text-sm font-normal">
-      <span className="truncate">{t('panel.sessionChanges')}</span>
-    </span>
-  ) : (
-    <span className="flex min-w-0 items-center gap-1.5 text-sm font-normal">
-      <DropdownMenu onOpenChange={loadBranches}>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="xs" className="min-w-0 gap-0.5 px-1 font-normal" title={t('panel.changeBase')}>
-            <span className="truncate">{s.meta.baseBranch || t('panel.base')}</span>
-            <ChevronDownIcon className="text-muted-foreground" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="max-h-80 w-64 overflow-y-auto">
-          {branches
-            .filter((b) => b !== s.meta.branch)
-            .map((b) => (
-              <DropdownMenuItem
-                key={b}
-                onSelect={() => pickBase(b)}
-                className={cn(b === s.meta.baseBranch && 'font-medium')}
-              >
-                <span className="truncate">{b}</span>
-                {b === s.meta.baseBranch && <CheckIcon className="ml-auto size-3.5" />}
-              </DropdownMenuItem>
-            ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <span className="text-muted-foreground">→</span>
-      <span className="truncate">{s.meta.branch || fname(s.meta.cwd)}</span>
-    </span>
+  const title = (
+    <DiffSince
+      cwd={s.meta.cwd}
+      scope={scope}
+      branch={branch}
+      sessionMode={sessionMode}
+      files={{
+        branch: sessionMode ? s.sessionChanges : branchDiff.data?.files,
+        lastCommit: lastCommitDiff.data?.files,
+        lastTurn: turnDiff.data?.files,
+      }}
+      onSelect={pickComparison}
+      onOpenChange={setMenuOpen}
+    />
   );
   const tools = (
     <>
@@ -613,7 +613,8 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
     </IconBtn>
   );
   let content: ReactNode;
-  if (!s.meta.baseCommit && !s.sessionChanges.length) content = <Empty>{t('panel.noChanges')}</Empty>;
+  if (loading) content = <Empty>{t('panel.loadingDiff')}</Empty>;
+  else if (!toolChanges && comparison.error) content = <Empty>{t('panel.diffError')}</Empty>;
   else if (!files.length) content = <Empty>{t('panel.noChanges')}</Empty>;
   else {
     content = (
@@ -660,7 +661,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
                         snapshotOf={(p) => {
                           const f = byPath.get(p);
                           if (f?.status !== 'D') return undefined;
-                          wantContent(id, hash, f);
+                          wantContent(id, hash, f, base);
                           return contents(f)?.before ?? undefined;
                         }}
                         onOpen={open}
@@ -721,7 +722,7 @@ ${c.subject}`}
                 className="h-full"
                 sid={id}
                 items={items}
-                threads={s.prThreads}
+                threads={scope === 'branch' && branch === s.meta.baseBranch && !commit ? s.prThreads : []}
                 onNeed={need}
                 onActiveChange={setActive}
                 renderPrefix={(item) => (

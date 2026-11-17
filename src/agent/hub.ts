@@ -44,6 +44,8 @@ import type {
   ChangeSet,
   ContextBreakdown,
   CreateSessionOptions,
+  DiffBase,
+  DiffComparison,
   HostEvent,
   HostResource,
   ImportableSession,
@@ -58,6 +60,7 @@ import type {
   SessionRemoval,
   SessionState,
   SessionStats,
+  SnapshotChange,
   SetupStep,
   Settings,
   SideChat,
@@ -86,6 +89,7 @@ import { decodeCommandMessage, encodeUserCommandMessage, isCommandMessage } from
 import { expandUserCommand } from './prompt-template';
 import { decodePeerMessage, encodePeerMessage, isPeerMessage } from '@shared/peer-message';
 import { decodePrEvent, encodePrEvent, isPrEvent } from '@shared/pr-event';
+import { diffStats } from '@shared/tool-previews';
 import { decodeTaskMessage, encodeTaskMessage, isTaskMessage } from '@shared/task-message';
 import { BUILTIN_PET_IDS } from '@shared/pets';
 import { DEFAULT_SETTINGS } from '@shared/settings';
@@ -2635,6 +2639,43 @@ export class SessionHub {
     ]);
     return { repo: !!root, files, state };
   }
+  async diff(id: string, base: DiffBase): Promise<DiffComparison> {
+    const m = this.meta(id);
+    if (base.kind !== 'lastTurn') return git.compare(m.cwd, m.baseCommit, base);
+    const live = await this.ensure(id);
+    const records = new Map<string, UndoRecord>();
+    for (const entry of live.runtime.session.sessionManager.getBranch()) {
+      if (entry.type === 'message' && entry.message.role === 'user') records.clear();
+      if (entry.type !== 'custom' || entry.customType !== UNDO_ENTRY_TYPE) continue;
+      const record = entry.data as UndoRecord;
+      const first = records.get(record.path);
+      records.set(record.path, { ...record, before: first?.before ?? record.before });
+    }
+    const files: SnapshotChange[] = [];
+    for (const record of records.values()) {
+      const { before, after } = record;
+      if (before.recoverable && after.recoverable && before.exists === after.exists && before.data === after.data)
+        continue;
+      const relative = path.relative(m.cwd, record.path);
+      if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) continue;
+      const old = before.data === null ? null : Buffer.from(before.data, 'base64');
+      const next = after.data === null ? null : Buffer.from(after.data, 'base64');
+      const binary = !before.recoverable || !after.recoverable || !!old?.includes(0) || !!next?.includes(0);
+      const oldText = binary ? null : (old?.toString('utf8') ?? null);
+      const newText = binary ? null : (next?.toString('utf8') ?? null);
+      files.push({
+        path: relative.replace(/\\/g, '/'),
+        status: !before.exists ? 'A' : !after.exists ? 'D' : 'M',
+        binary,
+        ...diffStats(oldText, newText),
+        rev: record.toolCallId,
+        before: oldText,
+        after: newText,
+      });
+    }
+    files.sort((a, b) => a.path.localeCompare(b.path));
+    return { base: null, files, commits: [] };
+  }
   /** Measure the session's changes from another branch: the diff, commit list and file contents all follow `baseBranch`. */
   async setBase(id: string, ref: string) {
     const m = this.meta(id);
@@ -2653,9 +2694,10 @@ export class SessionHub {
   commitChanges(id: string, hash: string) {
     return git.commitChanges(this.meta(id).cwd, hash);
   }
-  async changeContent(id: string, file: string, hash: string | null) {
+  async changeContent(id: string, file: string, hash: string | null, base?: string | null) {
     const m = this.meta(id);
-    return git.changeContent(m.cwd, hash ? null : await git.diffBase(m.cwd, m.baseCommit, m.baseBranch), file, hash);
+    const from = hash ? null : base !== undefined ? base : await git.diffBase(m.cwd, m.baseCommit, m.baseBranch);
+    return git.changeContent(m.cwd, from, file, hash);
   }
   async prStatus(id: string) {
     const m = this.meta(id);

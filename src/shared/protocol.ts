@@ -629,6 +629,25 @@ export interface CommitInfo {
   date: string;
 }
 
+/** A selectable local or remote-tracking branch and its tip commit. */
+export interface BranchInfo extends CommitInfo {
+  name: string;
+}
+
+/** Read-only Diff comparisons; these never change the session's branch or PR target. */
+export type GitDiffBase = { kind: 'branch'; ref: string | null } | { kind: 'lastCommit' };
+export type DiffBase = GitDiffBase | { kind: 'lastTurn' };
+
+/** Exact before/after contents recorded by write/edit tools, rather than a Git base. */
+export interface SnapshotChange extends FileChange, FileContent {}
+
+export interface DiffComparison {
+  /** Resolved once for both the listing and subsequent lazy content reads. */
+  base: string | null;
+  files: (FileChange | SnapshotChange)[];
+  commits: CommitInfo[];
+}
+
 /** How the branch bar brings the base branch's new commits into the current branch. */
 export type SyncStrategy = 'merge' | 'rebase';
 
@@ -1305,14 +1324,15 @@ export interface Api {
   /** Task ideas drawn from the recent Work sessions; null when there is nothing to base them on or no model could answer. */
   'sessions:workIdeas'(): WorkIdea[] | null;
   'sessions:changes'(id: string): ChangeSet;
+  'sessions:diff'(id: string, base: DiffBase): DiffComparison;
   /** Compare the session's changes against another branch. */
   'sessions:setBase'(id: string, ref: string): void;
   /** Commits made since the session's base, newest first. */
   'sessions:commits'(id: string): CommitInfo[];
   /** What one of those commits changed. */
   'sessions:commitChanges'(id: string, hash: string): FileChange[];
-  /** One changed file's contents; `hash` picks a commit's change over the working tree's. */
-  'sessions:changeContent'(id: string, path: string, hash: string | null): FileContent;
+  /** `hash` picks a commit's change; `base` pins a working-tree comparison to its listing's base. */
+  'sessions:changeContent'(id: string, path: string, hash: string | null, base?: string | null): FileContent;
   'sessions:pr'(id: string): PrStatus | null;
   'sessions:prThreads'(id: string): PrThread[];
   /** Post a reply into a review thread on GitHub / GitLab. */
@@ -1332,6 +1352,7 @@ export interface Api {
   'sessions:importable'(projectPath: string): ImportableSession[];
   'git:branch'(dir: string): string | null;
   'git:branches'(dir: string): string[];
+  'git:branchBases'(dir: string): BranchInfo[];
   'git:defaultBranch'(dir: string): string | null;
   'git:refresh'(dir: string): boolean;
   'sessions:import'(file: string): SessionMeta;
@@ -1485,6 +1506,7 @@ export const HOST_CHANNELS = [
   'sessions:sideReset',
   'sessions:workIdeas',
   'sessions:changes',
+  'sessions:diff',
   'sessions:setBase',
   'sessions:commits',
   'sessions:commitChanges',
@@ -1505,6 +1527,7 @@ export const HOST_CHANNELS = [
   'sessions:import',
   'git:branch',
   'git:branches',
+  'git:branchBases',
   'git:defaultBranch',
   'git:refresh',
   'agents:list',

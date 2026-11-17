@@ -33,11 +33,12 @@ const agentDir = path.join(tmp, 'agent');
 // pi resolves its config (sessions, settings, auth) from here: never touch ~/.pi in tests.
 process.env.PI_CODING_AGENT_DIR = agentDir;
 
-function makeProject(name: string) {
+function makeProject(name: string, autoCrlf?: boolean) {
   const dir = path.join(tmp, name);
   fs.cpSync(path.join(ROOT, 'demo', 'todo-app'), dir, { recursive: true });
   const git = (...a: string[]) => execFileSync('git', a, { cwd: dir, stdio: 'pipe' });
   git('init', '-q', '-b', 'main');
+  if (autoCrlf !== undefined) git('config', 'core.autocrlf', String(autoCrlf));
   git('add', '-A');
   git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init');
   return dir;
@@ -106,8 +107,8 @@ afterAll(async () => {
   fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
-const codeSession = async (mode: PermissionMode = 'auto', worktree = false) => {
-  const project = makeProject(`proj-${Math.random().toString(36).slice(2, 8)}`);
+const codeSession = async (mode: PermissionMode = 'auto', worktree = false, autoCrlf?: boolean) => {
+  const project = makeProject(`proj-${Math.random().toString(36).slice(2, 8)}`, autoCrlf);
   const meta = await driver.hub.create({
     kind: 'code',
     projectPath: project,
@@ -126,6 +127,24 @@ describe('code sessions', { timeout: 120_000 }, () => {
     const { models } = await driver.hub.listModels();
     expect(models.some((m) => m.provider === 'demo' && m.id === 'demo-coder')).toBe(true);
     expect(driver.hub.thinkingLevels('demo/demo-coder').length).toBeGreaterThan(1);
+  });
+
+  it('keeps Diff comparisons separate from the session base and PR target', async () => {
+    const { project, meta } = await codeSession();
+    const before = { branch: meta.branch, baseBranch: meta.baseBranch, baseCommit: meta.baseCommit };
+    execFileSync('git', ['branch', 'diff-only-base'], { cwd: project, stdio: 'pipe' });
+    fs.writeFileSync(path.join(project, 'diff-only.txt'), 'one\n');
+    const from = driver.events.length;
+    const result = await driver.hub.diff(meta.id, { kind: 'branch', ref: 'diff-only-base' });
+    expect(result.files.map((f) => f.path)).toContain('diff-only.txt');
+    expect(await driver.hub.changeContent(meta.id, 'diff-only.txt', null, result.base)).toEqual({
+      before: null,
+      after: 'one\n',
+      binary: false,
+    });
+    await driver.hub.diff(meta.id, { kind: 'lastCommit' });
+    expect({ branch: meta.branch, baseBranch: meta.baseBranch, baseCommit: meta.baseCommit }).toEqual(before);
+    expect(driver.events.slice(from).filter((e) => e.type === 'meta')).toEqual([]);
   });
 
   it('answers a session’s live state without its transcript, and stays quiet for one nobody holds', async () => {
@@ -375,13 +394,18 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect(driver.events.slice(from).some((e) => e.type === 'changed' || e.type === 'notify')).toBe(false);
   });
 
-  it('auto mode: fixes the bug end to end in an isolated worktree, without prompts', async () => {
-    const { project, meta } = await codeSession('auto', true);
+  it.each([false, true])('auto mode: fixes the bug end to end (core.autocrlf=%s)', async (autoCrlf) => {
+    const { project, meta } = await codeSession('auto', true, autoCrlf);
     expect(meta.branch).toMatch(/^pi-desktop\//);
     expect(meta.cwd).not.toBe(project);
     expect(meta.cwd.startsWith(path.join(tmp, 'data', '.worktree') + path.sep), 'default worktree root').toBe(true);
     const opened = await driver.hub.open(meta.id);
     expect(opened.model).toBe('demo/demo-coder');
+    const originals = new Map<string, string>(
+      ['src/utils/date.js', 'tests/date.test.js'].map((file) => [file, read(meta.cwd, file)]),
+    );
+    // A worktree checkout can have different line endings from the copied source fixture.
+    expect(originals.get('src/utils/date.js')!.includes('\r\n')).toBe(autoCrlf);
 
     const r = await driver.run(meta.id, '日期显示少了一个月，帮我修一下');
     expect(r.ui).toHaveLength(0);
@@ -401,6 +425,27 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect(state.ahead).toBe(0);
     const status = r.events.filter((e) => e.type === 'status').map((e) => (e as any).status);
     expect(status).toEqual(['running', 'idle']);
+
+    const turn = await driver.hub.diff(meta.id, { kind: 'lastTurn' });
+    expect(turn.files.map((file) => file.path).sort()).toEqual(['src/utils/date.js', 'tests/date.test.js']);
+    for (const file of turn.files)
+      expect(file).toMatchObject({
+        before: originals.get(file.path),
+        after: read(meta.cwd, file.path),
+        binary: false,
+      });
+    // A later read-only turn must not reuse the previous turn's edits.
+    await driver.run(meta.id, '运行 codemode 脚本');
+    expect((await driver.hub.diff(meta.id, { kind: 'lastTurn' })).files).toEqual([]);
+    const beforeNextTurn = read(meta.cwd, 'src/utils/date.js');
+    await driver.run(meta.id, '修复 isOverdue');
+    const nextTurn = await driver.hub.diff(meta.id, { kind: 'lastTurn' });
+    expect(nextTurn.files).toHaveLength(1);
+    expect(nextTurn.files[0]).toMatchObject({
+      path: 'src/utils/date.js',
+      before: beforeNextTurn,
+      after: read(meta.cwd, 'src/utils/date.js'),
+    });
   });
 
   it('ask mode: edits and commands ask; deny stops the run', async () => {
