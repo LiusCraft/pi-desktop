@@ -52,6 +52,7 @@ export const common = defineMessages({
 
   'cmd.clear': { en: 'Start a fresh context (keeps the session)', zh: '开始新的上下文（保留会话）' },
   'cmd.compact': { en: 'Compact the conversation history', zh: '压缩对话历史' },
+  'cmd.reload': { en: 'Reload skills, commands, extensions and MCP', zh: '重新加载技能、命令、扩展和 MCP' },
   'cmd.btw': {
     en: 'Side question: chat about the current session without adding to its context',
     zh: '旁路提问：基于当前会话聊一句，不进入上下文',

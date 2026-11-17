@@ -3,9 +3,11 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AgentSession } from '@earendil-works/pi-coding-agent';
 import { decodeUserContent } from '@shared/attachments';
 import {
   HOST_CHANNELS,
@@ -140,6 +142,237 @@ describe('code sessions', { timeout: 120_000 }, () => {
     await driver.hub.setThinking(meta.id, picked);
     expect(driver.hub.sessionState(meta.id)!.thinking).toBe(picked);
     expect(driver.hub.meta(meta.id).thinking).toBe(picked);
+  });
+
+  it('reloads skills, prompts and extensions without replacing the conversation', async () => {
+    const { project, meta } = await codeSession();
+    await driver.run(meta.id, '你好');
+    const before = await driver.hub.open(meta.id);
+    const root = path.join(project, '.pi');
+    const skill = path.join(root, 'skills', 'reload-test', 'SKILL.md');
+    const prompt = path.join(root, 'prompts', 'reload-test.md');
+    const extension = path.join(root, 'extensions', 'reload-test.ts');
+    for (const file of [skill, prompt, extension]) fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(skill, '---\nname: reload-test\ndescription: Reloaded skill\n---\nUse this skill.\n');
+    fs.writeFileSync(prompt, '---\ndescription: Reloaded prompt\n---\nReply briefly.\n');
+    fs.writeFileSync(
+      extension,
+      `export default (pi) => {
+      pi.registerCommand('reload-test-ping', {
+        description: 'Reloaded extension',
+        handler: async (_, ctx) => ctx.ui.notify('reload-pong', 'info'),
+      });
+      pi.registerCommand('reload-test-again', {
+        handler: async (_, ctx) => { await ctx.reload(); },
+      });
+    };`,
+    );
+    expect((await driver.hub.commands(meta.id)).some((c) => c.name === 'skill:reload-test')).toBe(false);
+    const from = driver.events.length;
+    const handlers = sessionHandlers(Promise.resolve(driver.hub), () => null);
+    await handlers['sessions:reload'](meta.id);
+    const after = await driver.hub.open(meta.id);
+    expect(after.messages).toEqual(before.messages);
+    expect(after.meta.sessionFile).toBe(before.meta.sessionFile);
+    expect(after.meta.id).toBe(before.meta.id);
+    expect(after.model).toBe(before.model);
+    expect(after.thinking).toBe(before.thinking);
+    expect(after.meta.mode).toBe(before.meta.mode);
+    expect(await driver.hub.commands(meta.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'skill:reload-test', description: 'Reloaded skill' }),
+        expect.objectContaining({ name: 'reload-test', source: 'prompt' }),
+        expect.objectContaining({ name: 'reload-test-ping', source: 'extension' }),
+      ]),
+    );
+    expect(driver.hub.context(meta.id)!.items.some((item) => item.name === 'reload-test')).toBe(true);
+    expect(driver.events.slice(from).filter((e) => e.type === 'changed')).toEqual([
+      { type: 'changed', resource: 'sessionResources' },
+    ]);
+    const ping = await driver.run(meta.id, '/reload-test-ping');
+    expect(ping.events).toContainEqual(expect.objectContaining({ type: 'notify', message: 'reload-pong' }));
+
+    // Commands that call ctx.reload share the same desktop path, including change notifications.
+    fs.writeFileSync(skill, '---\nname: reload-test\ndescription: Updated skill\n---\nUpdated body.\n');
+    await driver.run(meta.id, '/reload-test-again');
+    expect(await driver.hub.commands(meta.id)).toContainEqual(
+      expect.objectContaining({
+        name: 'skill:reload-test',
+        description: 'Updated skill',
+      }),
+    );
+    fs.writeFileSync(path.join(root, 'settings.json'), JSON.stringify({ skills: [`-${skill}`] }));
+    fs.rmSync(prompt);
+    fs.rmSync(extension);
+    expect(await driver.hub.prompt(meta.id, { text: '/reload', attachments: [] }, 'steer')).toEqual({
+      disposition: 'handled',
+    });
+    expect((await driver.hub.commands(meta.id)).some((c) => c.name.includes('reload-test'))).toBe(false);
+    expect((await driver.hub.open(meta.id)).messages).toEqual(before.messages);
+    // The session subscription and desktop shell still work after repeated reloads.
+    expect((await driver.hub.bash(meta.id, 'echo after-reload')).output.trim()).toBe('after-reload');
+    await driver.run(meta.id, '你好');
+  });
+
+  it('reloads MCP configuration in an existing session, including disabling a server', async () => {
+    const server = createServer(async (req, res) => {
+      if (req.method !== 'POST') {
+        res.writeHead(405).end();
+        return;
+      }
+      let text = '';
+      for await (const chunk of req) text += chunk;
+      const request = JSON.parse(text);
+      if (request.id === undefined) {
+        res.writeHead(202).end();
+        return;
+      }
+      const result =
+        request.method === 'initialize'
+          ? {
+              protocolVersion: request.params.protocolVersion,
+              capabilities: { tools: {} },
+              serverInfo: { name: 'reload-test', version: '1.0.0' },
+            }
+          : request.method === 'tools/list'
+            ? {
+                tools: [
+                  { name: 'probe', description: 'Reload probe', inputSchema: { type: 'object', properties: {} } },
+                ],
+              }
+            : { content: [{ type: 'text', text: 'reload-probe-ok' }] };
+      res
+        .writeHead(200, { 'Content-Type': 'application/json' })
+        .end(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Expected a TCP address');
+    const { project, meta } = await codeSession();
+    try {
+      await driver.hub.open(meta.id);
+      const config = path.join(project, '.pi', 'mcp.json');
+      fs.mkdirSync(path.dirname(config), { recursive: true });
+      const connector = { url: `http://127.0.0.1:${address.port}/mcp`, exposure: 'direct' };
+      fs.writeFileSync(config, JSON.stringify({ mcpServers: { reload_test: connector } }));
+      await driver.hub.reload(meta.id);
+      // Direct MCP tools are connected before the next model request.
+      await driver.run(meta.id, '你好');
+      expect(driver.hub.context(meta.id)!.items.some((item) => item.name === 'mcp__reload_test__probe')).toBe(true);
+      fs.writeFileSync(config, JSON.stringify({ mcpServers: { reload_test: { ...connector, enabled: false } } }));
+      await driver.hub.reload(meta.id);
+      await driver.run(meta.id, '你好');
+      expect(driver.hub.context(meta.id)!.items.some((item) => item.name === 'mcp__reload_test__probe')).toBe(false);
+    } finally {
+      await driver.hub.archive(meta.id);
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+    }
+  });
+
+  it('guards reload against running work and concurrent session updates, and unlocks after failure', async () => {
+    const { meta } = await codeSession();
+    await driver.hub.open(meta.id);
+    const reload = vi.spyOn(AgentSession.prototype, 'reload');
+    const bashRunning = vi.spyOn(AgentSession.prototype, 'isBashRunning', 'get').mockReturnValue(true);
+    try {
+      await expect(driver.hub.reload(meta.id)).rejects.toThrow(/任务和命令/);
+      expect(reload).not.toHaveBeenCalled();
+    } finally {
+      bashRunning.mockRestore();
+    }
+    const idle = vi.spyOn(AgentSession.prototype, 'isIdle', 'get').mockReturnValue(false);
+    try {
+      await expect(driver.hub.reload(meta.id)).rejects.toThrow(/任务和命令/);
+      expect(reload).not.toHaveBeenCalled();
+    } finally {
+      idle.mockRestore();
+    }
+    const retrying = vi.spyOn(AgentSession.prototype, 'isRetrying', 'get').mockReturnValue(true);
+    try {
+      await expect(driver.hub.reload(meta.id)).rejects.toThrow(/任务和命令/);
+      expect(reload).not.toHaveBeenCalled();
+    } finally {
+      retrying.mockRestore();
+    }
+    let release!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    reload.mockImplementationOnce(async () => {
+      entered();
+      await gate;
+    });
+    // Prompt validation yields after its first busy check; reloading must catch that in-flight prompt too.
+    const earlyPrompt = driver.hub.prompt(meta.id, { text: '你好' }, 'steer');
+    const loading = driver.hub.reload(meta.id);
+    await started;
+    try {
+      await expect(earlyPrompt).rejects.toThrow(/正在更新会话/);
+      expect(await driver.hub.suggest(meta.id, { model: 'session', context: 6 })).toBeNull();
+      await expect(driver.hub.reload(meta.id)).rejects.toThrow(/任务和命令/);
+      await expect(driver.hub.prompt(meta.id, { text: '你好' }, 'steer')).rejects.toThrow(/正在更新会话/);
+      await expect(driver.hub.bash(meta.id, 'echo no')).rejects.toThrow(/正在更新会话/);
+      await expect(driver.hub.newContext(meta.id)).rejects.toThrow(/正在更新会话/);
+      await expect(driver.hub.compact(meta.id)).rejects.toThrow(/正在更新会话/);
+    } finally {
+      release();
+      await loading;
+    }
+    const from = driver.events.length;
+    reload.mockRejectedValueOnce(new Error('reload failed'));
+    try {
+      await expect(driver.hub.reload(meta.id)).rejects.toThrow('reload failed');
+      expect(driver.events.slice(from).some((e) => e.type === 'changed')).toBe(false);
+    } finally {
+      reload.mockRestore();
+    }
+    await driver.hub.reload(meta.id);
+    expect((await driver.hub.bash(meta.id, 'echo unlocked')).output.trim()).toBe('unlocked');
+  });
+
+  it.each([false, true])('waits for reload before disposing, even when reload fails: %s', async (fails) => {
+    const { meta } = await codeSession();
+    await driver.hub.open(meta.id);
+    let release!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const reload = vi.spyOn(AgentSession.prototype, 'reload').mockImplementationOnce(async () => {
+      entered();
+      await gate;
+      if (fails) throw new Error('reload during close failed');
+    });
+    const dispose = vi.spyOn(AgentSession.prototype, 'dispose');
+    const loading = driver.hub.reload(meta.id);
+    const result = loading.catch((error: Error) => error);
+    await started;
+    const from = driver.events.length;
+    const closing = driver.hub.archive(meta.id);
+    try {
+      await vi.waitFor(() => expect(driver.hub.sessionState(meta.id)).toBeNull());
+      expect(dispose).not.toHaveBeenCalled();
+    } finally {
+      release();
+      try {
+        const [failure] = await Promise.all([result, closing]);
+        expect(failure).toEqual(fails ? new Error('reload during close failed') : undefined);
+        expect(dispose).toHaveBeenCalledOnce();
+      } finally {
+        reload.mockRestore();
+        dispose.mockRestore();
+      }
+    }
+    expect(driver.hub.meta(meta.id).archived).toBe(true);
+    expect(driver.events.slice(from).some((e) => e.type === 'changed' || e.type === 'notify')).toBe(false);
   });
 
   it('auto mode: fixes the bug end to end in an isolated worktree, without prompts', async () => {

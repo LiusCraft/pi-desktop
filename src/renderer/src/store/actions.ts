@@ -416,6 +416,9 @@ subscribeResource('models', () => void loadModels());
 subscribeResource('projects', () => void reloadProjects());
 subscribeResource('workFolders', () => void reloadWorkFolders());
 subscribeResource('tasks', () => void reloadTasks());
+subscribeResource('sessionResources', () => {
+  for (const s of Object.values(getApp().sessions)) if (s.loaded) void revalidateSession(s.meta.id);
+});
 
 /**
  * The desktop plugins of the packages configured for the project in view: the sidebar's plugin pages and
@@ -694,6 +697,24 @@ async function slashCommand(s: SessionView | undefined, head: string, text: stri
   if (head === '/model' || head === '/permissions') {
     clear();
     setApp((st) => void (st.menu = head === '/model' ? 'model' : 'mode'));
+    return true;
+  }
+  if (head === '/reload') {
+    if (!s) {
+      toast.warning(t('act.startSessionFirst'));
+      return true;
+    }
+    const id = s.meta.id;
+    const revision = key ? getDraft(key).revision : null;
+    updateSession(id, (v) => void (v.historyBusy = true));
+    try {
+      await call('sessions:reload', id);
+      if (key && getDraft(key).revision === revision) clear();
+    } catch (err) {
+      fail(err);
+    } finally {
+      updateSession(id, (v) => void (v.historyBusy = false));
+    }
     return true;
   }
   if (head === '/btw') {

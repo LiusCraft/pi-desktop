@@ -123,7 +123,24 @@ export const agent = defineMessages({
   'ag.rewindCancelled': { en: 'The rewind was cancelled', zh: '回退已取消' },
   'ag.waitSaved': { en: 'Wait for this message to be saved before branching', zh: '请等待这条消息保存后再创建分支' },
   'ag.branchSuffix': { en: '{title} · branch', zh: '{title} · 分支' },
-  'ag.historyBusy': { en: 'The history is being adjusted; try again shortly', zh: '正在调整对话历史，请稍后发送' },
+  'ag.historyBusy': { en: 'The session is being updated; try again shortly', zh: '正在更新会话，请稍后发送' },
+  'ag.reloadBusy': {
+    en: 'Wait for running tasks and commands to finish before reloading',
+    zh: '请等待运行中的任务和命令结束后再重新加载',
+  },
+  'ag.reloaded': { en: 'Skills, commands, extensions and MCP reloaded', zh: '已重新加载技能、命令、扩展和 MCP' },
+  'ag.skillCreatedReload': {
+    en: 'Created skill {name} ({scope}). New sessions load it automatically; ask the user to run /reload in existing sessions.',
+    zh: '已创建技能 {name}（{scope}）。新会话自动加载；已有会话请让用户运行 /reload。',
+  },
+  'ag.connectorSavedReload': {
+    en: 'Saved connector {name} ({scope}). New sessions connect automatically; ask the user to run /reload in existing sessions.',
+    zh: '已保存连接器 {name}（{scope}）。新会话自动连接；已有会话请让用户运行 /reload。',
+  },
+  'ag.pluginInstalledReload': {
+    en: 'Installed plugin {source} ({scope}). New sessions load it automatically; ask the user to run /reload in existing sessions.',
+    zh: '已安装插件 {source}（{scope}）。新会话自动加载；已有会话请让用户运行 /reload。',
+  },
   'ag.prEventFail': { en: 'The PR event could not be handed to Pi: {error}', zh: 'PR 事件没能交给 Pi：{error}' },
 
   'ag.login': { en: 'Signing in to {name}…', zh: '正在登录 {name}…' },

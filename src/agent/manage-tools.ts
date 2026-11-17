@@ -6,6 +6,7 @@
  * The tools that change things are not read-only: plan mode blocks them and auto mode asks.
  */
 import { StringEnum } from '@earendil-works/pi-ai';
+import { tr } from '@shared/i18n/runtime';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { Type, type Static } from 'typebox';
 import type { CustomizeCatalog, PluginPermission, SessionKind, Settings, WorkProject } from '@shared/protocol';
@@ -307,7 +308,7 @@ function registerCustomize(pi: ExtensionAPI, host: CustomizeHost) {
       'save_connector (name, scope, transport, then command/args/env for stdio or url/headers for http; original_name to rename); ' +
       'set_connector_enabled (name, scope, enabled); remove_connector (name, scope); ' +
       'install_plugin / remove_plugin (source like npm:pi-web-access or git:github.com/user/repo, scope). ' +
-      'Connectors and plugins run code on this machine: only add ones the user asked for. New connectors and plugins load in new sessions.',
+      'Connectors and plugins run code on this machine: only add ones the user asked for. New sessions load changes automatically; ask the user to run /reload in existing sessions.',
     promptSnippet: 'Manage skills, connectors (MCP servers) and plugins',
     parameters: Type.Object({
       action: StringEnum([
@@ -357,7 +358,7 @@ function registerCustomize(pi: ExtensionAPI, host: CustomizeHost) {
             body: must(p.body, 'body'),
             scope,
           });
-          return text(`Created skill ${p.name} (${scope}). It is available in new sessions.`);
+          return text(tr('ag.skillCreatedReload', { name: p.name!, scope }));
         case 'set_skill_disabled':
           await host.setSkillDisabled(must(p.file, 'file'), must(p.disabled, 'disabled'));
           return text(`Skill ${p.disabled ? 'switched off' : 'switched on'}.`);
@@ -373,7 +374,7 @@ function registerCustomize(pi: ExtensionAPI, host: CustomizeHost) {
             pairs: p.pairs,
             description: p.description,
           });
-          return text(`Saved connector ${p.name} (${scope}). It connects in new sessions.`);
+          return text(tr('ag.connectorSavedReload', { name: p.name!, scope }));
         case 'set_connector_enabled':
           await host.setConnectorEnabled(must(p.name, 'name'), scope, must(p.enabled, 'enabled'));
           return text(`Connector ${p.name} ${p.enabled ? 'switched on' : 'switched off'}.`);
@@ -382,7 +383,7 @@ function registerCustomize(pi: ExtensionAPI, host: CustomizeHost) {
           return text(`Removed connector ${p.name}.`);
         case 'install_plugin':
           await host.installPlugin(must(p.source, 'source'), scope);
-          return text(`Installed plugin ${p.source} (${scope}). It loads in new sessions.`);
+          return text(tr('ag.pluginInstalledReload', { source: p.source!, scope }));
         case 'remove_plugin':
           await host.removePlugin(must(p.source, 'source'), scope);
           return text(`Removed plugin ${p.source}.`);

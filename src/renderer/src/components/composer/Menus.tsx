@@ -40,6 +40,7 @@ import { fuzzyEntry, fuzzyRank } from '@/lib/fuzzy';
 import { cn } from '@/lib/utils';
 import { chooseEffort, chooseModel, compactSession, fail, setPermMode } from '@/store/actions';
 import { setApp, useApp } from '@/store/app';
+import { watchSessionContext } from '@/lib/session-context';
 
 /** A dropdown that a slash command (/model, /permissions) can also open. */
 function useMenu(name: 'model' | 'mode' | 'context') {
@@ -413,12 +414,7 @@ export function ContextRing({
   const cache = data ? cacheHitRate(data.cache) : null;
   useEffect(() => {
     if (!open || !sid) return;
-    let live = true;
-    call('sessions:context', sid).then(
-      (d) => live && setData(d),
-      () => live && setData(null),
-    );
-    return () => void (live = false);
+    return watchSessionContext(sid, setData);
   }, [open, sid, pct, busy]);
   const ringTitle = [
     pct == null ? t('menu.context') : t('menu.contextUsed', { pct: Math.round(p) }),

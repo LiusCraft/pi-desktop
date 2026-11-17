@@ -51,6 +51,7 @@ export function sessionHandlers(
     'sessions:abort': withHub((h, id) => h.abort(id)),
     'sessions:clearQueue': withHub((h, id) => h.clearQueue(id)),
     'sessions:newContext': withHub((h, id) => h.newContext(id)),
+    'sessions:reload': withHub((h, id) => h.reload(id)),
     'sessions:compact': withHub((h, id, instructions) => h.compact(id, instructions)),
     'sessions:compactedHistory': withHub((h, id) => h.compactedHistory(id)),
     'sessions:handoffHistory': withHub((h, id) => h.handoffHistory(id)),

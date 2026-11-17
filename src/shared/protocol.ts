@@ -777,6 +777,7 @@ export const HOST_RESOURCES = [
   'projects',
   'workFolders',
   'customize',
+  'sessionResources',
   'plugins',
   'artifacts',
   'activity',
@@ -1271,6 +1272,8 @@ export interface Api {
   'sessions:abort'(id: string): void;
   'sessions:clearQueue'(id: string): { steering: string[]; followUp: string[] };
   'sessions:newContext'(id: string): void;
+  /** Reload skills, prompts, extensions and MCP without replacing the conversation. */
+  'sessions:reload'(id: string): void;
   'sessions:compact'(id: string, instructions?: string): { tokensBefore: number; estimatedTokensAfter?: number };
   /** The messages the latest compaction summarized away, so the transcript can show them again. */
   'sessions:compactedHistory'(id: string): AgentMessage[];
@@ -1461,6 +1464,7 @@ export const HOST_CHANNELS = [
   'sessions:abort',
   'sessions:clearQueue',
   'sessions:newContext',
+  'sessions:reload',
   'sessions:compact',
   'sessions:compactedHistory',
   'sessions:handoffHistory',

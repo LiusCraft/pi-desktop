@@ -159,6 +159,7 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 | 运行结束 | `agent_settled`（`agent_end` 之后 pi 可能还会重试或压缩，不能当作结束） |
 | 模型 / 思考强度 / 上下文圆环 | `ModelRuntime.getAvailable`、`setModel`、`setThinkingLevel`、`getSessionStats` |
 | `/compact` `/context` `/clear` `/export` | `compact`、`getSessionStats`、`runtime.newSession()`、`exportToHtml` |
+| `/reload` | `session.reload()`：保留对话，重载技能、提示模板、扩展与 MCP |
 | 终端面板里输入的命令 | `executeBash`（输出会进入下一轮上下文） |
 | Transcript view（Normal / Thinking / Verbose） | 纯前端：思考折进工具组，按模式决定摘要、思考或全部步骤 |
 | Output style（Default / Proactive / Concise / Explanatory / Learning） | desktop-kit 在 `before_agent_start` 追加对应系统提示 |
@@ -281,7 +282,7 @@ Code 会话输入框上方的 PR 条报告当前分支的 PR：状态颜色、`+
 | Commands | 提示模板（`/` 命令） |
 | Subagents | 子 agent 身份，见下 |
 
-项目级条目只对已信任的项目生效。
+项目级条目只对已信任的项目生效。修改技能、提示模板、扩展或 MCP 后，在已有会话输入 `/reload` 即可重新加载，无需新建会话；对话历史、模型和权限模式保持不变，命令菜单与上下文弹窗同步刷新。运行中的任务、后台任务或 shell 命令须先结束；重载失败会保留输入，方便重试。
 
 ### 模型的 shell
 
