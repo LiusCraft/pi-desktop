@@ -355,6 +355,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   // A file that changed under the reader opens again, so its new lines are not hidden in a fold.
   const seenRevs = useRef<Map<string, string> | null>(null);
   useEffect(() => {
+    if (loading) return;
     const prev = seenRevs.current;
     seenRevs.current = new Map(files.map((f) => [f.path, f.rev]));
     if (!prev) return;
@@ -367,7 +368,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
         else n.delete(path);
       return n;
     });
-  }, [files]);
+  }, [files, loading]);
   const pickComparison = (next: DiffScope, ref?: string) => {
     commitRequest.current++;
     seenRevs.current = null;

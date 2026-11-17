@@ -57,7 +57,8 @@ Pi Desktop 的界面约定。改渲染进程、加页面或面板、加一类要
 - 未挂载的视图收不到通知：页面在导航时卸载，所以「离开再回来」仍是第二道防线，但**不能是唯一一道**。
 - `changed` 走普通 `HostEvent` 流，远端客户端自动受益；旧 host 不发时降级为「挂载时重读」。
 - 不要再造按功能命名的事件（`models_changed`、`work_folders`、带 payload 的 `tasks` 都已删除）。
-- 相关测试：`test/resources.test.ts`（总线）、`test/hub.e2e.test.ts`（`hub.sessionState()`、Work 项目记忆）、`test/work-project.test.ts`（写成功后才通知）。渲染进程的 store 逻辑可在 node 环境测（没有 DOM 测试环境，总线逻辑不要碰 DOM）。
+- 相关测试：`test/resources.test.ts`（总线）、`test/hub.e2e.test.ts`（`hub.sessionState()`、Work 项目记忆）、`test/work-project.test.ts`（写成功后才通知）。store 与总线逻辑继续在 Node 环境测，不依赖 DOM。
+- 渲染组件和 hook 测试在文件头加 `// @vitest-environment jsdom`，复用 `test/renderer-dom.ts` 的 bridge、浏览器 API 和清理。参见 `test/diff-since.test.tsx`、`test/diff-comparison-renderer.test.ts`、`test/diff-panel.test.tsx`：保留真实菜单、hook 和 store，只替换 host 调用及依赖布局/worker 的虚拟视图；这类测试计入 `npm run test:coverage`。
 
 ## 2. 文案
 
