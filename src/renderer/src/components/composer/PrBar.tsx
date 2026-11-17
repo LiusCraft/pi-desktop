@@ -1,4 +1,5 @@
 import {
+  ArrowLeftIcon,
   ArrowUpIcon,
   CheckIcon,
   ChevronDownIcon,
@@ -71,6 +72,7 @@ const BAR_TONE: Partial<Record<PrTone, string>> = {
   conflict: 'border-warning/30 bg-warning/5 hover:bg-warning/8',
   closed: 'border-destructive/30 bg-destructive/5 hover:bg-destructive/10',
 };
+const BAR_SURFACE = 'mb-2 flex min-w-0 items-center gap-2 rounded-lg surface-flat bg-chrome px-3 py-2 text-xs';
 const STATE_COLOR: Record<string, string> = {
   open: 'text-success',
   merged: 'text-[#8957e5]',
@@ -113,13 +115,13 @@ export function PrBar({ s }: { s: SessionView }) {
   const size = pr ? prSize(pr) : null;
   const diffChip =
     st && dirty > 0 && pending.length > 0 && !size ? (
-      <span className="flex shrink-0 items-center font-mono text-[11px] whitespace-nowrap">
+      <span className="flex shrink-0 items-center font-mono text-xs whitespace-nowrap">
         <Lines add={add} del={del} title={t('prbar.viewDiff')} onClick={openDiffPanel} />
       </span>
     ) : null;
   const hide = (
     <button
-      className="shrink-0 rounded p-0.5 text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+      className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       title={t('prbar.hide')}
       aria-label={t('prbar.hideBar')}
       onClick={() => updateSession(s.meta.id, (v) => void (v.prHidden = true))}
@@ -129,7 +131,7 @@ export function PrBar({ s }: { s: SessionView }) {
   );
   if (!pr) {
     return (
-      <div className="surface-outline mb-2 flex items-center gap-2 rounded-xl bg-card/30 px-3.5 py-2 text-xs transition-colors hover:bg-card/50">
+      <div data-slot="branch-bar" role="region" aria-label={t('prbar.status')} className={BAR_SURFACE}>
         <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" />
         <BranchPath branch={s.meta.branch} baseBranch={s.meta.baseBranch} />
         <span className="flex-1" />
@@ -145,10 +147,10 @@ export function PrBar({ s }: { s: SessionView }) {
   const Icon = pr.state === 'merged' ? GitMergeIcon : GitPullRequestIcon;
   return (
     <div
-      className={cn(
-        'surface-outline group/pr mb-2 flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs transition-colors',
-        BAR_TONE[badge.tone] ?? 'bg-card/30 hover:bg-card/50',
-      )}
+      data-slot="branch-bar"
+      role="region"
+      aria-label={t('prbar.status')}
+      className={cn(BAR_SURFACE, 'group/pr', BAR_TONE[badge.tone])}
     >
       <div className="flex min-w-0 items-center gap-1.5">
         <Tooltip>
@@ -231,17 +233,17 @@ function BranchPath({ branch, baseBranch }: { branch?: string | null; baseBranch
   const relation = !!baseBranch && !!branch && baseBranch !== branch;
   return (
     <span
-      className="min-w-0 truncate font-mono text-[11px] text-muted-foreground"
+      className="flex min-w-0 items-center gap-1.5 overflow-hidden font-mono text-xs text-foreground/80"
       title={relation ? `${baseBranch} < ${branch}` : (branch ?? '')}
     >
       {relation ? (
         <>
-          <span className="text-muted-foreground/70">{baseBranch}</span>
-          <span className="px-1 text-muted-foreground/50">&lt;</span>
-          <span>{branch}</span>
+          <span className="shrink-0 text-muted-foreground">{baseBranch}</span>
+          <ArrowLeftIcon className="size-3 shrink-0 text-muted-foreground" />
+          <span className="truncate">{branch}</span>
         </>
       ) : (
-        (branch ?? '')
+        <span className="truncate">{branch}</span>
       )}
     </span>
   );
@@ -296,10 +298,17 @@ function Lines({ add, del, title, onClick }: { add: number; del: number; title?:
       <span className="text-destructive">−{fmtLines(del)}</span>
     </>
   );
-  const base =
-    'flex shrink-0 items-center gap-1.5 rounded-md bg-muted/70 px-1.5 py-0.5 font-mono text-[11px] leading-4 tabular-nums';
+  const base = 'flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-1 font-mono text-xs leading-4 tabular-nums';
   return onClick ? (
-    <button className={cn(base, 'cursor-pointer transition-colors hover:bg-accent')} title={title} onClick={onClick}>
+    <button
+      className={cn(
+        base,
+        'cursor-pointer transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
+      )}
+      aria-label={title}
+      title={title}
+      onClick={onClick}
+    >
       {chip}
     </button>
   ) : (
@@ -437,16 +446,21 @@ function SplitButton({
   const { branch, baseBranch } = s.meta;
   const strategy = useApp((a) => a.prefs.syncStrategy);
   const showMenu = actions.length > 1 || current.act === 'sync';
+  const ActionIcon = ACTION_ICON[current.act];
   return (
     <div className="flex shrink-0">
       <Button
         size="xs"
-        variant="outline"
-        className={cn('h-7 px-2 text-xs', showMenu ? 'rounded-r-none' : 'rounded')}
+        variant="secondary"
+        className={cn(
+          'h-7 gap-1.5 border border-input bg-card px-2.5 text-xs shadow-surface hover:bg-accent',
+          showMenu ? 'rounded-r-none' : 'rounded-md',
+        )}
         disabled={s.running}
         title={current.hint}
         onClick={() => run(current.command, current.prompt)}
       >
+        <ActionIcon className="size-3.5" />
         {current.label}
       </Button>
       {showMenu && (
@@ -454,8 +468,8 @@ function SplitButton({
           <DropdownMenuTrigger asChild>
             <Button
               size="xs"
-              variant="outline"
-              className="h-7 rounded-l-none border-l-0 px-1 text-xs"
+              variant="secondary"
+              className="h-7 rounded-l-none border border-l-0 border-input bg-card px-1 text-xs shadow-surface hover:bg-accent"
               disabled={s.running}
               title={t('prbar.chooseSubmit')}
               aria-label={t('prbar.chooseSubmit')}

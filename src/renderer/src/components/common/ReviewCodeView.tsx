@@ -52,7 +52,7 @@ const REVEAL_AHEAD = 2;
 const CONTENT_WAIT_FRAMES = 600;
 /** The theme paints its own background; inside the shadow root the app's card colour has to be set on the host. */
 const HOST_CSS =
-  ':host { --diffs-light-bg: var(--card) !important; --diffs-dark-bg: var(--card) !important; --diffs-font-family: var(--font-mono); --diffs-font-size: 12.5px; } [data-diffs-header] { cursor: pointer; }';
+  ':host { --diffs-light-bg: var(--card) !important; --diffs-dark-bg: var(--card) !important; --diffs-font-family: var(--font-mono); --diffs-font-size: calc(12.5px * var(--font-scale)); } [data-diffs-header] { cursor: pointer; background: var(--chrome); border-bottom: 1px solid var(--divider); }';
 
 export type ReviewItem =
   | {
@@ -353,7 +353,7 @@ export const ReviewCodeView = forwardRef<ReviewHandle, ReviewProps>(function Rev
       theme: themes,
       themeType: theme,
       diffStyle: 'unified',
-      overflow: 'wrap',
+      overflow: 'scroll',
       hunkSeparators: 'line-info',
       lineDiffType: 'word-alt',
       stickyHeaders: true,

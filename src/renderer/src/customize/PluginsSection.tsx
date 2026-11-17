@@ -171,7 +171,7 @@ function DesktopRow({
   };
   const pages = plugin.contributions.pages.map((p) => p.title).join(' · ');
   return (
-    <div className="rounded-lg border bg-muted/20 px-3 py-2">
+    <div className="rounded-lg surface-flat bg-muted/20 px-3 py-2">
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
@@ -285,7 +285,7 @@ export function PluginsSection({ catalog, project, onCatalog }: Props) {
           </div>
         }
       />
-      <div className="mb-5 rounded-xl border bg-card p-4">
+      <div className="mb-5 rounded-xl surface-flat bg-card p-4">
         <div className="mb-2 text-sm font-medium">{t('plugins.install')}</div>
         <div className="flex flex-wrap items-center gap-2">
           <Input
@@ -326,8 +326,8 @@ export function PluginsSection({ catalog, project, onCatalog }: Props) {
       </div>
       {RECOMMENDED.filter((r) => !catalog.plugins.some((p) => p.source.replace(/@[^@/]*$/, '') === r.source)).map(
         (r) => (
-          <div key={r.source} className="mb-5 flex items-center gap-3 rounded-xl border bg-card px-4 py-3">
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
+          <div key={r.source} className="mb-5 flex items-center gap-3 rounded-xl surface-flat bg-card px-4 py-3">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted/40">
               <PackageIcon className="size-4 text-muted-foreground" />
             </span>
             <div className="min-w-0 flex-1">
@@ -370,7 +370,7 @@ export function PluginsSection({ catalog, project, onCatalog }: Props) {
                   className={`size-4 transition-transform ${open === `${p.scope}:${p.source}` ? 'rotate-90' : ''}`}
                 />
               </Button>
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted/40">
                 <PackageIcon className="size-4 text-muted-foreground" />
               </span>
               <div className="min-w-0 flex-1">

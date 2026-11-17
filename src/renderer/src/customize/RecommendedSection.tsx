@@ -103,7 +103,7 @@ export function RecommendedSection({ catalog, project, onCatalog }: Props) {
                 const done = installed(r);
                 return (
                   <div key={r.id} className="flex items-center gap-3 px-4 py-3">
-                    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted/40">
                       <Icon className="size-4 text-muted-foreground" />
                     </span>
                     <div className="min-w-0 flex-1">

@@ -219,7 +219,7 @@ export function RequestList() {
   return (
     <section>
       <h3 className="mb-2 px-1 text-sm font-semibold">{t('privacy.group.requests')}</h3>
-      <div className="overflow-hidden rounded-xl border bg-card">
+      <div className="overflow-hidden rounded-xl surface-flat bg-card">
         <div className={cn('grid gap-x-2 border-b px-4 py-2 text-xs text-muted-foreground', COLUMNS)}>
           {COLUMN_LABELS.map((key, i) => (
             <span key={key} className={cn('truncate', NUMERIC.has(i) && 'text-right')}>

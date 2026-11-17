@@ -265,7 +265,7 @@ export function CodeComposer() {
       {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         className={cn(
-          'surface-outline relative rounded-xl bg-card px-3.5 py-2 transition-shadow',
+          'relative rounded-xl surface-flat bg-card px-3.5 py-2 transition-colors focus-within:border-ring',
           drag && 'ring-2 ring-primary/50',
         )}
         onClick={(e) => !(e.target as HTMLElement).closest('button') && input.current?.focus()}
@@ -344,7 +344,7 @@ export function WorkComposer() {
       {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
         className={cn(
-          'surface-outline relative rounded-2xl bg-card p-3 transition-shadow',
+          'relative rounded-2xl surface-flat bg-card p-3 transition-colors focus-within:border-ring',
           drag && 'ring-2 ring-primary/50',
         )}
         onClick={(e) => !(e.target as HTMLElement).closest('button') && input.current?.focus()}

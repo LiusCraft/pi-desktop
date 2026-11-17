@@ -126,7 +126,7 @@ function Cards({ total }: { total: UsageTotals }) {
   const hit = cacheHitRate(total);
   const speed = speedOf(total);
   return (
-    <div className="grid divide-x rounded-xl border bg-card max-sm:grid-cols-2 max-sm:divide-y sm:grid-cols-5">
+    <div className="grid rounded-xl surface-flat bg-card max-sm:grid-cols-2 sm:grid-cols-5">
       <Card
         title={t('privacy.card.token')}
         sub={t('privacy.card.tokenSub', {
@@ -385,13 +385,13 @@ export function UsagePanel({ days }: { days: UsageRange }) {
     <div className="space-y-4">
       {summary &&
         (summary.total.requests === 0 ? (
-          <p className="rounded-xl border bg-card px-4 py-6 text-center text-sm text-muted-foreground">
+          <p className="rounded-xl surface-flat bg-card px-4 py-6 text-center text-sm text-muted-foreground">
             {t('privacy.empty')}
           </p>
         ) : (
           <div className="flex flex-col gap-3">
             <Cards total={summary.total} />
-            <div className="rounded-xl border bg-card p-4">
+            <div className="rounded-xl surface-flat bg-card p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <Segmented compact value={metric} options={metrics} onChange={setMetric} />

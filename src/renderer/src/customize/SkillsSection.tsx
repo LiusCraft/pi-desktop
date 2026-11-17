@@ -51,7 +51,7 @@ function SkillRow({
   return (
     <div className="flex items-center gap-3 px-4 py-3">
       <button className="flex min-w-0 flex-1 items-start gap-3 text-left" onClick={onOpen}>
-        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
+        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted/40">
           <SparklesIcon className="size-4 text-muted-foreground" />
         </span>
         <span className="min-w-0 flex-1">
@@ -121,7 +121,7 @@ function SkillDetail({ skill, onBack }: { skill: SkillInfo; onBack: () => void }
       <div className="mb-3 truncate font-mono text-xs text-muted-foreground" title={skill.file}>
         {skill.file}
       </div>
-      <div className="rounded-xl border bg-card p-5">
+      <div className="rounded-xl surface-flat bg-card p-5">
         {text === null ? (
           <span className="text-sm text-muted-foreground">{t('customize.loading')}</span>
         ) : (
@@ -153,7 +153,7 @@ function SkillForm({ project, onDone, onCatalog }: Omit<Props, 'catalog'> & { on
     <>
       <BackButton onClick={onDone}>{t('skills.back')}</BackButton>
       <Heading title={t('skills.new')} sub={t('skills.new.sub')} tip={t('skills.new.tip')} />
-      <div className="space-y-4 rounded-xl border bg-card p-4">
+      <div className="space-y-4 rounded-xl surface-flat bg-card p-4">
         <Field
           label={t('skills.saveTo')}
           hint={
@@ -310,7 +310,7 @@ export function SkillsSection({ catalog, project, onCatalog }: Props) {
         }
       />
       {catalog.claudeSkills && (
-        <div className="mb-6 flex items-center gap-3 rounded-xl border bg-muted/30 px-4 py-3">
+        <div className="mb-6 flex items-center gap-3 rounded-xl surface-flat bg-muted/30 px-4 py-3">
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium">{t('skills.claudeFound', { n: catalog.claudeSkills.count })}</div>
             <div className="mt-0.5 truncate text-xs text-muted-foreground" title={catalog.claudeSkills.dir}>
@@ -345,7 +345,7 @@ export function SkillsSection({ catalog, project, onCatalog }: Props) {
                       key={origin}
                       open={expanded.has(origin)}
                       onOpenChange={() => toggleGroup(origin)}
-                      className="group/pkg rounded-xl border bg-card"
+                      className="group/pkg rounded-xl surface-flat bg-card"
                     >
                       <CollapsibleTrigger className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm">
                         <ChevronRightIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]/pkg:rotate-90" />

@@ -80,7 +80,7 @@ function ChangedFiles({ s }: { s: SessionView }) {
   };
   if (!files.length) return null;
   return (
-    <section className="rounded-xl border bg-card/60 px-3.5 py-2.5">
+    <section className="rounded-xl surface-flat bg-card/60 px-3.5 py-2.5">
       <div className="mb-2 flex items-center gap-2 text-sm font-medium">
         <FilePenIcon className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">{t('thread.filesChanged', { n: files.length })}</span>
@@ -191,7 +191,7 @@ function SetupCard({ steps }: { steps: SetupStep[] }) {
   const t = useT();
   const failed = steps.some((x) => x.state === 'error');
   return (
-    <div className="rounded-xl border bg-card px-4 py-3 text-sm">
+    <div className="rounded-xl surface-flat bg-card px-4 py-3 text-sm">
       <div className="mb-2 flex items-center gap-2 font-medium">
         {failed ? <CircleAlertIcon className="size-4 text-destructive" /> : <span className="spark spin" />}
         {t(failed ? 'transcript.setupFailed' : 'transcript.setupRunning')}

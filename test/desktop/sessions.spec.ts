@@ -3,7 +3,15 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import {
+  _electron as electron,
+  expect,
+  test,
+  type ElectronApplication,
+  type Locator,
+  type Page,
+} from '@playwright/test';
+import { PALETTES } from '../../src/shared/protocol';
 
 let app: ElectronApplication;
 let page: Page;
@@ -62,6 +70,286 @@ async function startSession(text: string) {
   // The conversation opens at once: the message is there before the agent has even started.
   await expect(page.getByText(text).first()).toBeVisible();
 }
+
+test('workspace boundaries stay clear without elevation in populated layouts', async ({}, testInfo) => {
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1800, 1100));
+  await startSession('添加深色模式');
+  await expect(page.getByRole('button', { name: 'Rewind to here', exact: true })).toBeEnabled({ timeout: 60_000 });
+  await page.getByRole('button', { name: 'Files', exact: true }).click();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+d' : 'Control+d');
+
+  const panels = page.locator('[data-slot="workspace-panel"]');
+  const files = panels.filter({ has: page.locator('header').getByText('Files', { exact: true }) });
+  const diff = panels.filter({ has: page.locator('header').getByText('Changes', { exact: true }) });
+  await expect(panels).toHaveCount(2);
+  await files.locator('[data-item-path="src/"]').click();
+  await files.locator('[data-item-path="src/App.jsx"]').dblclick();
+  await files.locator('[data-item-path="src/styles.css"]').click();
+  await expect(files.getByRole('tab')).toHaveCount(2);
+  await expect(diff.locator('[data-line-type="change-addition"]').first()).toBeVisible();
+  await expect(diff.locator('[data-overflow="scroll"]').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Terminal', exact: true }).click();
+  const terminal = panels.filter({ has: page.locator('header').getByText('Terminal', { exact: true }) });
+  await expect(terminal.locator('.xterm-screen')).toBeVisible();
+  await expect(panels).toHaveCount(3);
+  const branch = page.getByRole('region', { name: 'Branch status' });
+  await expect(branch).toBeVisible();
+  await expect(branch.getByRole('button', { name: 'Commit', exact: true })).toBeVisible();
+
+  const expectFlatSurfaces = async (view: Page) => {
+    const surfaces = view.locator('.surface-flat');
+    expect(await surfaces.count()).toBeGreaterThan(0);
+    for (const surface of await surfaces.all()) {
+      for (const side of ['top', 'right', 'bottom', 'left']) {
+        // Chromium snaps 1px edges to fractional CSS pixels at some display scales.
+        expect(
+          await surface.evaluate(
+            (element, edge) => parseFloat(getComputedStyle(element).getPropertyValue(`border-${edge}-width`)),
+            side,
+          ),
+        ).toBeGreaterThan(0);
+      }
+      expect(
+        await surface.evaluate((element) => getComputedStyle(element).getPropertyValue('--tw-shadow').trim()),
+      ).toBe('0 0 #0000');
+    }
+  };
+
+  for (const palette of PALETTES) {
+    for (const theme of ['light', 'dark'] as const) {
+      await test.step(`${palette} / ${theme}`, async () => {
+        await page.evaluate((patch) => window.piDesktop.invoke('settings:set', patch), { palette, theme });
+        await expect(page.locator('html')).toHaveAttribute('data-palette', palette);
+        await expect(page.locator('html')).toHaveClass(theme === 'dark' ? /dark/ : /^(?!.*dark)/);
+        await expectFlatSurfaces(page);
+        for (const panel of await panels.all()) {
+          const heading = panel.locator(':scope > header');
+          expect(
+            await heading.evaluate((element) => parseFloat(getComputedStyle(element).borderBottomWidth)),
+          ).toBeGreaterThan(0);
+          expect(await heading.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(
+            await panel.evaluate((element) => getComputedStyle(element).backgroundColor),
+          );
+          // Opaque surfaces stay legible when expanded over the conversation.
+          expect(await panel.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toMatch(/rgba/);
+        }
+        for (const tab of await files.getByRole('tab').all()) {
+          await expect(tab).toHaveCSS('border-right-width', '0px');
+        }
+        const active = files.getByRole('tab', { selected: true });
+        const inactive = files.getByRole('tab', { selected: false });
+        expect(await active.evaluate((element) => getComputedStyle(element).borderBottomColor)).not.toBe(
+          await inactive.evaluate((element) => getComputedStyle(element).borderBottomColor),
+        );
+        const tree = files.getByRole('navigation', { name: 'Project files' });
+        const treeSearch = tree.locator('[data-file-tree-search-input]');
+        const searchBox = await treeSearch.boundingBox();
+        const treeBox = await tree.boundingBox();
+        expect(searchBox!.x).toBeGreaterThanOrEqual(treeBox!.x);
+        expect(searchBox!.x + searchBox!.width).toBeLessThanOrEqual(treeBox!.x + treeBox!.width);
+        await page.screenshot({ path: testInfo.outputPath(`${palette}-${theme}.png`) });
+        await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 1000));
+        const heading = files.locator(':scope > header');
+        await expect(heading.getByText('Files', { exact: true })).toBeVisible();
+        const headingBox = await heading.boundingBox();
+        const closeBox = await heading.getByRole('button', { name: 'Close', exact: true }).boundingBox();
+        expect(closeBox!.x + closeBox!.width).toBeLessThanOrEqual(headingBox!.x + headingBox!.width);
+        await page.screenshot({ path: testInfo.outputPath(`${palette}-${theme}-narrow.png`) });
+        await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1800, 1100));
+        await files.getByRole('button', { name: /^Expand \(/ }).click();
+        await expect(panels).toHaveCount(1);
+        await expectFlatSurfaces(page);
+        await files.getByRole('button', { name: 'Restore', exact: true }).click();
+        await expect(panels).toHaveCount(3);
+        await files.getByRole('button', { name: /^Expand \(/ }).click({
+          modifiers: [process.platform === 'darwin' ? 'Meta' : 'Control'],
+        });
+        await expect(panels).toHaveCount(1);
+        await expectFlatSurfaces(page);
+        await files.getByRole('button', { name: 'Restore', exact: true }).click();
+        await expect(panels).toHaveCount(3);
+      });
+    }
+  }
+
+  // Flattening the composer must not remove its file-drag ring.
+  const input = page.locator('textarea[data-composer-input]');
+  const composer = page.locator('.surface-flat').filter({ has: input });
+  const beforeDrag = await composer.evaluate((element) => getComputedStyle(element).boxShadow);
+  await input.evaluate((element) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File(['context'], 'context.txt', { type: 'text/plain' }));
+    element.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer }));
+  });
+  await expect(composer).toHaveClass(/ring-2/);
+  await expect(composer).not.toHaveCSS('box-shadow', beforeDrag);
+  await input.dispatchEvent('dragleave');
+  await expect(composer).not.toHaveClass(/ring-2/);
+
+  // Search controls keep their own borders and keyboard focus; they are not content surfaces.
+  await files.getByRole('button', { name: /Find in files/ }).click();
+  const search = files.getByRole('search');
+  const field = search.getByRole('textbox');
+  expect(await search.evaluate((element) => parseFloat(getComputedStyle(element).borderBottomWidth))).toBeGreaterThan(
+    0,
+  );
+  await expect(field).toBeFocused();
+  // Chromium can snap a 1px border to a fractional CSS pixel at the host's display scale.
+  expect(await field.evaluate((element) => parseFloat(getComputedStyle(element).borderTopWidth))).toBeGreaterThan(0);
+  await search.getByRole('button', { name: 'Close search' }).click();
+  await files.getByRole('button', { name: 'Panel options' }).click();
+  await page.getByRole('menuitem', { name: 'Flat list', exact: true }).click();
+  await diff.getByRole('button', { name: 'Panel options' }).click();
+  await page.getByRole('menuitem', { name: 'Collapse all', exact: true }).click();
+  await expect(diff.locator('[data-line-type="change-addition"]')).toHaveCount(0);
+  await diff.getByRole('button', { name: 'Panel options' }).click();
+  await page.getByRole('menuitem', { name: 'Expand all', exact: true }).click();
+  await expect(diff.locator('[data-line-type="change-addition"]').first()).toBeVisible();
+
+  const settingsWindow = app.waitForEvent('window');
+  await page.evaluate(() => window.piDesktop.invoke('settings:open', 'appearance'));
+  const settings = await settingsWindow;
+  await expect(settings.locator('.surface-flat').first()).toBeVisible();
+  await expectFlatSurfaces(settings);
+  await settings.close();
+});
+
+test('panel actions overflow one at a time and return when the panel grows', async ({}, testInfo) => {
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(2200, 1100));
+  await startSession('添加深色模式');
+  await expect(page.getByRole('button', { name: 'Rewind to here', exact: true })).toBeEnabled({ timeout: 60_000 });
+  await page.getByRole('button', { name: 'Files', exact: true }).click();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+d' : 'Control+d');
+  await page.getByRole('button', { name: 'Terminal', exact: true }).click();
+  const panels = page.locator('[data-slot="workspace-panel"]');
+  const diff = panels.filter({ has: page.locator('header').getByText(/^(Changes|变更)$/) });
+  const files = panels.filter({ has: page.locator('header').getByText(/^(Files|文件)$/) });
+  const terminal = panels.filter({ has: page.locator('header').getByText(/^(Terminal|终端)$/) });
+  const columns = page
+    .locator('[data-slot="resizable-panel-group"]')
+    .filter({ has: diff })
+    .filter({ has: files })
+    .last();
+  const divider = columns.locator(':scope > [data-slot="resizable-handle"]');
+  const toolbar = diff.locator('[data-slot="panel-toolbar"]');
+  const visibleActions = () =>
+    toolbar
+      .locator('[data-panel-action]:visible')
+      .evaluateAll((elements) => elements.map((element) => element.getAttribute('data-panel-action')!));
+  const resize = async (width: number) => {
+    const panelBox = await diff.boundingBox();
+    const grip = await divider.boundingBox();
+    await page.mouse.move(grip!.x + grip!.width / 2, grip!.y + grip!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(grip!.x + grip!.width / 2 + width - panelBox!.width, grip!.y + grip!.height / 2, {
+      steps: 2,
+    });
+    await page.mouse.up();
+    await expect.poll(async () => Math.abs((await diff.boundingBox())!.width - width)).toBeLessThan(2);
+  };
+  const expectHeadingFits = async (panel: Locator) => {
+    const heading = panel.locator(':scope > header');
+    const bounds = await heading.boundingBox();
+    const title = heading.locator('[data-slot="panel-title"]');
+    await expect(title).toHaveCSS('white-space', 'nowrap');
+    for (const button of await heading.getByRole('button').all()) {
+      const box = await button.boundingBox();
+      expect(box!.x).toBeGreaterThanOrEqual(bounds!.x);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width);
+      expect(box!.y + box!.height).toBeLessThanOrEqual(bounds!.y + bounds!.height);
+    }
+  };
+
+  await resize(420);
+  const all = await visibleActions();
+  expect(all).toEqual(['tree', 'find', 'open-in', 'expand', 'close']);
+  let previous = all;
+  const transitions: string[] = [];
+  for (let width = 410; width >= 220; width -= 10) {
+    await resize(width);
+    const visible = await visibleActions();
+    const removed = previous.filter((id) => !visible.includes(id));
+    expect(removed.length).toBeLessThanOrEqual(1);
+    expect(visible.every((id) => previous.includes(id))).toBe(true);
+    transitions.push(...removed);
+    previous = visible;
+    await expectHeadingFits(diff);
+  }
+  expect(transitions.length).toBeGreaterThanOrEqual(2);
+  expect(transitions.slice(0, 2)).toEqual(['open-in', 'find']);
+  await toolbar.getByRole('button', { name: 'Panel options' }).click();
+  await page.getByRole('menuitem', { name: 'Open in…', exact: true }).hover();
+  await expect(page.getByRole('menuitem', { name: 'Terminal', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await toolbar.getByRole('button', { name: 'Panel options' }).click();
+  // Open the overflowed search with the keyboard, not a second handler specific to the menu.
+  const findItem = page.getByRole('menuitem', { name: /Find in the diff/ });
+  await findItem.focus();
+  await page.keyboard.press('Enter');
+  await expect(diff.getByRole('search').getByRole('textbox')).toBeFocused();
+  await diff.getByRole('button', { name: 'Close search' }).click();
+  await resize(420);
+  await expect.poll(visibleActions).toEqual(all);
+  await toolbar.getByRole('button', { name: /Find in the diff/ }).click();
+  await expect(diff.getByRole('search').getByRole('textbox')).toBeFocused();
+  await diff.getByRole('button', { name: 'Close search' }).click();
+
+  // A larger Chinese title and comfortable controls must remeasure without a reload.
+  await page.evaluate(() =>
+    window.piDesktop.invoke('settings:set', {
+      language: 'zh',
+      density: 'comfortable',
+      fontSize: 24,
+    }),
+  );
+  await expect(files.locator('header').getByText('文件', { exact: true })).toBeVisible();
+  for (const width of [220, 260, 320, 420]) {
+    await resize(width);
+    await expectHeadingFits(diff);
+    await expectHeadingFits(files);
+    await expectHeadingFits(terminal);
+  }
+  await resize(220);
+  await page.screenshot({ path: testInfo.outputPath('chinese-large-text-narrow.png') });
+  await toolbar.getByRole('button', { name: '面板选项' }).click();
+  const toggle = page.getByRole('menuitemcheckbox', { name: '隐藏改动文件', exact: true });
+  await expect(toggle).toBeChecked();
+  await toggle.click();
+  await expect(diff.getByRole('navigation', { name: '改动文件' })).toHaveCount(0);
+  await toolbar.getByRole('button', { name: '面板选项' }).click();
+  await expect(page.getByRole('menuitemcheckbox', { name: '显示改动文件', exact: true })).not.toBeChecked();
+  await page.getByRole('menuitem', { name: /^展开（/ }).click();
+  await expect(panels).toHaveCount(1);
+  await diff.getByRole('button', { name: '还原', exact: true }).click();
+  await expect(panels).toHaveCount(3);
+  // Terminal actions use the same layout rule and keep their handlers in the overflow menu.
+  await page.evaluate(() => window.piDesktop.invoke('settings:set', { language: 'en' }));
+  const space = (await diff.boundingBox())!.width + (await terminal.boundingBox())!.width;
+  await resize(space - 220);
+  await terminal.locator('header').getByRole('button', { name: 'Panel options' }).click();
+  await page.getByRole('menuitem', { name: 'New terminal', exact: true }).click();
+  await expect(terminal.getByRole('tab')).toHaveCount(2);
+
+  // Ctrl/Cmd+click still expands across the entire session after restoring the width.
+  await page.evaluate(() =>
+    window.piDesktop.invoke('settings:set', { language: 'en', fontSize: 14, density: 'compact' }),
+  );
+  await resize(420);
+  await toolbar.getByRole('button', { name: /^Expand \(/ }).click({
+    modifiers: [process.platform === 'darwin' ? 'Meta' : 'Control'],
+  });
+  await expect(panels).toHaveCount(1);
+  await diff.getByRole('button', { name: 'Restore', exact: true }).click();
+  await expect(panels).toHaveCount(3);
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  const preview = panels.filter({ has: page.getByRole('textbox', { name: 'Preview URL' }) });
+  await resize(220);
+  await preview.getByRole('button', { name: 'Panel options' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Back', exact: true })).toBeDisabled();
+  await expect(page.getByRole('menuitem', { name: 'Forward', exact: true })).toBeDisabled();
+  await expect(page.getByRole('menuitem', { name: 'Reload', exact: true })).toBeEnabled();
+  await page.keyboard.press('Escape');
+});
 
 test('a new session opens straight away, before its agent and worktree are ready', async () => {
   const input = page.getByPlaceholder('Describe a task or ask a question');

@@ -191,7 +191,7 @@ export const QuestionsItem = memo(function QuestionsItem({ sid, item }: { sid: s
   if (item.resolved) {
     const done = item.resolved !== 'cancelled' && item.answers;
     return (
-      <div className="rounded-xl border bg-card/60 px-3.5 py-2.5">
+      <div className="rounded-xl surface-flat bg-card/60 px-3.5 py-2.5">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           {done ? <CheckIcon className="size-3.5 text-success" /> : <XIcon className="size-3.5 text-destructive" />}
           <span>{t(done ? 'q.answered' : 'q.dismissed')}</span>
@@ -242,7 +242,7 @@ export const QuestionsItem = memo(function QuestionsItem({ sid, item }: { sid: s
   const answered = answers.filter(isAnswered).length;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-primary/40 bg-card shadow-sm">
+    <div className="overflow-hidden rounded-xl border border-primary/40 bg-card shadow-surface">
       <Tabs value={tab} onValueChange={setTab} className="gap-0">
         <div
           className={cn(

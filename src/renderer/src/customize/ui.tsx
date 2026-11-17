@@ -30,7 +30,7 @@ export const Heading = ({
 );
 
 export const Panel = ({ children, className }: { children: ReactNode; className?: string }) => (
-  <div className={cn('divide-y rounded-xl border bg-card', className)}>{children}</div>
+  <div className={cn('rounded-xl surface-flat bg-card', className)}>{children}</div>
 );
 
 export const Field = ({

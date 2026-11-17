@@ -38,7 +38,7 @@ export function RecentArtifacts() {
       </div>
       <div className="grid gap-2 sm:grid-cols-3">
         {recent.map((a) => (
-          <div key={a.id} className="overflow-hidden rounded-xl border bg-card">
+          <div key={a.id} className="overflow-hidden rounded-xl surface-flat bg-card">
             <Thumbnail a={a} />
             <div className="px-3 py-2">
               <div className="truncate text-sm font-medium" title={a.title}>

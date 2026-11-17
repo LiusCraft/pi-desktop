@@ -87,7 +87,7 @@ export function AgentsSection() {
           sub={t('agents.form.sub')}
           tip={t('agents.form.tip')}
         />
-        <div className="space-y-4 rounded-xl border bg-card p-4">
+        <div className="space-y-4 rounded-xl surface-flat bg-card p-4">
           <Field label={t('skills.name')} hint={t('agents.name.hint')}>
             <Input
               value={form.name}
@@ -178,7 +178,7 @@ export function AgentsSection() {
       <Panel>
         {catalog?.agents.map((a) => (
           <div key={a.name} className="flex items-start gap-3 px-4 py-3">
-            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
+            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted/40">
               <BotIcon className="size-4 text-muted-foreground" />
             </span>
             <div className="min-w-0 flex-1">

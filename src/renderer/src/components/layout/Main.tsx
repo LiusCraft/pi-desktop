@@ -72,6 +72,7 @@ import { useSide } from '@/store/side';
 function HeaderButton({ on, children, className, title, ...props }: React.ComponentProps<'button'> & { on?: boolean }) {
   const button = (
     <button
+      aria-label={title}
       {...props}
       className={cn(
         'flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground',
@@ -426,7 +427,7 @@ function WorkIdeas() {
           <button
             key={idea.label}
             onClick={() => drafts.setText(welcomeDraftKey(), idea.prompt)}
-            className="rounded-xl border bg-card px-3.5 py-3 text-left text-sm hover:bg-accent"
+            className="rounded-xl surface-flat bg-card px-3.5 py-3 text-left text-sm hover:bg-accent"
           >
             {idea.label}
           </button>

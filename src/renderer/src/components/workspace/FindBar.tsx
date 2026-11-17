@@ -44,7 +44,7 @@ export function FindBar({
   const small =
     'flex h-7 shrink-0 items-center justify-center rounded-md px-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40';
   return (
-    <div role="search" className="flex shrink-0 items-center gap-1 border-b px-2 py-1">
+    <div role="search" className="flex shrink-0 items-center gap-1 border-b border-divider bg-chrome px-2 py-1.5">
       <Input
         ref={inputRef}
         value={value}

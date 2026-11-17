@@ -111,6 +111,7 @@ export const git = defineMessages({
   'prbar.notPushed': { en: 'not pushed', zh: '未推送' },
   'prbar.synced': { en: 'synced', zh: '已同步' },
   'prbar.hide': { en: 'Hide', zh: '隐藏' },
+  'prbar.status': { en: 'Branch status', zh: '分支状态' },
   'prbar.hideBar': { en: 'Hide the branch bar', zh: '隐藏分支栏' },
   'prbar.viewComments': { en: 'View review comments in the diff', zh: '在 Diff 中查看评审意见' },
   'prbar.fixConflictsTip': {

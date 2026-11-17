@@ -56,7 +56,7 @@ function Card({
   className?: string;
 }) {
   return (
-    <section className={cn('rounded-xl border bg-card p-4', className)}>
+    <section className={cn('rounded-xl surface-flat bg-card p-4', className)}>
       {title && (
         <div className="mb-3 flex items-center gap-2">
           <h3 className="text-sm font-medium">{title}</h3>
@@ -83,7 +83,7 @@ function Stat({
   tone?: 'up';
 }) {
   return (
-    <div className="rounded-xl border bg-card px-4 py-3.5">
+    <div className="rounded-xl surface-flat bg-card px-4 py-3.5">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="mt-1 flex items-baseline gap-1">
         <span className="font-serif text-3xl leading-none tabular-nums">{value}</span>

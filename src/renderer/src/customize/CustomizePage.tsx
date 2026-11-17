@@ -91,7 +91,7 @@ function PromptForm({
         sub={t('prompts.new.sub')}
         tip={t('prompts.new.tip')}
       />
-      <div className="space-y-4 rounded-xl border bg-card p-4">
+      <div className="space-y-4 rounded-xl surface-flat bg-card p-4">
         {!initial && (
           <Field
             label={t('skills.saveTo')}
@@ -194,7 +194,7 @@ function PromptsSection({
             className="flex w-full items-start gap-3 px-4 py-3 text-left enabled:hover:bg-accent/40"
             onClick={() => setForm(p)}
           >
-            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
+            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted/40">
               <ScrollTextIcon className="size-4 text-muted-foreground" />
             </span>
             <div className="min-w-0 flex-1">

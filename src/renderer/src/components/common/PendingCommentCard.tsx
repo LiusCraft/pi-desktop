@@ -9,7 +9,7 @@ import { drafts } from '@/store/drafts';
 export function PendingCommentCard({ sid, reference }: { sid: string; reference: ContextReference }) {
   const t = useT();
   return (
-    <div className="mx-3 my-1.5 overflow-hidden rounded-lg border border-info/40 bg-card font-sans text-xs shadow-sm">
+    <div className="mx-3 my-1.5 overflow-hidden rounded-lg border border-info/40 bg-card font-sans text-xs shadow-surface">
       <div className="flex items-center gap-1.5 border-b bg-muted/40 py-0.5 pr-1 pl-2.5 text-muted-foreground">
         <MessageSquareIcon className="size-3 shrink-0" />
         <span className="min-w-0 flex-1 truncate">{t('ctx.comment')}</span>
