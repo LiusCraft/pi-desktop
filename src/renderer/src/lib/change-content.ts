@@ -10,12 +10,17 @@ const queue: (() => void)[] = [];
 let running = 0;
 const listeners = new Set<() => void>();
 
-const keyOf = (sid: string, hash: string | null, file: FileChange) =>
-  `${sid}\u0000${hash ?? ''}\u0000${file.path}\u0000${file.rev}`;
+const keyOf = (sid: string, hash: string | null, file: FileChange, base?: string | null) =>
+  `${sid}\u0000${hash ?? ''}\u0000${base ?? ''}\u0000${file.path}\u0000${file.rev}`;
 
 /** The contents if they are in already. */
-export function contentOf(sid: string, hash: string | null, file: FileChange): FileContent | undefined {
-  return done.get(keyOf(sid, hash, file));
+export function contentOf(
+  sid: string,
+  hash: string | null,
+  file: FileChange,
+  base?: string | null,
+): FileContent | undefined {
+  return done.get(keyOf(sid, hash, file, base));
 }
 
 /** Be told whenever a file's contents arrive. */
@@ -32,12 +37,12 @@ function pump() {
 }
 
 /** Ask for a file's contents (a few requests at a time, in the order asked); a no-op when they are held or on their way. */
-export function wantContent(sid: string, hash: string | null, file: FileChange) {
-  const key = keyOf(sid, hash, file);
+export function wantContent(sid: string, hash: string | null, file: FileChange, base?: string | null) {
+  const key = keyOf(sid, hash, file, base);
   if (done.has(key) || pending.has(key)) return;
   const job = new Promise<void>((resolve) => {
     queue.push(() => {
-      call('sessions:changeContent', sid, file.path, hash)
+      call('sessions:changeContent', sid, file.path, hash, base)
         .catch((): FileContent => ({ before: null, after: null, binary: true }))
         .then((content) => {
           if (done.size >= CACHE_LIMIT) {

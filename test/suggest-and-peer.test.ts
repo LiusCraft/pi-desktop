@@ -29,25 +29,32 @@ describe('suggested tasks in the transcript', () => {
     { title: 'Fix typo', prompt: 'README says teh' },
   ];
 
-  it('shows one card per suggestion call, from the call’s arguments', () => {
+  it('shows a card only after success, using the host’s normalized tasks', () => {
     const s = emptySession(meta);
+    const returnedTasks = tasks.map((task) => ({ ...task, codeFolder: '/p' }));
     applyPiEvent(
       s,
-      { type: 'tool_execution_start', toolCallId: 'c1', toolName: 'pidesk_suggest_task', args: { tasks } },
+      {
+        type: 'tool_execution_start',
+        toolCallId: 'c1',
+        toolName: 'pidesk_suggest_task',
+        args: { tasks: tasks.map((task) => ({ ...task, code_folder: '/p' })) },
+      },
       'normal',
     );
+    expect(s.items).toEqual([]);
     applyPiEvent(
       s,
       {
         type: 'tool_execution_end',
         toolCallId: 'c1',
         toolName: 'pidesk_suggest_task',
-        result: { content: [{ type: 'text', text: 'ok' }], details: { tasks } },
+        result: { content: [{ type: 'text', text: 'ok' }], details: { tasks: returnedTasks } },
       },
       'normal',
     );
     expect(s.items.filter((i) => i.kind === 'suggest')).toEqual([
-      { kind: 'suggest', key: expect.any(String), toolCallId: 'c1', tasks },
+      { kind: 'suggest', key: expect.any(String), toolCallId: 'c1', tasks: returnedTasks },
     ]);
     expect(
       s.items.some((i) => i.kind === 'group'),
@@ -55,26 +62,90 @@ describe('suggested tasks in the transcript', () => {
     ).toBe(false);
   });
 
-  it('ignores malformed suggestions instead of drawing an empty card', () => {
+  it.each([undefined, {}, { tasks: [] }, { tasks: {} }, { tasks: [null, { title: 'no prompt' }] }])(
+    'ignores missing or malformed result tasks: %j',
+    (details) => {
+      const s = emptySession(meta);
+      applyPiEvent(
+        s,
+        { type: 'tool_execution_start', toolCallId: 'c2', toolName: 'pidesk_suggest_task', args: { tasks } },
+        'normal',
+      );
+      applyPiEvent(
+        s,
+        {
+          type: 'tool_execution_end',
+          toolCallId: 'c2',
+          toolName: 'pidesk_suggest_task',
+          result: { content: [], details },
+        },
+        'normal',
+      );
+      expect(s.items).toEqual([]);
+    },
+  );
+
+  it.each([undefined, { tasks }])('hides a failed call and shows only its successful retry: %j', (details) => {
     const s = emptySession(meta);
     applyPiEvent(
       s,
       {
         type: 'tool_execution_start',
-        toolCallId: 'c2',
+        toolCallId: 'failed',
         toolName: 'pidesk_suggest_task',
-        args: { tasks: [{ title: 'no prompt' }] },
+        args: { tasks: tasks.map((task) => ({ ...task, code_folder: '/unlinked' })) },
+      },
+      'normal',
+    );
+    applyPiEvent(
+      s,
+      {
+        type: 'tool_execution_end',
+        toolCallId: 'failed',
+        toolName: 'pidesk_suggest_task',
+        result: {
+          content: [{ type: 'text', text: 'This project has no Code folders; leave code_folder out.' }],
+          details,
+        },
+        isError: true,
       },
       'normal',
     );
     expect(s.items).toEqual([]);
+    applyPiEvent(
+      s,
+      { type: 'tool_execution_start', toolCallId: 'retry', toolName: 'pidesk_suggest_task', args: { tasks } },
+      'normal',
+    );
+    applyPiEvent(
+      s,
+      {
+        type: 'tool_execution_end',
+        toolCallId: 'retry',
+        toolName: 'pidesk_suggest_task',
+        result: { content: [{ type: 'text', text: 'ok' }], details: { tasks } },
+      },
+      'normal',
+    );
+    expect(s.items).toEqual([{ kind: 'suggest', key: expect.any(String), toolCallId: 'retry', tasks }]);
   });
 
-  it('comes back when the session is reopened', () => {
+  it('restores only successful suggestions when the session is reopened', () => {
     const s = emptySession(meta);
     replay(
       s,
       [
+        {
+          role: 'assistant',
+          content: [{ type: 'toolCall', id: 'failed', name: 'pidesk_suggest_task', arguments: { tasks } }],
+        },
+        {
+          role: 'toolResult',
+          toolCallId: 'failed',
+          toolName: 'pidesk_suggest_task',
+          content: [{ type: 'text', text: 'Invalid code_folder' }],
+          isError: true,
+        },
         {
           role: 'assistant',
           content: [{ type: 'toolCall', id: 'c3', name: 'pidesk_suggest_task', arguments: { tasks } }],
@@ -89,7 +160,24 @@ describe('suggested tasks in the transcript', () => {
       ],
       'normal',
     );
-    expect(s.items.find((i) => i.kind === 'suggest')).toMatchObject({ toolCallId: 'c3', tasks });
+    expect(s.items.filter((i) => i.kind === 'suggest')).toEqual([
+      { kind: 'suggest', key: expect.any(String), toolCallId: 'c3', tasks },
+    ]);
+  });
+
+  it('does not restore a suggestion whose call never finished', () => {
+    const s = emptySession(meta);
+    replay(
+      s,
+      [
+        {
+          role: 'assistant',
+          content: [{ type: 'toolCall', id: 'interrupted', name: 'pidesk_suggest_task', arguments: { tasks } }],
+        },
+      ],
+      'normal',
+    );
+    expect(s.items.some((i) => i.kind === 'suggest')).toBe(false);
   });
 });
 

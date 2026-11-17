@@ -9,7 +9,7 @@
 // Every request except the ping carries `Authorization: Bearer <token>`. The token is full control of
 // the machine (sessions run shell commands), so it is a secret, and the server listens on loopback
 // unless the owner opts in to the network.
-import { HOST_CHANNELS } from './protocol';
+import { HOST_CHANNELS, type AttachmentImportResult } from './protocol';
 
 export const REMOTE_API_VERSION = 1;
 export const REMOTE_DEFAULT_PORT = 7431;
@@ -87,12 +87,21 @@ export interface RemoteUpload {
   data: string;
 }
 
+/** One artifact file, relative to the site's root, with base64-encoded contents. */
+export interface RemoteArtifactFile {
+  rel: string;
+  data: string;
+}
+
 /** The page of an artifact, as the client fetches it for a preview. */
 export interface RemoteArtifactSite {
   version: number;
   /** Left out when the client already holds this version. */
-  files?: { rel: string; data: string }[];
+  files?: RemoteArtifactFile[];
 }
+
+/** The two file-transfer replies; null means the requested artifact does not exist. */
+export type RemoteTransferResult = AttachmentImportResult | RemoteArtifactSite | null;
 
 /** Calls that need the serving machine's own UI (browser logins) and so are never served. */
 const NOT_SERVED: ReadonlySet<string> = new Set(['models:login', 'models:loginRespond', 'models:loginCancel']);

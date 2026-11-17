@@ -38,7 +38,17 @@ export const OUTPUT_STYLE_INFO = described<OutputStyle>(
 );
 
 /** Slash commands the desktop handles itself (the session adds pi's own). */
-const DESKTOP_COMMAND_NAMES = ['clear', 'compact', 'btw', 'context', 'model', 'permissions', 'export', 'help'] as const;
+const DESKTOP_COMMAND_NAMES = [
+  'clear',
+  'compact',
+  'reload',
+  'btw',
+  'context',
+  'model',
+  'permissions',
+  'export',
+  'help',
+] as const;
 export const desktopCommands = (): [string, string][] =>
   DESKTOP_COMMAND_NAMES.map((name) => [`/${name}`, t(`cmd.${name}`)]);
 

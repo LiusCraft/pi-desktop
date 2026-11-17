@@ -44,6 +44,8 @@ import type {
   ChangeSet,
   ContextBreakdown,
   CreateSessionOptions,
+  DiffBase,
+  DiffComparison,
   HostEvent,
   HostResource,
   ImportableSession,
@@ -58,6 +60,7 @@ import type {
   SessionRemoval,
   SessionState,
   SessionStats,
+  SnapshotChange,
   SetupStep,
   Settings,
   SideChat,
@@ -86,6 +89,7 @@ import { decodeCommandMessage, encodeUserCommandMessage, isCommandMessage } from
 import { expandUserCommand } from './prompt-template';
 import { decodePeerMessage, encodePeerMessage, isPeerMessage } from '@shared/peer-message';
 import { decodePrEvent, encodePrEvent, isPrEvent } from '@shared/pr-event';
+import { diffStats } from '@shared/tool-previews';
 import { decodeTaskMessage, encodeTaskMessage, isTaskMessage } from '@shared/task-message';
 import { BUILTIN_PET_IDS } from '@shared/pets';
 import { DEFAULT_SETTINGS } from '@shared/settings';
@@ -236,7 +240,10 @@ interface Live {
   status: 'idle' | 'running';
   /** Bumped on dispose: prompts still preparing must not reach a new session. */
   generation: number;
+  /** Exclusive session updates: history navigation or resource reload. */
   historyBusy: boolean;
+  /** Disposal waits for a reload before shutting down the resulting extension runtime. */
+  reloadTask?: Promise<void>;
   disposed: boolean;
   /** Running `task` subagents by tool call id, so one can be stopped on its own. */
   tasks: Map<string, AbortController>;
@@ -1024,7 +1031,7 @@ export class SessionHub {
           cancelled: (await live.runtime.session.navigateTree(targetId, options)).cancelled,
         }),
         switchSession: async (sessionPath, options) => live.runtime.switchSession(sessionPath, options),
-        reload: async () => live.runtime.session.reload(),
+        reload: async () => this.reload(live.id),
       },
       shutdownHandler: () => {},
       onError: (err) =>
@@ -1609,10 +1616,15 @@ export class SessionHub {
     // arrives while that turn is starting must not inherit it, even if its text resembles an event.
     if (origin !== 'pr') live.prAutomation = false;
     // Image checks yield; never submit an old, in-flight message to a session that has since ended.
+    if (live.historyBusy) throw new Error(tr('ag.historyBusy'));
     if (live.disposed || live.generation !== generation)
       throw new Error(
         'The session closed while preparing this message. The draft has been retained; check history before retrying.',
       );
+    if (built.message.trim() === '/reload') {
+      await this.reload(id);
+      return { disposition: 'handled' };
+    }
     const session = live.runtime.session;
     if (images.length && !session.model?.input?.includes('image')) {
       throw new Error(
@@ -1872,7 +1884,8 @@ export class SessionHub {
   /** The live session only if it can answer right now (not closed, not mid-turn). */
   private idleLive(id: string) {
     const live = this.live.get(id);
-    if (!live || live.disposed || live.status === 'running' || live.runtime.session.isStreaming) return null;
+    if (!live || live.disposed || live.historyBusy || live.status === 'running' || live.runtime.session.isStreaming)
+      return null;
     return live;
   }
 
@@ -2343,6 +2356,7 @@ export class SessionHub {
     this.stopTasks(live);
     live.unsubscribe?.();
     this.setStatus(live, 'idle');
+    await live.reloadTask?.catch(() => {});
     await live.runtime.dispose().catch(() => {});
   }
 
@@ -2367,8 +2381,38 @@ export class SessionHub {
     const q = live.runtime.session.clearQueue();
     return { steering: [...q.steering], followUp: [...q.followUp] };
   }
+  /** Refresh resources in place: the conversation, model and desktop session stay intact. */
+  async reload(id: string) {
+    const live = await this.ensure(id);
+    const session = live.runtime.session;
+    if (
+      live.historyBusy ||
+      live.status === 'running' ||
+      !session.isIdle ||
+      session.isRetrying ||
+      session.isBashRunning ||
+      live.tasks.size ||
+      live.pending.size
+    ) {
+      throw new Error(tr('ag.reloadBusy'));
+    }
+    live.historyBusy = true;
+    this.abortSuggestion(id);
+    try {
+      live.reloadTask = session.reload();
+      await live.reloadTask;
+      if (live.disposed) return;
+      this.resourceChanged('sessionResources');
+      this.emit({ type: 'notify', sessionId: id, message: tr('ag.reloaded'), level: 'info' });
+    } finally {
+      live.reloadTask = undefined;
+      live.historyBusy = false;
+    }
+  }
+
   async newContext(id: string) {
     const live = await this.ensure(id);
+    if (live.historyBusy) throw new Error(tr('ag.historyBusy'));
     this.abortSuggestion(id);
     await live.runtime.newSession();
   }
@@ -2410,6 +2454,7 @@ export class SessionHub {
   }
   async compact(id: string, instructions?: string) {
     const live = await this.ensure(id);
+    if (live.historyBusy) throw new Error(tr('ag.historyBusy'));
     const r = await live.runtime.session.compact(instructions);
     return { tokensBefore: r.tokensBefore, estimatedTokensAfter: r.estimatedTokensAfter };
   }
@@ -2594,6 +2639,43 @@ export class SessionHub {
     ]);
     return { repo: !!root, files, state };
   }
+  async diff(id: string, base: DiffBase): Promise<DiffComparison> {
+    const m = this.meta(id);
+    if (base.kind !== 'lastTurn') return git.compare(m.cwd, m.baseCommit, base);
+    const live = await this.ensure(id);
+    const records = new Map<string, UndoRecord>();
+    for (const entry of live.runtime.session.sessionManager.getBranch()) {
+      if (entry.type === 'message' && entry.message.role === 'user') records.clear();
+      if (entry.type !== 'custom' || entry.customType !== UNDO_ENTRY_TYPE) continue;
+      const record = entry.data as UndoRecord;
+      const first = records.get(record.path);
+      records.set(record.path, { ...record, before: first?.before ?? record.before });
+    }
+    const files: SnapshotChange[] = [];
+    for (const record of records.values()) {
+      const { before, after } = record;
+      if (before.recoverable && after.recoverable && before.exists === after.exists && before.data === after.data)
+        continue;
+      const relative = path.relative(m.cwd, record.path);
+      if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) continue;
+      const old = before.data === null ? null : Buffer.from(before.data, 'base64');
+      const next = after.data === null ? null : Buffer.from(after.data, 'base64');
+      const binary = !before.recoverable || !after.recoverable || !!old?.includes(0) || !!next?.includes(0);
+      const oldText = binary ? null : (old?.toString('utf8') ?? null);
+      const newText = binary ? null : (next?.toString('utf8') ?? null);
+      files.push({
+        path: relative.replace(/\\/g, '/'),
+        status: !before.exists ? 'A' : !after.exists ? 'D' : 'M',
+        binary,
+        ...diffStats(oldText, newText),
+        rev: record.toolCallId,
+        before: oldText,
+        after: newText,
+      });
+    }
+    files.sort((a, b) => a.path.localeCompare(b.path));
+    return { base: null, files, commits: [] };
+  }
   /** Measure the session's changes from another branch: the diff, commit list and file contents all follow `baseBranch`. */
   async setBase(id: string, ref: string) {
     const m = this.meta(id);
@@ -2612,9 +2694,10 @@ export class SessionHub {
   commitChanges(id: string, hash: string) {
     return git.commitChanges(this.meta(id).cwd, hash);
   }
-  async changeContent(id: string, file: string, hash: string | null) {
+  async changeContent(id: string, file: string, hash: string | null, base?: string | null) {
     const m = this.meta(id);
-    return git.changeContent(m.cwd, hash ? null : await git.diffBase(m.cwd, m.baseCommit, m.baseBranch), file, hash);
+    const from = hash ? null : base !== undefined ? base : await git.diffBase(m.cwd, m.baseCommit, m.baseBranch);
+    return git.changeContent(m.cwd, from, file, hash);
   }
   async prStatus(id: string) {
     const m = this.meta(id);

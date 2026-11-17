@@ -61,7 +61,7 @@ function renderCard(id: CardId, s: SessionView, card: CardProps): ReactNode {
     case 'tasks':
       return <TasksPanel s={s} {...card} />;
     case 'diff':
-      return <DiffPanel s={s} {...card} />;
+      return <DiffPanel key={s.meta.id} s={s} {...card} />;
     case 'preview':
       return <PreviewPanel s={s} {...card} />;
     case 'detail':

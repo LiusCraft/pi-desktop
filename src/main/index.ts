@@ -62,7 +62,6 @@ import {
   REMOTE_TERMINAL_METHODS,
   REMOTE_WORKSPACE_METHODS,
   type RemoteActive,
-  type RemoteArtifactSite,
   type RemoteTerminalMethod,
   type RemoteConnection,
   type RemoteConnectionDraft,
@@ -570,7 +569,7 @@ async function artifactFolder(id: string): Promise<{ root: string; version: numb
     // Never fetched.
   }
   if (!fs.existsSync(path.join(root, ARTIFACT_SITE_DIR, ARTIFACT_ENTRY))) have = -1;
-  const site = await activeRemote.client.call<RemoteArtifactSite | null>('artifacts:site', id, have);
+  const site = await activeRemote.client.call('artifacts:site', id, have);
   if (!site) throw new Error(tr('remote.artifact.none'));
   if (site.files) {
     const dir = path.join(root, ARTIFACT_SITE_DIR);

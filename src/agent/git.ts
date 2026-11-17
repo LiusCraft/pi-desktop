@@ -3,7 +3,18 @@ import { tr } from '@shared/i18n/runtime';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { CommitInfo, FileChange, FileContent, GitState, PrStatus, PrThread, WorktreeInfo } from '@shared/protocol';
+import type {
+  BranchInfo,
+  CommitInfo,
+  DiffComparison,
+  FileChange,
+  FileContent,
+  GitDiffBase,
+  GitState,
+  PrStatus,
+  PrThread,
+  WorktreeInfo,
+} from '@shared/protocol';
 import type { PrNote } from '@shared/pr-event';
 import { forgeOfUrl, type Forge } from '@shared/forge';
 import { childEnv } from './env';
@@ -268,6 +279,46 @@ async function squashMerged(cwd: string, fork: string, baseBranch: string): Prom
 /** Git's empty tree: the "before" of a root commit. */
 const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbcc4904';
 const FIELD = '\u001f';
+
+/** Branch tips for the Diff picker, newest first, without symbolic aliases such as origin/HEAD. */
+export async function branchBases(cwd: string): Promise<BranchInfo[]> {
+  const format = [
+    '%(refname)',
+    '%(objectname)',
+    '%(objectname:short)',
+    '%(subject)',
+    '%(authorname)',
+    '%(authordate:iso-strict)',
+    '%(symref)',
+  ].join('%1f');
+  const out = await git(
+    cwd,
+    'for-each-ref',
+    '--sort=-committerdate',
+    `--format=${format}`,
+    'refs/heads',
+    'refs/remotes',
+  );
+  return (out ?? '')
+    .split('\n')
+    .filter(Boolean)
+    .flatMap((line) => {
+      const [ref, hash, short, subject, author, date, symbolic] = line.split(FIELD);
+      if (symbolic) return [];
+      return [{ name: ref.replace(/^refs\/(?:heads|remotes)\//, ''), hash, short, subject, author, date }];
+    });
+}
+
+/** A read-only comparison, with the resolved base shared by the files, commits and content reads. */
+export async function compare(cwd: string, recordedBase: string | null, target: GitDiffBase): Promise<DiffComparison> {
+  if (target.kind === 'branch' && target.ref) {
+    if (!(await resolveRef(cwd, target.ref))) throw new Error(`Unknown branch ${target.ref}`);
+    if (!(await mergeBase(cwd, target.ref))) throw new Error(`No common ancestor with ${target.ref}`);
+  }
+  const base = target.kind === 'lastCommit' ? await head(cwd) : await diffBase(cwd, recordedBase, target.ref);
+  const [files, history] = await Promise.all([changes(cwd, base), commits(cwd, base)]);
+  return { base, files, commits: history };
+}
 
 /** Files changed in the working tree relative to `base` (a commit), including untracked files. */
 export async function changes(cwd: string, base: string | null): Promise<FileChange[]> {
