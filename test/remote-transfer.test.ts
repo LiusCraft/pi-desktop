@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { appUploadsDir } from '../src/agent/app-paths';
 import { pruneUploads, readArtifactSite, receiveUploads, transferCall } from '../src/agent/remote/transfer';
 import { ArtifactService } from '../src/agent/artifacts';
@@ -46,6 +46,25 @@ describe('receiveUploads', () => {
 });
 
 describe('uploadAttachments', () => {
+  it('returns an empty result without an RPC when no attachments were selected', async () => {
+    const remote = {
+      call: vi.fn<() => Promise<AttachmentImportResult>>(async () => ({ attachments: [], errors: [] })),
+    };
+    await expect(uploadAttachments(remote, [])).resolves.toEqual({ attachments: [], errors: [] });
+    expect(remote.call).not.toHaveBeenCalled();
+  });
+
+  it('returns local errors without an RPC when every selected attachment fails', async () => {
+    const remote = {
+      call: vi.fn<() => Promise<AttachmentImportResult>>(async () => ({ attachments: [], errors: [] })),
+    };
+    const result = await uploadAttachments(remote, [{ path: path.join(dir, 'missing.txt') }, { path: dir }]);
+    expect(result.attachments).toEqual([]);
+    expect(result.errors.map((error) => error.name)).toEqual(['missing.txt', path.basename(dir)]);
+    expect(result.errors.every((error) => error.message.length > 0)).toBe(true);
+    expect(remote.call).not.toHaveBeenCalled();
+  });
+
   it('sends local files as base64 and merges the remote answer with local errors', async () => {
     const file = path.join(dir, 'a.txt');
     fs.writeFileSync(file, 'abc');
