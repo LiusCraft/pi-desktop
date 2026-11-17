@@ -52,7 +52,7 @@ const Heading = ({ title, sub }: { title: string; sub: string }) => (
   </div>
 );
 const Panel = ({ children }: { children: ReactNode }) => (
-  <div className="divide-y rounded-xl border bg-card">{children}</div>
+  <div className="rounded-xl surface-flat bg-card">{children}</div>
 );
 const Dot = () => <span className="mx-0.5 text-muted-foreground/70">·</span>;
 
@@ -63,7 +63,7 @@ function ProviderMark({ name, id }: { name: string; id: string }) {
       .slice(0, 1)
       .toUpperCase() || '?';
   return (
-    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/40 text-xs font-semibold text-muted-foreground">
+    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted/40 text-xs font-semibold text-muted-foreground">
       {letter}
     </span>
   );
@@ -580,7 +580,7 @@ export function ModelsSection() {
         )}
       </Panel>
 
-      <div className="space-y-1.5 mt-6 rounded-xl border bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
+      <div className="space-y-1.5 mt-6 rounded-xl surface-flat bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
         <div className="flex items-center gap-2">
           <span className="w-20 shrink-0">{t('models.credentials')}</span>
           <span className="min-w-0 flex-1 truncate font-mono">{catalog?.paths.auth}</span>

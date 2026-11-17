@@ -165,7 +165,7 @@ function TaskForm({ initial, kind, onDone }: { initial: TaskDraft; kind: Session
     <>
       <BackButton onClick={onDone}>{t('scheduled.back')}</BackButton>
       <Heading title={t(initial.id ? 'scheduled.edit' : 'scheduled.new')} sub={t('scheduled.form.sub')} />
-      <div className="space-y-4 rounded-xl border bg-card p-4">
+      <div className="space-y-4 rounded-xl surface-flat bg-card p-4">
         <Field label={t('scheduled.name')} hint={t('scheduled.name.hint')}>
           <Input
             value={draft.name}
@@ -313,7 +313,7 @@ function TaskDetail({ task, onBack, onEdit }: { task: ScheduledTask; onBack: () 
           </div>
         }
       />
-      <div className="space-y-2 mb-4 rounded-xl border bg-card px-4 py-3 text-sm">
+      <div className="space-y-2 mb-4 rounded-xl surface-flat bg-card px-4 py-3 text-sm">
         <div className="flex flex-wrap items-center gap-1.5">
           <Badge variant="secondary">{place}</Badge>
           <Badge variant="secondary">{MODES.find((m) => m.id === task.mode)?.name ?? task.mode}</Badge>
@@ -412,7 +412,7 @@ export function ScheduledPage() {
           {tasks.map((task) => (
             <div key={task.id} className="flex items-center gap-3 px-4 py-3">
               <button className="flex min-w-0 flex-1 items-start gap-3 text-left" onClick={() => setOpen(task.id)}>
-                <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
+                <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted/40">
                   <ClockIcon className="size-4 text-muted-foreground" />
                 </span>
                 <span className="min-w-0 flex-1">

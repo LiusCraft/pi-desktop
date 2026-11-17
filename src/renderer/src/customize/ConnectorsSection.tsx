@@ -80,7 +80,7 @@ function ConnectorForm({
         title={initial.originalName ? t('connectors.edit', { name: initial.originalName }) : t('connectors.add')}
         sub={t('connectors.form.sub')}
       />
-      <div className="space-y-4 rounded-xl border bg-card p-4">
+      <div className="space-y-4 rounded-xl surface-flat bg-card p-4">
         <Field label={t('connectors.type')}>
           <Segmented
             value={draft.transport}
@@ -233,7 +233,7 @@ function ConnectorDetail({
           </div>
         }
       />
-      <div className="mb-4 rounded-xl border bg-card px-4 py-3 text-sm">
+      <div className="mb-4 rounded-xl surface-flat bg-card px-4 py-3 text-sm">
         <div className="flex items-center gap-2">
           <Badge variant="secondary">{t(c.scope === 'user' ? 'skills.personal' : 'skills.projectOpt')}</Badge>
           <Badge variant="secondary">{c.transport === 'http' ? 'HTTP' : 'stdio'}</Badge>
@@ -332,7 +332,7 @@ export function ConnectorsSection({ catalog, project, onCatalog }: Props) {
               className="flex min-w-0 flex-1 items-start gap-3 text-left"
               onClick={() => setOpen({ name: c.name, scope: c.scope })}
             >
-              <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
+              <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted/40">
                 <PlugZapIcon className="size-4 text-muted-foreground" />
               </span>
               <span className="min-w-0 flex-1">

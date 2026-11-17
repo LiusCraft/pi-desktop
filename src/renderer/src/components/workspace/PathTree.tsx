@@ -20,6 +20,8 @@ interface RowTarget {
 
 /** Wide names scroll sideways instead of being cut off: rows grow to their content and the list follows the widest one. */
 const SCROLL_X_CSS = `
+  [data-file-tree-search-container] { padding-block: 8px; margin-bottom: 0; }
+  [data-file-tree-search-input] { box-sizing: border-box; min-width: 0; width: 100%; font-weight: 400; }
   [data-file-tree-virtualized-scroll='true'] { overflow-x: auto; }
   [data-file-tree-virtualized-list='true'] { width: max-content; min-width: 100%; }
   button[data-type='item'] { width: max-content; min-width: calc(100% - 2 * var(--trees-item-margin-x)); }

@@ -23,7 +23,7 @@ export function Heading({ title, sub, tip }: { title: string; sub: string; tip?:
 }
 
 export const Panel = ({ children }: { children: ReactNode }) => (
-  <div className="divide-y rounded-xl border bg-card">{children}</div>
+  <div className="rounded-xl surface-flat bg-card">{children}</div>
 );
 
 export function Row({

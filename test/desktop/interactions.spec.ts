@@ -120,7 +120,8 @@ test('Diff Since switches scopes and searches branch bases without changing the 
   await expect(diff.getByRole('navigation', { name: 'Commits', exact: true })).toHaveCount(0);
   await expect(diff.getByText('working tree only', { exact: true })).toBeVisible();
   fs.writeFileSync(path.join(meta.cwd, 'since-working.txt'), 'working tree only\nrefreshed line\n');
-  await diff.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await diff.getByRole('button', { name: 'Panel options', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Refresh', exact: true }).click();
   await expect(since).toContainText('+2');
   await expect(diff.getByText('refreshed line', { exact: true })).toBeVisible();
 

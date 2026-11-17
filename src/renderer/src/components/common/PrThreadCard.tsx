@@ -65,7 +65,7 @@ export function PrThreadCard({ thread, className }: { thread: PrThread; classNam
       data-thread-id={thread.id}
       onAnimationEnd={(e) => e.currentTarget.removeAttribute('data-flash')}
       className={cn(
-        'pr-thread mx-3 my-1.5 overflow-hidden rounded-lg border bg-card font-sans text-xs shadow-sm transition-colors outline-none hover:border-info/60 focus-visible:border-info',
+        'pr-thread mx-3 my-1.5 overflow-hidden rounded-lg border bg-card font-sans text-xs shadow-surface transition-colors outline-none hover:border-info/60 focus-visible:border-info',
         thread.resolved && 'opacity-70',
         className,
       )}

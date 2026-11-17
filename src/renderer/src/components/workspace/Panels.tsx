@@ -14,7 +14,7 @@ import {
   FolderIcon,
   AlignJustifyIcon,
   EyeIcon,
-  ListIcon,
+  FileDiffIcon,
   ListTreeIcon,
   Maximize2Icon,
   MessageSquareIcon,
@@ -40,16 +40,16 @@ import {
 } from '@/components/common/ReviewCodeView';
 import type { FileTreeRowDecoration } from '@pierre/trees';
 import { CopyGlyph, useCopy } from '@/components/common/Copy';
-import { OpenInMenu } from '@/components/common/OpenInMenu';
+import { OpenInMenu, OpenInSubmenu } from '@/components/common/OpenInMenu';
 import { ZoomImage } from '@/components/common/ZoomImage';
 import { HtmlPreview } from '@/components/common/HtmlPreview';
 import { Markdown } from '@/components/common/Markdown';
 import { SelectableContent } from '@/components/common/SelectableContent';
 import { TodoList, PlanActions } from '@/components/thread/Items';
 import { Button } from '@/components/ui/button';
+import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
-import { TooltipHint } from '@/components/ui/tooltip';
 import { bridge, call, isMac, isRemote } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import { contentOf, onContent, wantContent } from '@/lib/change-content';
@@ -83,6 +83,7 @@ import { DiffSince } from './DiffSince';
 import { FileContextMenu } from './FileContextMenu';
 import { FindBar, SearchResults, type FindScope } from './FindBar';
 import { PathTree, type PathStatus } from './PathTree';
+import { IconBtn, PanelActionButton, PanelToolbar, type PanelAction } from './PanelToolbar';
 import { useDiffComparison } from './useDiffComparison';
 
 // ------------------------------------------------------------ card chrome
@@ -104,7 +105,9 @@ const SIDE_ZONE = 0.25;
 
 export function Card({
   title,
-  tools,
+  actions = [],
+  menu,
+  fillTitle,
   children,
   onClose,
   expanded,
@@ -114,7 +117,9 @@ export function Card({
   onMove,
 }: CardProps & {
   title: ReactNode;
-  tools?: ReactNode;
+  actions?: PanelAction[];
+  menu?: ReactNode;
+  fillTitle?: boolean;
   children: ReactNode;
   onClose?: () => void;
   bodyClass?: string;
@@ -132,8 +137,9 @@ export function Card({
   };
   return (
     <section
+      data-slot="workspace-panel"
       className={cn(
-        'relative flex h-full min-h-0 flex-col overflow-hidden rounded-lg border bg-card/90 shadow-sm',
+        'relative flex h-full min-h-0 flex-col overflow-hidden rounded-lg surface-flat bg-card',
         drop && 'after:pointer-events-none after:absolute after:bg-primary',
         (drop === 'before' || drop === 'after') && 'after:inset-x-0 after:h-1',
         (drop === 'left' || drop === 'right') && 'after:inset-y-0 after:w-1',
@@ -173,10 +179,7 @@ export function Card({
       {/* A drag handle for a floating panel: pointer-only by design. */}
       {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <header
-        className={cn(
-          'flex h-10 shrink-0 items-center gap-1 border-b px-2',
-          movable && 'cursor-grab active:cursor-grabbing',
-        )}
+        className={cn('panel-heading', movable && 'cursor-grab active:cursor-grabbing')}
         draggable={movable ? true : undefined}
         onDragStart={
           movable
@@ -193,39 +196,36 @@ export function Card({
           onExpand(e.detail >= 3);
         }}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 px-1 text-sm font-medium">{title}</div>
-        {tools}
-        <IconBtn
-          title={t(expanded ? 'panel.restore' : 'panel.expand')}
-          onClick={(e) => onExpand(e.ctrlKey || e.metaKey)}
-        >
-          {expanded ? <Minimize2Icon className="size-3.5" /> : <Maximize2Icon className="size-3.5" />}
-        </IconBtn>
-        {onClose && (
-          <IconBtn title={t('panel.close')} onClick={onClose}>
-            <XIcon className="size-3.5" />
-          </IconBtn>
-        )}
+        <PanelToolbar
+          title={title}
+          fillTitle={fillTitle}
+          menu={menu}
+          actions={[
+            ...actions,
+            {
+              id: 'expand',
+              priority: 'layout',
+              label: t(expanded ? 'panel.restore' : 'panel.expand'),
+              icon: expanded ? <Minimize2Icon className="size-3.5" /> : <Maximize2Icon className="size-3.5" />,
+              onSelect: onExpand,
+            },
+            ...(onClose
+              ? [
+                  {
+                    id: 'close',
+                    priority: 'close' as const,
+                    label: t('panel.close'),
+                    icon: <XIcon className="size-3.5" />,
+                    onSelect: onClose,
+                  },
+                ]
+              : []),
+          ]}
+        />
       </header>
       <div className={cn('min-h-0 flex-1 overflow-auto', bodyClass)}>{children}</div>
     </section>
   );
-}
-
-export function IconBtn({ children, className, title, ...props }: React.ComponentProps<'button'>) {
-  const button = (
-    <button
-      aria-label={title}
-      {...props}
-      className={cn(
-        'flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground',
-        className,
-      )}
-    >
-      {children}
-    </button>
-  );
-  return <TooltipHint title={title}>{button}</TooltipHint>;
 }
 
 const Empty = ({ children }: { children: ReactNode }) => (
@@ -256,7 +256,7 @@ function TreeSplit({ id, tree, children }: { id: string; tree: ReactNode | null;
       defaultLayout={layout.defaultLayout}
       onLayoutChanged={layout.onLayoutChanged}
     >
-      <ResizablePanel id="tree" defaultSize={TREE_START} minSize={TREE_MIN_PX} maxSize={TREE_MAX}>
+      <ResizablePanel id="tree" defaultSize={TREE_START} minSize={TREE_MIN_PX} maxSize={TREE_MAX} className="bg-chrome">
         {tree}
       </ResizablePanel>
       <ResizableHandle />
@@ -553,7 +553,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
     };
   };
 
-  const title = (
+  const comparisonPicker = (
     <DiffSince
       cwd={s.meta.cwd}
       scope={scope}
@@ -568,49 +568,59 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
       onOpenChange={setMenuOpen}
     />
   );
-  const tools = (
+  const actions: PanelAction[] = [
+    {
+      id: 'tree',
+      label: t(showTree ? 'panel.hideChangedFiles' : 'panel.showChangedFiles'),
+      icon: <ListTreeIcon className="size-3.5" />,
+      pressed: showTree,
+      onSelect: () => setShowTree((v) => !v),
+    },
+    {
+      id: 'find',
+      label: `${t('panel.findInDiff')}  ${findHint}`,
+      icon: <SearchIcon className="size-3.5" />,
+      focusContent: true,
+      onSelect: openFind,
+    },
+    ...(!isRemote
+      ? [
+          {
+            id: 'open-in',
+            priority: 'secondary' as const,
+            button: (
+              <OpenInMenu id={id}>
+                <IconBtn title={t('panel.openIn')}>
+                  <ExternalLinkIcon className="size-3.5" />
+                </IconBtn>
+              </OpenInMenu>
+            ),
+            menu: <OpenInSubmenu id={id} />,
+          },
+        ]
+      : []),
+  ];
+  const menu = (
     <>
-      <IconBtn title={`${t('panel.findInDiff')}  ${findHint}`} onClick={openFind}>
-        <SearchIcon className="size-3.5" />
-      </IconBtn>
-      <IconBtn
-        title={t(allCollapsed ? 'panel.expandAll' : 'panel.collapseAll')}
-        onClick={() => setAllCollapsed(!allCollapsed)}
-      >
-        {allCollapsed ? <ChevronsUpDownIcon className="size-3.5" /> : <ChevronsDownUpIcon className="size-3.5" />}
-      </IconBtn>
-      <IconBtn
-        title={t(flat ? 'panel.treeView' : 'panel.flatView')}
-        aria-pressed={flat}
-        onClick={() => setFlat((v) => !v)}
-      >
-        {flat ? <ListTreeIcon className="size-3.5" /> : <AlignJustifyIcon className="size-3.5" />}
-      </IconBtn>
-      <IconBtn
-        title={t('panel.refresh')}
-        onClick={() => {
+      <DropdownMenuItem onSelect={() => setAllCollapsed(!allCollapsed)}>
+        {allCollapsed ? <ChevronsUpDownIcon /> : <ChevronsDownUpIcon />}
+        {t(allCollapsed ? 'panel.expandAll' : 'panel.collapseAll')}
+      </DropdownMenuItem>
+      <DropdownMenuItem onSelect={() => setFlat((v) => !v)}>
+        {flat ? <ListTreeIcon /> : <AlignJustifyIcon />}
+        {t(flat ? 'panel.treeView' : 'panel.flatView')}
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem
+        onSelect={() => {
           setFlipped(new Set());
           void loadChanges(id);
         }}
       >
-        <RefreshCwIcon className="size-3.5" />
-      </IconBtn>
-      <OpenInMenu id={id}>
-        <IconBtn title={t('panel.openIn')}>
-          <ExternalLinkIcon className="size-3.5" />
-        </IconBtn>
-      </OpenInMenu>
+        <RefreshCwIcon />
+        {t('panel.refresh')}
+      </DropdownMenuItem>
     </>
-  );
-  const treeToggle = (
-    <IconBtn
-      title={t(showTree ? 'panel.hideChangedFiles' : 'panel.showChangedFiles')}
-      aria-pressed={showTree}
-      className={cn(showTree && 'bg-info/15 text-info hover:bg-info/20 hover:text-info')}
-      onClick={() => setShowTree((v) => !v)}
-    >
-      <ListIcon className="size-4" />
-    </IconBtn>
   );
   let content: ReactNode;
   if (loading) content = <Empty>{t('panel.loadingDiff')}</Empty>;
@@ -776,15 +786,22 @@ ${c.subject}`}
       {...card}
       title={
         <>
-          {treeToggle}
-          {title}
+          <FileDiffIcon className="size-4 shrink-0 text-muted-foreground" />
+          <span className="truncate">{t('panel.changes')}</span>
+          <span className="text-xs font-normal text-muted-foreground tabular-nums">{files.length}</span>
         </>
       }
-      tools={tools}
+      actions={actions}
+      menu={menu}
       onClose={() => togglePanel(id, 'diff', false)}
       bodyClass="overflow-hidden"
     >
-      {content}
+      <div className="flex h-full min-h-0 flex-col">
+        <div data-slot="panel-context" className="flex h-8 shrink-0 items-center border-b border-divider px-3">
+          {comparisonPicker}
+        </div>
+        <div className="min-h-0 flex-1">{content}</div>
+      </div>
     </Card>
   );
 }
@@ -993,53 +1010,52 @@ export function PreviewPanel({ s, ...card }: CardProps & { s: SessionView }) {
   return (
     <Card
       {...card}
+      fillTitle
       title={
-        <div className="flex min-w-0 flex-1 items-center gap-0.5">
-          <IconBtn
-            title={t('panel.back')}
-            disabled={!canBack}
-            onClick={() => webviewsRef.current.get(activeId)?.goBack()}
-          >
-            <ArrowLeftIcon className="size-3.5" />
-          </IconBtn>
-          <IconBtn
-            title={t('panel.forward')}
-            disabled={!canForward}
-            onClick={() => webviewsRef.current.get(activeId)?.goForward()}
-          >
-            <ArrowRightIcon className="size-3.5" />
-          </IconBtn>
-          <form onSubmit={submit} className="min-w-0 flex-1">
-            <Input
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              aria-label={t('panel.previewUrl')}
-              spellCheck={false}
-              className="h-7 font-mono text-xs"
-            />
-          </form>
-        </div>
+        <form onSubmit={submit} className="min-w-0 flex-1">
+          <Input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            aria-label={t('panel.previewUrl')}
+            spellCheck={false}
+            className="h-7 font-mono text-xs"
+          />
+        </form>
       }
-      tools={
-        <IconBtn title={t('panel.reload')} onClick={() => setNonce((current) => current + 1)}>
-          <RefreshCwIcon className="size-3.5" />
-        </IconBtn>
-      }
+      actions={[
+        {
+          id: 'back',
+          label: t('panel.back'),
+          icon: <ArrowLeftIcon className="size-3.5" />,
+          disabled: !canBack,
+          onSelect: () => webviewsRef.current.get(activeId)?.goBack(),
+        },
+        {
+          id: 'forward',
+          label: t('panel.forward'),
+          icon: <ArrowRightIcon className="size-3.5" />,
+          disabled: !canForward,
+          onSelect: () => webviewsRef.current.get(activeId)?.goForward(),
+        },
+        {
+          id: 'reload',
+          label: t('panel.reload'),
+          icon: <RefreshCwIcon className="size-3.5" />,
+          onSelect: () => setNonce((current) => current + 1),
+        },
+      ]}
       onClose={() => togglePanel(s.meta.id, 'preview', false)}
       bodyClass="overflow-hidden"
     >
       <div className="flex h-full min-h-0 flex-col">
-        <div role="tablist" className="flex h-8 shrink-0 items-center gap-0.5 overflow-x-auto border-b px-1">
+        <div role="tablist" className="panel-tabs overflow-x-auto">
           {tabs.map((tab) => (
-            <div key={tab.id} className="flex max-w-56 min-w-0 shrink-0 items-center rounded-md bg-muted/60">
+            <div key={tab.id} data-state={tab.id === activeId ? 'active' : 'inactive'} className="panel-tab max-w-56">
               <button
                 type="button"
                 role="tab"
                 aria-selected={tab.id === activeId}
-                className={cn(
-                  'min-w-0 truncate px-2 py-1 text-xs',
-                  tab.id === activeId ? 'font-medium text-foreground' : 'text-muted-foreground',
-                )}
+                className="h-full min-w-0 truncate outline-none focus-visible:underline"
                 onClick={() => selectTab(tab.id)}
               >
                 {tabLabel(tab) || t('panel.newTab')}
@@ -1055,7 +1071,7 @@ export function PreviewPanel({ s, ...card }: CardProps & { s: SessionView }) {
               )}
             </div>
           ))}
-          <IconBtn title={t('panel.newTab')} className="size-6" onClick={addTab}>
+          <IconBtn title={t('panel.newTab')} className="mx-1 self-center" onClick={addTab}>
             <PlusIcon className="size-3.5" />
           </IconBtn>
         </div>
@@ -1093,6 +1109,7 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const [source, setSource] = useSourceToggle(d?.path ?? '');
   const [showTree, setShowTree] = useState(true);
   const view = useRef<ReviewHandle>(null);
+  const tabList = useRef<HTMLDivElement>(null);
   const finder = useRef<HTMLInputElement>(null);
   const [find, setFind] = useState<FindScope | null>(null);
   const [query, setQuery] = useState('');
@@ -1101,6 +1118,10 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const [result, setResult] = useState<SearchResult | null>(null);
   const [searching, setSearching] = useState(false);
   const paths = useMemo(() => s.files ?? [], [s.files]);
+
+  useEffect(() => {
+    tabList.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [d?.path]);
 
   const [focusFind, setFocusFind] = useState(0);
   const openFind = (scope: FindScope) => {
@@ -1167,16 +1188,7 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
   }, [find, query, caseSensitive, id]);
 
   const [flat, setFlat] = useState(false);
-  const treeToggle = (
-    <IconBtn
-      title={t(showTree ? 'panel.hideTree' : 'panel.showTree')}
-      aria-pressed={showTree}
-      className={cn(showTree && 'bg-info/15 text-info hover:bg-info/20 hover:text-info')}
-      onClick={() => setShowTree((v) => !v)}
-    >
-      <ListIcon className="size-4" />
-    </IconBtn>
-  );
+  const fileActions = useFileActions(s, d, source, setSource);
   const listing =
     find === 'all' ? (
       <SearchResults result={result} busy={searching} onOpen={(path, line) => void openFileRef(path, line)} />
@@ -1189,7 +1201,7 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
         key={String(flat)}
         flat={flat}
         className="min-h-0 flex-1"
-        label="Project files"
+        label={t('panel.projectFiles')}
         meta={s.meta}
         paths={paths}
         selected={d?.path}
@@ -1209,28 +1221,37 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
       {...card}
       title={
         <>
-          {treeToggle}
+          <FolderIcon className="size-4 shrink-0 text-muted-foreground" />
           <span>{t('panel.files')}</span>
         </>
       }
-      tools={
+      actions={[
+        {
+          id: 'tree',
+          label: t(showTree ? 'panel.hideTree' : 'panel.showTree'),
+          icon: <ListTreeIcon className="size-3.5" />,
+          pressed: showTree,
+          onSelect: () => setShowTree((v) => !v),
+        },
+        {
+          id: 'find',
+          label: `${t('panel.findInFiles')}  ${findHint} · ${isMac ? '⇧⌘' : 'Ctrl+Shift+'}F`,
+          icon: <SearchIcon className="size-3.5" />,
+          focusContent: true,
+          onSelect: () => openFind(d ? 'file' : 'all'),
+        },
+      ]}
+      menu={
         <>
-          <IconBtn
-            title={`${t('panel.findInFiles')}  ${findHint} · ${isMac ? '⇧⌘' : 'Ctrl+Shift+'}F`}
-            onClick={() => openFind(d ? 'file' : 'all')}
-          >
-            <SearchIcon className="size-3.5" />
-          </IconBtn>
-          <IconBtn
-            title={t(flat ? 'panel.treeView' : 'panel.flatView')}
-            aria-pressed={flat}
-            onClick={() => setFlat((v) => !v)}
-          >
-            {flat ? <ListTreeIcon className="size-3.5" /> : <AlignJustifyIcon className="size-3.5" />}
-          </IconBtn>
-          <IconBtn title={t('panel.refresh')} onClick={() => void loadFiles(id, true)}>
-            <RefreshCwIcon className="size-3.5" />
-          </IconBtn>
+          <DropdownMenuItem onSelect={() => setFlat((v) => !v)}>
+            {flat ? <ListTreeIcon /> : <AlignJustifyIcon />}
+            {t(flat ? 'panel.treeView' : 'panel.flatView')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => void loadFiles(id, true)}>
+            <RefreshCwIcon />
+            {t('panel.refresh')}
+          </DropdownMenuItem>
         </>
       }
       onClose={() => {
@@ -1267,12 +1288,13 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
             <div className="flex h-full min-w-0 flex-col">
               {d ? (
                 <>
-                  <div className="flex h-9 shrink-0 items-stretch border-b">
-                    <div role="tablist" className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
+                  <div className="panel-tabs">
+                    <div ref={tabList} role="tablist" className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
                       {s.fileTabs.map((tab) => (
                         <div
                           key={tab.path}
                           role="tab"
+                          data-state={tab.path === d.path ? 'active' : 'inactive'}
                           aria-selected={tab.path === d.path}
                           tabIndex={tab.path === d.path ? 0 : -1}
                           title={tab.path}
@@ -1283,17 +1305,12 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
                             void openFileRef(tab.path);
                           }}
                           onDoubleClick={() => pinFileTab(id, tab.path)}
-                          className={cn(
-                            'group flex max-w-48 shrink-0 cursor-pointer items-center gap-1.5 border-r px-3 text-xs',
-                            tab.path === d.path
-                              ? 'bg-accent text-foreground'
-                              : 'text-muted-foreground hover:bg-accent/50',
-                          )}
+                          className="group panel-tab max-w-48 cursor-pointer"
                         >
                           <span className={cn('truncate', !tab.pinned && 'italic')}>{fname(tab.path)}</span>
                           <button
                             aria-label={t('panel.closeTab', { name: fname(tab.path) })}
-                            className="shrink-0 rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-accent focus-visible:opacity-100"
+                            className="shrink-0 rounded p-0.5 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-accent focus-visible:opacity-100"
                             onClick={(event) => {
                               event.stopPropagation();
                               closeFileTab(id, tab.path);
@@ -1305,7 +1322,9 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
                       ))}
                     </div>
                     <div className="flex shrink-0 items-center gap-1 px-2">
-                      <FileTools s={s} d={d} source={source} onSource={setSource} />
+                      {fileActions.map((action) => (
+                        <PanelActionButton key={action.id} action={action} />
+                      ))}
                     </div>
                   </div>
                   <FileBody s={s} d={d} source={source} viewRef={view} />
@@ -1384,7 +1403,7 @@ export function TasksPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const done = all.filter((task) => task.status !== 'running' && !cleared.has(task.id));
   useTicker(running.length > 0);
   const row = (task: ToolState) => (
-    <div key={task.id} className="group rounded-lg border bg-muted/40 px-3 py-2.5">
+    <div key={task.id} className="group rounded-lg surface-flat bg-muted/40 px-3 py-2.5">
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium" title={task.desc}>
@@ -1401,7 +1420,7 @@ export function TasksPanel({ s, ...card }: CardProps & { s: SessionView }) {
           </div>
         </div>
         {task.status === 'running' ? (
-          <IconBtn title={t('tasks.stop')} className="size-6 border bg-card" onClick={() => void stopTask(id, task.id)}>
+          <IconBtn title={t('tasks.stop')} className="size-6 bg-card" onClick={() => void stopTask(id, task.id)}>
             <SquareIcon className="size-2.5 fill-current" />
           </IconBtn>
         ) : task.status === 'done' ? (
@@ -1419,16 +1438,15 @@ export function TasksPanel({ s, ...card }: CardProps & { s: SessionView }) {
     <Card
       {...card}
       title={t('tasks.title')}
-      tools={
-        <IconBtn
-          title={t('tasks.clear')}
-          disabled={!done.length}
-          className="disabled:opacity-40"
-          onClick={() => setCleared(new Set(all.filter((task) => task.status !== 'running').map((task) => task.id)))}
-        >
-          <Trash2Icon className="size-3.5" />
-        </IconBtn>
-      }
+      actions={[
+        {
+          id: 'clear',
+          label: t('tasks.clear'),
+          icon: <Trash2Icon className="size-3.5" />,
+          disabled: !done.length,
+          onSelect: () => setCleared(new Set(all.filter((task) => task.status !== 'running').map((task) => task.id))),
+        },
+      ]}
       onClose={() => togglePanel(id, 'tasks', false)}
     >
       {!running.length && !done.length ? (
@@ -1497,17 +1515,17 @@ function AgentTranscript({
           )}
         </>
       }
-      tools={
-        running && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-6 px-2 text-xs"
-            onClick={() => void stopTask(s.meta.id, tool.id)}
-          >
-            {t('tasks.stopBtn')}
-          </Button>
-        )
+      actions={
+        running
+          ? [
+              {
+                id: 'stop',
+                label: t('tasks.stop'),
+                icon: <SquareIcon className="size-3 fill-current" />,
+                onSelect: () => void stopTask(s.meta.id, tool.id),
+              },
+            ]
+          : []
       }
       onClose={close}
       bodyClass="overflow-hidden"
@@ -1524,7 +1542,7 @@ function AgentTranscript({
             {tool.prompt}
           </div>
           {tool.sh && (
-            <pre className="max-h-[60vh] overflow-auto rounded-lg border bg-card p-3 font-mono text-xs whitespace-pre-wrap">
+            <pre className="max-h-[60vh] overflow-auto rounded-lg surface-flat bg-code p-3 font-mono text-xs whitespace-pre-wrap">
               {tool.sh.output || t(running ? 'tasks.waitingOutput' : 'tasks.noOutput')}
               {!running && tool.sh.exitCode != null ? '\n[exit ' + tool.sh.exitCode + ']' : ''}
             </pre>
@@ -1594,11 +1612,14 @@ export function DetailPanel({ s, ...card }: CardProps & { s: SessionView }) {
         {...card}
         title={t('plan.title')}
         onClose={close}
-        tools={
-          <IconBtn title={t(copied ? 'plan.copied' : 'plan.copy')} onClick={() => copy(plan.md)}>
-            <CopyGlyph copied={copied} />
-          </IconBtn>
-        }
+        actions={[
+          {
+            id: 'copy',
+            label: t(copied ? 'plan.copied' : 'plan.copy'),
+            icon: <CopyGlyph copied={copied} />,
+            onSelect: () => copy(plan.md),
+          },
+        ]}
       >
         <div className="space-y-4 p-4">
           <div className="flex items-start gap-2 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
@@ -1633,33 +1654,31 @@ function useSourceToggle(path: string) {
   return [source, setSource] as const;
 }
 
-function FileTools({
-  s,
-  d,
-  source,
-  onSource,
-}: {
-  s: SessionView;
-  d: FileDetail;
-  source: boolean;
-  onSource: (on: boolean) => void;
-}) {
+function useFileActions(
+  s: SessionView,
+  d: FileDetail | null,
+  source: boolean,
+  onSource: (on: boolean) => void,
+): PanelAction[] {
   const t = useT();
+  if (!d) return [];
   const hasDiff = s.changes.some((f) => f.path === d.path);
-  return (
-    <>
-      {hasRenderedView(d.path) && d.text != null && (
-        <IconBtn title={t(source ? 'file.viewRendered' : 'file.viewSource')} onClick={() => onSource(!source)}>
-          {source ? <EyeIcon className="size-3.5" /> : <CodeIcon className="size-3.5" />}
-        </IconBtn>
-      )}
-      {hasDiff && (
-        <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => openDiffRef(d.path)}>
-          {t('file.diff')}
-        </Button>
-      )}
-    </>
-  );
+  const actions: PanelAction[] = [];
+  if (hasRenderedView(d.path) && d.text != null)
+    actions.push({
+      id: 'source',
+      label: t(source ? 'file.viewRendered' : 'file.viewSource'),
+      icon: source ? <EyeIcon className="size-3.5" /> : <CodeIcon className="size-3.5" />,
+      onSelect: () => onSource(!source),
+    });
+  if (hasDiff)
+    actions.push({
+      id: 'diff',
+      label: t('file.diff'),
+      icon: <FileDiffIcon className="size-3.5" />,
+      onSelect: () => openDiffRef(d.path),
+    });
+  return actions;
 }
 
 function FileBody({
@@ -1743,6 +1762,7 @@ function FileBody({
 function FileViewer({ s, ...card }: CardProps & { s: SessionView }) {
   const d = s.detail as FileDetail;
   const [source, setSource] = useSourceToggle(d.path);
+  const actions = useFileActions(s, d, source, setSource);
   return (
     <Card
       {...card}
@@ -1751,7 +1771,7 @@ function FileViewer({ s, ...card }: CardProps & { s: SessionView }) {
           {d.path}
         </span>
       }
-      tools={<FileTools s={s} d={d} source={source} onSource={setSource} />}
+      actions={actions}
       onClose={() => closeDetail(s.meta.id)}
       bodyClass="overflow-hidden flex flex-col"
     >
@@ -1809,7 +1829,7 @@ export function WorkPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const folderName = s.meta.scratch ? t('progress.tempWorkspace') : fname(s.meta.cwd);
   return (
     <Card {...card} title={t('progress.title')} onClose={() => togglePanel(id, 'progress', false)}>
-      <div className="divide-y">
+      <div>
         <section className="space-y-2 p-4">
           <h3 className="flex items-center justify-between text-xs font-semibold tracking-wide text-muted-foreground uppercase">
             {t('progress.title')}

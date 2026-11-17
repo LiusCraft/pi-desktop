@@ -42,7 +42,7 @@ export function Thumbnail({ a }: { a: ArtifactMeta }) {
   }, [a.id, a.version]);
   return (
     <button
-      className="group/thumb relative block aspect-[16/10] w-full overflow-hidden border-b bg-muted/40"
+      className="group/thumb relative block aspect-[16/10] w-full overflow-hidden bg-muted/40"
       title={t('artifacts.preview')}
       onClick={() => void call('artifacts:preview', a.id).catch(fail)}
     >
@@ -103,7 +103,7 @@ function ArtifactCard({
     if (window.confirm(warn)) void run('remove', () => call('artifacts:remove', a.id, true));
   };
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border bg-card transition-shadow hover:shadow-md">
+    <div className="flex flex-col overflow-hidden rounded-xl surface-flat bg-card">
       <Thumbnail a={a} />
       <div className="flex flex-1 flex-col gap-1.5 px-3.5 pt-3">
         <div className="flex items-start gap-2">

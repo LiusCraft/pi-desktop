@@ -1,6 +1,6 @@
 // The terminal card: a tab per shell, each a real pseudo-terminal drawn by xterm.js.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PlusIcon, XIcon } from 'lucide-react';
+import { PlusIcon, SquareTerminalIcon, XIcon } from 'lucide-react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal, type ITheme } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { fail, togglePanel } from '@/store/actions';
 import { getApp } from '@/store/app';
 import type { SessionView } from '@/store/types';
-import { Card, IconBtn, type CardProps } from './Panels';
+import { Card, type CardProps } from './Panels';
 
 const VSCODE_THEMES: Record<'light' | 'dark', ITheme> = {
   light: { background: '#ffffff', foreground: '#3b3b3b', cursor: '#3b3b3b', selectionBackground: '#add6ff' },
@@ -154,39 +154,52 @@ export function TerminalPanel({ s, ...card }: CardProps & { s: SessionView }) {
     <Card
       {...card}
       title={
-        <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
+        <>
+          <SquareTerminalIcon className="size-4 shrink-0 text-muted-foreground" />
+          <span>{tx('main.terminal')}</span>
+        </>
+      }
+      actions={[
+        {
+          id: 'new',
+          label: tx('terminal.new'),
+          icon: <PlusIcon className="size-3.5" />,
+          onSelect: () => void add(),
+        },
+      ]}
+      onClose={() => togglePanel(sessionId, 'terminal', false)}
+      bodyClass="overflow-hidden"
+    >
+      <div className="flex h-full min-h-0 flex-col">
+        <div role="tablist" className="panel-tabs overflow-x-auto">
           {tabs.map((t) => (
-            <div
-              key={t.id}
-              className={cn(
-                'group flex h-7 shrink-0 items-center gap-1 rounded-md pr-1 pl-2 text-xs',
-                t.id === active ? 'bg-accent text-foreground' : 'font-normal text-muted-foreground hover:bg-accent/50',
-              )}
-            >
-              <button type="button" onClick={() => setActive(t.id)} className="max-w-32 truncate">
+            <div key={t.id} data-state={t.id === active ? 'active' : 'inactive'} className="group panel-tab">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={t.id === active}
+                onClick={() => setActive(t.id)}
+                className="h-full max-w-32 truncate outline-none focus-visible:underline"
+              >
                 {t.title}
               </button>
               <button
                 type="button"
                 aria-label={tx('terminal.close')}
                 onClick={() => close(t.id)}
-                className="flex size-4 items-center justify-center rounded hover:bg-muted"
+                className="flex size-4 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
               >
                 <XIcon className="size-3" />
               </button>
             </div>
           ))}
-          <IconBtn title={tx('terminal.new')} onClick={() => void add()}>
-            <PlusIcon className="size-3.5" />
-          </IconBtn>
         </div>
-      }
-      onClose={() => togglePanel(sessionId, 'terminal', false)}
-      bodyClass="relative overflow-hidden bg-code"
-    >
-      {tabs.map((t) => (
-        <TermView key={t.id} id={t.id} active={t.id === active} />
-      ))}
+        <div className="relative min-h-0 flex-1 bg-code">
+          {tabs.map((t) => (
+            <TermView key={t.id} id={t.id} active={t.id === active} />
+          ))}
+        </div>
+      </div>
     </Card>
   );
 }

@@ -34,7 +34,7 @@ export function ContextCards({
           <div
             key={reference.id}
             className={cn(
-              'relative flex w-52 flex-col gap-2 rounded-lg border bg-muted/20 p-2.5',
+              'relative flex w-52 flex-col gap-2 rounded-lg surface-flat bg-muted/20 p-2.5',
               onOpen && 'cursor-pointer transition-colors hover:bg-accent/60',
             )}
             {...(onOpen

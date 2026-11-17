@@ -260,7 +260,7 @@ function TaskMessageCard({ task, queued }: { task: TaskMessage; queued?: boolean
   const [open, setOpen] = useState(false);
   return (
     <div className={cn('flex justify-end', queued && 'opacity-60')}>
-      <div className="max-w-[85%] rounded-xl border bg-card px-3.5 py-2.5 text-sm shadow-sm">
+      <div className="max-w-[85%] rounded-xl surface-flat bg-card px-3.5 py-2.5 text-sm">
         <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <LightbulbIcon className="size-3.5" />
           {task.title || t('suggest.title')}
@@ -353,7 +353,7 @@ function PeerMessageCard({ peer }: { peer: PeerMessage }) {
   const known = useApp((st) => !!st.sessions[peer.fromId]);
   return (
     <div className="flex justify-start">
-      <div className="max-w-[85%] rounded-xl border bg-card px-3.5 py-2.5 text-sm">
+      <div className="max-w-[85%] rounded-xl surface-flat bg-card px-3.5 py-2.5 text-sm">
         <button
           disabled={!known}
           className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground enabled:hover:text-foreground"
@@ -483,7 +483,7 @@ export const SuggestItem = memo(function SuggestItem({ sid, item }: { sid: strin
     .map((task, index) => ({ task, index }))
     .filter(({ index }) => !decided?.[`${item.toolCallId}:${index}`]);
   return (
-    <div className="rounded-xl border bg-card px-4 py-3 text-sm shadow-sm">
+    <div className="rounded-xl surface-flat bg-card px-4 py-3 text-sm">
       <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
         <LightbulbIcon className="size-3.5" />
         {t('suggest.title')}
@@ -619,7 +619,7 @@ export const BashItem = memo(function BashItem({ item }: { item: ItemOf<'bash'> 
     <span className="text-destructive">{t('thread.shellExit', { code: item.exitCode })}</span>
   ) : null;
   return (
-    <div className="overflow-hidden rounded-xl border bg-card/60" data-testid="bash-item">
+    <div className="overflow-hidden rounded-xl surface-flat bg-card/60" data-testid="bash-item">
       <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-xs">
         <TerminalIcon className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate font-mono text-foreground">
@@ -716,7 +716,7 @@ export const CompactionItem = memo(function CompactionItem({
   const t = useT();
   const earlier = before + item.hidden;
   return (
-    <div className="rounded-xl border bg-muted/20">
+    <div className="rounded-xl surface-flat bg-muted/20">
       <div className="flex items-center gap-2 px-3.5 py-2.5 text-sm">
         <LayersIcon className="size-4 shrink-0 text-muted-foreground" />
         <span className="shrink-0 font-medium">{t('compact.title')}</span>
@@ -777,7 +777,7 @@ export const HandoffItem = memo(function HandoffItem({
   const t = useT();
   const earlier = before + item.hidden;
   return (
-    <div className="rounded-xl border bg-muted/20">
+    <div className="rounded-xl surface-flat bg-muted/20">
       <div className="flex items-center gap-2 px-3.5 py-2.5 text-sm">
         <RotateCcwIcon className="size-4 shrink-0 text-muted-foreground" />
         <span className="shrink-0 font-medium">{t('handoff.title')}</span>
@@ -836,7 +836,7 @@ export function TodoList({ items }: { items: ItemOf<'todos'>['items'] }) {
 
 export const TodosItem = memo(function TodosItem({ item }: { item: ItemOf<'todos'> }) {
   return (
-    <div className="rounded-xl border bg-card px-4 py-3">
+    <div className="rounded-xl surface-flat bg-card px-4 py-3">
       <TodoList items={item.items} />
     </div>
   );
@@ -1303,7 +1303,7 @@ export const PermItem = memo(function PermItem({ sid, item }: { sid: string; ite
     );
   const answer = (v: string) => answerUi(sid, item.key, { value: v }, v);
   return (
-    <div className="rounded-xl border border-primary/40 bg-card p-3.5 shadow-sm">
+    <div className="rounded-xl border border-primary/40 bg-card p-3.5 shadow-surface">
       <div className="mb-2 text-sm font-medium">{permissionTitle(tool, item.title)}</div>
       {preview && <div className="mb-3 max-h-72 overflow-auto rounded-lg border bg-code">{preview}</div>}
       <div className="flex flex-wrap gap-2">
@@ -1343,7 +1343,7 @@ function DialogItem({ sid, item }: { sid: string; item: ItemOf<'ask'> }) {
   // Dialogs from question-style extensions fold optional previews into the title.
   const [question, ...extra] = r.title.split(/\n\n(?=--- \d+\. [^\n]+ preview ---\n)/);
   return (
-    <div className="overflow-hidden rounded-xl border border-primary/40 bg-card shadow-sm">
+    <div className="overflow-hidden rounded-xl border border-primary/40 bg-card shadow-surface">
       <div className="flex items-start gap-2 p-3.5 pb-2.5">
         <MessageCircleQuestionIcon className="mt-0.5 size-4 shrink-0 text-primary" />
         <div data-selectable className="min-w-0 flex-1 text-sm font-medium whitespace-pre-wrap">
@@ -1465,7 +1465,7 @@ export const PlanItem = memo(function PlanItem({ sid, item }: { sid: string; ite
           ? t('plan.approved')
           : null;
   return (
-    <div className="rounded-xl border bg-card">
+    <div className="rounded-xl surface-flat bg-card">
       <button
         className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-sm"
         onClick={() => openPlan(sid, item.key)}

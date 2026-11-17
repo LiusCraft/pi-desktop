@@ -64,7 +64,7 @@ function ProjectCard({ p }: { p: WorkProject }) {
   ].filter(Boolean);
   return (
     <button
-      className="flex flex-col gap-2 rounded-xl border bg-card px-4 py-3.5 text-left transition-shadow hover:shadow-md"
+      className="flex flex-col gap-2 rounded-xl surface-flat bg-card px-4 py-3.5 text-left transition-colors hover:bg-accent"
       onClick={() => showProjects(p.path)}
     >
       <div className="flex items-center gap-2">
