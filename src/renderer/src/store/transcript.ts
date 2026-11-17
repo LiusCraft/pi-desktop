@@ -3,7 +3,16 @@
 import { decodeUserContent } from '@shared/attachments';
 import { forgeOfUrl } from '@shared/forge';
 import { formatIdle, HANDOFF_CUSTOM_TYPE, type HandoffDetails } from '@shared/idle-reset';
-import type { AgentMessage, PiEvent, PrSummary, Question, SessionMeta, TaskUpdate, UiRequest } from '@shared/protocol';
+import type {
+  AgentMessage,
+  PiEvent,
+  PrSummary,
+  Question,
+  SessionMeta,
+  SpawnTask,
+  TaskUpdate,
+  UiRequest,
+} from '@shared/protocol';
 import { decodePrEvent } from '@shared/pr-event';
 import { typedText } from '@shared/skill-message';
 import * as previews from '@shared/tool-previews';
@@ -272,15 +281,8 @@ export function toolStart(
     }
     return;
   }
-  if (bareName(ev.toolName) === 'suggest_task') {
-    const tasks = (Array.isArray(ev.args?.tasks) ? ev.args.tasks : [])
-      .filter((t: any) => t?.title && t?.prompt)
-      .map(({ code_folder, ...t }: any) =>
-        typeof code_folder === 'string' && code_folder ? { ...t, codeFolder: code_folder } : t,
-      );
-    if (tasks.length) push(s, { kind: 'suggest', key: newKey(), toolCallId: ev.toolCallId, tasks }, view);
-    return;
-  }
+  // Suggestions are actionable only after the host validates the call and returns its tasks.
+  if (bareName(ev.toolName) === 'suggest_task') return;
   const g = currentGroup(s, view);
   const tool = toolFromArgs(ev.toolCallId, ev.toolName, ev.args);
   if (tool.kind === 'agent' && !replay)
@@ -304,6 +306,14 @@ export function toolEnd(
     if (current?.kind === 'todos') current.items = items;
     else s.todosKey = push(s, { kind: 'todos', key: newKey(), items }, view).key;
     s.lastTodos = items;
+    return fx;
+  }
+  if (bareName(ev.toolName) === 'suggest_task') {
+    const tasks = ev.result?.details?.tasks as SpawnTask[] | undefined;
+    if (ev.isError || !Array.isArray(tasks)) return fx;
+    const validTasks = tasks.filter((task) => task?.title && task?.prompt);
+    if (validTasks.length)
+      push(s, { kind: 'suggest', key: newKey(), toolCallId: ev.toolCallId, tasks: validTasks }, view);
     return fx;
   }
   const asked = find(s, 'ask', (a) => a.toolCallId === ev.toolCallId);
