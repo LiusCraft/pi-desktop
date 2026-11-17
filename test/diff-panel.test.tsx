@@ -64,8 +64,8 @@ vi.mock('../src/renderer/src/components/common/ReviewCodeView', async () => {
   };
 });
 vi.mock('../src/renderer/src/components/workspace/PathTree', () => ({
-  PathTree: ({ label, paths, selected, decorate, onOpen, snapshotOf }: ComponentProps<typeof PathTree>) => (
-    <nav aria-label={label}>
+  PathTree: ({ label, paths, selected, decorate, onOpen, snapshotOf, flat }: ComponentProps<typeof PathTree>) => (
+    <nav aria-label={label} data-flat={!!flat}>
       {paths.map((path) => {
         const annotation = decorate?.(path);
         return (
@@ -172,6 +172,10 @@ async function pickScope(name: 'Last commit' | 'Last turn') {
   fireEvent.click(await screen.findByRole('menuitem', { name: new RegExp(name) }));
   await waitFor(() => expect(since().textContent).toContain(name));
 }
+async function panelOption(name: string) {
+  fireEvent.keyDown(screen.getByRole('button', { name: 'Panel options' }), { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('menuitem', { name }));
+}
 
 beforeEach(() => {
   review.scrollToItem.mockClear();
@@ -244,7 +248,7 @@ describe('Diff panel scope orchestration', () => {
     });
     expect(screen.getByTestId('review').getAttribute('data-threads')).toBe('');
     release = { ...release, base: 'new-release-base', files: [change('release.ts')] };
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    await panelOption('Refresh');
     expect(
       await screen.findByText('new-release-base:before:release.ts → new-release-base:after:release.ts'),
     ).toBeTruthy();
@@ -291,10 +295,10 @@ describe('Diff panel scope orchestration', () => {
     await act(async () => pending.reject(new Error('offline')));
     expect(await screen.findByText('Unable to load changes. Try refreshing.')).toBeTruthy();
     invoke.mockImplementation(host);
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    await panelOption('Refresh');
     await screen.findByTestId('code:src/app.ts');
     branch = { ...branch, files: [], commits: [] };
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    await panelOption('Refresh');
     expect(await screen.findByText(/No changes yet/)).toBeTruthy();
   });
 
@@ -322,16 +326,18 @@ describe('Diff panel scope orchestration', () => {
     expect(screen.getByTestId('code:package-lock.json')).toBeTruthy();
     fireEvent.click(within(generated).getByTitle('Hide diff'));
     branch = { ...branch, files: branch.files.map((file) => ({ ...file, rev: 'updated' })) };
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    await panelOption('Refresh');
     expect(await screen.findByTestId('code:package-lock.json')).toBeTruthy();
     fireEvent.click(fileRow('src/app.ts'));
     await waitFor(() => expect(review.scrollToItem).toHaveBeenCalledWith('src/app.ts'));
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
+    await panelOption('Collapse all');
     expect(screen.queryByTestId('code:src/app.ts')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Expand all' }));
+    await panelOption('Expand all');
     expect(screen.getByTestId('code:src/app.ts')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Flat list' }));
-    expect(screen.getByRole('button', { name: 'Tree view' }).getAttribute('aria-pressed')).toBe('true');
+    await panelOption('Flat list');
+    expect(screen.getByRole('navigation', { name: 'Changed files' }).getAttribute('data-flat')).toBe('true');
+    await panelOption('Tree view');
+    expect(screen.getByRole('navigation', { name: 'Changed files' }).getAttribute('data-flat')).toBe('false');
     fireEvent.click(screen.getByRole('button', { name: 'Hide changed files' }));
     expect(screen.queryByRole('navigation', { name: 'Changed files' })).toBeNull();
   });
