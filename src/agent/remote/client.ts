@@ -1,14 +1,17 @@
 // The connecting end of remote access: calls and the event stream of a remote host, shaped like the
 // local `AgentClient` so the main process can route the UI to either.
-import type { HostEvent } from '@shared/protocol';
+import type { AttachmentImportResult, HostEvent } from '@shared/protocol';
+import { parseRemoteTransferResult } from '@shared/remote-transfer';
 import {
+  isTransferMethod,
   REMOTE_API_VERSION,
   REMOTE_PATHS,
   REMOTE_RETRY_MS,
   REMOTE_STALE_MS,
+  type RemoteArtifactSite,
   type RemoteLinkState,
   type RemotePing,
-  type RemoteRpcResponse,
+  type RemoteUpload,
 } from '@shared/remote';
 
 const PING_TIMEOUT_MS = 5000;
@@ -67,7 +70,10 @@ export class RemoteClient {
     return { authorization: `Bearer ${this.options.token}` };
   }
 
-  async call<T = unknown>(method: string, ...args: unknown[]): Promise<T> {
+  call(method: 'attachments:upload', uploads: RemoteUpload[]): Promise<AttachmentImportResult>;
+  call(method: 'artifacts:site', id: string, have: number): Promise<RemoteArtifactSite | null>;
+  call<T = unknown>(method: string, ...args: unknown[]): Promise<T>;
+  async call(method: string, ...args: unknown[]): Promise<unknown> {
     let res: Response;
     try {
       res = await fetch(this.options.url + REMOTE_PATHS.rpc, {
@@ -78,10 +84,12 @@ export class RemoteClient {
     } catch (err) {
       throw reach(err);
     }
-    const body = (await res.json().catch(() => null)) as RemoteRpcResponse | null;
-    if (!body) throw new Error(`The remote answered with HTTP ${res.status}.`);
-    if (!body.ok) throw new Error(body.error);
-    return body.value as T;
+    const body: unknown = await res.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body) || !('ok' in body))
+      throw new Error(`The remote answered with an invalid RPC response (HTTP ${res.status}).`);
+    if (body.ok === false && 'error' in body && typeof body.error === 'string') throw new Error(body.error);
+    if (body.ok !== true || !('value' in body)) throw new Error('Invalid remote RPC response.');
+    return isTransferMethod(method) ? parseRemoteTransferResult(method, body.value) : body.value;
   }
 
   /** Open the event stream (and keep it open). Resolves once the first connection is up, rejects when the token is refused. */

@@ -13,6 +13,7 @@ import {
   REMOTE_UPLOAD_MAX_BYTES,
   type RemoteArtifactSite,
   type RemoteTransferMethod,
+  type RemoteTransferResult,
   type RemoteUpload,
 } from '@shared/remote';
 import { tr } from '@shared/i18n/runtime';
@@ -94,7 +95,11 @@ export function readArtifactSite(dataDir: string, id: unknown, have: unknown): R
   return { version: meta.version, files };
 }
 
-export async function transferCall(dataDir: string, method: RemoteTransferMethod, args: unknown[]): Promise<unknown> {
+export async function transferCall(
+  dataDir: string,
+  method: RemoteTransferMethod,
+  args: unknown[],
+): Promise<RemoteTransferResult> {
   switch (method) {
     case 'attachments:upload':
       return receiveUploads(dataDir, args[0]);

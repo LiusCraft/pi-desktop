@@ -8,7 +8,7 @@ import type { AttachmentImportResult, AttachmentSource } from '@shared/protocol'
 import { REMOTE_UPLOAD_MAX_BYTES, type RemoteUpload } from '@shared/remote';
 
 interface Caller {
-  call<T>(method: string, ...args: unknown[]): Promise<T>;
+  call(method: 'attachments:upload', uploads: RemoteUpload[]): Promise<AttachmentImportResult>;
 }
 
 async function readUpload(source: AttachmentSource, spent: number): Promise<RemoteUpload & { size: number }> {
@@ -48,8 +48,6 @@ export async function uploadAttachments(remote: Caller, sources: AttachmentSourc
       });
     }
   }
-  const result = uploads.length
-    ? await remote.call<AttachmentImportResult>('attachments:upload', uploads)
-    : { attachments: [], errors: [] };
+  const result = uploads.length ? await remote.call('attachments:upload', uploads) : { attachments: [], errors: [] };
   return { attachments: result.attachments, errors: [...errors, ...result.errors] };
 }

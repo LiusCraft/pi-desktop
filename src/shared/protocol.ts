@@ -31,6 +31,8 @@ import type {
   RemoteListing,
   RemoteServeSettings,
   RemoteServeState,
+  RemoteTransferMethod,
+  RemoteTransferResult,
 } from './remote';
 import type { ScheduledTask, TaskDraft } from './schedule';
 import type { SearchResult } from './text-search';
@@ -1671,7 +1673,7 @@ export interface HostInternal {
   'host:sessionPath'(id: string, rel: string): string;
   'host:importAttachments'(sources: AttachmentSource[]): AttachmentImportResult;
   /** A file-moving call of a remote client (see `REMOTE_TRANSFER_METHODS`). */
-  'host:transfer'(method: string, args: unknown[]): unknown;
+  'host:transfer'(method: RemoteTransferMethod, args: unknown[]): RemoteTransferResult;
   'host:worktree'(dir: string): WorktreeInfo | null;
   /**
    * A call from one of a plugin's pages: `method` is one the plugin's host entry registered, or a
