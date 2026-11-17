@@ -288,6 +288,13 @@ describe('code sessions', { timeout: 120_000 }, () => {
     } finally {
       idle.mockRestore();
     }
+    const retrying = vi.spyOn(AgentSession.prototype, 'isRetrying', 'get').mockReturnValue(true);
+    try {
+      await expect(driver.hub.reload(meta.id)).rejects.toThrow(/任务和命令/);
+      expect(reload).not.toHaveBeenCalled();
+    } finally {
+      retrying.mockRestore();
+    }
     let release!: () => void;
     let entered!: () => void;
     const gate = new Promise<void>((resolve) => {
@@ -300,9 +307,13 @@ describe('code sessions', { timeout: 120_000 }, () => {
       entered();
       await gate;
     });
+    // Prompt validation yields after its first busy check; reloading must catch that in-flight prompt too.
+    const earlyPrompt = driver.hub.prompt(meta.id, { text: '你好' }, 'steer');
     const loading = driver.hub.reload(meta.id);
     await started;
     try {
+      await expect(earlyPrompt).rejects.toThrow(/正在更新会话/);
+      expect(await driver.hub.suggest(meta.id, { model: 'session', context: 6 })).toBeNull();
       await expect(driver.hub.reload(meta.id)).rejects.toThrow(/任务和命令/);
       await expect(driver.hub.prompt(meta.id, { text: '你好' }, 'steer')).rejects.toThrow(/正在更新会话/);
       await expect(driver.hub.bash(meta.id, 'echo no')).rejects.toThrow(/正在更新会话/);
@@ -324,7 +335,7 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect((await driver.hub.bash(meta.id, 'echo unlocked')).output.trim()).toBe('unlocked');
   });
 
-  it('waits for an in-flight reload before disposing its replacement extension runtime', async () => {
+  it.each([false, true])('waits for reload before disposing, even when reload fails: %s', async (fails) => {
     const { meta } = await codeSession();
     await driver.hub.open(meta.id);
     let release!: () => void;
@@ -338,9 +349,11 @@ describe('code sessions', { timeout: 120_000 }, () => {
     const reload = vi.spyOn(AgentSession.prototype, 'reload').mockImplementationOnce(async () => {
       entered();
       await gate;
+      if (fails) throw new Error('reload during close failed');
     });
     const dispose = vi.spyOn(AgentSession.prototype, 'dispose');
     const loading = driver.hub.reload(meta.id);
+    const result = loading.catch((error: Error) => error);
     await started;
     const from = driver.events.length;
     const closing = driver.hub.archive(meta.id);
@@ -349,9 +362,14 @@ describe('code sessions', { timeout: 120_000 }, () => {
       expect(dispose).not.toHaveBeenCalled();
     } finally {
       release();
-      await Promise.all([loading, closing]);
-      reload.mockRestore();
-      dispose.mockRestore();
+      try {
+        const [failure] = await Promise.all([result, closing]);
+        expect(failure).toEqual(fails ? new Error('reload during close failed') : undefined);
+        expect(dispose).toHaveBeenCalledOnce();
+      } finally {
+        reload.mockRestore();
+        dispose.mockRestore();
+      }
     }
     expect(driver.hub.meta(meta.id).archived).toBe(true);
     expect(driver.events.slice(from).some((e) => e.type === 'changed' || e.type === 'notify')).toBe(false);

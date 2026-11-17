@@ -188,6 +188,14 @@ describe('pidesk_customize_*', () => {
     expect((await tools.get('pidesk_customize_list').execute()).content[0].text).not.toContain('docs · user');
   });
 
+  it('installs a plugin and explains how existing sessions can load it', async () => {
+    const source = 'npm:reload-test-plugin';
+    const out = await tools.get('pidesk_customize_manage').execute('c', { action: 'install_plugin', source });
+    expect(installed).toContain(source);
+    expect(out.content[0].text).toContain(source);
+    expect(out.content[0].text).toContain('/reload');
+  });
+
   it('scaffolds a plugin package and installs the folder it wrote', async () => {
     const create = tools.get('pidesk_plugin_create');
     const out = await create.execute('c', {
