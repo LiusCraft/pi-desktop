@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -61,6 +62,78 @@ test.afterEach(async ({}, testInfo) => {
     await app.close();
   }
   fs.rmSync(temporary, { recursive: true, force: true });
+});
+
+test('Diff Since switches scopes and searches branch bases without changing the session target', async ({}, testInfo) => {
+  await page.getByPlaceholder('Describe a task or ask a question').fill('日期显示少了一个月，帮我修一下');
+  await page.getByPlaceholder('Describe a task or ask a question').press('Enter');
+  await expect(page.getByRole('button', { name: 'Rewind to here', exact: true })).toBeEnabled({ timeout: 45_000 });
+  const meta = await page.evaluate(async () => (await window.piDesktop.invoke('sessions:list'))[0]);
+  const git = (...args: string[]) =>
+    execFileSync(
+      'git',
+      ['-c', 'user.name=Diff Test', '-c', 'user.email=diff@example.com', '-c', 'commit.gpgsign=false', ...args],
+      { cwd: meta.cwd, encoding: 'utf8', stdio: 'pipe' },
+    ).trim();
+  git('add', '-A');
+  git('commit', '-m', 'Demo changes');
+  git('branch', 'diff-search-base', meta.baseCommit!);
+  fs.writeFileSync(path.join(meta.cwd, 'since-working.txt'), 'working tree only\n');
+
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+d' : 'Control+d');
+  const diff = page.getByTestId('diff');
+  const since = diff.getByRole('button', { name: 'Compare against…', exact: true });
+  const paths = diff.getByRole('navigation', { name: 'Changed files' });
+  const file = (name: string) => paths.locator(`[data-item-path="${name}"]`);
+  await expect(file('since-working.txt')).toBeVisible();
+  await expect(diff.getByRole('navigation', { name: 'Commits', exact: true })).toContainText('Demo changes');
+  await since.click();
+  await expect(page.getByRole('menuitem', { name: /Last commit/ })).toContainText('+1');
+  await page.getByRole('menuitem', { name: new RegExp(`^${meta.baseBranch}`) }).hover();
+  const search = page.getByPlaceholder('Search branch bases…');
+  await expect(search).toBeFocused();
+  await expect(page.getByRole('option')).toHaveCount(3);
+  await page.screenshot({ path: testInfo.outputPath('diff-since-menu.png') });
+  await search.fill('no-such-branch');
+  await expect(page.getByText('No matching branches', { exact: true })).toBeVisible();
+  await search.fill('diff-search');
+  await expect(page.getByRole('option')).toHaveCount(1);
+  await expect(page.getByRole('option')).toContainText(/ · [0-9a-f]{7,} · /);
+  await search.press('ArrowLeft');
+  await expect(search).toBeFocused();
+  await search.press('Enter');
+  await expect(since).toContainText('diff-search-base');
+  await expect(file('src/utils/date.js')).toBeVisible();
+  const unchanged = await page.evaluate(
+    async (id) => (await window.piDesktop.invoke('sessions:list')).find((s) => s.id === id),
+    meta.id,
+  );
+  expect(unchanged?.baseBranch).toBe(meta.baseBranch);
+  expect(unchanged?.baseCommit).toBe(meta.baseCommit);
+
+  await since.click();
+  await page.getByRole('menuitem', { name: /Last commit/ }).click();
+  await expect(since).toContainText('Last commit');
+  await expect(since).toContainText('+1');
+  await expect(file('since-working.txt')).toBeVisible();
+  await expect(file('src/utils/date.js')).toHaveCount(0);
+  await expect(diff.getByRole('navigation', { name: 'Commits', exact: true })).toHaveCount(0);
+  await expect(diff.getByText('working tree only', { exact: true })).toBeVisible();
+  fs.writeFileSync(path.join(meta.cwd, 'since-working.txt'), 'working tree only\nrefreshed line\n');
+  await diff.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(since).toContainText('+2');
+  await expect(diff.getByText('refreshed line', { exact: true })).toBeVisible();
+
+  await since.click();
+  await page.getByRole('menuitem', { name: /Last turn/ }).click();
+  await expect(since).toContainText('Last turn');
+  await expect(file('src/utils/date.js')).toBeVisible();
+  await expect(file('since-working.txt')).toHaveCount(0);
+  // Closing and reopening the card must not silently change the comparison.
+  await diff.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+d' : 'Control+d');
+  await expect(since).toContainText('Last turn');
+  expect(errors).toEqual([]);
 });
 
 test('file menus, preview excerpts, diff comments, send, fork and rewind', async () => {

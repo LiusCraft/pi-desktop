@@ -128,6 +128,24 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect(driver.hub.thinkingLevels('demo/demo-coder').length).toBeGreaterThan(1);
   });
 
+  it('keeps Diff comparisons separate from the session base and PR target', async () => {
+    const { project, meta } = await codeSession();
+    const before = { branch: meta.branch, baseBranch: meta.baseBranch, baseCommit: meta.baseCommit };
+    execFileSync('git', ['branch', 'diff-only-base'], { cwd: project, stdio: 'pipe' });
+    fs.writeFileSync(path.join(project, 'diff-only.txt'), 'one\n');
+    const from = driver.events.length;
+    const result = await driver.hub.diff(meta.id, { kind: 'branch', ref: 'diff-only-base' });
+    expect(result.files.map((f) => f.path)).toContain('diff-only.txt');
+    expect(await driver.hub.changeContent(meta.id, 'diff-only.txt', null, result.base)).toEqual({
+      before: null,
+      after: 'one\n',
+      binary: false,
+    });
+    await driver.hub.diff(meta.id, { kind: 'lastCommit' });
+    expect({ branch: meta.branch, baseBranch: meta.baseBranch, baseCommit: meta.baseCommit }).toEqual(before);
+    expect(driver.events.slice(from).filter((e) => e.type === 'meta')).toEqual([]);
+  });
+
   it('answers a session’s live state without its transcript, and stays quiet for one nobody holds', async () => {
     const { meta } = await codeSession();
     expect(driver.hub.sessionState(meta.id), 'not held live before it is opened').toBeNull();
@@ -401,6 +419,27 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect(state.ahead).toBe(0);
     const status = r.events.filter((e) => e.type === 'status').map((e) => (e as any).status);
     expect(status).toEqual(['running', 'idle']);
+
+    const turn = await driver.hub.diff(meta.id, { kind: 'lastTurn' });
+    expect(turn.files.map((file) => file.path).sort()).toEqual(['src/utils/date.js', 'tests/date.test.js']);
+    for (const file of turn.files)
+      expect(file).toMatchObject({
+        before: read(project, file.path),
+        after: read(meta.cwd, file.path),
+        binary: false,
+      });
+    // A later read-only turn must not reuse the previous turn's edits.
+    await driver.run(meta.id, '运行 codemode 脚本');
+    expect((await driver.hub.diff(meta.id, { kind: 'lastTurn' })).files).toEqual([]);
+    const beforeNextTurn = read(meta.cwd, 'src/utils/date.js');
+    await driver.run(meta.id, '修复 isOverdue');
+    const nextTurn = await driver.hub.diff(meta.id, { kind: 'lastTurn' });
+    expect(nextTurn.files).toHaveLength(1);
+    expect(nextTurn.files[0]).toMatchObject({
+      path: 'src/utils/date.js',
+      before: beforeNextTurn,
+      after: read(meta.cwd, 'src/utils/date.js'),
+    });
   });
 
   it('ask mode: edits and commands ask; deny stops the run', async () => {
