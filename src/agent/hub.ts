@@ -236,7 +236,10 @@ interface Live {
   status: 'idle' | 'running';
   /** Bumped on dispose: prompts still preparing must not reach a new session. */
   generation: number;
+  /** Exclusive session updates: history navigation or resource reload. */
   historyBusy: boolean;
+  /** Disposal waits for a reload before shutting down the resulting extension runtime. */
+  reloadTask?: Promise<void>;
   disposed: boolean;
   /** Running `task` subagents by tool call id, so one can be stopped on its own. */
   tasks: Map<string, AbortController>;
@@ -1024,7 +1027,7 @@ export class SessionHub {
           cancelled: (await live.runtime.session.navigateTree(targetId, options)).cancelled,
         }),
         switchSession: async (sessionPath, options) => live.runtime.switchSession(sessionPath, options),
-        reload: async () => live.runtime.session.reload(),
+        reload: async () => this.reload(live.id),
       },
       shutdownHandler: () => {},
       onError: (err) =>
@@ -1609,10 +1612,15 @@ export class SessionHub {
     // arrives while that turn is starting must not inherit it, even if its text resembles an event.
     if (origin !== 'pr') live.prAutomation = false;
     // Image checks yield; never submit an old, in-flight message to a session that has since ended.
+    if (live.historyBusy) throw new Error(tr('ag.historyBusy'));
     if (live.disposed || live.generation !== generation)
       throw new Error(
         'The session closed while preparing this message. The draft has been retained; check history before retrying.',
       );
+    if (built.message.trim() === '/reload') {
+      await this.reload(id);
+      return { disposition: 'handled' };
+    }
     const session = live.runtime.session;
     if (images.length && !session.model?.input?.includes('image')) {
       throw new Error(
@@ -1872,7 +1880,8 @@ export class SessionHub {
   /** The live session only if it can answer right now (not closed, not mid-turn). */
   private idleLive(id: string) {
     const live = this.live.get(id);
-    if (!live || live.disposed || live.status === 'running' || live.runtime.session.isStreaming) return null;
+    if (!live || live.disposed || live.historyBusy || live.status === 'running' || live.runtime.session.isStreaming)
+      return null;
     return live;
   }
 
@@ -2343,6 +2352,7 @@ export class SessionHub {
     this.stopTasks(live);
     live.unsubscribe?.();
     this.setStatus(live, 'idle');
+    await live.reloadTask?.catch(() => {});
     await live.runtime.dispose().catch(() => {});
   }
 
@@ -2367,8 +2377,38 @@ export class SessionHub {
     const q = live.runtime.session.clearQueue();
     return { steering: [...q.steering], followUp: [...q.followUp] };
   }
+  /** Refresh resources in place: the conversation, model and desktop session stay intact. */
+  async reload(id: string) {
+    const live = await this.ensure(id);
+    const session = live.runtime.session;
+    if (
+      live.historyBusy ||
+      live.status === 'running' ||
+      !session.isIdle ||
+      session.isRetrying ||
+      session.isBashRunning ||
+      live.tasks.size ||
+      live.pending.size
+    ) {
+      throw new Error(tr('ag.reloadBusy'));
+    }
+    live.historyBusy = true;
+    this.abortSuggestion(id);
+    try {
+      live.reloadTask = session.reload();
+      await live.reloadTask;
+      if (live.disposed) return;
+      this.resourceChanged('sessionResources');
+      this.emit({ type: 'notify', sessionId: id, message: tr('ag.reloaded'), level: 'info' });
+    } finally {
+      live.reloadTask = undefined;
+      live.historyBusy = false;
+    }
+  }
+
   async newContext(id: string) {
     const live = await this.ensure(id);
+    if (live.historyBusy) throw new Error(tr('ag.historyBusy'));
     this.abortSuggestion(id);
     await live.runtime.newSession();
   }
@@ -2410,6 +2450,7 @@ export class SessionHub {
   }
   async compact(id: string, instructions?: string) {
     const live = await this.ensure(id);
+    if (live.historyBusy) throw new Error(tr('ag.historyBusy'));
     const r = await live.runtime.session.compact(instructions);
     return { tokensBefore: r.tokensBefore, estimatedTokensAfter: r.estimatedTokensAfter };
   }
