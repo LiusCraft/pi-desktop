@@ -55,12 +55,7 @@ export const git = defineMessages({
     zh: '{first}把分支 {branch} 推送到 origin，让 PR #{num} 带上这些新提交；PR 标题或描述需要同步就用 {edit} 更新，最后告诉我 PR 链接。',
   },
   'gitact.newLabel': { en: 'New PR', zh: '新 PR' },
-  'gitact.newHintMerged': { en: 'PR #{num} was merged; open a new one', zh: 'PR #{num} 已合入，重新提一个' },
   'gitact.newHintClosed': { en: 'PR #{num} was closed; open a new one', zh: 'PR #{num} 已关闭，重新提一个' },
-  'gitact.newPromptMerged': {
-    en: 'PR #{num} was merged: {first}create a new branch from the current branch and push it, then create a new PR with {create}{target}. Finally give me the PR link.',
-    zh: 'PR #{num} 已经合入：{first}从当前分支创建新分支并推送，然后用 {create} 创建新的 PR{target}，最后告诉我 PR 链接。',
-  },
   'gitact.newPromptClosed': {
     en: 'PR #{num} was closed: {first}create a new branch from the current branch and push it, then create a new PR with {create}{target}. Finally give me the PR link.',
     zh: 'PR #{num} 已经关闭：{first}从当前分支创建新分支并推送，然后用 {create} 创建新的 PR{target}，最后告诉我 PR 链接。',

@@ -40,6 +40,8 @@ export function gitActions({ branch, baseBranch, st, pr, forge, strategy }: Bran
   actions: GitActionItem[];
   primary: GitAction | null;
 } {
+  // A merged PR is complete: its bar reports status, not new branch work.
+  if (pr?.state === 'merged') return { actions: [], primary: null };
   const w = forgeWords(forge);
   const onBase = !baseBranch || branch === baseBranch;
   const dirty = st?.dirty.length ?? 0;
@@ -68,9 +70,8 @@ export function gitActions({ branch, baseBranch, st, pr, forge, strategy }: Bran
   } else if (pr) {
     prLabel = tr('gitact.newLabel');
     prCommand = 'new-pr';
-    const merged = pr.state === 'merged';
-    prHint = tr(merged ? 'gitact.newHintMerged' : 'gitact.newHintClosed', { num: pr.num });
-    prPrompt = tr(merged ? 'gitact.newPromptMerged' : 'gitact.newPromptClosed', {
+    prHint = tr('gitact.newHintClosed', { num: pr.num });
+    prPrompt = tr('gitact.newPromptClosed', {
       num: pr.num,
       first,
       create: w.create,

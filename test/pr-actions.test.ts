@@ -80,11 +80,27 @@ describe('branch bar actions', () => {
     assert.equal(action(w, 'push').enabled, false);
   });
 
-  it('opens a new PR once the old one is merged or closed', () => {
-    const w = work({ st: state({ dirty: ['a.ts'] }), pr: { num: 7, state: 'merged' } });
+  it.each([
+    ['loading', null],
+    ['clean and pushed', state()],
+    ['uncommitted changes', state({ dirty: ['a.ts'] })],
+    ['unpushed commits', state({ ahead: 2 })],
+    ['no upstream', state({ upstream: null })],
+    ['base branch updates', state({ baseBehind: 3 })],
+    ['no remote', state({ dirty: ['a.ts'], hasRemote: false })],
+  ])('reports status only for a merged PR with %s', (_name, st) => {
+    assert.deepEqual(gitActions(work({ st, pr: { num: 7, state: 'merged' } })), {
+      actions: [],
+      primary: null,
+    });
+  });
+
+  it('still offers a new PR once the old one is closed without merging', () => {
+    const w = work({ st: state({ dirty: ['a.ts'] }), pr: { num: 7, state: 'closed' } });
     assert.equal(gitActions(w).primary, 'pr');
+    assert.equal(action(w, 'pr').enabled, true);
     assert.equal(action(w, 'pr').label, 'New PR');
-    assert.match(action(w, 'pr').prompt, /#7/);
+    assert.match(action(w, 'pr').prompt, /#7 was closed/);
   });
 
   it('has nothing to offer when the branch is clean and pushed on the base branch', () => {
