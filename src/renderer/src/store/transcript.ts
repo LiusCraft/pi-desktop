@@ -14,6 +14,8 @@ import type {
   TaskUpdate,
   UiRequest,
 } from '@shared/protocol';
+import { peerMessageBody, queuedPeerMessages, SEND_MESSAGE_TOOL } from '@shared/peer-message';
+import { TASK_NOTIFICATION_TYPE, taskNotificationText } from '@shared/task-message';
 import { decodePrEvent } from '@shared/pr-event';
 import { typedText } from '@shared/skill-message';
 import * as previews from '@shared/tool-previews';
@@ -44,6 +46,7 @@ export function emptySession(meta: SessionMeta): SessionView {
   return {
     meta,
     items: [],
+    queuedPeers: [],
     loaded: false,
     running: false,
     compacting: false,
@@ -242,12 +245,27 @@ function recordNestedOutput(s: SessionView, output: NestedFileOutput) {
     recordChange(list, path, output.kind, before, after, { add: 0, del: 0 }, output.toolCallId, binary);
 }
 
+function peerSendItem(id: string, args?: Record<string, unknown>): ItemOf<'peerSend'> {
+  return {
+    kind: 'peerSend',
+    key: newKey(),
+    toolCallId: id,
+    sessionId: typeof args?.session_id === 'string' ? args.session_id : undefined,
+    text: typeof args?.message === 'string' ? peerMessageBody(args.message) : undefined,
+    status: 'unconfirmed',
+  };
+}
+
 export function toolStart(
   s: SessionView,
   ev: { toolCallId: string; toolName: string; args?: any },
   view: ViewMode,
   replay = false,
 ) {
+  if (ev.toolName === SEND_MESSAGE_TOOL) {
+    push(s, peerSendItem(ev.toolCallId, ev.args), view);
+    return;
+  }
   if (bareName(ev.toolName) === 'todo_write') return;
   if (bareName(ev.toolName) === 'exit_plan_mode') {
     push(
@@ -309,6 +327,14 @@ export function toolEnd(
 ): Effects {
   const fx: Effects = {};
   const text = textOf(ev.result?.content);
+  if (ev.toolName === SEND_MESSAGE_TOOL) {
+    const send = find(s, 'peerSend', (item) => item.toolCallId === ev.toolCallId);
+    if (send) {
+      send.status = ev.isError ? 'failed' : ev.result?.details?.outcome === 'queued' ? 'queued' : 'sent';
+      if (ev.isError) send.error = text;
+    }
+    return fx;
+  }
   if (bareName(ev.toolName) === 'todo_write') {
     const items = ev.result?.details?.todos as Todo[] | undefined;
     if (!items) return fx;
@@ -571,6 +597,9 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
       if (item?.kind === 'bash' && item.running) item.output += String(ev.delta ?? '');
       return {};
     }
+    case 'queue_update':
+      s.queuedPeers = queuedPeerMessages(ev.followUp);
+      return {};
     case 'agent_start':
       if (!s.running) {
         s.running = true;
@@ -647,11 +676,14 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
           push(s, { kind: 'note', key: newKey(), level: 'error', text: `Error: ${m.errorMessage}` }, view);
         if (m.stopReason === 'aborted') push(s, { kind: 'note', key: newKey(), text: t('status.interrupted') }, view);
         s.cur = null;
-      } else if (m.role === 'custom' && m.display) push(s, customItem(m), view);
+      } else if (m.role === 'custom') {
+        const item = customItem(m);
+        if (item) push(s, item, view);
+      }
       return {};
     }
     case 'tool_execution_start':
-      if (!ev.parentToolCallId) toolStart(s, ev as any, view);
+      if (!ev.parentToolCallId || ev.toolName === SEND_MESSAGE_TOOL) toolStart(s, ev as any, view);
       return {};
     case 'tool_execution_update':
       if (bareName(ev.toolName) === 'task') {
@@ -667,7 +699,7 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
       }
       return {};
     case 'tool_execution_end':
-      if (!ev.parentToolCallId) return toolEnd(s, ev as any, view);
+      if (!ev.parentToolCallId || ev.toolName === SEND_MESSAGE_TOOL) return toolEnd(s, ev as any, view);
       if (!ev.fileOutput || ev.isError) return {};
       recordNestedOutput(s, ev.fileOutput);
       return { scheduleChanges: true };
@@ -834,6 +866,7 @@ export function resolveUi(s: SessionView, requestId: string, label: string) {
 /** Rebuild the transcript from pi's message list (session resume). */
 export function replay(s: SessionView, messages: AgentMessage[], view: ViewMode) {
   s.items = [];
+  s.queuedPeers = [];
   s.todosKey = null;
   s.lastTodos = [];
   s.outputs = [];
@@ -873,7 +906,10 @@ export function transcriptItems(meta: SessionMeta, messages: AgentMessage[], vie
  * A handoff card carries a long, model-facing text. The transcript shows one line instead: the text
  * is there for the model, not the reader.
  */
-function customItem(m: AgentMessage): Item {
+function customItem(m: AgentMessage): Item | null {
+  if (m.customType === TASK_NOTIFICATION_TYPE)
+    return { kind: 'taskEvent', key: newKey(), text: taskNotificationText(textOf(m.content)) };
+  if (!m.display) return null;
   if (m.customType !== HANDOFF_CUSTOM_TYPE) return { kind: 'note', key: newKey(), text: textOf(m.content) };
   const d = (m.details ?? {}) as Partial<HandoffDetails>;
   return {
@@ -946,6 +982,14 @@ function appendMessages(s: SessionView, messages: AgentMessage[], view: ViewMode
       if (m.stopReason === 'error' && m.errorMessage)
         s.items.push({ kind: 'note', key: newKey(), level: 'error', text: `Error: ${m.errorMessage}` });
     } else if (m.role === 'toolResult') {
+      // Nested sends have execution events live, but only the parent result is in history.
+      for (const call of m.nestedCalls?.calls ?? []) {
+        if (call.name !== SEND_MESSAGE_TOOL) continue;
+        const send = peerSendItem(call.id, call.arguments);
+        send.status = call.status === 'ok' ? 'sent' : call.status === 'error' ? 'failed' : 'unconfirmed';
+        send.error = call.error;
+        s.items.push(send);
+      }
       toolEnd(
         s,
         {
@@ -957,8 +1001,9 @@ function appendMessages(s: SessionView, messages: AgentMessage[], view: ViewMode
         view,
         true,
       );
-    } else if (m.role === 'custom' && m.display) {
-      s.items.push(customItem(m));
+    } else if (m.role === 'custom') {
+      const item = customItem(m);
+      if (item) s.items.push(item);
     } else if (m.role === 'bashExecution') {
       s.items.push(bashExecutionItem(m));
     } else if (m.role === 'compactionSummary') {

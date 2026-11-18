@@ -25,6 +25,8 @@ import {
   type ExtensionToolContext,
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
+import { SEND_MESSAGE_TOOL } from '@shared/peer-message';
+import { TASK_NOTIFICATION_TYPE } from '@shared/task-message';
 import { StringEnum } from './tool-schema';
 import { Type } from 'typebox';
 import { AGENT_TYPES, DEFAULT_AGENT, type AgentType } from './agents';
@@ -1033,7 +1035,7 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         },
       });
       pi.registerTool({
-        name: 'pidesk_send_message',
+        name: SEND_MESSAGE_TOOL,
         label: 'Message session',
         description:
           'Send a message to another session of this project (scope "project" in pidesk_list_sessions), for example to hand over context or ask for a result. ' +
@@ -1068,8 +1070,8 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       try {
         pi.sendMessage(
           {
-            customType: 'pi-desktop-task-notification',
-            display: false,
+            customType: TASK_NOTIFICATION_TYPE,
+            display: true,
             content: `<task-notification id="${id}" status="${state}">\n${title}\n${body}\n</task-notification>`,
           },
           { triggerTurn: state !== 'stopped', deliverAs: 'followUp' },

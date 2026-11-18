@@ -18,6 +18,7 @@ import { referencePrompt, type ContextReference } from '@shared/context-referenc
 import { cacheHitRate } from '@shared/usage';
 import { revealItem } from '@/lib/quote-links';
 import { positiveLine } from '@shared/tool-previews';
+import { decodePeerMessage } from '@shared/peer-message';
 import { encodeTaskMessage } from '@shared/task-message';
 import { typedText } from '@shared/skill-message';
 import { call, errText, modKey } from '@/lib/api';
@@ -134,6 +135,7 @@ function flushEvents() {
           if (s.running) settle(s, true, view);
           s.hostEpoch++;
           s.loaded = false;
+          s.queuedPeers = [];
           s.compacting = false;
           s.setup = null;
           s.waiting = null;
@@ -573,6 +575,7 @@ export async function openSession(id: string, fresh = false) {
       x.meta = r.meta;
       if (!fresh) {
         replay(x, r.messages, st.prefs.viewMode);
+        x.queuedPeers = r.queuedPeers;
         // The reopened transcript starts at the summary; the messages it replaced are loaded on demand.
         markCompactionHistory(x, r.hiddenMessages);
         markHandoffHistory(x, r.handoffMessages);
@@ -1132,6 +1135,7 @@ export async function stop(id: string) {
   try {
     const q = await call('sessions:clearQueue', id);
     for (const wire of [...q.steering, ...q.followUp]) {
+      if (decodePeerMessage(wire)) continue; // A cancelled peer delivery is not the user's draft.
       const decoded = decodeUserContent(wire);
       const v = getApp().sessions[id];
       const p = v?.pendingUser

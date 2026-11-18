@@ -19,7 +19,8 @@ export interface QuoteLinks {
 export const squash = (text: string) => text.replace(/[\s*_`~#>|-]+/g, '');
 
 const textOf = (item: Item): string | null => {
-  if (item.kind === 'text' || item.kind === 'note') return item.text;
+  if (item.kind === 'text' || item.kind === 'note' || item.kind === 'taskEvent') return item.text;
+  if (item.kind === 'peerSend') return item.text ?? null;
   if (item.kind === 'plan') return item.md;
   if (item.kind === 'user') return decodeReferencePrompt(item.text)?.text ?? item.text;
   return null;

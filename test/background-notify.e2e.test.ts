@@ -20,8 +20,8 @@ import {
 } from '@earendil-works/pi-ai';
 import { createDesktopKit } from '../src/agent/desktop-kit';
 import { toWireEvent } from '../src/agent/events';
-import { applyPiEvent, emptySession } from '../src/renderer/src/store/transcript';
-import type { PiEvent, SessionMeta, TaskUpdate } from '../src/shared/protocol';
+import { applyPiEvent, emptySession, replay } from '../src/renderer/src/store/transcript';
+import type { AgentMessage, PiEvent, SessionMeta, TaskUpdate } from '../src/shared/protocol';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-desktop-notify-'));
 
@@ -140,8 +140,7 @@ describe('background task notifications', () => {
     expect(custom[0].content).toMatch(/bg-done/);
     expect(tasks.at(-1)).toMatchObject({ state: 'done', shell: { exitCode: 0 } });
 
-    // What the app shows: the events the host forwards to the renderer put the wake-up turn
-    // in the transcript, and the notification itself stays invisible.
+    // The event that woke the session belongs between the two answers, not in a user bubble.
     const view = emptySession({ id: 's1' } as SessionMeta);
     const wake = wire.findIndex((e, i) => e.type === 'agent_start' && i > 0);
     expect(wake).toBeGreaterThan(0);
@@ -154,6 +153,13 @@ describe('background task notifications', () => {
     const shown = view.items.flatMap((item) => (item.kind === 'text' ? [item.text] : []));
     expect(shown).toContain('answer 2');
     expect(shown).toContain('answer 3');
+    const eventAndReplies = () =>
+      view.items.flatMap((item) => (item.kind === 'taskEvent' || item.kind === 'text' ? [item.text] : []));
+    expect(eventAndReplies()).toEqual(['answer 2', expect.stringContaining('bg-done'), 'answer 3']);
+    const live = eventAndReplies();
+    expect(live[1]).not.toContain('<task-notification');
+    replay(view, session.messages as unknown as AgentMessage[], 'normal');
+    expect(eventAndReplies()).toEqual(live);
     // Only the prompt the test sent: the notification is a custom message and gets no bubble.
     const users = view.items.flatMap((item) => (item.kind === 'user' ? [item.text] : []));
     expect(users).toEqual(['start a slow command in the background']);
