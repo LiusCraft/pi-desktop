@@ -24,6 +24,7 @@ import { call, errText, modKey } from '@/lib/api';
 import { bashCommand } from '@/lib/bash';
 import { t } from '@/lib/i18n';
 import { cuePet } from '@/lib/pet-cue';
+import { showRequestToast } from '@/components/thread/RequestToast';
 import { playSound } from '@/lib/sounds';
 import { COMPACT_WINDOW_WIDTH, desktopCommands, MODES, VIEW_MODES, type ViewMode } from '@/lib/constants';
 import { fname, relPath } from '@/lib/format';
@@ -47,6 +48,7 @@ import {
   findByKey,
   hasThinking,
   newKey,
+  pendingRequest,
   push,
   replay,
   resolveUi,
@@ -186,7 +188,7 @@ function flushEvents() {
         case 'ui_request': {
           const r = addUiRequest(s, ev.request, view);
           if (r.openPlan) s.detail = { type: 'plan', key: r.openPlan };
-          effects.push([s.meta.id, { waiting: true }]);
+          effects.push([s.meta.id, { waiting: ev.request }]);
           break;
         }
         case 'ui_resolved':
@@ -270,8 +272,25 @@ function runEffects(id: string, fx: Effects) {
   // A finished turn is the moment the user is likely to type again. An interrupted
   // run is not: there is no natural follow-up to guess.
   if (fx.settled && !fx.settled.aborted) void primeSuggestion(id);
-  if (fx.waiting && away) {
-    if (!isCur || document.hidden) toast.warning(t('act.needsApproval', { title: s.meta.title }));
+  const request = fx.waiting;
+  if (request && away && pendingRequest(s, request.id)) {
+    if (!isCur || document.hidden) {
+      const pending = () => pendingRequest(getApp().sessions[id], request.id);
+      showRequestToast(id, s.meta.title, request, {
+        answer(response, label) {
+          const item = pending();
+          if (item) answerUi(id, item.key, response, label);
+        },
+        async open() {
+          if (!pending()) return;
+          await openSession(id);
+          const item = pending(); // Opening an unloaded session replays it with new item keys.
+          if (getApp().current !== id || !item) return;
+          if (item.kind === 'plan') openPlan(id, item.key);
+          else if (item.kind === 'perm') requestAnimationFrame(() => revealItem(item.key));
+        },
+      });
+    }
     call('app:notify', { title: s.meta.title, body: 'Needs your approval', sessionId: id }).catch(() => {});
   }
 }
