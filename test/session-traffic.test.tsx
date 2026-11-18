@@ -66,6 +66,28 @@ describe('session traffic in the normal transcript', () => {
     },
   );
 
+  it('shows progress snapshots on either side of the intervening assistant message', () => {
+    const s = emptySession(meta);
+    const toolName = 'pidesk_todo_write';
+    const inspecting = [{ content: 'Inspect', status: 'in_progress', activeForm: 'Inspecting' }];
+    const inspected = [{ content: 'Inspect', status: 'completed' }];
+    replay(
+      s,
+      [
+        { role: 'toolResult', toolCallId: 'first', toolName, details: { todos: inspecting } },
+        { role: 'assistant', content: [{ type: 'text', text: 'Found the issue.' }] },
+        { role: 'toolResult', toolCallId: 'second', toolName, details: { todos: inspected } },
+        { role: 'toolResult', toolCallId: 'failed', toolName, isError: true, details: { todos: [] } },
+      ],
+      'normal',
+    );
+    expect(s.lastTodos).toEqual(inspected);
+    expect(s.items.filter((i) => i.kind !== 'foot').map((i) => i.kind)).toEqual(['todos', 'text', 'todos']);
+    render(<Transcript s={s} />, { wrapper: TooltipProvider });
+    expect(screen.getByText('Inspecting')).toBeTruthy();
+    expect(screen.getByText('Inspect')).toBeTruthy();
+  });
+
   it('leaves a short notification readable without a redundant disclosure', () => {
     const s = emptySession(meta);
     replay(

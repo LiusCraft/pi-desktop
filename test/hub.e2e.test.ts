@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentSession, ProjectTrustStore } from '@earendil-works/pi-coding-agent';
-import { fauxAssistantMessage, fauxProvider, fauxToolCall } from '@earendil-works/pi-ai';
+import { fauxAssistantMessage, fauxProvider, fauxToolCall, getCurrentTools } from '@earendil-works/pi-ai';
 import { applyPiEvent, emptySession, replay } from '../src/renderer/src/store/transcript';
 import { decodeUserContent } from '@shared/attachments';
 import {
@@ -794,6 +794,77 @@ describe('code sessions', { timeout: 120_000 }, () => {
     const result = await driver.hub.messageAction(meta.id, user!.entryId!, 'rewind');
     expect(read(project, 'src/utils/date.js')).toBe(before);
     expect(result.session.messages.filter((message) => message.role === 'user')).toHaveLength(0);
+  });
+
+  it('keeps user-facing tools top-level even in codemode-only sessions', async () => {
+    const project = fs.mkdtempSync(path.join(tmp, 'visible-tools-'));
+    fs.mkdirSync(path.join(project, '.pi'));
+    fs.writeFileSync(
+      path.join(project, '.pi/settings.json'),
+      JSON.stringify({
+        defaultTools: ['+codemode'],
+        codemode: { mode: 'only' },
+      }),
+    );
+    new ProjectTrustStore(agentDir).set(project, true);
+    const faux = fauxProvider({ provider: 'visible-tools', models: [{ id: 'm' }] });
+    const uiTools = [
+      'pidesk_todo_write',
+      'pidesk_exit_plan_mode',
+      'pidesk_ask_question',
+      'pidesk_suggest_task',
+      'pidesk_send_message',
+      'pidesk_task',
+      'pidesk_bg_shell',
+    ];
+    const first = [{ content: 'Inspect', status: 'in_progress' }];
+    const last = [{ content: 'Inspect', status: 'completed' }];
+    const call = (name: string, args: Record<string, any>) =>
+      fauxAssistantMessage(fauxToolCall(name, args), { stopReason: 'toolUse' });
+    let declared: string[] = [];
+    faux.setResponses([
+      ({ messages }) => {
+        declared = getCurrentTools(messages).map((tool) => tool.name);
+        return call('pidesk_todo_write', { todos: first });
+      },
+      call('codemode', {
+        code: `const names = ALL_TOOLS.map(t => t.name);
+        if (!names.includes('read') || ${JSON.stringify(uiTools)}.some(n => names.includes(n))) throw Error('wrong callable tools');
+        return 'verified';`,
+      }),
+      call('pidesk_todo_write', { todos: last }),
+      fauxAssistantMessage('Done'),
+    ]);
+    driver.hub.models.registerNativeProvider(faux.provider);
+    const meta = await driver.hub.create({
+      kind: 'code',
+      projectPath: project,
+      model: 'visible-tools/m',
+      mode: 'bypass',
+      title: 'Visible tools',
+      autoName: false,
+    });
+    const { pi, tools } = await driver.run(meta.id, 'Track progress');
+    expect(declared).toEqual(expect.arrayContaining(['codemode', ...uiTools]));
+    expect(declared).not.toContain('read');
+    expect(tools.filter((e) => e.isError).map((e) => e.result?.content)).toEqual([]);
+    expect(tools.map((e) => [e.toolName, e.isError])).toEqual([
+      ['pidesk_todo_write', false],
+      ['codemode', false],
+      ['pidesk_todo_write', false],
+    ]);
+    const live = emptySession(meta);
+    for (const event of pi) applyPiEvent(live, event, 'normal');
+    const history = emptySession(meta);
+    replay(history, (await driver.hub.open(meta.id)).messages, 'normal');
+    for (const s of [live, history]) {
+      expect(
+        s.items
+          .filter((i) => i.kind === 'todos' || i.kind === 'group')
+          .map((i) => (i.kind === 'todos' ? i.items : i.tools.map((t) => t.name))),
+      ).toEqual([first, ['codemode'], last]);
+      expect(s.lastTodos).toEqual(last);
+    }
   });
 
   it('tracks real codemode edits live and on replay, and rewinds only the successful local writes', async () => {

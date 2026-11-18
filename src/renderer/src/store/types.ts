@@ -229,8 +229,7 @@ export interface SessionView {
   /** Key of the prompt card waiting for the user, if any. */
   waiting: string | null;
   unread: boolean;
-  /** This turn's todo card and the latest list (for the Work panel). */
-  todosKey: string | null;
+  /** Latest checklist for the Work panel, independent of transcript snapshots. */
   lastTodos: Todo[];
   /** Files Pi Desktop created or edited (Work panel). */
   outputs: { path: string; kind: 'write' | 'edit'; t: number }[];

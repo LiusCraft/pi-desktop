@@ -780,7 +780,7 @@ async function slashCommand(s: SessionView | undefined, head: string, text: stri
       await call('sessions:newContext', id);
       updateSession(id, (x) => {
         x.items = [];
-        x.todosKey = null;
+        x.lastTodos = [];
         x.ctxPct = 0;
         x.cacheRate = null;
         x.cost = 0;
@@ -1097,7 +1097,6 @@ export async function send(queueOnly = false) {
       v.streamTokens = 0;
       v.streamMs = 0;
       v.cur = null;
-      v.todosKey = null;
       v.statusText = t('status.thinking');
     }
   });

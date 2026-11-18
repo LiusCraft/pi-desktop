@@ -66,7 +66,6 @@ export function emptySession(meta: SessionMeta): SessionView {
     commands: [],
     waiting: null,
     unread: false,
-    todosKey: null,
     lastTodos: [],
     outputs: [],
     turnOutputs: [],
@@ -337,10 +336,9 @@ export function toolEnd(
   }
   if (bareName(ev.toolName) === 'todo_write') {
     const items = ev.result?.details?.todos as Todo[] | undefined;
-    if (!items) return fx;
-    const current = findByKey(s, s.todosKey);
-    if (current?.kind === 'todos') current.items = items;
-    else s.todosKey = push(s, { kind: 'todos', key: newKey(), items }, view).key;
+    if (ev.isError || !Array.isArray(items)) return fx;
+    // The panel follows the latest list; the transcript keeps each snapshot where it was written.
+    push(s, { kind: 'todos', key: newKey(), items }, view);
     s.lastTodos = items;
     return fx;
   }
@@ -608,7 +606,6 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
         s.streamTokens = 0;
         s.streamMs = 0;
       }
-      s.todosKey = null;
       s.statusText = t('status.thinking');
       return {};
     case 'message_start':
@@ -868,7 +865,6 @@ export function resolveUi(s: SessionView, requestId: string, label: string) {
 export function replay(s: SessionView, messages: AgentMessage[], view: ViewMode) {
   s.items = [];
   s.queuedPeers = [];
-  s.todosKey = null;
   s.lastTodos = [];
   s.outputs = [];
   s.turnOutputs = [];
@@ -950,7 +946,6 @@ function appendMessages(s: SessionView, messages: AgentMessage[], view: ViewMode
       startChangeTurn(s);
       if (sawAssistant) s.items.push({ kind: 'foot', key: newKey(), t: m.timestamp || Date.now() });
       sawAssistant = false;
-      s.todosKey = null;
       const event = decodePrEvent(user.text);
       if (event) {
         s.items.push({ kind: 'prEvent', key: newKey(), event, at: m.timestamp || Date.now() });
