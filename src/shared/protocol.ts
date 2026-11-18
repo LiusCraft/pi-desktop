@@ -128,8 +128,10 @@ export interface SessionMeta {
   createdAt: number;
   updatedAt: number;
   pr: PrSummary | null;
-  /** CI automation the user switched on in the PR bar: fix a red run, merge once it is green. */
+  /** Session switches: fix a red run and review comments, or merge once green. */
   autoFixCi?: boolean;
+  /** Agent-enabled CI events use normal tool permissions, unlike an explicit PR-bar grant. */
+  agentArmedCi?: boolean;
   autoMerge?: boolean;
   /** What that automation already handled: the fixed commit and the merged PR, so a restart cannot repeat it. */
   prAutoDone?: { fix?: string; merge?: number };

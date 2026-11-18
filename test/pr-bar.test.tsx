@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import './renderer-dom';
-import { render, screen } from '@testing-library/react';
+import { invoke } from './renderer-dom';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { SessionMeta } from '../src/shared/protocol';
 
@@ -51,6 +51,21 @@ const bar = (s: ReturnType<typeof session>) => (
     <PrBar s={s} />
   </TooltipProvider>
 );
+
+it('exposes the pre-armed CI switch before a PR or diff exists', async () => {
+  const s = session();
+  s.pr = s.meta.pr = null;
+  s.meta.autoFixCi = true;
+  s.changes = [];
+  invoke.mockResolvedValue({ ...s.meta, autoFixCi: false });
+  render(bar(s));
+  fireEvent.click(screen.getByRole('button', { name: 'CI' }));
+  const toggle = await screen.findByRole('checkbox', { name: 'Auto-fix CI & address comments' });
+  expect(toggle.getAttribute('aria-checked')).toBe('true');
+  expect(screen.getByRole('checkbox', { name: 'Auto-merge when ready' }).getAttribute('aria-checked')).toBe('false');
+  fireEvent.click(toggle);
+  expect(invoke).toHaveBeenCalledWith('sessions:update', s.meta.id, { prAuto: { fixCi: false } });
+});
 
 describe('merged PR bar', () => {
   it('keeps PR status, diff, comments and CI without the action button or dropdown', () => {

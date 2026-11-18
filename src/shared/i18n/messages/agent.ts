@@ -2,6 +2,42 @@ import { defineMessages } from '../define';
 
 /** Texts the agent host writes: errors shown in toasts and forms, and the prompts it sends the model on the user's behalf. */
 export const agent = defineMessages({
+  'ag.ciWatchOn': {
+    en: 'CI and review handling enabled for this session. Merge settings unchanged.',
+    zh: '已开启当前会话的 CI 修复和评审处理，合并设置未变。',
+  },
+  'ag.ciWatchOff': {
+    en: 'CI and review handling disabled for this session.',
+    zh: '已关闭当前会话的 CI 修复和评审处理。',
+  },
+  'ag.goalDescription': {
+    en: 'Work toward a goal · /goal [objective | pause | resume | clear]',
+    zh: '持续推进目标 · /goal [目标 | pause | resume | clear]',
+  },
+  'ag.goalUsage': { en: 'No goal set. Use /goal <objective> to start.', zh: '当前没有目标。用 /goal <目标> 开始。' },
+  'ag.goalBusy': {
+    en: 'Stop the current run before starting or replacing a goal.',
+    zh: '请先停止当前运行，再开始或替换目标。',
+  },
+  'ag.goalNotActive': { en: 'No goal is running.', zh: '当前没有正在执行的目标。' },
+  'ag.goalNeedReason': { en: 'Give evidence or name the blocker.', zh: '请给出完成证据或说明阻碍。' },
+  'ag.goalActive': { en: 'Active goal', zh: '执行中的目标' },
+  'ag.goalPaused': { en: 'Paused goal', zh: '已暂停的目标' },
+  'ag.goalBlocked': { en: 'Blocked goal', zh: '受阻的目标' },
+  'ag.goalComplete': { en: 'Completed goal', zh: '已完成的目标' },
+  'ag.goalCleared': { en: 'Goal cleared.', zh: '已清除目标。' },
+  'ag.goalLimit': {
+    en: 'Automatic continuation limit reached. Use /goal resume to continue.',
+    zh: '已达到自动续跑上限。用 /goal resume 继续。',
+  },
+  'ag.goalInterrupted': {
+    en: 'Run interrupted. Use /goal resume to continue.',
+    zh: '运行已中断。用 /goal resume 继续。',
+  },
+  'ag.goalInstruction': {
+    en: 'Session goal: {objective}\nTake the next concrete step within the current permissions. Call pidesk_goal_result with evidence when verified, or with a blocker if you need user input, permission, or an external result. Never poll or retry a denied action.',
+    zh: '会话目标：{objective}\n在当前权限内执行下一步。验证完成后调用 pidesk_goal_result 并给出证据；需要用户输入、授权或等待外部结果时，说明阻碍。不要轮询或重试已被拒绝的操作。',
+  },
   'ag.nameRule': {
     en: 'The name may only contain letters, digits, - and _, and must start with a letter or digit',
     zh: '名称只能包含字母、数字、- 和 _，且以字母或数字开头',

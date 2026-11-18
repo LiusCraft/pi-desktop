@@ -121,6 +121,7 @@ export const git = defineMessages({
   },
   'prbar.files': { en: '{n} files', zh: '{n} 个文件' },
   'prbar.ciMonitoring': { en: 'CI monitoring', zh: 'CI 监控' },
+  'prbar.waitingForPr': { en: 'Waiting for a pull request on this branch', zh: '等待当前分支创建 PR' },
   'prbar.openChecks': { en: 'Open checks on {forge}', zh: '在 {forge} 打开检查' },
   'prbar.openCheck': { en: 'Open {name} on {forge}', zh: '在 {forge} 打开 {name}' },
   'prbar.checkPass': { en: 'passed', zh: '通过' },

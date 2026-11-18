@@ -84,7 +84,8 @@ const CHECK_LABEL = { pass: 'prbar.checkPass', fail: 'prbar.checkFail', pending:
 export function PrBar({ s }: { s: SessionView }) {
   const t = useT();
   const strategy = useApp((a) => a.prefs.syncStrategy);
-  if (s.meta.kind === 'work' || s.prHidden || !s.meta.branch || !s.changes.length) return null;
+  const armed = !!(s.meta.autoFixCi || s.meta.autoMerge);
+  if (s.meta.kind === 'work' || s.prHidden || !s.meta.branch || (!s.changes.length && !armed)) return null;
   const id = s.meta.id;
   const st = s.gitState;
   const pr = s.pr;
@@ -98,7 +99,7 @@ export function PrBar({ s }: { s: SessionView }) {
   });
   // Nothing to commit, push or open: the bar would only restate the branch name.
   const available = actions.filter((a) => a.enabled);
-  if (st && !pr && !st.behind && !st.baseBehind && !available.length) return null;
+  if (!armed && st && !pr && !st.behind && !st.baseBehind && !available.length) return null;
   // With nothing else to send, a base branch that moved on is the only thing the button offers.
   const current = available.find((a) => a.act === primary) ?? available.find((a) => a.act === 'sync');
   const ask = (command: BuiltinCommand, text: string) => {
@@ -136,6 +137,7 @@ export function PrBar({ s }: { s: SessionView }) {
         <BranchPath branch={s.meta.branch} baseBranch={s.meta.baseBranch} />
         <span className="flex-1" />
         {diffChip}
+        <CiPanel s={s} pr={null} ask={ask} />
         {current && <SplitButton s={s} current={current} actions={available} primary={primary} run={ask} />}
         {hide}
       </div>
@@ -326,44 +328,49 @@ function CiPanel({
   ask,
 }: {
   s: SessionView;
-  pr: PrLike;
-  open: () => void;
+  pr: PrLike | null;
+  open?: () => void;
   ask: (command: BuiltinCommand, text: string) => void;
 }) {
   const t = useT();
-  const checks = pr.checks ?? [];
+  const checks = pr?.checks ?? [];
+  const status = pr ? prCiLine(pr) : t('prbar.waitingForPr');
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button
           className="flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent"
-          title={prCiLine(pr)}
+          title={status}
         >
-          <span className={cn('size-1.5 rounded-full', DOT[pr.ci ?? 'none'], pr.ci === 'pending' && 'animate-pulse')} />
+          <span
+            className={cn('size-1.5 rounded-full', DOT[pr?.ci ?? 'none'], pr?.ci === 'pending' && 'animate-pulse')}
+          />
           CI
         </button>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" sideOffset={8} className="w-72 p-0">
         <div className="flex items-center gap-2 border-b px-3 py-2">
           <span className="text-[11.5px] font-medium">{t('prbar.ciMonitoring')}</span>
-          <button
-            className="ml-auto rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            title={t('prbar.openChecks', { forge: forgeName(pr.forge) })}
-            onClick={open}
-          >
-            <SquareArrowOutUpRightIcon className="size-3.5" />
-          </button>
+          {pr && (
+            <button
+              className="ml-auto rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              title={t('prbar.openChecks', { forge: forgeName(pr.forge) })}
+              onClick={open}
+            >
+              <SquareArrowOutUpRightIcon className="size-3.5" />
+            </button>
+          )}
         </div>
         <div className="px-3 py-2">
           <p className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
-            {pr.ci === 'pending' ? (
+            {pr?.ci === 'pending' ? (
               <LoaderCircleIcon className="size-3 shrink-0 animate-spin" />
             ) : !checks.length ? (
               <CircleDashedIcon className="size-3 shrink-0" />
             ) : null}
-            {prCiLine(pr)}
+            {status}
           </p>
-          {!!checks.length && (
+          {pr && !!checks.length && (
             <div className="space-y-0.5 mt-1.5 max-h-40 overflow-y-auto pr-1">
               {checks.map((c) => (
                 <div key={c.n} className="flex items-center gap-2 py-0.5 text-[11.5px]">
@@ -407,7 +414,7 @@ function CiPanel({
             <span>{t('prbar.autoMerge')}</span>
           </label>
         </div>
-        {pr.ci === 'fail' && !s.meta.autoFixCi && (
+        {pr?.ci === 'fail' && !s.meta.autoFixCi && (
           <>
             <div className="border-t" />
             <button
@@ -420,7 +427,7 @@ function CiPanel({
             </button>
           </>
         )}
-        {(s.meta.autoFixCi || s.meta.autoMerge) && (
+        {pr && (s.meta.autoFixCi || s.meta.autoMerge) && (
           <div className="border-t px-3 py-1.5 text-[10.5px] text-muted-foreground">{t('prbar.watching')}</div>
         )}
       </PopoverContent>

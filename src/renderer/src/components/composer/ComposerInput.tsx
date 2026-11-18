@@ -40,7 +40,7 @@ import { bridge, call } from '@/lib/api';
 import { bashCommand } from '@/lib/bash';
 import { desktopCommands } from '@/lib/constants';
 import { fuzzyEntry, fuzzyRank, type FuzzyEntry } from '@/lib/fuzzy';
-import { useT } from '@/lib/i18n';
+import { t, useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { cycleMode, loadFiles, openContextReference, send } from '@/store/actions';
 import { currentSession, getApp, useApp } from '@/store/app';
@@ -148,6 +148,7 @@ const fileEntries = (files: string[]) => {
 function commandSuggestions(query: string, s: SessionView | null): Suggestion[] {
   const commands = [
     ...desktopCommands(),
+    ...(!s ? [['/goal', t('ag.goalDescription')] as [string, string]] : []),
     ...(s?.commands ?? []).map((c) => [`/${c.name}`, c.description || c.source] as [string, string]),
   ];
   const entries = commands.map(([name, description]) => fuzzyEntry({ name, description }, name.slice(1)));

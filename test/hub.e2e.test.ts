@@ -125,6 +125,58 @@ const codeSession = async (mode: PermissionMode = 'auto', worktree = false, auto
 const read = (dir: string, rel: string) => fs.readFileSync(path.join(dir, rel), 'utf8');
 
 describe('code sessions', { timeout: 120_000 }, () => {
+  it('continues an unfinished /goal, pre-arms only CI, and restores the verified result', async () => {
+    const project = makeProject('goal-ci');
+    const faux = fauxProvider({ provider: 'goal-test', models: [{ id: 'm' }] });
+    faux.setResponses([
+      fauxAssistantMessage('Next I will enable the requested watch.'),
+      fauxAssistantMessage(fauxToolCall('pidesk_set_ci_watch', { enabled: true }), { stopReason: 'toolUse' }),
+      fauxAssistantMessage(
+        fauxToolCall('pidesk_goal_result', { status: 'complete', reason: 'CI watch enabled before PR creation' }),
+        { stopReason: 'toolUse' },
+      ),
+      fauxAssistantMessage('Done'),
+    ]);
+    driver.hub.models.registerNativeProvider(faux.provider);
+    const { id } = await driver.hub.create({
+      kind: 'code',
+      projectPath: project,
+      model: 'goal-test/m',
+      mode: 'auto',
+      title: 'goal-ci',
+      autoName: false,
+    });
+    expect(await driver.hub.commands(id)).toContainEqual(expect.objectContaining({ name: 'goal' }));
+    const cmd = (text: string) => driver.hub.prompt(id, { text, attachments: [] }, 'steer');
+    await cmd('/goal Enable CI handling before opening my PR');
+    await vi.waitFor(
+      () =>
+        expect(driver.events).toContainEqual(
+          expect.objectContaining({
+            type: 'pi',
+            sessionId: id,
+            event: expect.objectContaining({ type: 'agent_settled' }),
+          }),
+        ),
+      { timeout: 10000 },
+    );
+    expect(driver.hub.meta(id)).toMatchObject({ pr: null, autoFixCi: true, agentArmedCi: true });
+    expect(driver.hub.meta(id).autoMerge).toBeFalsy();
+    await driver.hub.archive(id);
+    driver.hub.unarchive(id);
+    await cmd('/goal');
+    expect(driver.events).toContainEqual(
+      expect.objectContaining({
+        type: 'notify',
+        sessionId: id,
+        message: expect.stringContaining('CI watch enabled before PR creation'),
+      }),
+    );
+    driver.hub.update(id, { prAuto: { fixCi: false } });
+    expect(driver.hub.meta(id).autoFixCi).toBe(false);
+    expect(driver.hub.meta(id).agentArmedCi).toBeUndefined();
+  });
+
   it('lists the offline demo model and its thinking levels', async () => {
     const { models } = await driver.hub.listModels();
     expect(models.some((m) => m.provider === 'demo' && m.id === 'demo-coder')).toBe(true);
