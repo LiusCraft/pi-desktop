@@ -788,7 +788,7 @@ function rollupChecks(rows: RollupContext[]): PrStatus['checks'] {
     .map(({ c, name }) => {
       const result = String(c.conclusion || c.state || '').toUpperCase();
       let st: 'pass' | 'fail' | 'pending' = 'fail';
-      if (!c.conclusion && c.status && c.status !== 'COMPLETED') st = 'pending';
+      if (c.status && c.status !== 'COMPLETED') st = 'pending';
       else if (['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(result)) st = 'pass';
       else if (result === 'PENDING' || result === 'EXPECTED') st = 'pending';
       const url = c.detailsUrl || c.targetUrl;
@@ -809,9 +809,36 @@ async function githubInlineCount(cwd: string, num: unknown): Promise<number> {
   return (out ?? '').split('\n').reduce((sum, n) => sum + (Number(n.trim()) || 0), 0);
 }
 
+type Ci = PrStatus['ci'];
+
+function checksCi(checks: PrStatus['checks'], pipeline?: Exclude<Ci, 'none'>): Ci {
+  if (pipeline === 'fail' || checks.some((c) => c.st === 'fail')) return 'fail';
+  if (pipeline === 'pending' || checks.some((c) => c.st === 'pending')) return 'pending';
+  return checks.length || pipeline === 'pass' ? 'pass' : 'none';
+}
+
+/** Actions can queue a workflow before its first job appears in statusCheckRollup. */
+async function githubWorkflowsPending(cwd: string, head: string): Promise<boolean | null> {
+  const out = await run(
+    'gh',
+    [
+      'api',
+      `repos/{owner}/{repo}/actions/runs?head_sha=${encodeURIComponent(head)}&per_page=100`,
+      '--paginate',
+      '--jq',
+      '.workflow_runs[].status',
+    ],
+    cwd,
+    { allowFail: true },
+  );
+  // No runs is a valid empty list. A denied/failed lookup is not an all-clear.
+  if (out === null) return null;
+  return out.split(/\s+/).some((s) => s !== '' && s !== 'completed');
+}
+
 async function readGithubPr(cwd: string): Promise<PrSnapshot | null> {
   const full =
-    'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author,additions,deletions,changedFiles,mergeable,reviewDecision,headRefOid,updatedAt,baseRefName';
+    'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author,additions,deletions,changedFiles,mergeable,mergeStateStatus,reviewDecision,headRefOid,updatedAt,baseRefName';
   let out = await run('gh', ['pr', 'view', '--json', full], cwd, { allowFail: true });
   // Older gh builds reject a field they do not know; the card is worth more than the full query, so ask for less.
   if (!out)
@@ -827,14 +854,17 @@ async function readGithubPr(cwd: string): Promise<PrSnapshot | null> {
   try {
     const pr = JSON.parse(out);
     const checks = rollupChecks(pr.statusCheckRollup || []);
-    const ci = !checks.length
-      ? 'none'
-      : checks.some((c) => c.st === 'fail')
-        ? 'fail'
-        : checks.some((c) => c.st === 'pending')
-          ? 'pending'
-          : 'pass';
-    const mergeable = { MERGEABLE: 'clean', CONFLICTING: 'conflicting' } as const;
+    const reported = checksCi(checks);
+    const workflowsPending =
+      pr.state === 'OPEN' && pr.headRefOid && (reported === 'pass' || reported === 'none')
+        ? await githubWorkflowsPending(cwd, pr.headRefOid)
+        : null;
+    const ci = workflowsPending ? 'pending' : reported;
+    // MERGEABLE only means conflict-free; GitHub may still be waiting for a required check.
+    let mergeable: PrStatus['mergeable'] = pr.mergeable ? 'unknown' : undefined;
+    if (pr.mergeable === 'CONFLICTING') mergeable = 'conflicting';
+    else if (pr.mergeable === 'MERGEABLE' && pr.mergeStateStatus === 'CLEAN' && workflowsPending === false)
+      mergeable = 'clean';
     const review = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes', REVIEW_REQUIRED: 'required' } as const;
     const size = (n: unknown) => (typeof n === 'number' ? n : undefined);
     // A token that cannot read the comments (the identity-only fallback) will not read these either.
@@ -853,9 +883,7 @@ async function readGithubPr(cwd: string): Promise<PrSnapshot | null> {
       additions: size(pr.additions),
       deletions: size(pr.deletions),
       files: size(pr.changedFiles),
-      mergeable:
-        mergeable[String(pr.mergeable || '').toUpperCase() as keyof typeof mergeable] ??
-        (pr.mergeable ? 'unknown' : undefined),
+      mergeable,
       review: review[String(pr.reviewDecision || '').toUpperCase() as keyof typeof review],
       base: typeof pr.baseRefName === 'string' && pr.baseRefName ? pr.baseRefName : undefined,
       head: typeof pr.headRefOid === 'string' && pr.headRefOid ? pr.headRefOid : undefined,
@@ -938,13 +966,9 @@ async function readGitlabPr(cwd: string): Promise<PrSnapshot | null> {
               },
             ]
           : [];
-    const ci = !checks.length
-      ? 'none'
-      : checks.some((c) => c.st === 'fail')
-        ? 'fail'
-        : checks.some((c) => c.st === 'pending')
-          ? 'pending'
-          : 'pass';
+    const pipelineState = pipeline?.status ? gitlabCheck(String(pipeline.status), false) : undefined;
+    const reported = checksCi(checks, pipelineState);
+    const ci = reported !== 'fail' && mr.detailed_merge_status === 'ci_still_running' ? 'pending' : reported;
     const rawNotes = mr.project_id
       ? await glabJson(cwd, `${base}/merge_requests/${mr.iid}/notes?per_page=100&sort=asc`)
       : null;

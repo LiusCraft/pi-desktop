@@ -120,8 +120,10 @@ describe('PR watcher, comments', () => {
 describe('PR watcher, merging and the loop', () => {
   it('asks for a merge once when the PR becomes ready', () => {
     const w = new PrWatcher();
-    w.observe(snap({ ci: 'pending' }), withMerge);
-    assert.equal(w.observe(snap({ ci: 'pending' }), withMerge).pending, null);
+    assert.equal(w.observe(snap({ ci: 'none', mergeable: 'clean' }), withMerge).pending, null);
+    const queued = w.observe(snap({ ci: 'pending', mergeable: 'clean' }), withMerge);
+    assert.equal(queued.pending, null);
+    assert.equal(queued.after, FAST_MS);
     const ready = w.observe(snap({ ci: 'pass', mergeable: 'clean' }), withMerge);
     assert.equal(ready.pending?.event.kind, 'merge');
     assert.deepEqual(ready.pending?.mark, { merge: 4 });

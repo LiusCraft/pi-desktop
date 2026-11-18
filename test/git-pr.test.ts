@@ -16,7 +16,11 @@ vi.mock('node:child_process', async (orig) => ({
     calls.push({ cmd, args, cwd: options.cwd });
     if (cmd === 'git') return cb(null, remote, '');
     const response = responses.shift();
-    cb(response instanceof Error ? response : null, response instanceof Error ? '' : JSON.stringify(response), '');
+    cb(
+      response instanceof Error ? response : null,
+      response instanceof Error ? '' : typeof response === 'string' ? response : JSON.stringify(response),
+      '',
+    );
   },
 }));
 const { prStatus, readPr } = await import('../src/agent/git');
@@ -180,11 +184,43 @@ describe('GitHub PR status', () => {
     assert.equal(pr.checks.length, 2);
     assert.equal(pr.ci, 'fail');
   });
-  it('reports clean and unknown mergeability', async () => {
-    responses = [{ number: 3, url: 'u', state: 'OPEN', isDraft: false, mergeable: 'MERGEABLE' }];
-    assert.equal((await prStatus('project'))!.mergeable, 'clean');
-    calls.length = 0;
-    responses = [{ number: 3, url: 'u', state: 'OPEN', isDraft: false, mergeable: 'UNKNOWN' }];
+  const clean = {
+    number: 3,
+    url: 'u',
+    state: 'OPEN',
+    isDraft: false,
+    mergeable: 'MERGEABLE',
+    mergeStateStatus: 'CLEAN',
+    headRefOid: 'abc',
+  };
+  const green = { ...clean, statusCheckRollup: [{ context: 'lint', state: 'SUCCESS' }] };
+
+  it.each([
+    ['queued', []],
+    ['waiting', green.statusCheckRollup],
+    ['pending', green.statusCheckRollup],
+  ] as const)('detects a %s workflow that has not reported a job', async (state, statusCheckRollup) => {
+    responses = [{ ...clean, statusCheckRollup }, `completed\n${state}\n`];
+    const pr = (await prStatus('project'))!;
+    assert.equal(pr.ci, 'pending');
+    assert.equal(pr.checks.length, statusCheckRollup.length);
+    assert.ok(calls.some((c) => c.args.includes('repos/{owner}/{repo}/actions/runs?head_sha=abc&per_page=100')));
+  });
+
+  it('distinguishes no CI from queued CI and from a completed green build', async () => {
+    responses = [clean, '', green, 'completed\n'];
+    assert.equal((await prStatus('project'))!.ci, 'none');
+    const pr = (await prStatus('project'))!;
+    assert.equal(pr.ci, 'pass');
+    assert.equal(pr.mergeable, 'clean');
+  });
+
+  it.each([
+    ['unreadable workflows', green, new Error('403')],
+    ['blocked PR', { ...green, mergeStateStatus: 'BLOCKED' }, 'completed'],
+    ['unknown mergeability', { ...green, mergeable: 'UNKNOWN' }, 'completed'],
+  ] as const)('does not declare readiness from green jobs alone: %s', async (_, pr, runs) => {
+    responses = [pr, runs];
     assert.equal((await prStatus('project'))!.mergeable, 'unknown');
   });
   it('drops the card fields when gh rejects them, keeping identity and CI', async () => {
@@ -292,6 +328,13 @@ describe('GitLab merge request status', () => {
       ],
     );
   });
+  it('keeps a pending pipeline pending even when the visible jobs are green', async () => {
+    responses = [{ ...mr, head_pipeline: { id: 9, status: 'pending' } }, [{ name: 'lint', status: 'success' }], []];
+    const { status } = (await readPr('project'))!;
+    assert.equal(status.ci, 'pending');
+    assert.equal(status.checks[0].st, 'pass');
+  });
+
   it('reports conflicts, unresolved threads and failed jobs', async () => {
     responses = [
       { ...mr, has_conflicts: true, detailed_merge_status: 'discussions_not_resolved', state: 'merged' },

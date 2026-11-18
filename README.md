@@ -254,7 +254,7 @@ Code 会话输入框上方的 PR 条报告当前分支的 PR：状态颜色、`+
 点 **CI** 打开检查面板：逐条列出每个检查的结果（点名字直接打开那一条的日志），一行说明是全部通过、几个在跑还是几个失败，右上角通往 GitHub 的 checks 页。同一个检查重跑过几次也只列最新的一次：旧的结果不会再混进来，也不会被误判成失败。面板底部两个开关保存在会话里，重启后仍然有效：
 
 - **Auto-fix CI & address comments**：CI 变红时自动让 agent 读失败日志、修好并推送；同一个提交只触发一次，不会循环。新评论和 `CHANGES_REQUESTED` 也会处理（同一轮的修复会顺带带上它们）。
-- **Auto-merge when ready**：GitHub 说分支可合并、检查既不红也不在跑、也没有待处理的评审意见时，自动让 agent 用 `gh pr merge --auto` 开启自动合并；每个 PR 一次。
+- **Auto-merge when ready**：GitHub 确认可合并、CI 明确通过、当前提交没有排队或运行中的工作流，也没有待处理的评审意见时，自动让 agent 用 `gh pr merge --auto` 开启自动合并；每个 PR 一次。尚未收到检查结果（包括未配置 CI）不会触发自动合并。
 
 **监听发生在 host 里，不是让 agent 去盯着。** 每个打开着的 Code 会话在 agent host 里有一个 PR watcher：`gh pr view` 每 15 秒看一次（CI 已结束就退到 60 秒，`gh` 连续失败则退避到 5 分钟），把状态推给 PR 条，并在 CI 变红、有新的评论/评审、PR 变得可合并时**自己起一个 turn**。这类 turn 的消息不是用户发的，transcript 里渲染成一张事件卡片——`CI 失败 · PR #4`、新评论原文、失败检查列表，下面实时显示「Pi 正在处理…」/「等待你的确认」；展开还能看到交给 Pi 的说明。重开会话后卡片仍在。修复的 turn 在 `push` 后就结束，不会自己去 `gh pr checks --watch` 或轮询 CI：下一次结果仍由 host 的 watcher 看准了再起新 turn。
 
