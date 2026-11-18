@@ -600,6 +600,8 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
     });
     pi.registerTool({
       name: 'pidesk_todo_write',
+      // Tools with their own card or task lifecycle need a durable top-level call/result.
+      exposure: 'model-only',
       label: 'Todos',
       description:
         'Create or update the task checklist shown to the user. Send the complete list every time. ' +
@@ -618,6 +620,7 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
     // ---------------------------------------------------------------- pidesk_exit_plan_mode
     pi.registerTool({
       name: 'pidesk_exit_plan_mode',
+      exposure: 'model-only',
       label: 'Plan',
       description: 'In plan mode, present the implementation plan (markdown) to the user for approval.',
       parameters: Type.Object({
@@ -666,6 +669,7 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
     });
     pi.registerTool({
       name: 'pidesk_ask_question',
+      exposure: 'model-only',
       label: 'Ask question',
       description:
         'Ask the user one or more multiple-choice questions and wait for the answers. Use it when a decision is genuinely theirs ' +
@@ -728,6 +732,7 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
     // ---------------------------------------------------------------- pidesk_suggest_task
     pi.registerTool({
       name: 'pidesk_suggest_task',
+      exposure: 'model-only',
       label: 'Suggest task',
       description:
         'Offer the user a separate task when you notice work that is outside what they asked for (an unrelated bug, a follow-up refactor, a missing test). ' +
@@ -1057,6 +1062,7 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       });
       pi.registerTool({
         name: SEND_MESSAGE_TOOL,
+        exposure: 'model-only',
         label: 'Message session',
         description:
           'Send a message to another session of this project (scope "project" in pidesk_list_sessions), for example to hand over context or ask for a result. ' +
@@ -1114,6 +1120,7 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       const agents = host.agents?.() ?? AGENT_TYPES;
       pi.registerTool({
         name: 'pidesk_task',
+        exposure: 'model-only',
         label: 'Agent',
         description:
           'Delegate a focused, read-only investigation to a subagent with a fresh context. ' +
@@ -1298,6 +1305,7 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
 
     pi.registerTool({
       name: 'pidesk_bg_shell',
+      exposure: 'model-only',
       label: 'Shell',
       description:
         'Start a long-running shell command (dev server, watcher, slow build or test run) in the background. ' +

@@ -66,6 +66,11 @@ Pi Desktop 的界面约定。改渲染进程、加页面或面板、加一类要
 - 相关测试：`test/resources.test.ts`（总线）、`test/hub.e2e.test.ts`（`hub.sessionState()`、Work 项目记忆）、`test/work-project.test.ts`（写成功后才通知）。store 与总线逻辑继续在 Node 环境测，不依赖 DOM。
 - 渲染组件和 hook 测试在文件头加 `// @vitest-environment jsdom`，复用 `test/renderer-dom.ts` 的 bridge、浏览器 API 和清理。参见 `test/diff-since.test.tsx`、`test/diff-comparison-renderer.test.ts`、`test/diff-panel.test.tsx`：保留真实菜单、hook 和 store，只替换 host 调用及依赖布局/worker 的虚拟视图；这类测试计入 `npm run test:coverage`。
 
+### 工具在对话中的位置
+
+- 工具需要独立卡片、用户交互或通过调用 ID 接收后台进度时，注册为 `exposure: 'model-only'`，让 SDK 保存完整的顶层调用和结果。普通读写、搜索等仍可由 codemode 编排，不要把所有子调用展开成对话项。
+- 对话记录展示每次成功更新时的快照；工作面板展示最新状态。验证时同时检查实时事件与会话回放，不能依赖脚本输出或截短的参数预览重建卡片。
+
 ## 2. 文案
 
 - **走国际化。** 用户看得到的文字（按钮、提示、错误、发给模型的预设指令）不要写死在代码里：在 `src/shared/i18n/messages/` 里加一条同时带 `en` 和 `zh` 的消息；组件内用 `useT()`，组件外用 `t()`（渲染进程）或 `tr()`（`@shared/i18n/runtime`，主进程 / agent 进程 / 共享代码）。
