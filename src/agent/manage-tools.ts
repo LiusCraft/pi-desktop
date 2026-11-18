@@ -5,7 +5,7 @@
  * Each group is on by default and can be switched off under Settings → 通用 → AI 工具; it is read when a session starts.
  * The tools that change things are not read-only: plan mode blocks them and auto mode asks.
  */
-import { StringEnum } from '@earendil-works/pi-ai';
+import { StringEnum } from './tool-schema';
 import { tr } from '@shared/i18n/runtime';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { Type, type Static } from 'typebox';
