@@ -3,7 +3,6 @@ import { immer } from 'zustand/middleware/immer';
 import type {
   AppInfo,
   DesktopPluginInfo,
-  ImportableSession,
   ModelInfo,
   OutputStyle,
   PermissionMode,
@@ -92,6 +91,8 @@ export interface AppState {
   /** Which side of the app is showing. */
   view: SessionKind;
   current: string | null;
+  /** The welcome draft being shown as a conversation before the host assigns its session id. */
+  creatingDraft: string | null;
   lastByView: Record<SessionKind, string | null>;
   projects: Project[];
   workFolders: WorkProject[];
@@ -99,12 +100,6 @@ export interface AppState {
   models: ModelInfo[];
   /** Thinking levels of the default model (welcome screens). */
   levels: ThinkingLevel[];
-  importable: ImportableSession[];
-  /** Current git branch of the selected project (new-session chips). */
-  projectBranch: string | null;
-  /** Branches of the selected project, and the ref the next worktree starts from. */
-  projectBranches: string[];
-  baseRef: string | null;
   sessions: Record<string, SessionView>;
   paletteOpen: boolean;
   /** A footer menu opened by a slash command (/model, /permissions, /context). */
@@ -149,16 +144,13 @@ export const useApp = create<AppState>()(
     settings: boot.settings ?? {},
     view: initialView(),
     current: null,
+    creatingDraft: null,
     lastByView: { code: null, work: null },
     projects: [],
     workFolders: [],
     prefs: loadPrefs(),
     models: [],
     levels: [],
-    importable: [],
-    projectBranch: null,
-    projectBranches: [],
-    baseRef: null,
     sessions: {},
     paletteOpen: false,
     menu: null,

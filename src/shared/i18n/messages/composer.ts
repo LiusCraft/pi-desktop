@@ -49,6 +49,8 @@ export const composer = defineMessages({
   'menu.allEstimated': { en: 'All figures are estimated', zh: '所有数字均为估算' },
   'menu.partlyEstimated': { en: 'Tools, skills and prompt are estimated', zh: '工具、技能和提示词为估算值' },
 
+  'composer.branchUnavailable': { en: 'Branch unavailable', zh: '无法读取分支' },
+  'composer.loadingModel': { en: 'Loading model…', zh: '正在加载模型…' },
   'composer.environment': { en: 'Environment', zh: '运行环境' },
   'composer.local': { en: 'Local', zh: '本地' },
   'composer.localHint': { en: 'Runs on this computer', zh: '在这台电脑上运行' },

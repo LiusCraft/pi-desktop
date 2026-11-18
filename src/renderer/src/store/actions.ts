@@ -34,6 +34,7 @@ import { forgetPanels, writeArrangement, writePanels } from './layout';
 import { primeSuggestion, resumeSuggestion } from './predict';
 import { notifyResource, subscribeResource } from './resources';
 import { notifyPluginEvent } from '@/plugin/events';
+import { chooseBase, useWelcomeBranches } from './welcome-branches';
 import { forgetScroll } from './scroll';
 import { askSide, showSide } from './side';
 import {
@@ -68,7 +69,9 @@ export function welcomeDraftKey(st: AppState = getApp()) {
 }
 const activateDraftFor = () => {
   const st = getApp();
-  drafts.activate(st.current ? sessionDraftKey(st.current) : welcomeDraftKey(st));
+  const key = st.current ? sessionDraftKey(st.current) : welcomeDraftKey(st);
+  if (st.creatingDraft && st.creatingDraft !== key) setApp((x) => void (x.creatingDraft = null));
+  drafts.activate(key);
 };
 
 // ------------------------------------------------------------ host events
@@ -436,6 +439,7 @@ subscribeResource('plugins', () => void loadPlugins());
 
 /** Every full-page view off; the caller then turns its own on. */
 const noPage = (st: AppState) => {
+  st.creatingDraft = null;
   st.customize = false;
   st.scheduled = false;
   st.archived = false;
@@ -528,7 +532,6 @@ export function showWelcome() {
   });
   savePref('pd_last_session', null);
   activateDraftFor();
-  void refreshImportable();
 }
 
 export async function openSession(id: string, fresh = false) {
@@ -925,12 +928,15 @@ export async function exportHtml(id: string) {
 async function createSession(firstPrompt: string, draftKey: string) {
   const st = getApp();
   const work = st.view === 'work';
+  const project = st.prefs.project;
+  const info = project ? useWelcomeBranches.getState()[project] : undefined;
+  setApp((x) => void (x.creatingDraft = draftKey));
   const meta = await call('sessions:create', {
     kind: work ? 'work' : 'code',
     projectPath: work ? st.prefs.workFolder || null : st.prefs.project,
     worktree: !work && st.prefs.worktree,
     adoptPath: !work && st.adopt && st.adopt.mainRoot === st.prefs.project ? st.adopt.path : undefined,
-    baseRef: !work && st.prefs.worktree ? (st.baseRef ?? undefined) : undefined,
+    baseRef: !work && st.prefs.worktree ? (info?.selected ?? info?.defaultRef ?? undefined) : undefined,
     title: firstPrompt.replace(/@\S+/g, '').trim().slice(0, 60) || 'New session',
     autoName: true,
     model: st.prefs.model,
@@ -957,12 +963,20 @@ async function createSession(firstPrompt: string, draftKey: string) {
         : []),
       { id: 'agent', label: t('act.stepAgent'), state: meta.worktreeSetup ? 'pending' : 'running' },
     ];
-    x.adopt = null;
-    x.baseRef = null;
   });
   const active = useDrafts.getState().active === draftKey;
+  const show = active && getApp().creatingDraft === draftKey;
   drafts.rekey(draftKey, sessionDraftKey(meta.id));
-  if (active) void openSession(meta.id, true);
+  if (show) {
+    if (!work) {
+      setApp((x) => void (x.adopt = null));
+      if (project) chooseBase(project, null);
+    }
+    void openSession(meta.id, true);
+  } else if (active) {
+    // The user left the preview (e.g. New again or Customize). Don't activate its session draft.
+    activateDraftFor();
+  }
   return meta;
 }
 
@@ -997,7 +1011,7 @@ export async function send(queueOnly = false) {
   // Commands the app handles itself (and pi's /skill) take no attachments; a skill may still carry @ context.
   if ((files.length || references.length) && desktopCommands().some(([name]) => name === head))
     return void toast.warning(t('act.slashNoAttach'));
-  if (await slashCommand(s, head, text)) return;
+  if (head.startsWith('/') && (await slashCommand(s, head, text))) return;
 
   const st = getApp();
   if (!s && st.view === 'code' && !st.prefs.project) return void toast.warning(t('act.pickProjectFirst'));
@@ -1009,6 +1023,9 @@ export async function send(queueOnly = false) {
       key = sessionDraftKey(meta.id);
       s = getApp().sessions[meta.id];
     } catch (err) {
+      setApp((x) => {
+        if (x.creatingDraft === key) x.creatingDraft = null;
+      });
       drafts.lock(key, false);
       return void drafts.error(key, err);
     }
@@ -1753,12 +1770,10 @@ export async function setPrAuto(id: string, patch: { fixCi?: boolean; merge?: bo
 // ------------------------------------------------------------ projects and folders
 
 export function selectProject(path: string) {
-  if (getApp().prefs.project !== path) setApp((st) => void (st.baseRef = null));
   setPref('project', path);
   // An adopted worktree belongs to the project it came with.
   if (getApp().adopt && getApp().adopt!.mainRoot !== path) setApp((st) => void (st.adopt = null));
   if (!getApp().current) activateDraftFor();
-  void refreshImportable();
 }
 
 /** Pick a folder on the remote host: there is no native dialog for another machine, so walk its folders. */
@@ -1866,7 +1881,6 @@ export async function removeProject(path: string) {
       if (st.adopt?.mainRoot === path) st.adopt = null;
     });
     if (!getApp().prefs.project) setPref('project', projects[0]?.path ?? null);
-    void refreshImportable();
   } catch (err) {
     fail(err);
   }
@@ -1915,30 +1929,10 @@ export async function dismissSuggested(sid: string, item: { toolCallId: string }
   }
 }
 
-export async function refreshImportable() {
-  const project = getApp().prefs.project;
-  if (!project || getApp().view !== 'code')
-    return setApp(
-      (st) => void ((st.importable = []), (st.projectBranch = null), (st.projectBranches = []), (st.baseRef = null)),
-    );
-  await call('git:refresh', project).catch(() => false);
-  const [list, branch, branches, defaultBranch] = await Promise.all([
-    call('sessions:importable', project).catch(() => []),
-    call('git:branch', project).catch(() => null),
-    call('git:branches', project).catch(() => [] as string[]),
-    call('git:defaultBranch', project).catch(() => null),
-  ]);
-  setApp((st) => {
-    st.importable = list;
-    st.projectBranch = branch && branch !== 'HEAD' ? branch : null;
-    st.projectBranches = branches;
-    // A choice made for another project (or a branch that is gone) does not carry over.
-    if (!st.baseRef || !branches.includes(st.baseRef)) st.baseRef = defaultBranch ?? st.projectBranch;
-  });
-}
-
 export async function importCliSession() {
-  const list = getApp().importable;
+  const { view, prefs } = getApp();
+  if (view !== 'code' || !prefs.project) return;
+  const list = await call('sessions:importable', prefs.project).catch(() => []);
   if (!list.length) return;
   const index =
     list.length === 1
@@ -1955,7 +1949,6 @@ export async function importCliSession() {
     const meta: SessionMeta = await call('sessions:import', list[index].file);
     setApp((st) => void (st.sessions[meta.id] = emptySession(meta)));
     await openSession(meta.id);
-    void refreshImportable();
   } catch (err) {
     fail(err);
   }

@@ -1,14 +1,17 @@
 // @vitest-environment jsdom
 import './renderer-dom';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 
 const { WorktreeBasePicker } = await import('../src/renderer/src/components/composer/WorktreeBasePicker');
-const { useApp } = await import('../src/renderer/src/store/app');
 
 it('filters worktree bases, selects with the keyboard and resets the search on reopen', async () => {
-  useApp.setState({ projectBranches: ['origin/main', 'main', 'feature/Release'], baseRef: 'origin/main' });
-  render(<WorktreeBasePicker branch="main" />);
+  const props = {
+    branch: 'main',
+    branches: ['origin/main', 'main', 'feature/Release'],
+    onSelect: vi.fn<(ref: string) => void>(),
+  };
+  const { rerender } = render(<WorktreeBasePicker {...props} base="origin/main" />);
   const trigger = screen.getByRole('button', { name: 'origin/main' });
   fireEvent.click(trigger);
   const search = await screen.findByRole('combobox');
@@ -18,16 +21,17 @@ it('filters worktree bases, selects with the keyboard and resets the search on r
 
   fireEvent.change(search, { target: { value: 'nonexistent' } });
   expect(await screen.findByText('No matching branches')).toBeTruthy();
-  expect(useApp.getState().baseRef).toBe('origin/main');
+  expect(props.onSelect).not.toHaveBeenCalled();
   fireEvent.change(search, { target: { value: 'release' } });
   expect(screen.getByRole('option').title).toBe('feature/Release');
   fireEvent.keyDown(search, { key: 'Enter' });
-  expect(useApp.getState().baseRef).toBe('feature/Release');
+  expect(props.onSelect).toHaveBeenCalledWith('feature/Release');
+  rerender(<WorktreeBasePicker {...props} base="feature/Release" />);
   await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull());
   expect(trigger.textContent).toBe('feature/Release');
 
   fireEvent.click(trigger);
   expect((await screen.findByRole<HTMLInputElement>('combobox')).value).toBe('');
   fireEvent.click(screen.getByTitle('main'));
-  expect(useApp.getState().baseRef).toBe('main');
+  expect(props.onSelect).toHaveBeenLastCalledWith('main');
 });
