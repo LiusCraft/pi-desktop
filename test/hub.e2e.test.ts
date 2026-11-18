@@ -7,7 +7,9 @@ import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AgentSession } from '@earendil-works/pi-coding-agent';
+import { AgentSession, ProjectTrustStore } from '@earendil-works/pi-coding-agent';
+import { fauxAssistantMessage, fauxProvider, fauxToolCall } from '@earendil-works/pi-ai';
+import { applyPiEvent, emptySession, replay } from '../src/renderer/src/store/transcript';
 import { decodeUserContent } from '@shared/attachments';
 import {
   HOST_CHANNELS,
@@ -638,6 +640,79 @@ describe('code sessions', { timeout: 120_000 }, () => {
     const result = await driver.hub.messageAction(meta.id, user!.entryId!, 'rewind');
     expect(read(project, 'src/utils/date.js')).toBe(before);
     expect(result.session.messages.filter((message) => message.role === 'user')).toHaveLength(0);
+  });
+
+  it('tracks real codemode edits live and on replay, and rewinds only the successful local writes', async () => {
+    const project = fs.mkdtempSync(path.join(tmp, 'nested-'));
+    const outside = path.join(tmp, 'published.txt');
+    fs.mkdirSync(path.join(project, '.pi'));
+    fs.writeFileSync(path.join(project, '.pi', 'settings.json'), JSON.stringify({ defaultTools: ['+codemode'] }));
+    new ProjectTrustStore(agentDir).set(project, true);
+    fs.writeFileSync(path.join(project, 'original.txt'), 'original');
+    const script = [
+      "await tools.read({ path: 'original.txt' });",
+      "await tools.edit({ path: 'original.txt', edits: [{ oldText: 'original', newText: 'edited' }] });",
+      "await Promise.all(['one', 'two'].map(content => tools.write({ path: 'overlap.txt', content })));",
+      "await tools.write({ content: 'x'.repeat(10000), path: 'large.txt' });",
+      `await tools.write({ path: ${JSON.stringify(outside)}, content: 'outside' });`,
+      "await tools.edit({ path: 'missing.txt', edits: [{ oldText: 'a', newText: 'b' }] });",
+    ].join('\n');
+    const faux = fauxProvider({ provider: 'nested-test', models: [{ id: 'm' }] });
+    faux.setResponses([
+      fauxAssistantMessage(fauxToolCall('codemode', { code: script }), { stopReason: 'toolUse' }),
+      fauxAssistantMessage('Done'),
+    ]);
+    driver.hub.models.registerNativeProvider(faux.provider);
+    const meta = await driver.hub.create({
+      kind: 'code',
+      projectPath: project,
+      model: 'nested-test/m',
+      mode: 'bypass',
+      title: 'nested files',
+    });
+    const { pi, tools } = await driver.run(meta.id, 'Run the script');
+    expect(tools.find((e) => e.toolName === 'codemode')).toMatchObject({ isError: true });
+    const live = emptySession(meta);
+    for (const event of pi) applyPiEvent(live, event, 'normal');
+    const summary = (s: typeof live) => s.outputs.map(({ path, kind }) => ({ path, kind }));
+    expect(summary(live)).toEqual([
+      { path: 'original.txt', kind: 'edit' },
+      { path: 'overlap.txt', kind: 'write' },
+      { path: 'large.txt', kind: 'write' },
+      { path: outside.replace(/\\/g, '/'), kind: 'write' },
+    ]);
+    expect(live.turnChanges.find((c) => c.path === 'original.txt')).toMatchObject({
+      before: 'original',
+      after: 'edited',
+    });
+    expect(live.items.flatMap((i) => (i.kind === 'group' ? i.tools.map((t) => t.name) : []))).toEqual(['codemode']);
+    await driver.hub.archive(meta.id);
+    driver.hub.meta(meta.id).archived = false;
+    const reopened = await driver.hub.open(meta.id);
+    const view = emptySession(meta);
+    replay(view, reopened.messages, 'normal');
+    expect(summary(view)).toEqual(summary(live));
+    expect(view.sessionChanges.map((c) => c.after)).toEqual(live.sessionChanges.map((c) => c.after));
+    expect((await driver.hub.diff(meta.id, { kind: 'lastTurn' })).files.map((f) => f.path)).toEqual([
+      'large.txt',
+      'original.txt',
+      'overlap.txt',
+    ]);
+    expect(await driver.hub.readFile(meta.id, outside)).toBe('outside');
+    const user = reopened.messages.find((m) => m.role === 'user')!;
+    fs.writeFileSync(path.join(project, 'original.txt'), 'manual edit');
+    await expect(driver.hub.messageAction(meta.id, user.entryId!, 'rewind')).rejects.toThrow(/file changed/);
+    expect(read(project, 'original.txt')).toBe('manual edit');
+    expect(fs.existsSync(path.join(project, 'large.txt'))).toBe(true);
+    fs.writeFileSync(path.join(project, 'original.txt'), 'edited');
+    const result = await driver.hub.messageAction(meta.id, user.entryId!, 'rewind');
+    await expect(driver.hub.readFile(meta.id, outside)).rejects.toThrow(/outside the session/);
+    expect(read(project, 'original.txt')).toBe('original');
+    expect(fs.existsSync(path.join(project, 'large.txt'))).toBe(false);
+    expect(fs.existsSync(path.join(project, 'overlap.txt'))).toBe(false);
+    expect(fs.readFileSync(outside, 'utf8')).toBe('outside');
+    replay(view, result.session.messages, 'normal');
+    expect(view.outputs).toEqual([]);
   });
 
   it('rewinds a message and removes files created by write tools', async () => {

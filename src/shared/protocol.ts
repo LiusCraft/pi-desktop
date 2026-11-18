@@ -236,7 +236,17 @@ export interface ContentBlock {
   mimeType?: string;
   [key: string]: unknown;
 }
+/** A successful nested write/edit, projected from the host's file journal (not the shortened script preview). */
+export interface NestedFileOutput {
+  toolCallId: string;
+  path: string;
+  kind: 'write' | 'edit';
+  /** Outside git the transcript itself supplies the diff. */
+  content?: FileContent;
+}
+
 export interface AgentMessage {
+  nestedFileOutputs?: NestedFileOutput[];
   /** Stable pi entry ID for history actions; never sent to the model. */
   entryId?: string;
   role: 'user' | 'assistant' | 'toolResult' | 'custom' | 'bashExecution' | string;
