@@ -51,6 +51,8 @@ import type {
   ImportableSession,
   ModelInfo,
   OpenSessionResult,
+  NestedFileOutput,
+  FileContent,
   OutputStyle,
   PermissionMode,
   PrStatus,
@@ -175,6 +177,8 @@ const EXTRA_TOOLS = ['+grep', '+find', '+ls'];
 const OUTPUT_TOOLS = new Set(['write', 'edit']);
 const PRESENT_FILES_TOOL = 'pidesk_present_files';
 const UNDO_ENTRY_TYPE = 'pi-desktop-undo';
+/** Successful nested output outside the session: remember its exact path, never an undo snapshot. */
+const NESTED_OUTPUT_ENTRY_TYPE = 'pi-desktop-nested-output';
 /** Avoid putting unbounded file snapshots into a session's undo history. */
 const UNDO_SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024;
 
@@ -194,10 +198,30 @@ function snapshotFile(file: string): FileSnapshot {
   }
 }
 
-function sameSnapshot(file: string, expected: FileSnapshot) {
-  if (!expected.recoverable) return false;
-  const actual = snapshotFile(file);
-  return actual.recoverable && actual.exists === expected.exists && actual.data === expected.data;
+function snapshotContent({ before, after }: UndoRecord): FileContent {
+  const old = before.data === null ? null : Buffer.from(before.data, 'base64');
+  const next = after.data === null ? null : Buffer.from(after.data, 'base64');
+  const binary = !before.recoverable || !after.recoverable || !!old?.includes(0) || !!next?.includes(0);
+  return {
+    before: binary ? null : (old?.toString('utf8') ?? null),
+    after: binary ? null : (next?.toString('utf8') ?? null),
+    binary,
+  };
+}
+
+function fileOutput(record: UndoRecord, meta: SessionMeta): NestedFileOutput {
+  return {
+    toolCallId: record.toolCallId,
+    path: record.path,
+    kind: record.before.exists ? 'edit' : 'write',
+    ...(!meta.baseCommit && { content: snapshotContent(record) }),
+  };
+}
+
+function sameSnapshot(actual: FileSnapshot, expected: FileSnapshot) {
+  return (
+    actual.recoverable && expected.recoverable && actual.exists === expected.exists && actual.data === expected.data
+  );
 }
 
 function restoreSnapshot(file: string, snapshot: FileSnapshot) {
@@ -790,6 +814,10 @@ export class SessionHub {
   /** Restore output paths from the transcript after the host or session was reopened. */
   private restoreOutputPaths(live: Live) {
     const manager = live.runtime.session.sessionManager;
+    for (const entry of manager.getBranch()) {
+      if (entry.type === 'custom' && entry.customType === NESTED_OUTPUT_ENTRY_TYPE)
+        this.rememberOutput(live, (entry.data as NestedFileOutput).path);
+    }
     const messages = [
       ...compactedMessages(manager),
       ...live.runtime.session.messages,
@@ -1053,8 +1081,12 @@ export class SessionHub {
         live.pendingOutputPaths.set(event.toolCallId, file);
         const absolute = path.resolve(m.cwd, file);
         const relative = path.relative(path.resolve(m.cwd), absolute);
-        if (relative && !relative.startsWith('..') && !path.isAbsolute(relative))
-          live.pendingUndo.set(event.toolCallId, { path: absolute, before: snapshotFile(absolute) });
+        if (relative && !relative.startsWith('..') && !path.isAbsolute(relative)) {
+          // Parallel calls can both start before either writes. Share the baseline only
+          // while they overlap; a later, independent edit must snapshot the disk afresh.
+          const overlap = [...live.pendingUndo.values()].find((other) => path.relative(other.path, absolute) === '');
+          live.pendingUndo.set(event.toolCallId, overlap ?? { path: absolute, before: snapshotFile(absolute) });
+        }
       }
     }
     if (event.type === 'tool_execution_end' && OUTPUT_TOOLS.has(event.toolName) && event.toolCallId) {
@@ -1070,6 +1102,12 @@ export class SessionHub {
             after: snapshotFile(pending.path),
           };
           live.runtime.session.sessionManager.appendCustomEntry(UNDO_ENTRY_TYPE, record);
+          pending.before = record.after;
+          if (event.parentToolCallId) event = { ...event, fileOutput: fileOutput(record, m) };
+        } else if (event.parentToolCallId && file) {
+          const output: NestedFileOutput = { toolCallId: event.toolCallId, path: file, kind: event.toolName };
+          live.runtime.session.sessionManager.appendCustomEntry(NESTED_OUTPUT_ENTRY_TYPE, output);
+          event = { ...event, fileOutput: output };
         }
       }
       live.pendingOutputPaths.delete(event.toolCallId);
@@ -1433,7 +1471,7 @@ export class SessionHub {
     const session = live.runtime.session;
     return {
       meta: { ...this.meta(id) },
-      messages: this.messagesWithIds(session),
+      messages: this.messagesWithIds(session, this.meta(id)),
       ...this.stateOf(session),
       isStreaming: session.isStreaming,
       isCompacting: session.isCompacting,
@@ -1466,7 +1504,7 @@ export class SessionHub {
     return compactedMessages(session.sessionManager);
   }
 
-  private messagesWithIds(session: AgentSession) {
+  private messagesWithIds(session: AgentSession, meta: SessionMeta) {
     const ids = new Map<number, string[]>();
     for (const projected of session.sessionManager.buildSessionProjection().entries) {
       if (projected.sourceEntry.type !== 'message' || projected.sourceEntry.message.role !== 'user') continue;
@@ -1479,9 +1517,40 @@ export class SessionHub {
     }
     // SAFETY: the wire contract reads a subset of SDK messages; their content
     // blocks are structured-cloneable despite SDK interfaces lacking index signatures.
-    return session.messages.map((message) =>
+    const messages = session.messages.map((message) =>
       message.role === 'user' ? { ...message, entryId: ids.get(message.timestamp)?.shift() } : message,
     ) as unknown as OpenSessionResult['messages'];
+    // Nested calls have no messages of their own. Join committed writes to their visible
+    // assistant call via pi's <parent id>/<n> ids. The journal survives truncated SDK args,
+    // failed scripts and reopening while a script is still running.
+    const owners = new Map<string, AgentMessage>();
+    for (const message of messages) {
+      if (message.role !== 'assistant' || !Array.isArray(message.content)) continue;
+      for (const block of message.content) if (block.type === 'toolCall' && block.id) owners.set(block.id, message);
+    }
+    const byMessage = new Map<AgentMessage, NestedFileOutput[]>();
+    for (const entry of session.sessionManager.getBranch()) {
+      if (
+        entry.type !== 'custom' ||
+        (entry.customType !== UNDO_ENTRY_TYPE && entry.customType !== NESTED_OUTPUT_ENTRY_TYPE)
+      )
+        continue;
+      const record = entry.data as UndoRecord | NestedFileOutput;
+      let id = record.toolCallId;
+      if (owners.has(id)) continue; // Direct calls already have a transcript row.
+      while (/\/\d+$/.test(id)) {
+        id = id.slice(0, id.lastIndexOf('/'));
+        const owner = owners.get(id);
+        if (!owner) continue;
+        const outputs = byMessage.get(owner) ?? [];
+        outputs.push('before' in record ? fileOutput(record, meta) : record);
+        byMessage.set(owner, outputs);
+        break;
+      }
+    }
+    return messages.map((message) =>
+      byMessage.has(message) ? { ...message, nestedFileOutputs: byMessage.get(message) } : message,
+    );
   }
 
   private undoFilesForRewind(live: Live, targetId: string) {
@@ -1500,16 +1569,21 @@ export class SessionHub {
           !!record.before &&
           !!record.after,
       );
+    // Check the whole chain before touching any file. A user's later edit must not
+    // leave the other files half-rewound with a session leaf that still expects them.
+    const restore = new Map<string, FileSnapshot>();
+    const root = path.resolve(this.meta(live.id).cwd);
     for (const record of records.reverse()) {
       const current = path.resolve(record.path);
-      const root = path.resolve(this.meta(live.id).cwd);
       const relative = path.relative(root, current);
       if (!relative || relative.startsWith('..') || path.isAbsolute(relative))
         throw new Error(`Cannot undo a file outside the session: ${record.path}`);
-      if (!sameSnapshot(current, record.after))
+      if (!sameSnapshot(restore.get(current) ?? snapshotFile(current), record.after))
         throw new Error(`The file changed after this message, so it was not undone: ${record.path}`);
-      restoreSnapshot(current, record.before);
+      if (!record.before.recoverable) throw new Error(`The file is too large to undo safely: ${current}`);
+      restore.set(current, record.before);
     }
+    for (const [file, before] of restore) restoreSnapshot(file, before);
   }
 
   async messageAction(id: string, entryId: string, action: 'rewind' | 'fork') {
@@ -1537,6 +1611,8 @@ export class SessionHub {
         // Branch navigation alone only changes memory. A state-only entry makes
         // the new leaf survive reopening, even before another prompt is sent.
         session.sessionManager.appendCustomEntry('pi-desktop-rewind', { entryId });
+        live.outputPaths.clear();
+        this.restoreOutputPaths(live);
         this.meta(id).updatedAt = Date.now();
         this.save();
         this.emitMeta(this.meta(id));
@@ -2658,11 +2734,7 @@ export class SessionHub {
         continue;
       const relative = path.relative(m.cwd, record.path);
       if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) continue;
-      const old = before.data === null ? null : Buffer.from(before.data, 'base64');
-      const next = after.data === null ? null : Buffer.from(after.data, 'base64');
-      const binary = !before.recoverable || !after.recoverable || !!old?.includes(0) || !!next?.includes(0);
-      const oldText = binary ? null : (old?.toString('utf8') ?? null);
-      const newText = binary ? null : (next?.toString('utf8') ?? null);
+      const { before: oldText, after: newText, binary } = snapshotContent(record);
       files.push({
         path: relative.replace(/\\/g, '/'),
         status: !before.exists ? 'A' : !after.exists ? 'D' : 'M',

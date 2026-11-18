@@ -5,6 +5,7 @@ import { forgeOfUrl } from '@shared/forge';
 import { formatIdle, HANDOFF_CUSTOM_TYPE, type HandoffDetails } from '@shared/idle-reset';
 import type {
   AgentMessage,
+  NestedFileOutput,
   PiEvent,
   PrSummary,
   Question,
@@ -188,22 +189,18 @@ function recordChange(
   kind: 'write' | 'edit',
   oldText: string | null,
   newText: string | null,
-  preview: previews.ToolPreview,
+  statsFromTool: { add: number; del: number },
   toolId: string,
+  binary = false,
 ) {
   const existing = list.find((change) => change.path === path);
-  const before = existing?.before ?? oldText;
-  const after = newText ?? existing?.after ?? null;
-  const stats =
-    before !== null || after !== null
-      ? previews.diffStats(before, after)
-      : preview.type === 'diff'
-        ? { add: preview.add, del: preview.del }
-        : { add: 0, del: 0 };
+  const before = existing?.status === 'A' ? existing.before : (existing?.before ?? oldText);
+  const after = binary ? null : (newText ?? existing?.after ?? null);
+  const stats = !binary && (before !== null || after !== null) ? previews.diffStats(before, after) : statsFromTool;
   const next: SessionChange = {
     path,
     status: existing?.status ?? (kind === 'write' ? 'A' : 'M'),
-    binary: false,
+    binary,
     add: stats.add,
     del: stats.del,
     rev: `${Date.now()}:${toolId}`,
@@ -231,8 +228,18 @@ function recordSessionChange(
       : typeof args.newText === 'string'
         ? args.newText
         : null;
-  recordChange(s.sessionChanges, path, kind, oldText, newText, preview, toolId);
-  recordChange(s.turnChanges, path, kind, oldText, newText, preview, toolId);
+  const stats = preview.type === 'diff' ? preview : { add: 0, del: 0 };
+  recordChange(s.sessionChanges, path, kind, oldText, newText, stats, toolId);
+  recordChange(s.turnChanges, path, kind, oldText, newText, stats, toolId);
+}
+
+/** Nested calls belong to the script's one row, but have the same file side effects as direct calls. */
+function recordNestedOutput(s: SessionView, output: NestedFileOutput) {
+  const path = relPath(s.meta.cwd, output.path);
+  recordOutput(s, path, output.kind);
+  const { before = null, after = null, binary = false } = output.content ?? {};
+  for (const list of [s.sessionChanges, s.turnChanges])
+    recordChange(list, path, output.kind, before, after, { add: 0, del: 0 }, output.toolCallId, binary);
 }
 
 export function toolStart(
@@ -660,7 +667,10 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
       }
       return {};
     case 'tool_execution_end':
-      return ev.parentToolCallId ? {} : toolEnd(s, ev as any, view);
+      if (!ev.parentToolCallId) return toolEnd(s, ev as any, view);
+      if (!ev.fileOutput || ev.isError) return {};
+      recordNestedOutput(s, ev.fileOutput);
+      return { scheduleChanges: true };
     case 'auto_retry_start':
       push(
         s,
@@ -919,6 +929,7 @@ function appendMessages(s: SessionView, messages: AgentMessage[], view: ViewMode
       });
     } else if (m.role === 'assistant') {
       sawAssistant = true;
+      for (const output of m.nestedFileOutputs ?? []) recordNestedOutput(s, output);
       for (const b of Array.isArray(m.content) ? m.content : []) {
         if (b.type === 'thinking' && b.thinking) {
           let g = s.items.at(-1);
