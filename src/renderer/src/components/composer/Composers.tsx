@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowUpIcon,
-  ChevronDownIcon,
   CircleStopIcon,
   CornerDownLeftIcon,
   FolderIcon,
@@ -38,6 +37,7 @@ import { Clawd, moodOf, PET_GROUND } from './Clawd';
 import { ComposerInput, pickAttachments, type ComposerHandle } from './ComposerInput';
 import { ContextRing, EffortMenu, FootButton, ModeMenu, ModelMenu } from './Menus';
 import { PrBar } from './PrBar';
+import { WorktreeBasePicker } from './WorktreeBasePicker';
 
 function SessionRate({ s }: { s: SessionView }) {
   const t = useT();
@@ -178,43 +178,13 @@ function NewSessionChips() {
               {t('panel.loadingBranches')}
             </span>
           ) : branch && worktree ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  className="flex h-full items-center gap-1.5 rounded-l-lg pr-2 pl-2.5 hover:bg-accent data-[state=open]:bg-accent"
-                  title={t('composer.worktreeBase', { ref: baseRef ?? branch })}
-                >
-                  <GitBranchIcon className="size-4 shrink-0" />
-                  <span className="max-w-32 truncate">{baseRef ?? branch}</span>
-                  <ChevronDownIcon className="size-3 text-muted-foreground" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="top" className="max-h-80 w-64 overflow-y-auto">
-                <DropdownMenuLabel className="text-xs text-muted-foreground">
-                  {t('composer.worktreeBaseLabel')}
-                </DropdownMenuLabel>
-                <DropdownMenuItem
-                  onSelect={() => chooseBase(project, branch)}
-                  className={cn(baseRef === branch && 'font-medium')}
-                >
-                  <GitBranchIcon className="size-3.5" />
-                  <span className="truncate">{branch}</span>
-                  <span className="ml-auto text-xs text-muted-foreground">{t('composer.current')}</span>
-                </DropdownMenuItem>
-                {info.branches
-                  .filter((b) => b !== branch)
-                  .map((b) => (
-                    <DropdownMenuItem
-                      key={b}
-                      onSelect={() => chooseBase(project, b)}
-                      className={cn(b === baseRef && 'font-medium')}
-                    >
-                      <GitBranchIcon className="size-3.5" />
-                      <span className="truncate">{b}</span>
-                    </DropdownMenuItem>
-                  ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <WorktreeBasePicker
+              key={project}
+              branch={branch}
+              branches={info.branches}
+              base={baseRef ?? branch}
+              onSelect={(ref) => chooseBase(project, ref)}
+            />
           ) : (
             <span
               className="flex items-center gap-1.5 pr-2 pl-2.5"
