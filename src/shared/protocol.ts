@@ -100,6 +100,12 @@ export interface PrThread {
   comments: { id: string; author: string; body: string; url: string; at: number }[];
 }
 
+/** Last PR head (`<number>:<sha>`) handed to the agent for each kind of automation. */
+export interface PrAutoDone {
+  fix?: string;
+  merge?: string;
+}
+
 /** Longest session title kept: the rename tool and the inline editor cut at this, and the host enforces it. */
 export const MAX_SESSION_TITLE = 80;
 
@@ -134,8 +140,7 @@ export interface SessionMeta {
   /** Agent-enabled CI events use normal tool permissions, unlike an explicit PR-bar grant. */
   agentArmedCi?: boolean;
   autoMerge?: boolean;
-  /** What that automation already handled: the fixed commit and the merged PR, so a restart cannot repeat it. */
-  prAutoDone?: { fix?: string; merge?: number };
+  prAutoDone?: PrAutoDone;
   archived?: boolean;
   /** Pinned by the user: listed above the others in the sidebar. */
   pinned?: boolean;
@@ -1305,7 +1310,7 @@ export interface Api {
       pinned?: boolean;
       pr?: PrSummary | null;
       suggestion?: { key: string; state: 'here' | 'dismissed' };
-      prAuto?: { fixCi?: boolean; merge?: boolean; fixDone?: string; mergeDone?: number };
+      prAuto?: { fixCi?: boolean; merge?: boolean; fixDone?: string; mergeDone?: string };
     },
   ): SessionMeta;
   'sessions:archive'(id: string): void;

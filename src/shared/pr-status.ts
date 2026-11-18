@@ -42,10 +42,13 @@ export function prReady(pr: Status & Partial<Pick<PrStatus, 'review'>>) {
   return pr.state === 'open' && !pr.draft && pr.mergeable === 'clean' && pr.ci === 'pass' && pr.review !== 'changes';
 }
 
-/** The failing commit a fix belongs to; keyed by commit so the same red run is only fixed once. */
+/** CI results belong to a particular head of a particular PR. */
+export function prHeadKey(pr: Pick<PrStatus, 'num' | 'head'>): string | null {
+  return pr.head ? `${pr.num}:${pr.head}` : null;
+}
+
 export function prFixKey(pr: Pick<PrStatus, 'num' | 'ci' | 'head'>): string | null {
-  if (pr.ci !== 'fail' || !pr.head) return null;
-  return `${pr.num}:${pr.head}`;
+  return pr.ci === 'fail' ? prHeadKey(pr) : null;
 }
 
 /** One line for the CI panel: how many checks exist and what they are doing. */

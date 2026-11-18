@@ -5,8 +5,8 @@ import { tr } from '@shared/i18n/runtime';
 import type { PrNote } from '@shared/pr-event';
 import type { PrEvent } from '@shared/pr-event';
 import { forgeWords } from '@shared/forge';
-import { prFixKey, prReady } from '@shared/pr-status';
-import type { PrStatus } from '@shared/protocol';
+import { prFixKey, prHeadKey, prReady } from '@shared/pr-status';
+import type { PrAutoDone, PrStatus } from '@shared/protocol';
 import type { PrSnapshot } from './git';
 
 /** How often to look: quick while CI is moving, rarely once it is settled. */
@@ -23,13 +23,13 @@ export interface PrWatchConfig {
   autoFixCi?: boolean;
   autoMerge?: boolean;
   /** What the automation already handled, from the session meta. */
-  done?: { fix?: string; merge?: number };
+  done?: PrAutoDone;
 }
 
 export interface PrPending {
   event: PrEvent;
   /** The key the host records on the session once the turn has been handed over. */
-  mark?: { fix?: string; merge?: number };
+  mark?: PrAutoDone;
 }
 
 export interface PrWatchResult {
@@ -124,9 +124,10 @@ export class PrWatcher {
         },
       };
     }
-    if (cfg.autoMerge && prReady(pr) && cfg.done?.merge !== pr.num) {
+    const merge = cfg.autoMerge && prReady(pr) ? prHeadKey(pr) : null;
+    if (merge && cfg.done?.merge !== merge) {
       return {
-        mark: { merge: pr.num },
+        mark: { merge },
         event: {
           kind: 'merge',
           num: pr.num,
