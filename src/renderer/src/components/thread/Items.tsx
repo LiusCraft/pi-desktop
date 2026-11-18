@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowUpRightIcon,
   BookmarkIcon,
@@ -407,16 +407,54 @@ export const PeerSendItem = memo(function PeerSendItem({ item }: { item: ItemOf<
 
 export const TaskEventItem = memo(function TaskEventItem({ item }: { item: ItemOf<'taskEvent'> }) {
   const t = useT();
+  const [open, setOpen] = useState(false);
+  const [clipped, setClipped] = useState(false);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const preview = item.text.split('\n', 2).join('\n');
+  const hasMoreLines = preview !== item.text;
+
+  // Even a single log line can wrap beyond the preview in a narrow transcript.
+  useLayoutEffect(() => {
+    const el = previewRef.current;
+    if (!el || hasMoreLines) return;
+    const measure = () => setClipped(el.scrollHeight > el.clientHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMoreLines, preview]);
+
+  const expandable = hasMoreLines || clipped;
   return (
-    <div className="w-fit max-w-full rounded-xl surface-flat bg-card px-3.5 py-2.5 text-sm">
-      <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-        <TerminalIcon className="size-3.5" />
+    <Collapsible
+      open={expandable && open}
+      onOpenChange={setOpen}
+      className="w-full max-w-[85%] rounded-xl surface-flat border-dashed bg-card/60 px-3.5 py-2.5 text-sm"
+    >
+      <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <TerminalIcon className="size-3.5 shrink-0" />
         {t('thread.taskEvent')}
       </div>
-      <div data-selectable className="break-words whitespace-pre-wrap">
-        {item.text}
+      <div ref={previewRef} data-selectable className="mt-1.5 line-clamp-2 break-words whitespace-pre-wrap">
+        {preview}
       </div>
-    </div>
+      {expandable && (
+        <>
+          <CollapsibleTrigger className="group mt-2 ml-auto flex items-center gap-1 rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+            {t(open ? 'thread.hideTaskReport' : 'thread.showTaskReport')}
+            <ChevronDownIcon className="size-3 group-data-[state=open]:rotate-180 motion-safe:transition-transform" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="overflow-hidden motion-safe:data-[state=closed]:animate-collapsible-up motion-safe:data-[state=open]:animate-collapsible-down">
+            <div
+              data-selectable
+              className="mt-1.5 rounded-lg bg-muted/40 px-2.5 py-2 text-xs break-words whitespace-pre-wrap"
+            >
+              {item.text}
+            </div>
+          </CollapsibleContent>
+        </>
+      )}
+    </Collapsible>
   );
 });
 
