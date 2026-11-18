@@ -1,4 +1,4 @@
-# macOS build & release (win-* targets cover Windows). CI runs the same npm scripts, so a local build and a
+# macOS build & release (win-* and linux-* targets cover Windows and Linux). CI runs the same npm scripts, so a local build and a
 # released build differ only in signing credentials.
 # Windows: leave SHELL alone, make uses sh when it is on PATH (Git Bash) and cmd.exe otherwise,
 # so every recipe and $(shell) below sticks to node / npm instead of POSIX tools.
@@ -22,7 +22,7 @@ DMG := $(DIST)/Pi-Desktop-$(CURRENT_VERSION)-$(ARCH).dmg
 
 .DEFAULT_GOAL := help
 .PHONY: help check-darwin install dev demo test icon app run dmg dist \
-	release publish cask clean distclean
+	win-app win-installer linux-app linux-appimage release publish cask clean distclean
 
 help: ## Show this help
 	@node scripts/make-help.mjs $(MAKEFILE_LIST)
@@ -74,6 +74,12 @@ win-app: ## Build an unpacked Windows app (dist/win-unpacked)
 win-installer: ## Build the Windows NSIS installer (x64)
 	$(NPM) run dist:win
 	@echo Built $(DIST)/Pi-Desktop-$(CURRENT_VERSION)-win-x64-setup.exe
+
+linux-app: ## Build an unpacked Linux x64 app (dist/linux-unpacked)
+	$(NPM) run pack:linux
+
+linux-appimage: ## Build the Linux x64 AppImage
+	$(NPM) run dist:linux
 
 release: ## Tag HEAD and push; CI publishes (bumps the latest tag by BUMP=patch, or VERSION=x.y.z)
 	@node scripts/release.mjs --version="$(VERSION)" --bump="$(BUMP)" --force="$(FORCE)" --dry-run="$(DRY_RUN)"

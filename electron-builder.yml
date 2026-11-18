@@ -1,4 +1,4 @@
-# macOS + Windows packaging. Run it through `make` (see Makefile) or electron-builder.
+# macOS, Windows and Linux packaging. Run it through `make` (see Makefile) or electron-builder.
 #
 # The pi SDK runs inside the agent host (an Electron utilityProcess). It loads its
 # own assets, user extensions (through jiti) and prebuilt .node binaries from
@@ -31,8 +31,8 @@ asar: false
 electronLanguages:
   - en-US
   - zh-CN
-# No native modules are compiled at install time: pi-tui ships prebuilt .node
-# binaries and everything else is WASM, so a rebuild only adds node-gyp noise.
+# pi-tui ships prebuilds; node-pty is Node-API and npm ci builds it natively
+# on Linux. Build on the target architecture; no second Electron rebuild is needed.
 npmRebuild: false
 # Runs after packing + signing, before the dmg is assembled (notarize + staple).
 afterSign: ./scripts/after-sign.cjs
@@ -82,9 +82,14 @@ nsis:
   allowToChangeInstallationDirectory: true
   deleteAppDataOnUninstall: false
 
-# Not maintained right now; kept so the config describes it.
 linux:
-  target: AppImage
+  icon: build/icon.png
+  category: Development
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  artifactName: Pi-Desktop-${version}-linux-${arch}.${ext}
 
 publish:
   provider: github

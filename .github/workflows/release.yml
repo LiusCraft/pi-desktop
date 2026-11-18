@@ -1,8 +1,7 @@
 name: release
 
-# Tag push builds both architectures, signs + notarizes when the signing
-# secrets are set (see README), and attaches the dmgs and the Windows installer
-# to the GitHub Release.
+# A tag builds macOS dmgs, the Windows installer and the Linux AppImage
+# and attaches them to the same GitHub Release. See README for signing.
 # `make release` creates the tag for you, bumping the latest tag (patch);
 # `make release VERSION=0.2.0` tags an explicit version.
 on:
@@ -67,13 +66,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          repo="$GITHUB_REPOSITORY"
-          gh release view "$GITHUB_REF_NAME" --repo "$repo" >/dev/null 2>&1 ||
-            gh release create "$GITHUB_REF_NAME" --repo "$repo" \
-              --generate-notes
-          gh release upload "$GITHUB_REF_NAME" --repo "$repo" \
-            dist/Pi-Desktop-*.dmg dist/SHA256SUMS.txt --clobber
+        run: bash scripts/upload-release.sh dist/Pi-Desktop-*.dmg dist/SHA256SUMS.txt
 
       # The cask points at the release assets, so it goes out after they exist: `brew install --cask
       # liuscraft/tap/pi-desktop` is then the macOS upgrade path (`brew upgrade --cask`). Pushing needs a
@@ -157,23 +150,50 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          repo="$GITHUB_REPOSITORY"
-          for i in 1 2 3 4 5; do
-            gh release view "$GITHUB_REF_NAME" --repo "$repo" \
-              >/dev/null 2>&1 && break
-            gh release create "$GITHUB_REF_NAME" --repo "$repo" \
-              --generate-notes 2>/dev/null && break
-            sleep 10
-          done
-          gh release upload "$GITHUB_REF_NAME" --repo "$repo" \
-            dist/Pi-Desktop-*-setup.exe --clobber
+        run: bash scripts/upload-release.sh dist/Pi-Desktop-*-setup.exe
 
       - name: Keep the installer as a workflow artifact too
         uses: actions/upload-artifact@v4
         with:
           name: windows-installer
           path: dist/*-setup.exe
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Version from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: npm pkg set version="${GITHUB_REF_NAME#v}"
+
+      - run: npm run dist:linux
+      - run: bash scripts/check-linux-appimage.sh
+
+      - name: Checksum
+        working-directory: dist
+        run: sha256sum Pi-Desktop-*-linux-x86_64.AppImage > SHA256SUMS-linux.txt
+
+      - name: Upload the AppImage to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/upload-release.sh dist/*.AppImage dist/SHA256SUMS-linux.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: |
+            dist/*.AppImage
+            dist/SHA256SUMS-linux.txt
           if-no-files-found: error
 
   plugin:
