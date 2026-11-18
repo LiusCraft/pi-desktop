@@ -118,20 +118,35 @@ describe('PR watcher, comments', () => {
 });
 
 describe('PR watcher, merging and the loop', () => {
-  it('asks for a merge once when the PR becomes ready', () => {
+  it('asks for a merge once per head, only after that head passes CI', () => {
     const w = new PrWatcher();
     assert.equal(w.observe(snap({ ci: 'none', mergeable: 'clean' }), withMerge).pending, null);
     const queued = w.observe(snap({ ci: 'pending', mergeable: 'clean' }), withMerge);
     assert.equal(queued.pending, null);
     assert.equal(queued.after, FAST_MS);
-    const ready = w.observe(snap({ ci: 'pass', mergeable: 'clean' }), withMerge);
-    assert.equal(ready.pending?.event.kind, 'merge');
-    assert.deepEqual(ready.pending?.mark, { merge: 4 });
-    // Recorded on the session: no second request for the same PR.
-    assert.equal(
-      w.observe(snap({ ci: 'pass', mergeable: 'clean' }), { ...withMerge, done: { merge: 4 } }).pending,
-      null,
-    );
+    const green = snap({ ci: 'pass', mergeable: 'clean' });
+    const first = w.observe(green, withMerge).pending;
+    assert.equal(first?.event.kind, 'merge');
+    assert.deepEqual(first.mark, { merge: '4:abc' });
+    w.accept(first);
+    const afterFirst = { ...withMerge, done: first.mark };
+    assert.equal(w.observe(green, afterFirst).pending, null);
+
+    // The merge turn pushed a new commit instead. Its pending checks must not consume its turn.
+    const next = snap({ ...green.status, head: 'def' });
+    assert.equal(w.observe(snap({ ...next.status, ci: 'pending' }), afterFirst).pending, null);
+    const second = w.observe(next, afterFirst).pending;
+    assert.equal(second?.event.kind, 'merge');
+    assert.equal(second.event.head, 'def');
+    assert.deepEqual(second.mark, { merge: '4:def' });
+    w.accept(second);
+    assert.equal(w.observe(next, { ...withMerge, done: second.mark }).pending, null);
+  });
+
+  it('does not merge without the merge switch or without a known head', () => {
+    const w = new PrWatcher();
+    assert.equal(w.observe(snap({ mergeable: 'clean' }), auto).pending, null);
+    assert.equal(w.observe(snap({ mergeable: 'clean', head: undefined }), withMerge).pending, null);
   });
 
   it('does not merge over a change request', () => {

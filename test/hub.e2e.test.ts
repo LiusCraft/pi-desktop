@@ -196,6 +196,15 @@ describe('code sessions', { timeout: 120_000 }, () => {
     );
   });
 
+  it('only lets the user arm auto-merge', async () => {
+    const { meta } = await codeSession();
+    const patch = { prAuto: { merge: true } };
+    driver.hub.update(meta.id, patch, 'agent');
+    expect(driver.hub.meta(meta.id).autoMerge).toBeFalsy();
+    driver.hub.update(meta.id, patch, 'user');
+    expect(driver.hub.meta(meta.id).autoMerge).toBe(true);
+  });
+
   it.each(['agent', 'user'] as const)('honors the %s permission grant on a real CI event', async (source) => {
     const project = makeProject('ci-watch-' + source);
     const provider = 'ci-watch-' + source;

@@ -35,6 +35,7 @@ import { buildMessage, decodeUserContent } from '@shared/attachments';
 import type {
   AgentDraft,
   AgentMessage,
+  ApiArgs,
   BashRunOptions,
   BashRunResult,
   ConnectorDraft,
@@ -56,7 +57,6 @@ import type {
   OutputStyle,
   PermissionMode,
   PrStatus,
-  PrSummary,
   SessionCleanup,
   SessionMeta,
   SessionRemoval,
@@ -2201,17 +2201,7 @@ export class SessionHub {
     this.emitMeta(m);
   }
 
-  update(
-    id: string,
-    patch: {
-      title?: string;
-      pinned?: boolean;
-      pr?: PrSummary | null;
-      suggestion?: { key: string; state: 'here' | 'dismissed' };
-      prAuto?: { fixCi?: boolean; merge?: boolean; fixDone?: string; mergeDone?: number };
-    },
-    source: 'user' | 'agent' = 'user',
-  ) {
+  update(id: string, patch: ApiArgs<'sessions:update'>[1], source: 'user' | 'agent' = 'user') {
     const m = this.meta(id);
     if (patch.pr !== undefined) m.pr = patch.pr;
     if (patch.pinned !== undefined) m.pinned = patch.pinned || undefined;
@@ -2221,7 +2211,7 @@ export class SessionHub {
         m.autoFixCi = a.fixCi;
         m.agentArmedCi = (a.fixCi && source === 'agent') || undefined;
       }
-      if (a.merge !== undefined) m.autoMerge = a.merge;
+      if (source === 'user' && a.merge !== undefined) m.autoMerge = a.merge;
       if (a.fixDone || a.mergeDone) {
         m.prAutoDone = {
           ...m.prAutoDone,
