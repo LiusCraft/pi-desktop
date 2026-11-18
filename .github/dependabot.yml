@@ -1,0 +1,15 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: daily
+    # Only maintain the bundled Pi SDK; keep its direct dependencies in one PR.
+    allow:
+      - dependency-name: '@earendil-works/pi-*'
+    groups:
+      pi-sdk:
+        patterns:
+          - '@earendil-works/pi-*'
+    versioning-strategy: increase
+    open-pull-requests-limit: 1

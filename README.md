@@ -375,6 +375,22 @@ npm run test:desktop # 构建后用项目自带的 Electron 运行 Playwright �
 
 </details>
 
+## Pi SDK 依赖更新
+
+应用的 `@earendil-works/pi-ai` 和 `@earendil-works/pi-coding-agent` 保持同一精确版本，并提交 `package-lock.json`，保证本地和 CI 使用同一套依赖。只把版本改成 `^1.x.x` 或 `latest` 不会自动更新 CI：`npm ci` 始终按 lockfile 安装。
+
+[Dependabot 配置](.github/dependabot.yml) 合入默认分支后，每个工作日检查 npm 上的 Pi 新版本，把 `@earendil-works/pi-*` 的直接依赖更新合并成一个 PR，同时更新清单和 lockfile；其他依赖不在本次版本更新范围内。无需新增 Action 或 token，PR 会触发现有 `build.yml` 的 lint、类型检查、测试与 macOS / Windows 打包检查，确认通过后手动合并，不自动发布应用。配置项见 [GitHub 文档](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference)。
+
+也可以手动同步更新：
+
+```bash
+npm install --save-exact @earendil-works/pi-ai@latest @earendil-works/pi-coding-agent@latest
+npm run typecheck
+npm test
+```
+
+`plugin/pi-remote/package.json` 中的 Pi `peerDependencies: "*"` 保持不变：插件使用宿主提供的 SDK，不单独安装或锁定一份。
+
 ## 打包与发布（macOS / Windows）
 
 ### Windows

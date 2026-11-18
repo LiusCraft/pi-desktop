@@ -25,7 +25,7 @@ import {
   type ExtensionToolContext,
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
-import { StringEnum } from '@earendil-works/pi-ai';
+import { StringEnum } from './tool-schema';
 import { Type } from 'typebox';
 import { AGENT_TYPES, DEFAULT_AGENT, type AgentType } from './agents';
 import { ShellCommands, commandInFolder } from './shell-session';
