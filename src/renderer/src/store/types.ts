@@ -14,6 +14,7 @@ import type {
   ThinkingLevel,
   UiRequest,
 } from '@shared/protocol';
+import type { PeerMessage } from '@shared/peer-message';
 import type { PrEvent } from '@shared/pr-event';
 import type { ToolState } from '@/lib/tools';
 import type { DraftSubmission } from './drafts';
@@ -72,6 +73,16 @@ export type Item =
       /** Why the command did not run at all (the host refused it). */
       error?: string;
       at: number;
+    }
+  | { kind: 'taskEvent'; key: string; text: string }
+  | {
+      kind: 'peerSend';
+      key: string;
+      toolCallId: string;
+      sessionId?: string;
+      text?: string;
+      status: 'unconfirmed' | 'queued' | 'sent' | 'failed';
+      error?: string;
     }
   | { kind: 'note'; key: string; text: string; level?: 'error' }
   | { kind: 'group'; key: string; thoughts: ThinkStep[]; tools: ToolState[]; open: boolean; userToggled?: boolean }
@@ -189,6 +200,7 @@ export interface Panels {
 export interface SessionView {
   meta: SessionMeta;
   items: Item[];
+  queuedPeers: PeerMessage[];
   loaded: boolean;
   running: boolean;
   /** A manual or automatic compaction is running: the session is busy, but not in a turn. */

@@ -24,10 +24,13 @@ import {
   HandoffItem,
   isPendingAsk,
   NoteItem,
+  PeerMessageCard,
+  PeerSendItem,
   PermItem,
   PlanItem,
   PrEventItem,
   SuggestItem,
+  TaskEventItem,
   TextItem,
   TodosItem,
   UserItem,
@@ -171,6 +174,10 @@ function renderItem(
       return <CompactionItem sid={sid} item={item} before={before?.get(item.key) ?? 0} />;
     case 'handoff':
       return <HandoffItem sid={sid} item={item} before={before?.get(item.key) ?? 0} />;
+    case 'peerSend':
+      return <PeerSendItem item={item} />;
+    case 'taskEvent':
+      return <TaskEventItem item={item} />;
     case 'prEvent':
       return <PrEventItem sid={sid} item={item} />;
     case 'foot': {
@@ -506,6 +513,15 @@ export function Transcript({ s }: { s: SessionView }) {
               </div>
             ),
           )}
+          {s.queuedPeers.map((peer, i) => (
+            <PeerMessageCard
+              key={`${peer.fromId}:${i}`}
+              sessionId={peer.fromId}
+              title={peer.fromTitle}
+              text={peer.text}
+              queued
+            />
+          ))}
           {showChangedFiles && <ChangedFiles s={s} />}
           {s.setup && <SetupCard steps={s.setup} />}
           <StatusLine s={s} />

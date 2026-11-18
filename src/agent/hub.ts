@@ -89,7 +89,13 @@ import {
 } from '@shared/protocol';
 import { decodeCommandMessage, encodeUserCommandMessage, isCommandMessage } from '@shared/command-message';
 import { expandUserCommand } from './prompt-template';
-import { decodePeerMessage, encodePeerMessage, isPeerMessage } from '@shared/peer-message';
+import {
+  decodePeerMessage,
+  encodePeerMessage,
+  isPeerMessage,
+  peerMessageBody,
+  queuedPeerMessages,
+} from '@shared/peer-message';
 import { decodePrEvent, encodePrEvent, isPrEvent } from '@shared/pr-event';
 import { diffStats } from '@shared/tool-previews';
 import { decodeTaskMessage, encodeTaskMessage, isTaskMessage } from '@shared/task-message';
@@ -1480,6 +1486,7 @@ export class SessionHub {
     return {
       meta: { ...this.meta(id) },
       messages: this.messagesWithIds(session, this.meta(id)),
+      queuedPeers: queuedPeerMessages(session.getFollowUpMessages()),
       ...this.stateOf(session),
       isStreaming: session.isStreaming,
       isCompacting: session.isCompacting,
@@ -2410,7 +2417,7 @@ export class SessionHub {
   /** Deliver a message to another session: it starts a turn there, or waits until the one in progress ends. */
   async peerSend(fromId: string, toId: string, text: string): Promise<'delivered' | 'queued'> {
     const { from, to } = this.peer(fromId, toId);
-    const body = text.trim();
+    const body = peerMessageBody(text);
     if (!body) throw new Error('The message is empty');
     // Two sessions answering each other would never stop: cap what one session may send to another.
     const key = `${from.id}>${to.id}`;
@@ -2418,17 +2425,16 @@ export class SessionHub {
     if (recent.length >= 8)
       throw new Error('Too many messages to that session in a short time. Wait for it, or tell the user.');
     this.peerSent.set(key, [...recent, Date.now()]);
-    const queued = this.isRunning(to.id);
-    await this.prompt(
+    const { disposition } = await this.prompt(
       to.id,
       {
-        text: encodePeerMessage({ id: from.id, title: from.title }, body.slice(0, 20_000)),
+        text: encodePeerMessage({ id: from.id, title: from.title }, body),
         attachments: [],
         clientId: crypto.randomUUID(),
       },
       'followUp',
     );
-    return queued ? 'queued' : 'delivered';
+    return disposition === 'queued' ? 'queued' : 'delivered';
   }
 
   private async dispose(id: string) {

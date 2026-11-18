@@ -40,7 +40,7 @@ import {
   type BuiltinCommand,
   type CommandMessage,
 } from '@shared/command-message';
-import { decodePeerMessage, type PeerMessage } from '@shared/peer-message';
+import { decodePeerMessage } from '@shared/peer-message';
 import { decodeSkillMessage, typedText, type SkillMessage } from '@shared/skill-message';
 import { decodeTaskMessage, type TaskMessage } from '@shared/task-message';
 import * as previews from '@shared/tool-previews';
@@ -126,7 +126,7 @@ export const UserItem = memo(function UserItem({
 }) {
   const t = useT();
   const peer = decodePeerMessage(item.text);
-  if (peer) return <PeerMessageCard peer={peer} />;
+  if (peer) return <PeerMessageCard sessionId={peer.fromId} title={peer.fromTitle} text={peer.text} />;
   const task = decodeTaskMessage(item.text);
   if (task) return <TaskMessageCard task={task} queued={item.queued} />;
   const command = decodeCommandMessage(item.text);
@@ -347,30 +347,78 @@ function CommandMessageChip({ sid, item, command }: { sid: string; item: ItemOf<
   );
 }
 
-/** A message another session of the project sent: shown as theirs, with a way back to them. */
-function PeerMessageCard({ peer }: { peer: PeerMessage }) {
+const peerStatusLabels = {
+  sent: 'thread.peerSent',
+  queued: 'thread.peerQueued',
+  failed: 'thread.peerFailed',
+  unconfirmed: 'thread.peerUnconfirmed',
+} satisfies Record<ItemOf<'peerSend'>['status'], MessageKey>;
+
+/** Both sides of a peer exchange link to the other session, not to a tool trace. */
+export function PeerMessageCard({
+  sessionId,
+  title,
+  text,
+  send,
+  queued,
+}: {
+  sessionId?: string;
+  title?: string;
+  text?: string;
+  send?: ItemOf<'peerSend'>;
+  queued?: boolean;
+}) {
   const t = useT();
-  const known = useApp((st) => !!st.sessions[peer.fromId]);
+  const name = useApp((st) => (sessionId ? st.sessions[sessionId]?.meta.title : undefined));
+  const label = title || name || sessionId;
+  const status = send ? peerStatusLabels[send.status] : queued ? 'thread.peerQueued' : null;
   return (
     <div className="flex justify-start">
       <div className="max-w-[85%] rounded-xl surface-flat bg-card px-3.5 py-2.5 text-sm">
         <button
-          disabled={!known}
-          className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground enabled:hover:text-foreground"
-          title={t(known ? 'thread.peerOpen' : 'thread.peerGone')}
-          onClick={() => void openSession(peer.fromId)}
+          disabled={!name}
+          className="mb-1 flex max-w-full items-center gap-1.5 text-xs text-muted-foreground enabled:hover:text-foreground"
+          title={t(name ? 'thread.peerOpen' : 'thread.peerGone')}
+          onClick={() => sessionId && void openSession(sessionId)}
         >
           <MessagesSquareIcon className="size-3.5" />
-          {t('thread.fromSession', { title: peer.fromTitle })}
-          {known && <ArrowUpRightIcon className="size-3" />}
+          <span className="truncate">
+            {label ? t(send ? 'thread.toSession' : 'thread.fromSession', { title: label }) : t('thread.toPeer')}
+          </span>
+          {name && <ArrowUpRightIcon className="size-3 shrink-0" />}
         </button>
         <div data-selectable className="break-words whitespace-pre-wrap">
-          {peer.text}
+          {text ?? t('thread.peerBodyUnavailable')}
         </div>
+        {status && (
+          <div className={cn('mt-1 text-xs text-muted-foreground', send?.status === 'failed' && 'text-destructive')}>
+            {t(status)}
+            {send?.error && `: ${send.error}`}
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
+export const PeerSendItem = memo(function PeerSendItem({ item }: { item: ItemOf<'peerSend'> }) {
+  return <PeerMessageCard sessionId={item.sessionId} text={item.text} send={item} />;
+});
+
+export const TaskEventItem = memo(function TaskEventItem({ item }: { item: ItemOf<'taskEvent'> }) {
+  const t = useT();
+  return (
+    <div className="w-fit max-w-full rounded-xl surface-flat bg-card px-3.5 py-2.5 text-sm">
+      <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <TerminalIcon className="size-3.5" />
+        {t('thread.taskEvent')}
+      </div>
+      <div data-selectable className="break-words whitespace-pre-wrap">
+        {item.text}
+      </div>
+    </div>
+  );
+});
 
 // ------------------------------------------------------------ PR events
 

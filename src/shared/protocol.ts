@@ -8,6 +8,7 @@
 import type { ActivityLog } from './activity';
 import type { Attachment, DecodedUserContent, PromptSubmission } from './attachments';
 import type { Forge } from './forge';
+import type { PeerMessage } from './peer-message';
 import type { PetDef } from './pets';
 import type { SoundEvent } from './sounds';
 import type { ArtifactMeta } from './artifacts';
@@ -249,6 +250,16 @@ export interface NestedFileOutput {
 
 export interface AgentMessage {
   nestedFileOutputs?: NestedFileOutput[];
+  /** SDK record of calls made inside another tool. Arguments may be omitted by its size cap. */
+  nestedCalls?: {
+    calls: {
+      id: string;
+      name: string;
+      arguments?: Record<string, unknown>;
+      status: 'ok' | 'error' | 'unfinished';
+      error?: string;
+    }[];
+  };
   /** Stable pi entry ID for history actions; never sent to the model. */
   entryId?: string;
   role: 'user' | 'assistant' | 'toolResult' | 'custom' | 'bashExecution' | string;
@@ -577,6 +588,7 @@ export interface SessionState {
 }
 
 export interface OpenSessionResult extends SessionState {
+  queuedPeers: PeerMessage[];
   meta: SessionMeta;
   messages: AgentMessage[];
   isStreaming: boolean;

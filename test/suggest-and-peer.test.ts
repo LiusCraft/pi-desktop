@@ -182,6 +182,16 @@ describe('suggested tasks in the transcript', () => {
 });
 
 describe('messages from another session', () => {
+  it('shows queued incoming messages until consumed or cleared, without touching the user draft queue', () => {
+    const s = emptySession(meta);
+    const wire = encodePeerMessage({ id: 'a', title: 'Alpha' }, 'review?');
+    applyPiEvent(s, { type: 'queue_update', followUp: ['user prompt', wire, wire] }, 'normal');
+    expect(s.queuedPeers).toEqual(Array(2).fill({ fromId: 'a', fromTitle: 'Alpha', text: 'review?' }));
+    expect(s.pendingUser).toEqual([]);
+    applyPiEvent(s, { type: 'queue_update', followUp: [] }, 'normal');
+    expect(s.queuedPeers).toEqual([]);
+  });
+
   it('arrive as user items whose text still decodes to the sender', () => {
     const s = emptySession(meta);
     const wire = encodePeerMessage({ id: 'other', title: 'Beta' }, 'status?');
