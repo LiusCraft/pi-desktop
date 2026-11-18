@@ -135,6 +135,7 @@ import {
   type SessionScope,
   type SubagentRun,
 } from './desktop-kit';
+import { sessionGoal } from './session-goal';
 import type { ShellCommands } from './shell-session';
 import { toWireEvent } from './events';
 import {
@@ -891,6 +892,7 @@ export class SessionHub {
         resourceLoaderOptions: {
           extensionFactories: [
             createDesktopKit(this.kitHost(live)),
+            sessionGoal,
             createCodemodeExtension(),
             createToolSearchExtension(),
             createMcpExtension(),
@@ -927,6 +929,12 @@ export class SessionHub {
       scope: hub.workScope(live.id),
       review: (command, cwd, signal) => hub.reviewCommand(live, command, cwd, signal),
       prAutomation: () => live.prAutomation,
+      setCiWatch:
+        live.kit.profile === 'code'
+          ? (fixCi) => {
+              this.update(live.id, { prAuto: { fixCi } }, 'agent');
+            }
+          : undefined,
       // Read for every command, so switching it on the Settings page applies without a new session.
       shellSession: () => {
         const mode = hub.storedSettings().shellSession;
@@ -1683,11 +1691,15 @@ export class SessionHub {
     if (live.historyBusy) throw new Error(tr('ag.historyBusy'));
     const generation = live.generation;
     const normalized = await validatePromptPayload(payload);
+    // Goal controls must execute immediately, not be expanded as a template or queued as conversation text.
+    const goal = /^\/goal(?:\s+([\s\S]*))?$/.exec(normalized.text.trim());
+    if (goal && normalized.attachments.length) throw new Error(tr('act.slashNoAttach'));
     const built = buildMessage(normalized);
     const { images } = built;
-    const slash = built.message.startsWith('/');
-    const expanded = expandUserCommand(built.message, live.runtime.session.promptTemplates);
-    const message = expanded ? encodeUserCommandMessage(expanded.name, expanded.args, expanded.prompt) : built.message;
+    const raw = goal ? `/goal ${goal[1] ?? ''}`.trimEnd() : built.message;
+    const slash = raw.startsWith('/');
+    const expanded = goal ? null : expandUserCommand(raw, live.runtime.session.promptTemplates);
+    const message = expanded ? encodeUserCommandMessage(expanded.name, expanded.args, expanded.prompt) : raw;
     // Only the host's PR watcher may keep the automation bypass; a user/peer/task prompt that
     // arrives while that turn is starting must not inherit it, even if its text resembles an event.
     if (origin !== 'pr') live.prAutomation = false;
@@ -1717,7 +1729,7 @@ export class SessionHub {
     this.maybeNameFromPrompt(id, message);
     this.kickPrWatch(id, 1_000);
     // follow_up queues while streaming, but does not start an idle agent.
-    if (busy && behavior === 'followUp') return { disposition: await session.followUp(message, images) };
+    if (busy && behavior === 'followUp' && !goal) return { disposition: await session.followUp(message, images) };
     return new Promise((resolve, reject) => {
       let accepted = false;
       session
@@ -2198,13 +2210,17 @@ export class SessionHub {
       suggestion?: { key: string; state: 'here' | 'dismissed' };
       prAuto?: { fixCi?: boolean; merge?: boolean; fixDone?: string; mergeDone?: number };
     },
+    source: 'user' | 'agent' = 'user',
   ) {
     const m = this.meta(id);
     if (patch.pr !== undefined) m.pr = patch.pr;
     if (patch.pinned !== undefined) m.pinned = patch.pinned || undefined;
     if (patch.prAuto) {
       const a = patch.prAuto;
-      if (a.fixCi !== undefined) m.autoFixCi = a.fixCi;
+      if (a.fixCi !== undefined && a.fixCi !== m.autoFixCi) {
+        m.autoFixCi = a.fixCi;
+        m.agentArmedCi = (a.fixCi && source === 'agent') || undefined;
+      }
       if (a.merge !== undefined) m.autoMerge = a.merge;
       if (a.fixDone || a.mergeDone) {
         m.prAutoDone = {
@@ -2953,7 +2969,8 @@ export class SessionHub {
   /** Hand an event to the agent as a turn of its own — unless the user is already in the middle of something. */
   private async deliverPrEvent(id: string, entry: PrWatchEntry, pending: PrPending) {
     const live = this.live.get(id);
-    const busy = !live || live.status === 'running' || live.historyBusy || live.pending.size > 0;
+    const busy =
+      !live || !live.runtime.session.isIdle || live.status === 'running' || live.historyBusy || live.pending.size > 0;
     if (busy) return; // the next look tries again, so nothing is lost
     entry.watcher.accept(pending);
     const m = this.meta(id);
@@ -2961,11 +2978,18 @@ export class SessionHub {
       m.prAutoDone = { ...m.prAutoDone, ...pending.mark };
       this.save();
     }
-    live.prAutomation = true;
+    // Only a manual switch grants the watcher's git/forge command approval.
+    live.prAutomation = pending.event.kind === 'merge' || !m.agentArmedCi;
     try {
-      await this.prompt(id, { text: encodePrEvent(pending.event), attachments: [] }, 'followUp', 'pr');
-      // A prompt can be handled without starting a running turn (for example after a shutdown race).
-      if (live.status === 'idle') live.prAutomation = false;
+      const { disposition } = await this.prompt(
+        id,
+        { text: encodePrEvent(pending.event), attachments: [] },
+        'followUp',
+        'pr',
+      );
+      // Preflight can report 'started' before agent_start updates live.status. Only that run owns
+      // the manual grant; handled/queued prompts get none, and agent_settled revokes it otherwise.
+      if (disposition !== 'started') live.prAutomation = false;
     } catch (err) {
       live.prAutomation = false;
       this.emit({

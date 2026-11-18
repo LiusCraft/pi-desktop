@@ -38,6 +38,18 @@ const mount = () =>
     </TooltipProvider>,
   );
 
+it('offers /goal before a session exists without submitting the draft', async () => {
+  invoke.mockImplementation(async (channel) => (channel === 'git:branches' ? [] : null));
+  mount();
+  const box = screen.getByRole('textbox');
+  fireEvent.change(box, { target: { value: '/goa' } });
+  const option = await screen.findByRole('option', { name: /\/goal/ });
+  fireEvent.click(option);
+  expect(activeDraft()?.text).toBe('/goal ');
+  expect(getApp().current).toBeNull();
+  expect(invoke.mock.calls.some(([channel]) => channel === 'sessions:create')).toBe(false);
+});
+
 it('renders an editable welcome screen before Git responds and revalidates only the selected project’s cache', async () => {
   const remote = deferred<boolean>();
   const a = deferred<string>();
