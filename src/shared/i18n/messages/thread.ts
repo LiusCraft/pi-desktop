@@ -36,6 +36,8 @@ export const thread = defineMessages({
   'thread.peerUnconfirmed': { en: 'Send not confirmed', zh: '发送未确认' },
   'thread.peerBodyUnavailable': { en: 'Message text was not recorded.', zh: '未记录消息正文。' },
   'thread.taskEvent': { en: 'Background task notification', zh: '后台任务通知' },
+  'thread.showTaskReport': { en: 'Show full notification', zh: '查看完整通知' },
+  'thread.hideTaskReport': { en: 'Hide details', zh: '收起详情' },
   'thread.shellExit': { en: 'exit {code}', zh: '退出码 {code}' },
   'thread.shellRunning': { en: 'Running…', zh: '运行中…' },
   'thread.shellCancelled': { en: 'Cancelled', zh: '已取消' },
