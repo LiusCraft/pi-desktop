@@ -9,6 +9,7 @@ import {
   GitBranchIcon,
   InfoIcon,
   LaptopIcon,
+  LoaderCircleIcon,
   PlusIcon,
   XIcon,
 } from 'lucide-react';
@@ -29,6 +30,7 @@ import { fmtTokPerSec, fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { addWorkFolder, addProject, selectProject, send, setWorkFolder, stop } from '@/store/actions';
 import { modelName, setApp, setPref, useApp, useCurrent } from '@/store/app';
+import { chooseBase, refreshBranches, useWelcomeBranches } from '@/store/welcome-branches';
 import { useDrafts } from '@/store/drafts';
 import type { SessionView } from '@/store/types';
 import { bashRunning } from '@/store/transcript';
@@ -92,9 +94,12 @@ function NewSessionChips() {
   const projects = useApp((st) => st.projects);
   const project = useApp((st) => st.prefs.project);
   const worktree = useApp((st) => st.prefs.worktree);
-  const branch = useApp((st) => st.projectBranch);
-  const branches = useApp((st) => st.projectBranches);
-  const baseRef = useApp((st) => st.baseRef);
+  const info = useWelcomeBranches((st) => (project ? st[project] : undefined));
+  const branch = info?.current;
+  const baseRef = info?.selected ?? info?.defaultRef;
+  useEffect(() => {
+    if (project) void refreshBranches(project);
+  }, [project]);
   const adopt = useApp((st) => (st.adopt && st.adopt.mainRoot === st.prefs.project ? st.adopt : null));
   return (
     <div className="mb-2.5 flex flex-wrap items-center gap-2">
@@ -167,7 +172,12 @@ function NewSessionChips() {
       )}
       {project && !adopt && (
         <div {...PET_GROUND} className="flex h-8 items-center rounded-lg bg-muted/80 text-sm text-foreground/85">
-          {branch && worktree ? (
+          {info === undefined ? (
+            <span role="status" className="flex items-center gap-1.5 px-2.5 text-muted-foreground">
+              <LoaderCircleIcon aria-hidden className="size-4 motion-safe:animate-spin" />
+              {t('panel.loadingBranches')}
+            </span>
+          ) : branch && worktree ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -184,19 +194,19 @@ function NewSessionChips() {
                   {t('composer.worktreeBaseLabel')}
                 </DropdownMenuLabel>
                 <DropdownMenuItem
-                  onSelect={() => setApp((st) => void (st.baseRef = branch))}
+                  onSelect={() => chooseBase(project, branch)}
                   className={cn(baseRef === branch && 'font-medium')}
                 >
                   <GitBranchIcon className="size-3.5" />
                   <span className="truncate">{branch}</span>
                   <span className="ml-auto text-xs text-muted-foreground">{t('composer.current')}</span>
                 </DropdownMenuItem>
-                {branches
+                {info.branches
                   .filter((b) => b !== branch)
                   .map((b) => (
                     <DropdownMenuItem
                       key={b}
-                      onSelect={() => setApp((st) => void (st.baseRef = b))}
+                      onSelect={() => chooseBase(project, b)}
                       className={cn(b === baseRef && 'font-medium')}
                     >
                       <GitBranchIcon className="size-3.5" />
@@ -208,10 +218,12 @@ function NewSessionChips() {
           ) : (
             <span
               className="flex items-center gap-1.5 pr-2 pl-2.5"
-              title={branch ? t('composer.currentBranch', { branch }) : t('composer.notGit')}
+              title={branch ? t('composer.currentBranch', { branch }) : info ? t('composer.notGit') : undefined}
             >
               <GitBranchIcon className="size-4 shrink-0" />
-              <span className="max-w-32 truncate">{branch ?? t('composer.noGit')}</span>
+              <span className="max-w-32 truncate">
+                {branch ?? t(info ? 'composer.noGit' : 'composer.branchUnavailable')}
+              </span>
             </span>
           )}
           {branch && (
@@ -325,7 +337,14 @@ export function CodeComposer() {
 
 function ModelLabel({ id }: { id: string | null }) {
   const models = useApp((st) => st.models);
-  return <span className="truncate">{models.length ? modelName(models, id) : '…'}</span>;
+  const t = useT();
+  return models.length || id ? (
+    <span className="truncate">{modelName(models, id)}</span>
+  ) : (
+    <span role="status" aria-label={t('composer.loadingModel')}>
+      <LoaderCircleIcon aria-hidden className="size-3.5 motion-safe:animate-spin" />
+    </span>
+  );
 }
 
 /** Work's welcome composer: bigger box, model chip inside, folder tray underneath. */

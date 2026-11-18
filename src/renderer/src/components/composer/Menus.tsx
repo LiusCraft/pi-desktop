@@ -113,86 +113,90 @@ export function ModelMenu({
   trigger: ReactNode;
   align?: 'start' | 'end';
 }) {
+  const menu = useMenu('model');
+  return (
+    <Popover open={menu.open} onOpenChange={menu.onOpenChange}>
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      <PopoverContent align={align} side="top" className="w-72 overflow-hidden p-0">
+        <ModelChoices model={model} close={() => menu.onOpenChange(false)} />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// Index and render the catalog only when the picker is mounted, not on the composer's first paint.
+function ModelChoices({ model, close }: { model: string | null; close: () => void }) {
   const t = useT();
   const models = useApp((s) => s.models);
-  const menu = useMenu('model');
   const [query, setQuery] = useState('');
   const entries = useMemo(() => models.map((m) => fuzzyEntry(m, `${m.provider} ${m.id} ${m.name ?? ''}`)), [models]);
   const filtered = useMemo(() => {
     const byProvider = new Map<string, ModelInfo[]>();
     for (const { item } of fuzzyRank(entries, query, entries.length)) {
-      byProvider.set(item.provider, [...(byProvider.get(item.provider) ?? []), item]);
+      const group = byProvider.get(item.provider);
+      if (group) group.push(item);
+      else byProvider.set(item.provider, [item]);
     }
     return [...byProvider];
   }, [entries, query]);
-  const close = () => menu.onOpenChange(false);
   const selectModel = (id: string) => {
     close();
     void chooseModel(id);
   };
-  const onOpenChange = (open: boolean) => {
-    if (!open) setQuery('');
-    menu.onOpenChange(open);
-  };
   return (
-    <Popover open={menu.open} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent align={align} side="top" className="w-72 overflow-hidden p-0">
-        <Command shouldFilter={false}>
-          <CommandInput
-            value={query}
-            onValueChange={setQuery}
-            placeholder={t('menu.searchModels')}
-            aria-label={t('menu.searchModels')}
-            className="text-[13px]"
-          />
-          <CommandList
-            className="max-h-none"
-            style={{ height: MODEL_LIST_HEIGHT_STYLE, maxHeight: MODEL_LIST_HEIGHT_STYLE }}
-          >
-            <CommandEmpty>{t('menu.noMatchingModels')}</CommandEmpty>
-            {filtered.map(([provider, list]) => (
-              <CommandGroup key={provider} heading={provider}>
-                {list.map((m) => {
-                  const id = `${m.provider}/${m.id}`;
-                  return (
-                    <CommandItem
-                      key={id}
-                      value={id}
-                      onSelect={() => selectModel(id)}
-                      className="items-start gap-2 py-1 text-[13px]"
-                    >
-                      <ModelVendorIcon model={m} />
-                      <Tooltip delayDuration={0}>
-                        <TooltipTrigger asChild>
-                          <span className="min-w-0 flex-1 cursor-default truncate">{m.name || m.id}</span>
-                        </TooltipTrigger>
-                        <TooltipContent side="right" align="start" className="z-[60] max-w-none p-3">
-                          <ModelDetails model={m} t={t} />
-                        </TooltipContent>
-                      </Tooltip>
-                      {id === model && <CheckIcon className="ml-auto size-3.5 shrink-0 self-center" />}
-                    </CommandItem>
-                  );
-                })}
-              </CommandGroup>
-            ))}
-          </CommandList>
-          <div className="border-t p-1">
-            <button
-              type="button"
-              className="relative flex w-full cursor-default items-center rounded-sm px-2 py-1.5 text-[13px] outline-hidden select-none hover:bg-accent focus:bg-accent"
-              onClick={() => {
-                close();
-                void call('settings:open', 'models');
-              }}
-            >
-              {t('menu.manageModels')}
-            </button>
-          </div>
-        </Command>
-      </PopoverContent>
-    </Popover>
+    <Command shouldFilter={false}>
+      <CommandInput
+        value={query}
+        onValueChange={setQuery}
+        placeholder={t('menu.searchModels')}
+        aria-label={t('menu.searchModels')}
+        className="text-[13px]"
+      />
+      <CommandList
+        className="max-h-none"
+        style={{ height: MODEL_LIST_HEIGHT_STYLE, maxHeight: MODEL_LIST_HEIGHT_STYLE }}
+      >
+        <CommandEmpty>{t('menu.noMatchingModels')}</CommandEmpty>
+        {filtered.map(([provider, list]) => (
+          <CommandGroup key={provider} heading={provider}>
+            {list.map((m) => {
+              const id = `${m.provider}/${m.id}`;
+              return (
+                <CommandItem
+                  key={id}
+                  value={id}
+                  onSelect={() => selectModel(id)}
+                  className="items-start gap-2 py-1 text-[13px]"
+                >
+                  <ModelVendorIcon model={m} />
+                  <Tooltip delayDuration={0}>
+                    <TooltipTrigger asChild>
+                      <span className="min-w-0 flex-1 cursor-default truncate">{m.name || m.id}</span>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" align="start" className="z-[60] max-w-none p-3">
+                      <ModelDetails model={m} t={t} />
+                    </TooltipContent>
+                  </Tooltip>
+                  {id === model && <CheckIcon className="ml-auto size-3.5 shrink-0 self-center" />}
+                </CommandItem>
+              );
+            })}
+          </CommandGroup>
+        ))}
+      </CommandList>
+      <div className="border-t p-1">
+        <button
+          type="button"
+          className="relative flex w-full cursor-default items-center rounded-sm px-2 py-1.5 text-[13px] outline-hidden select-none hover:bg-accent focus:bg-accent"
+          onClick={() => {
+            close();
+            void call('settings:open', 'models');
+          }}
+        >
+          {t('menu.manageModels')}
+        </button>
+      </div>
+    </Command>
   );
 }
 
