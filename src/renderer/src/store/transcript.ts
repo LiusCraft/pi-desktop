@@ -31,7 +31,7 @@ export interface Effects {
   pruneOutputs?: boolean;
   prCreated?: PrSummary;
   settled?: { aborted: boolean };
-  waiting?: boolean;
+  waiting?: UiRequest;
   toast?: string;
   editorText?: string;
 }
@@ -776,8 +776,11 @@ export function permissionTitle(tool: ToolState | undefined, raw: string) {
   return t('perm.use', { name: tool.name });
 }
 
+export const pendingRequest = (s: SessionView | undefined, requestId: string) =>
+  s?.items.find((i): i is ItemOf<'perm' | 'ask' | 'plan'> => 'requestId' in i && i.requestId === requestId);
+
 export function addUiRequest(s: SessionView, req: UiRequest, view: ViewMode): { openPlan?: string } {
-  if (s.items.some((i) => 'requestId' in i && i.requestId === req.id)) return {};
+  if (pendingRequest(s, req.id)) return {};
   if (req.kind === 'permission') {
     s.waiting = push(
       s,
@@ -820,9 +823,7 @@ export function addUiRequest(s: SessionView, req: UiRequest, view: ViewMode): { 
 }
 
 export function resolveUi(s: SessionView, requestId: string, label: string) {
-  const item = s.items.find((i) => 'requestId' in i && i.requestId === requestId) as
-    | ItemOf<'perm' | 'ask' | 'plan'>
-    | undefined;
+  const item = pendingRequest(s, requestId);
   if (!item) return;
   item.resolved = item.resolved && item.kind === 'plan' ? item.resolved : label;
   item.requestId = null;

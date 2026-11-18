@@ -7,6 +7,8 @@ export const actions = defineMessages({
   },
   'act.extensionError': { en: 'Extension error: {error}', zh: '扩展出错：{error}' },
   'act.needsApproval': { en: '“{title}” needs your confirmation', zh: '“{title}” 需要你的确认' },
+  'act.needsReply': { en: '“{title}” is waiting for your reply', zh: '“{title}” 等你回复' },
+  'act.replyInSession': { en: 'Reply in session', zh: '前往回复' },
   'act.stepAgent': { en: 'Starting the agent, loading extensions and tools', zh: '启动 Agent，加载扩展与工具' },
   'act.stepWorktree': { en: 'Creating the git worktree ({branch})', zh: '创建 git worktree（{branch}）' },
   'act.openFailed': { en: 'Could not open the session: {error}', zh: '无法打开会话：{error}' },
