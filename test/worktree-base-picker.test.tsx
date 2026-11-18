@@ -6,7 +6,11 @@ import { expect, it, vi } from 'vitest';
 const { WorktreeBasePicker } = await import('../src/renderer/src/components/composer/WorktreeBasePicker');
 
 it('filters worktree bases, selects with the keyboard and resets the search on reopen', async () => {
-  const props = { branch: 'main', branches: ['origin/main', 'main', 'feature/Release'], onSelect: vi.fn() };
+  const props = {
+    branch: 'main',
+    branches: ['origin/main', 'main', 'feature/Release'],
+    onSelect: vi.fn<(ref: string) => void>(),
+  };
   const { rerender } = render(<WorktreeBasePicker {...props} base="origin/main" />);
   const trigger = screen.getByRole('button', { name: 'origin/main' });
   fireEvent.click(trigger);
