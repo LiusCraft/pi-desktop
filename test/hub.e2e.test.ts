@@ -22,6 +22,7 @@ import {
   type UiResponse,
 } from '@shared/protocol';
 import { importAttachments } from '../src/agent/attachments';
+import * as git from '../src/agent/git';
 import { sessionHandlers } from '../src/agent/handlers';
 import { SessionHub } from '../src/agent/hub';
 import { setActiveLocale } from '../src/shared/i18n/runtime';
@@ -172,9 +173,101 @@ describe('code sessions', { timeout: 120_000 }, () => {
         message: expect.stringContaining('CI watch enabled before PR creation'),
       }),
     );
-    driver.hub.update(id, { prAuto: { fixCi: false } });
+    faux.setResponses([
+      fauxAssistantMessage(fauxToolCall('pidesk_set_ci_watch', { enabled: false }), { stopReason: 'toolUse' }),
+      fauxAssistantMessage('Watch disabled'),
+    ]);
+    const disabled = await driver.run(id, 'Disable CI handling');
+    expect(disabled.tools).toContainEqual(expect.objectContaining({ toolName: 'pidesk_set_ci_watch', isError: false }));
     expect(driver.hub.meta(id).autoFixCi).toBe(false);
     expect(driver.hub.meta(id).agentArmedCi).toBeUndefined();
+  });
+
+  it('rejects /goal attachments without starting a goal', async () => {
+    const { meta, project } = await codeSession();
+    const { attachments } = await importAttachments([{ path: path.join(project, 'src/utils/date.js') }]);
+    expect(attachments).toHaveLength(1);
+    await expect(driver.hub.prompt(meta.id, { text: '/goal fix the tests', attachments }, 'steer')).rejects.toThrow(
+      /附件/,
+    );
+    expect(await driver.hub.prompt(meta.id, '/goal', 'steer')).toEqual({ disposition: 'handled' });
+    expect(driver.events).toContainEqual(
+      expect.objectContaining({ type: 'notify', sessionId: meta.id, message: expect.stringContaining('当前没有目标') }),
+    );
+  });
+
+  it.each(['agent', 'user'] as const)('honors the %s permission grant on a real CI event', async (source) => {
+    const project = makeProject('ci-watch-' + source);
+    const provider = 'ci-watch-' + source;
+    const faux = fauxProvider({ provider, models: [{ id: 'm' }] });
+    // A harmless git invocation not in the read-only allowlist: manual arming allows it,
+    // while agent arming must go through the normal default-mode approval.
+    faux.setResponses([
+      fauxAssistantMessage(fauxToolCall('bash', { command: 'git --version' }), { stopReason: 'toolUse' }),
+      fauxAssistantMessage('Done'),
+    ]);
+    driver.hub.models.registerNativeProvider(faux.provider);
+    const { id } = await driver.hub.create({
+      kind: 'code',
+      projectPath: project,
+      worktree: false,
+      model: provider + '/m',
+      mode: 'default',
+      title: 'CI event',
+      autoName: false,
+    });
+    const snapshot: git.PrSnapshot = {
+      notes: [],
+      status: {
+        num: 4,
+        url: 'https://example.org/pull/4',
+        state: 'open',
+        draft: false,
+        head: 'abc',
+        ci: 'fail',
+        checks: [],
+        comments: 0,
+      },
+    };
+    const read = git.readPr;
+    const lookup = vi
+      .spyOn(git, 'readPr')
+      .mockImplementation(async (cwd) => (path.resolve(cwd) === path.resolve(project) ? snapshot : read(cwd)));
+    try {
+      driver.hub.update(id, { prAuto: { fixCi: true } }, source);
+      await driver.hub.open(id);
+      await vi.waitFor(
+        () =>
+          expect(driver.events).toContainEqual(
+            expect.objectContaining({
+              type: 'pi',
+              sessionId: id,
+              event: expect.objectContaining({ type: 'agent_settled' }),
+            }),
+          ),
+        { timeout: 10000 },
+      );
+      const events = driver.events.filter((e) => 'sessionId' in e && e.sessionId === id);
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: 'pi',
+          event: expect.objectContaining({ type: 'tool_execution_end', toolName: 'bash' }),
+        }),
+      );
+      const approvals = events.filter((e) => e.type === 'ui_request' && e.request.kind === 'permission');
+      expect(approvals).toHaveLength(source === 'agent' ? 1 : 0);
+      expect(driver.hub.meta(id).prAutoDone?.fix).toBe('4:abc');
+      // Even after a manually armed watcher, its one-turn permission must not leak into normal conversation.
+      faux.setResponses([
+        fauxAssistantMessage(fauxToolCall('bash', { command: 'git --version' }), { stopReason: 'toolUse' }),
+        fauxAssistantMessage('Done'),
+      ]);
+      const userTurn = await driver.run(id, 'Check the git version');
+      expect(userTurn.ui).toContainEqual(expect.objectContaining({ kind: 'permission', title: 'Run git --version' }));
+    } finally {
+      lookup.mockRestore();
+      await driver.hub.archive(id);
+    }
   });
 
   it('lists the offline demo model and its thinking levels', async () => {

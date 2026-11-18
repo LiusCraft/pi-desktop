@@ -67,6 +67,37 @@ it('exposes the pre-armed CI switch before a PR or diff exists', async () => {
   expect(invoke).toHaveBeenCalledWith('sessions:update', s.meta.id, { prAuto: { fixCi: false } });
 });
 
+it('shows live check details and keeps one-off fixing separate from automation', async () => {
+  const s = session('open');
+  const log = 'https://github.com/owner/repo/actions/runs/17';
+  s.pr = { ...s.pr!, forge: 'github', ci: 'pending', checks: [{ n: 'build', st: 'pending', url: log }] };
+  const view = render(bar(s));
+  fireEvent.click(screen.getByRole('button', { name: 'CI' }));
+  expect(await screen.findByText('1 check pending…')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'build' }));
+  expect(invoke).toHaveBeenCalledWith('app:openExternal', log);
+  expect(screen.queryByRole('button', { name: 'Let Pi handle it now, once' })).toBeNull();
+
+  s.pr = { ...s.pr, ci: 'fail', checks: [{ n: 'build', st: 'fail', url: log }] };
+  view.rerender(bar(s));
+  expect(screen.getByRole('button', { name: 'Let Pi handle it now, once' })).toBeTruthy();
+  s.meta.autoFixCi = true;
+  view.rerender(bar(s));
+  expect(screen.queryByRole('button', { name: 'Let Pi handle it now, once' })).toBeNull();
+  expect(screen.getByText(/Watching in the background/)).toBeTruthy();
+});
+
+it('hides an empty branch bar unless either automation switch is armed', () => {
+  const s = session();
+  s.pr = s.meta.pr = null;
+  s.changes = [];
+  const view = render(bar(s));
+  expect(screen.queryByRole('region')).toBeNull();
+  s.meta.autoMerge = true;
+  view.rerender(bar(s));
+  expect(screen.getByRole('button', { name: 'CI' }).title).toMatch(/Waiting for a pull request/);
+});
+
 describe('merged PR bar', () => {
   it('keeps PR status, diff, comments and CI without the action button or dropdown', () => {
     render(bar(session()));

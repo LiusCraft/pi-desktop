@@ -2969,7 +2969,8 @@ export class SessionHub {
   /** Hand an event to the agent as a turn of its own — unless the user is already in the middle of something. */
   private async deliverPrEvent(id: string, entry: PrWatchEntry, pending: PrPending) {
     const live = this.live.get(id);
-    const busy = !live || live.status === 'running' || live.historyBusy || live.pending.size > 0;
+    const busy =
+      !live || !live.runtime.session.isIdle || live.status === 'running' || live.historyBusy || live.pending.size > 0;
     if (busy) return; // the next look tries again, so nothing is lost
     entry.watcher.accept(pending);
     const m = this.meta(id);
@@ -2980,9 +2981,15 @@ export class SessionHub {
     // Only a manual switch grants the watcher's git/forge command approval.
     live.prAutomation = pending.event.kind === 'merge' || !m.agentArmedCi;
     try {
-      await this.prompt(id, { text: encodePrEvent(pending.event), attachments: [] }, 'followUp', 'pr');
-      // A prompt can be handled without starting a running turn (for example after a shutdown race).
-      if (live.status === 'idle') live.prAutomation = false;
+      const { disposition } = await this.prompt(
+        id,
+        { text: encodePrEvent(pending.event), attachments: [] },
+        'followUp',
+        'pr',
+      );
+      // Preflight can report 'started' before agent_start updates live.status. Only that run owns
+      // the manual grant; handled/queued prompts get none, and agent_settled revokes it otherwise.
+      if (disposition !== 'started') live.prAutomation = false;
     } catch (err) {
       live.prAutomation = false;
       this.emit({
