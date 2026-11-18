@@ -45,8 +45,20 @@
     ['#get-started .section-label', 'downloadLabel'], ['#get-started .cta-content h2', 'downloadTitle'], ['#get-started .cta-content p', 'downloadBody'], ['#get-started .latest-release span:nth-child(2)', 'latest'], ['#get-started .light-link', 'sourceLog'], ['.download-panel-head a', 'allReleases'], ['.site-footer .footer-note', 'footer'],
   ];
 
+  const platform = (() => {
+    const ua = navigator.userAgent.toLowerCase();
+    if (ua.includes('win')) return 'windows';
+    if (ua.includes('mac')) return 'macos';
+    if (ua.includes('linux') && /x86_64|x64|amd64/.test(ua) && !ua.includes('android')) return 'linux';
+    return 'other';
+  })();
+
   const applyLocale = (locale) => {
     const copy = localeText[locale];
+    const preferred = document.querySelector(`[data-platform="${platform}"]`);
+    preferred?.classList.add('is-recommended');
+    const badge = preferred?.querySelector('[data-recommend-label]');
+    if (badge) badge.textContent = locale === 'zh' ? '推荐' : 'Recommended';
     document.documentElement.lang = locale === 'zh' ? 'zh-CN' : 'en';
     document.body.dataset.locale = locale;
     document.title = copy.pageTitle;
@@ -191,12 +203,6 @@
 
   const releaseApi = 'https://api.github.com/repos/LiusCraft/pi-desktop/releases/latest';
   const pluginApi = 'https://registry.npmjs.org/@liuscraft%2Fpi-remote/latest';
-  const platform = (() => {
-    const ua = navigator.userAgent.toLowerCase();
-    if (ua.includes('win')) return 'windows';
-    if (ua.includes('mac')) return 'macos';
-    return 'other';
-  })();
   const macArch = (() => {
     const architecture = String(navigator.userAgentData?.architecture ?? '').toLowerCase();
     const ua = navigator.userAgent.toLowerCase();
@@ -207,9 +213,6 @@
     const version = document.querySelector('[data-release-version]');
     const pluginVersion = document.querySelector('[data-plugin-version]');
     const options = document.querySelectorAll('[data-platform]');
-    const preferred = document.querySelector(`[data-platform="${platform}"]`);
-    preferred?.classList.add('is-recommended');
-    preferred?.querySelector('[data-recommend-label]')?.append('推荐');
     const macDetail = document.querySelector('[data-platform="macos"] [data-platform-detail]');
     if (macDetail) macDetail.textContent = `${macArch === 'arm64' ? 'Apple Silicon' : 'Intel'} · .dmg`;
 
@@ -222,7 +225,7 @@
       const assetUrl = (pattern) => assets.find((asset) => pattern.test(String(asset.name)))?.browser_download_url;
       const macUrl = assetUrl(new RegExp(`-(${macArch})\\.dmg$`, 'i')) ?? assetUrl(/\.dmg$/i);
       const windowsUrl = assetUrl(/-win-x64-setup\.exe$/i) ?? assetUrl(/setup\.exe$/i);
-      const urls = { macos: macUrl, windows: windowsUrl };
+      const urls = { macos: macUrl, windows: windowsUrl, linux: assetUrl(/-linux-x86_64\.AppImage$/i) };
       options.forEach((option) => {
         const url = urls[option.getAttribute('data-platform')];
         if (url) option.setAttribute('href', url);

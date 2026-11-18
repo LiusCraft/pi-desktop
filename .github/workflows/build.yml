@@ -92,3 +92,18 @@ jobs:
           test -f "$app/out/renderer/index.html"
           test -f "dist/win-unpacked/Pi Desktop.exe"
           echo "packaged app ok: $(du -sh dist/win-unpacked | cut -f1)"
+
+  pack-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run dist:linux
+      - name: Check the packaged AppImage
+        run: bash scripts/check-linux-appimage.sh
