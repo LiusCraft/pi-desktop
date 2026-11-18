@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { encodePeerMessage, SEND_MESSAGE_TOOL } from '../src/shared/peer-message';
 import { TASK_NOTIFICATION_TYPE } from '../src/shared/task-message';
 import type { AgentMessage, SessionMeta } from '../src/shared/protocol';
+import { TooltipProvider } from '../src/renderer/src/components/ui/tooltip';
 import { applyPiEvent, emptySession, replay } from '../src/renderer/src/store/transcript';
 
 const { Transcript } = await import('../src/renderer/src/components/thread/Transcript');
@@ -41,7 +42,7 @@ describe('session traffic in the normal transcript', () => {
         );
         for (const message of [received, event]) applyPiEvent(s, { type: 'message_end', message }, 'normal');
       } else replay(s, [reply, result, received, event], 'normal');
-      render(<Transcript s={s} />);
+      render(<Transcript s={s} />, { wrapper: TooltipProvider });
       for (const text of [
         'To session “other”',
         args.message,
@@ -73,7 +74,7 @@ describe('session traffic in the normal transcript', () => {
       };
       replay(s, [message], 'normal');
     }
-    render(<Transcript s={s} />);
+    render(<Transcript s={s} />, { wrapper: TooltipProvider });
     expect(screen.getByText(args.message)).toBeTruthy();
     expect(screen.getByText('Send failed: No such session')).toBeTruthy();
     expect(screen.queryByText('Sent')).toBeNull();
