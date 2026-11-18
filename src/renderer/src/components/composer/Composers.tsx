@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowUpIcon,
-  ChevronDownIcon,
   CircleStopIcon,
   CornerDownLeftIcon,
   FolderIcon,
@@ -36,6 +35,7 @@ import { Clawd, moodOf, PET_GROUND } from './Clawd';
 import { ComposerInput, pickAttachments, type ComposerHandle } from './ComposerInput';
 import { ContextRing, EffortMenu, FootButton, ModeMenu, ModelMenu } from './Menus';
 import { PrBar } from './PrBar';
+import { WorktreeBasePicker } from './WorktreeBasePicker';
 
 function SessionRate({ s }: { s: SessionView }) {
   const t = useT();
@@ -93,8 +93,6 @@ function NewSessionChips() {
   const project = useApp((st) => st.prefs.project);
   const worktree = useApp((st) => st.prefs.worktree);
   const branch = useApp((st) => st.projectBranch);
-  const branches = useApp((st) => st.projectBranches);
-  const baseRef = useApp((st) => st.baseRef);
   const adopt = useApp((st) => (st.adopt && st.adopt.mainRoot === st.prefs.project ? st.adopt : null));
   return (
     <div className="mb-2.5 flex flex-wrap items-center gap-2">
@@ -168,43 +166,7 @@ function NewSessionChips() {
       {project && !adopt && (
         <div {...PET_GROUND} className="flex h-8 items-center rounded-lg bg-muted/80 text-sm text-foreground/85">
           {branch && worktree ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  className="flex h-full items-center gap-1.5 rounded-l-lg pr-2 pl-2.5 hover:bg-accent data-[state=open]:bg-accent"
-                  title={t('composer.worktreeBase', { ref: baseRef ?? branch })}
-                >
-                  <GitBranchIcon className="size-4 shrink-0" />
-                  <span className="max-w-32 truncate">{baseRef ?? branch}</span>
-                  <ChevronDownIcon className="size-3 text-muted-foreground" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="top" className="max-h-80 w-64 overflow-y-auto">
-                <DropdownMenuLabel className="text-xs text-muted-foreground">
-                  {t('composer.worktreeBaseLabel')}
-                </DropdownMenuLabel>
-                <DropdownMenuItem
-                  onSelect={() => setApp((st) => void (st.baseRef = branch))}
-                  className={cn(baseRef === branch && 'font-medium')}
-                >
-                  <GitBranchIcon className="size-3.5" />
-                  <span className="truncate">{branch}</span>
-                  <span className="ml-auto text-xs text-muted-foreground">{t('composer.current')}</span>
-                </DropdownMenuItem>
-                {branches
-                  .filter((b) => b !== branch)
-                  .map((b) => (
-                    <DropdownMenuItem
-                      key={b}
-                      onSelect={() => setApp((st) => void (st.baseRef = b))}
-                      className={cn(b === baseRef && 'font-medium')}
-                    >
-                      <GitBranchIcon className="size-3.5" />
-                      <span className="truncate">{b}</span>
-                    </DropdownMenuItem>
-                  ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <WorktreeBasePicker branch={branch} />
           ) : (
             <span
               className="flex items-center gap-1.5 pr-2 pl-2.5"
