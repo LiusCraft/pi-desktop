@@ -16,8 +16,9 @@ describe('PR bar badge', () => {
 
   it('reports CI before the plain open state', () => {
     assert.deepEqual(prBadge(pr({ ci: 'fail' })), { label: 'Checks failing', tone: 'fail' });
-    assert.deepEqual(prBadge(pr({ ci: 'pending' })), { label: 'Checks running', tone: 'running' });
+    assert.deepEqual(prBadge(pr({ ci: 'pending' })), { label: 'Checks pending', tone: 'running' });
     assert.deepEqual(prBadge(pr({ ci: 'pass' })), { label: 'Ready to merge', tone: 'ready' });
+    assert.equal(prBadge(pr({ mergeable: 'unknown' })).tone, 'open');
     assert.deepEqual(prBadge(pr({ ci: 'none' })), { label: 'Open', tone: 'open' });
   });
 
@@ -73,7 +74,12 @@ describe('CI line', () => {
     assert.equal(prCiLine({ ci: 'fail', checks }), '1 of 3 checks failing');
   });
 
-  it('describes running and passing runs', () => {
+  it('describes a pending workflow without inventing pending jobs', () => {
+    assert.equal(prCiLine({ ci: 'pending', checks: [] }), 'Waiting for CI…');
+    assert.equal(prCiLine({ ci: 'pending', checks: [{ n: 'lint', st: 'pass' }] }), 'Waiting for CI…');
+  });
+
+  it('describes unfinished and passing runs', () => {
     assert.equal(
       prCiLine({
         ci: 'pending',
@@ -82,7 +88,7 @@ describe('CI line', () => {
           { n: 'b', st: 'pass' },
         ],
       }),
-      '1 check running…',
+      '1 check pending…',
     );
     assert.equal(prCiLine({ ci: 'pass', checks: [{ n: 'a', st: 'pass' }] }), 'All 1 check passed');
   });
@@ -93,6 +99,8 @@ describe('CI automation gates', () => {
     assert.equal(prReady(pr()), true);
     assert.equal(prReady(pr({ ci: 'fail' })), false);
     assert.equal(prReady(pr({ ci: 'pending' })), false);
+    assert.equal(prReady(pr({ ci: 'none' })), false);
+    assert.equal(prReady(pr({ ci: undefined })), false);
     assert.equal(prReady(pr({ mergeable: 'conflicting' })), false);
     assert.equal(prReady(pr({ mergeable: 'unknown' })), false);
     assert.equal(prReady(pr({ draft: true })), false);

@@ -25,7 +25,7 @@ export function prBadge(pr: Status & Partial<Pick<PrStatus, 'review'>>): PrBadge
   if (pr.ci === 'fail') return { label: tr('pr.checksFailing'), tone: 'fail' };
   if (pr.ci === 'pending') return { label: tr('pr.checksRunning'), tone: 'running' };
   if (pr.review === 'changes') return { label: tr('pr.changesRequested'), tone: 'review' };
-  if (pr.ci === 'pass') return { label: tr('pr.ready'), tone: 'ready' };
+  if (prReady(pr)) return { label: tr('pr.ready'), tone: 'ready' };
   return { label: tr('pr.open'), tone: 'open' };
 }
 
@@ -37,16 +37,9 @@ export function prSize(
   return { add: pr.additions ?? 0, del: pr.deletions ?? 0, files: pr.files ?? null };
 }
 
-/** The host says this can merge and nothing is red, running or waiting on changes: a good moment for auto-merge. */
+/** No checks reported yet is not a green build: jobs may not even have been scheduled. */
 export function prReady(pr: Status & Partial<Pick<PrStatus, 'review'>>) {
-  return (
-    pr.state === 'open' &&
-    !pr.draft &&
-    pr.mergeable === 'clean' &&
-    pr.ci !== 'fail' &&
-    pr.ci !== 'pending' &&
-    pr.review !== 'changes'
-  );
+  return pr.state === 'open' && !pr.draft && pr.mergeable === 'clean' && pr.ci === 'pass' && pr.review !== 'changes';
 }
 
 /** The failing commit a fix belongs to; keyed by commit so the same red run is only fixed once. */
@@ -59,15 +52,16 @@ export function prFixKey(pr: Pick<PrStatus, 'num' | 'ci' | 'head'>): string | nu
 export function prCiLine(pr: Pick<PrLike, 'ci'> & Partial<Pick<PrStatus, 'checks'>>): string {
   const checks = pr.checks ?? [];
   const n = checks.length;
-  if (!n) return tr('pr.noChecks');
   const plural = (k: number) => tr(k > 1 ? 'pr.checkMany' : 'pr.checkOne', { n: k });
   if (pr.ci === 'fail') {
     const failed = checks.filter((c) => c.st === 'fail').length;
-    return tr('pr.checksFailed', { failed, checks: plural(n) });
+    return failed ? tr('pr.checksFailed', { failed, checks: plural(n) }) : tr('pr.checksFailing');
   }
-  if (pr.ci === 'pending')
-    return tr('pr.checksRunningLine', { checks: plural(checks.filter((c) => c.st === 'pending').length || n) });
-  return tr('pr.checksAllPassed', { checks: plural(n) });
+  if (pr.ci === 'pending') {
+    const pending = checks.filter((c) => c.st === 'pending').length;
+    return pending ? tr('pr.checksRunningLine', { checks: plural(pending) }) : tr('pr.waitingForCi');
+  }
+  return n ? tr('pr.checksAllPassed', { checks: plural(n) }) : tr('pr.noChecks');
 }
 
 /** `owner/repo` (GitLab: `group/subgroup/project`) straight from the PR URL, so the card names the repository the way the host does. */
