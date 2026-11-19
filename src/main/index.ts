@@ -113,8 +113,11 @@ const DEV_URL = process.env.ELECTRON_RENDERER_URL;
 const WINDOW_ICON = app.isPackaged ? undefined : path.join(here, '../../build/icon-win.png');
 
 app.setName('Pi Desktop');
-// Windows only shows (and groups) toasts for a registered app id.
-if (process.platform === 'win32') app.setAppUserModelId('dev.pi-desktop.app');
+if (process.platform === 'win32') {
+  // Must match appId in electron-builder.yml; dev toasts need a separate identity.
+  const installedAppId = 'dev.pi-desktop.app';
+  app.setAppUserModelId(app.isPackaged ? installedAppId : `${installedAppId}.dev`);
+}
 // The offline demo (scripted model + sample workspaces) is a dev / test aid: packaged builds never enable it.
 const DEMO_ALLOWED = !app.isPackaged;
 const DEMO = DEMO_ALLOWED && process.argv.includes('--demo');
