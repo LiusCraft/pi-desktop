@@ -2,7 +2,7 @@
 // Each action becomes a prompt: the agent runs git/gh/glab, the bar only decides what to ask for.
 import type { BuiltinCommand } from '@shared/command-message';
 import { forgeWords, type Forge } from '@shared/forge';
-import type { GitState, PrSummary, SyncStrategy } from '@shared/protocol';
+import type { GitState, PrBinding, PrSummary, SyncStrategy } from '@shared/protocol';
 import { tr } from '@shared/i18n/runtime';
 
 export type GitAction = 'pr' | 'commit' | 'push' | 'sync';
@@ -18,6 +18,7 @@ export interface GitActionItem {
 
 export interface BranchWork {
   branch: string;
+  binding?: PrBinding;
   baseBranch: string | null;
   /** Live working-tree state; null before the first refresh. */
   st: GitState | null;
@@ -36,12 +37,12 @@ export interface BranchWork {
 /** A prompt starts a sentence: an optional lead-in may have put a lowercase verb first. */
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
-export function gitActions({ branch, baseBranch, st, pr, forge, strategy }: BranchWork): {
+export function gitActions({ branch, binding, baseBranch, st, pr, forge, strategy }: BranchWork): {
   actions: GitActionItem[];
   primary: GitAction | null;
 } {
   // A merged PR is complete: its bar reports status, not new branch work.
-  if (pr?.state === 'merged') return { actions: [], primary: null };
+  if (pr?.state === 'merged' || (binding && pr?.state === 'closed')) return { actions: [], primary: null };
   const w = forgeWords(forge);
   const onBase = !baseBranch || branch === baseBranch;
   const dirty = st?.dirty.length ?? 0;
@@ -55,18 +56,28 @@ export function gitActions({ branch, baseBranch, st, pr, forge, strategy }: Bran
   const open = !!pr && (pr.state === 'open' || pr.state === 'draft');
   const target = baseBranch ? tr('gitact.target', { base: baseBranch }) : '';
   const commitPrompt = tr('gitact.commitPrompt');
-  const pushPrompt = tr('gitact.pushPrompt', { branch });
+  const context =
+    binding &&
+    tr('prstart.context', {
+      url: binding.url,
+      repo: binding.headRepo,
+      remote: binding.headRemote,
+      branch: binding.headBranch,
+    });
+  const pushPrompt = context ? tr('prstart.push', { first: '', context }) : tr('gitact.pushPrompt', { branch });
   // Nothing to commit is common when only unpushed commits are pending; do not ask for a commit then.
   const first = dirty > 0 ? tr('gitact.commitFirst') : '';
   let prLabel = tr('gitact.createLabel');
   let prHint = tr('gitact.createHint');
   let prCommand: BuiltinCommand = 'create-pr';
   let prPrompt: string;
-  if (pr && open) {
+  if ((pr && open) || binding) {
     prLabel = tr('gitact.updateLabel');
     prCommand = 'update-pr';
-    prHint = tr(dirty > 0 ? 'gitact.updateHintDirty' : 'gitact.updateHint', { num: pr.num });
-    prPrompt = sentence(tr('gitact.updatePrompt', { first, branch, num: pr.num, edit: w.edit }));
+    prHint = tr(dirty > 0 ? 'gitact.updateHintDirty' : 'gitact.updateHint', { num: binding?.num ?? pr!.num });
+    prPrompt = context
+      ? tr('prstart.push', { first, context })
+      : sentence(tr('gitact.updatePrompt', { first, branch, num: pr!.num, edit: w.edit }));
   } else if (pr) {
     prLabel = tr('gitact.newLabel');
     prCommand = 'new-pr';

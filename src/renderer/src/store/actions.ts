@@ -1831,6 +1831,37 @@ async function pickRemoteFolder(): Promise<string | null> {
   }
 }
 
+/** The host owns git operations; folder selection stays on the machine the project will live on. */
+export async function startFromPr() {
+  const url = await dialogs.prompt(t('prstart.label'), '', {
+    placeholder: 'https://github.com/owner/repo/pull/123',
+    action: t('prstart.start'),
+  });
+  if (!url?.trim()) return;
+  const { projects, prefs, remote } = getApp();
+  const paths = projects.map((p) => p.path);
+  const options = { model: prefs.model, thinking: prefs.effort, mode: prefs.mode, outputStyle: prefs.outputStyle };
+  try {
+    let result = await call('sessions:fromPr', url, paths, null, options);
+    if (result.kind === 'folder') {
+      if (!(await dialogs.confirm(t('prstart.clone'), t('prstart.cloneBody', { repo: result.repo }), t('act.choose'))))
+        return;
+      const parent = remote ? await pickRemoteFolder() : await call('app:pickFolder');
+      if (!parent) return;
+      result = await call('sessions:fromPr', url, paths, parent, options);
+    }
+    if (result.kind !== 'session') return;
+    const { meta } = result;
+    if (!projects.some((p) => p.path === meta.projectPath)) await call('projects:addPath', meta.projectPath);
+    setApp((st) => {
+      st.sessions[meta.id] ??= emptySession(meta);
+    });
+    await openSession(meta.id);
+  } catch (err) {
+    fail(err);
+  }
+}
+
 export async function addProject() {
   if (getApp().remote) {
     try {

@@ -203,6 +203,8 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 
 ### 会话与项目管理
 
+- **从 PR 开始**：在 Code 的新建会话页粘贴 GitHub.com 的 Open / Draft PR 链接（需在运行项目的电脑上配置 Git 和已登录的 `gh`）。已有匹配项目会复用，否则选择上级目录克隆；Pi 在独立 worktree 里接续原 PR，Diff 对比目标分支，更新时推回来源分支（含 fork）。重复打开同一链接可返回已有会话。不会同步另一台电脑的聊天或未推送修改。
+
 - **新建会话立刻进入对话页**：`sessions:create` 只写元数据就返回；git worktree 和 Agent（扩展、MCP）在第一次启动时后台创建，进度以 `setup` 事件推给界面，对话里显示“正在启动会话…”的步骤卡片，失败时带原因，再发一条消息会重试。打开已有会话时同样显示。
 - **归档 / 删除**（侧边栏会话右侧的「…」、顶栏菜单、More → Archived sessions）：归档只关闭 Agent，对话和 worktree 原样保留，可随时恢复；删除会清掉对话文件和 Pi Desktop 自己创建的 worktree（有未提交改动或未推送提交时先在确认框里说明；有只存在于该分支的提交时分支会保留）。用户自己建的 worktree、从 pi CLI 导入的会话文件永远不会被删。
 - **移除项目**（项目标题右侧「…」）：只是不再出现在 Pi Desktop 里，文件夹不动，它的会话被归档，可以在 Archived sessions 里找回。
