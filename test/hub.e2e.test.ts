@@ -902,6 +902,7 @@ describe('code sessions', { timeout: 120_000 }, () => {
       'pidesk_exit_plan_mode',
       'pidesk_ask_question',
       'pidesk_suggest_task',
+      'pidesk_create_session',
       'pidesk_send_message',
       'pidesk_task',
       'pidesk_bg_shell',

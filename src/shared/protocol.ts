@@ -191,8 +191,16 @@ export interface SessionRemoval {
   branchKept: string | null;
 }
 
-/** A task the agent suggests; the user decides where it runs. */
+/** The submitting window's New Session choices, scoped to the possible Code destinations. */
+export interface WorkspaceDefaults {
+  worktree: boolean;
+  projects: Record<string, { baseRef?: string; adoptPath?: string }>;
+}
+
+/** A self-contained handoff, started explicitly or offered as a suggestion first. */
 export interface SpawnTask {
+  worktree?: boolean;
+  baseRef?: string;
   title: string;
   prompt: string;
   /** Run it as a Code session in this folder, one of the Work project's linked Code folders; absent: beside the suggesting session. */
@@ -844,6 +852,12 @@ export type HostEvent =
   /** The repository's remotes were fetched: the bar's behind counts may have changed. */
   | { type: 'git_fetched'; sessionId: string }
   | { type: 'meta'; sessionId: string; meta: SessionMeta }
+  /** A model-requested child launch. Only a view still showing the source should follow it. */
+  | ({ type: 'session_launch'; sessionId: string; launchId: string } & (
+      | { phase: 'starting'; kind: SessionKind; prompt: string }
+      | { phase: 'created'; meta: SessionMeta }
+      | { phase: 'failed'; error: string }
+    ))
   /** Start-up progress of a session; null once it is ready. */
   | { type: 'setup'; sessionId: string; steps: SetupStep[] | null }
   | { type: 'notify'; sessionId: string; message: string; level: 'info' | 'warning' | 'error' }
@@ -1293,7 +1307,12 @@ export interface Api {
   'sessions:open'(id: string): OpenSessionResult;
   /** The session as the host holds it now, without its transcript; null when the host holds nothing more than its meta. */
   'sessions:state'(id: string): SessionState | null;
-  'sessions:prompt'(id: string, payload: PromptSubmission, behavior: StreamingBehavior): { disposition: string };
+  'sessions:prompt'(
+    id: string,
+    payload: PromptSubmission,
+    behavior: StreamingBehavior,
+    defaults?: WorkspaceDefaults,
+  ): { disposition: string };
   /**
    * Run a command in the shell the session's own `bash` commands use (`!command` in the composer), so it
    * starts where they left the shell. Output streams as `bash_execution_update` pi events carrying `id`;
@@ -1318,7 +1337,7 @@ export interface Api {
   'sessions:inspect'(id: string): SessionCleanup;
   'sessions:remove'(id: string): SessionRemoval;
   /** Start a suggested task in a new session of the same project; `key` records the choice on the suggesting session. */
-  'sessions:spawn'(fromId: string, task: SpawnTask, key?: string): SessionMeta;
+  'sessions:spawn'(fromId: string, task: SpawnTask, key: string, defaults: WorkspaceDefaults): SessionMeta;
   'sessions:abort'(id: string): void;
   'sessions:clearQueue'(id: string): { steering: string[]; followUp: string[] };
   'sessions:newContext'(id: string): void;

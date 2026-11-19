@@ -36,7 +36,8 @@ import { forgetPanels, writeArrangement, writePanels } from './layout';
 import { primeSuggestion, resumeSuggestion } from './predict';
 import { notifyResource, subscribeResource } from './resources';
 import { notifyPluginEvent } from '@/plugin/events';
-import { chooseBase, useWelcomeBranches } from './welcome-branches';
+import { chooseBase, workspaceDefaults } from './welcome-branches';
+import { sessionWorkspace } from '@shared/session-workspace';
 import { forgetScroll } from './scroll';
 import { askSide, showSide } from './side';
 import {
@@ -73,14 +74,14 @@ export function welcomeDraftKey(st: AppState = getApp()) {
 const activateDraftFor = () => {
   const st = getApp();
   const key = st.current ? sessionDraftKey(st.current) : welcomeDraftKey(st);
-  if (st.creatingDraft && st.creatingDraft !== key) setApp((x) => void (x.creatingDraft = null));
+  if (st.creating && st.creating.key !== key) setApp((x) => void (x.creating = null));
   drafts.activate(key);
 };
 
 // ------------------------------------------------------------ host events
 
 /** What the transcript folds in: everything but the events answered as they arrive. */
-type QueuedEvent = Exclude<HostEvent, { type: 'plugin' }>;
+type QueuedEvent = Exclude<HostEvent, { type: 'plugin' | 'session_launch' }>;
 let queue: QueuedEvent[] = [];
 let scheduled = false;
 
@@ -95,6 +96,7 @@ export function handleHostEvent(ev: HostEvent) {
   }
   if (ev.type === 'remote_link') {
     const was = getApp().remote?.state;
+    if (ev.state !== 'connected') restoreTaskSource();
     setApp((st) => void (st.remote && (st.remote.state = ev.state)));
     // Events were missed while the link was down: reload what the host holds.
     if (ev.state === 'connected' && was && was !== 'connected') void resyncRemote();
@@ -107,6 +109,14 @@ export function handleHostEvent(ev: HostEvent) {
     else if (ev.event.kind === 'error') toast.error(ev.event.message);
     return;
   }
+  if (ev.type === 'session_launch') {
+    if (ev.phase === 'starting') previewTask(ev.sessionId, ev.launchId, ev.kind, ev.prompt);
+    else if (ev.phase === 'created') taskCreated(ev.launchId, ev.meta);
+    else if (restoreTaskSource(ev.launchId)) fail(ev.error);
+    return;
+  }
+  // An interrupted remote/host request will not necessarily get its completion event.
+  if (ev.type === 'host_exit') restoreTaskSource();
   queue.push(ev);
   if (scheduled) return;
   scheduled = true;
@@ -460,7 +470,7 @@ subscribeResource('plugins', () => void loadPlugins());
 
 /** Every full-page view off; the caller then turns its own on. */
 const noPage = (st: AppState) => {
-  st.creatingDraft = null;
+  st.creating = null;
   st.customize = false;
   st.scheduled = false;
   st.archived = false;
@@ -951,14 +961,11 @@ async function createSession(firstPrompt: string, draftKey: string) {
   const st = getApp();
   const work = st.view === 'work';
   const project = st.prefs.project;
-  const info = project ? useWelcomeBranches.getState()[project] : undefined;
-  setApp((x) => void (x.creatingDraft = draftKey));
+  setApp((x) => void (x.creating = { kind: 'draft', key: draftKey }));
   const meta = await call('sessions:create', {
     kind: work ? 'work' : 'code',
     projectPath: work ? st.prefs.workFolder || null : st.prefs.project,
-    worktree: !work && st.prefs.worktree,
-    adoptPath: !work && st.adopt && st.adopt.mainRoot === st.prefs.project ? st.adopt.path : undefined,
-    baseRef: !work && st.prefs.worktree ? (info?.selected ?? info?.defaultRef ?? undefined) : undefined,
+    ...(!work && project && sessionWorkspace(project, workspaceDefaults([project]))),
     title: firstPrompt.replace(/@\S+/g, '').trim().slice(0, 60) || 'New session',
     autoName: true,
     model: st.prefs.model,
@@ -987,7 +994,7 @@ async function createSession(firstPrompt: string, draftKey: string) {
     ];
   });
   const active = useDrafts.getState().active === draftKey;
-  const show = active && getApp().creatingDraft === draftKey;
+  const show = active && getApp().creating?.key === draftKey;
   drafts.rekey(draftKey, sessionDraftKey(meta.id));
   if (show) {
     if (!work) {
@@ -1005,7 +1012,7 @@ async function createSession(firstPrompt: string, draftKey: string) {
 /** Send the active draft: a prompt, a steer while running, or a queued follow-up. */
 export async function send(queueOnly = false) {
   const draft = activeDraft();
-  if (!draft || draft.sending) return;
+  if (!draft || draft.sending || getApp().creating?.kind === 'task') return;
   if (draft.preparing) return void toast.warning(t('act.waitAttachments'));
   const text = draft.text;
   const files = draft.attachments.slice();
@@ -1046,7 +1053,7 @@ export async function send(queueOnly = false) {
       s = getApp().sessions[meta.id];
     } catch (err) {
       setApp((x) => {
-        if (x.creatingDraft === key) x.creatingDraft = null;
+        if (x.creating?.key === key) x.creating = null;
       });
       drafts.lock(key, false);
       return void drafts.error(key, err);
@@ -1107,7 +1114,7 @@ export async function send(queueOnly = false) {
       v.items = v.items.filter((i) => i.key !== itemKey);
     });
   try {
-    const r = await call('sessions:prompt', id, payload, queueOnly ? 'followUp' : 'steer');
+    const r = await call('sessions:prompt', id, payload, queueOnly ? 'followUp' : 'steer', handoffDefaults(s!.meta));
     if (item()?.exited || getApp().sessions[id]?.hostEpoch !== epoch) {
       drafts.error(key, t('act.exitedUnconfirmed'));
       return;
@@ -1912,16 +1919,66 @@ export async function removeProject(path: string) {
 
 const keyOf = (item: { toolCallId: string }, index: number) => `${item.toolCallId}:${index}`;
 
-/** Run a suggested task in a new session of the same project; the user stays where they are. */
+function handoffDefaults(from: SessionMeta) {
+  return workspaceDefaults(
+    from.kind === 'code'
+      ? [from.projectPath]
+      : (getApp().workFolders.find((p) => p.path === from.projectPath)?.codeFolders ?? []),
+  );
+}
+
+/** Only follow a launch from the visible conversation. Start all consequently previews just its first child. */
+function previewTask(parentId: string, key: string, kind: SessionKind, prompt: string) {
+  const s = getApp();
+  if (
+    s.current !== parentId ||
+    s.customize ||
+    s.scheduled ||
+    s.archived ||
+    s.activity ||
+    s.artifacts ||
+    s.workProjects ||
+    s.pluginPage
+  )
+    return;
+  setApp((st) => {
+    st.current = null;
+    st.view = kind;
+    st.creating = { kind: 'task', key, parentId, prompt };
+    st.menu = null;
+  });
+}
+
+function taskCreated(key: string, meta: SessionMeta) {
+  setApp((st) => void (st.sessions[meta.id] ??= emptySession(meta)));
+  if (getApp().creating?.key === key) void openSession(meta.id);
+}
+
+function restoreTaskSource(key?: string) {
+  const preview = getApp().creating;
+  if (preview?.kind !== 'task' || (key && preview.key !== key)) return false;
+  if (getApp().sessions[preview.parentId] && !getApp().sessions[preview.parentId].meta.archived)
+    void openSession(preview.parentId);
+  else showWelcome();
+  return true;
+}
+
+const startingSuggestions = new Set<string>();
 export async function startSuggested(sid: string, item: { toolCallId: string }, index: number, task: SpawnTask) {
+  const from = getApp().sessions[sid]?.meta;
+  const key = keyOf(item, index);
+  const launchId = `${sid}:${key}`;
+  if (!from || from.suggestions?.[key] || startingSuggestions.has(launchId)) return;
+  startingSuggestions.add(launchId);
+  previewTask(sid, launchId, task.codeFolder ? 'code' : from.kind, task.prompt);
   try {
-    const meta = await call('sessions:spawn', sid, task, keyOf(item, index));
-    setApp((st) => void (st.sessions[meta.id] ??= emptySession(meta)));
-    toast.success(t('act.startedIn', { title: meta.title }), {
-      action: { label: t('act.open'), onClick: () => void openSession(meta.id) },
-    });
+    const meta = await call('sessions:spawn', sid, task, key, workspaceDefaults([task.codeFolder ?? from.projectPath]));
+    taskCreated(launchId, meta);
   } catch (err) {
+    restoreTaskSource(launchId);
     fail(err);
+  } finally {
+    startingSuggestions.delete(launchId);
   }
 }
 

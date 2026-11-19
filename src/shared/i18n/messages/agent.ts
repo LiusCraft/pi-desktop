@@ -134,6 +134,12 @@ export const agent = defineMessages({
     zh: '（只有行内评论，状态 {state}：用 gh pr view {num} --comments 查看）',
   },
 
+  'ag.taskWorkspaceConflict': {
+    en: 'Worktree options require a Code session, and a base branch requires a new worktree.',
+    zh: '只有 Code 会话支持工作树选项；指定基准分支需要新建工作树。',
+  },
+  'ag.startCodeSession': { en: 'Start a Code session in {path}', zh: '在 {path} 中启动 Code 会话' },
+  'ag.invalidBaseRef': { en: 'Invalid base branch.', zh: '无效的基准分支。' },
   'ag.scopeRead': { en: 'Read outside the working folder: {path}', zh: '读取工作目录之外：{path}' },
   'ag.scopeWrite': { en: 'Write outside the working folder: {path}', zh: '写入工作目录之外：{path}' },
   'ag.scopeRun': {

@@ -10,6 +10,7 @@ import { decodePeerMessage } from '@shared/peer-message';
 import type { HostEvent } from '@shared/protocol';
 import * as git from '../src/agent/git';
 import { SessionHub, readTranscript } from '../src/agent/hub';
+import { sessionHandlers } from '../src/agent/handlers';
 
 const ROOT = path.join(__dirname, '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-desktop-lifecycle-'));
@@ -230,13 +231,21 @@ describe('suggested tasks', { timeout: 120_000 }, () => {
   it('starts a task in a new session of the same project and records the choice', async () => {
     const project = makeProject('spawn');
     const from = await code(project, { worktree: false });
-    const child = await hub.spawn(from.id, { title: 'Tidy the date helper', prompt: '你好' }, 'call-1:0');
+    run(project, 'branch', 'release');
+    const rpc = sessionHandlers(Promise.resolve(hub), () => null);
+    await rpc['sessions:spawn'](from.id, { title: 'Tidy the date helper', prompt: '你好' }, 'call-1:0', {
+      worktree: true,
+      projects: { [project]: { baseRef: 'release' } },
+    });
+    const child = hub.meta(hub.meta(from.id).suggestions!['call-1:0'].sessionId!);
     expect(child).toMatchObject({
       kind: 'code',
       projectPath: project,
       parentId: from.id,
       title: 'Tidy the date helper',
       titleLocked: true,
+      worktree: true,
+      baseBranch: 'release',
     });
     expect(hub.meta(from.id).suggestions?.['call-1:0']).toEqual({ state: 'started', sessionId: child.id });
     await waitSettled(child.id);
@@ -255,6 +264,65 @@ describe('suggested tasks', { timeout: 120_000 }, () => {
     const from = await code(project, { worktree: false, mode: 'bypass' });
     const child = await hub.spawn(from.id, { title: 'x', prompt: 'hi' });
     expect(child.mode).toBe('auto');
+  });
+
+  it('launches from an explicit request, using the submitting window’s checkout preference', async () => {
+    const project = makeProject('direct-handoff');
+    const from = await code(project, { worktree: true });
+    const rpc = sessionHandlers(Promise.resolve(hub), () => null);
+    await rpc['sessions:prompt'](from.id, { text: '交给新会话', attachments: [] }, 'steer', {
+      worktree: false,
+      projects: {},
+    });
+    await waitSettled(from.id);
+    const launch = events.filter((e) => e.type === 'session_launch' && e.sessionId === from.id);
+    expect(launch).toMatchObject([
+      { phase: 'starting', kind: 'code' },
+      { phase: 'created', meta: { parentId: from.id, worktree: false, cwd: project } },
+    ]);
+    const child = hub.list().find((m) => m.parentId === from.id)!;
+    await waitSettled(child.id);
+    expect((await hub.open(child.id)).messages.filter((m) => m.role === 'user')).toHaveLength(1);
+  });
+
+  it('closes the explicit launch preview with its Git error, without creating a child', async () => {
+    const project = makeProject('missing-handoff-base');
+    const from = await code(project, { worktree: false });
+    await hub.prompt(from.id, { text: '交给新会话', attachments: [] }, 'steer', 'user', {
+      worktree: true,
+      projects: { [project]: { baseRef: 'missing-release' } },
+    });
+    await waitSettled(from.id);
+    const launch = events.filter(
+      (e): e is Extract<HostEvent, { type: 'session_launch' }> =>
+        e.type === 'session_launch' && e.sessionId === from.id,
+    );
+    expect(launch).toEqual([
+      expect.objectContaining({ phase: 'starting', launchId: expect.any(String) }),
+      expect.objectContaining({
+        phase: 'failed',
+        launchId: expect.any(String),
+        error: expect.stringContaining('missing-release'),
+      }),
+    ]);
+    expect(launch[1].launchId).toBe(launch[0].launchId);
+    expect(hub.list().some((m) => m.parentId === from.id)).toBe(false);
+  });
+
+  it('rejects incompatible workspace requests without consuming the suggestion', async () => {
+    const project = makeProject('spawn-invalid');
+    const from = await code(project, { worktree: false });
+    const work = await hub.create({ kind: 'work', projectPath: project });
+    const task = { title: 'Check', prompt: 'Check dates', baseRef: 'main' };
+    for (const [id, options] of [
+      [work.id, {}],
+      [from.id, { worktree: false }],
+      [from.id, { baseRef: '-invalid' }],
+    ] as const) {
+      await expect(hub.spawn(id, { ...task, ...options }, 'check:0')).rejects.toThrow(/worktree|base branch/i);
+      expect(hub.meta(id).suggestions?.['check:0']).toBeUndefined();
+      expect(hub.list().some((m) => m.parentId === id)).toBe(false);
+    }
   });
 
   it('remembers what the user did with a suggestion', async () => {

@@ -28,7 +28,7 @@ import {
 import { SEND_MESSAGE_TOOL } from '@shared/peer-message';
 import { TASK_NOTIFICATION_TYPE } from '@shared/task-message';
 import { StringEnum } from './tool-schema';
-import { Type } from 'typebox';
+import { Type, type Static } from 'typebox';
 import { AGENT_TYPES, DEFAULT_AGENT, type AgentType } from './agents';
 import { ShellCommands, commandInFolder } from './shell-session';
 import {
@@ -55,6 +55,7 @@ import {
   type QuestionAnswer,
   type SessionKind,
   type ShellSessionMode,
+  type SpawnTask,
   type SubagentProgress,
   type TaskUpdate,
   type UiRequestInput,
@@ -127,6 +128,8 @@ export interface KitHost {
   setMode?(mode: PermissionMode): void;
   /** Runs a subagent and returns its report; omit it to leave out the `task` tool. */
   runSubagent?(run: SubagentRun): Promise<string>;
+  /** Start a full desktop session, not a subagent. */
+  createSession?(task: SpawnTask): Promise<{ id: string; title: string }>;
   /** The app's other sessions; omit it to leave out the session tools (subagents have none). */
   peers?: {
     list(
@@ -558,6 +561,13 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       }
 
       if (hints?.readOnlyHint) return undefined;
+      // A linked Code folder is normally read-only from Work. Starting a writer there needs consent.
+      if (name === 'pidesk_create_session' && host.scope && typeof input.code_folder === 'string') {
+        const key = `launch-code:${input.code_folder}`;
+        return state.allowed.has(key)
+          ? undefined
+          : ask(ctx, event.toolCallId, tr('ag.startCodeSession', { path: input.code_folder }), key);
+      }
       if (mode === 'auto' && hints?.destructiveHint !== true) return undefined;
       if (state.allowed.has(`tool:${name}`)) return undefined;
       return ask(ctx, event.toolCallId, `Use ${name}`, `tool:${name}`);
@@ -746,6 +756,54 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       },
     });
 
+    // A handoff carries its own context; neither path copies the conversation or uncommitted edits.
+    const taskSchema = Type.Object({
+      title: Type.String({ description: 'Short title, under 60 characters' }),
+      prompt: Type.String({
+        description:
+          'Self-contained instructions: include relevant discussion, decisions, PRs, branches, files and what remains to do.',
+      }),
+      code_folder: Type.Optional(
+        Type.String({ description: "Work sessions only: one of the project's linked Code folders to launch in." }),
+      ),
+      worktree: Type.Optional(
+        Type.Boolean({
+          description:
+            'Code only. Omit for the New Session setting; override only when asked. False uses the project checkout.',
+        }),
+      ),
+      base_ref: Type.Optional(
+        Type.String({
+          minLength: 1,
+          description:
+            'Code only. Starting ref for a new worktree (implies worktree=true). Omit unless the user specifies one.',
+        }),
+      ),
+    });
+    const taskFromInput = ({ code_folder, base_ref, ...task }: Static<typeof taskSchema>): SpawnTask => {
+      const linked = host.project?.codeFolders() ?? [];
+      if (code_folder && !linked.includes(code_folder))
+        throw new Error(
+          `${code_folder} is not a Code folder of this project. ${linked.length ? `Use one of: ${linked.join(', ')}.` : 'This project has no Code folders; leave code_folder out.'}`,
+        );
+      return { ...task, ...(code_folder && { codeFolder: code_folder }), ...(base_ref && { baseRef: base_ref }) };
+    };
+    const createSession = host.createSession;
+    if (createSession)
+      pi.registerTool({
+        name: 'pidesk_create_session',
+        exposure: 'model-only',
+        label: 'Start new session',
+        description:
+          'Start a new session with a handoff from this conversation only when the user explicitly requests one. For unsolicited follow-ups offer pidesk_suggest_task instead. Do not repeat the handed-off work here.',
+        promptSnippet: 'Start a separate session when the user asks to hand work off',
+        parameters: taskSchema,
+        async execute(_id, params) {
+          const { id, title } = await createSession(taskFromInput(params));
+          return { content: [{ type: 'text', text: `Started ${title} (${id}).` }], details: { sessionId: id } };
+        },
+      });
+
     // ---------------------------------------------------------------- pidesk_suggest_task
     pi.registerTool({
       name: 'pidesk_suggest_task',
@@ -759,34 +817,11 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         'When you find unrelated work worth doing, call pidesk_suggest_task with a self-contained prompt instead of expanding the current task.',
       ],
       parameters: Type.Object({
-        tasks: Type.Array(
-          Type.Object({
-            title: Type.String({ description: 'Short title, under 60 characters' }),
-            prompt: Type.String({
-              description:
-                'Complete, self-contained instructions: the new session knows nothing about this conversation',
-            }),
-            code_folder: Type.Optional(
-              Type.String({
-                description:
-                  "Coding work only: one of the project's Code folders listed in the project context; the task then starts as a Code session there",
-              }),
-            ),
-          }),
-          { minItems: 1, maxItems: 5 },
-        ),
+        tasks: Type.Array(taskSchema, { minItems: 1, maxItems: 5 }),
       }),
       annotations: { readOnlyHint: true },
       async execute(_id, params) {
-        const linked = host.project?.codeFolders() ?? [];
-        const tasks = params.tasks.map(({ code_folder, ...task }) => {
-          if (code_folder && !linked.includes(code_folder)) {
-            throw new Error(
-              `${code_folder} is not a Code folder of this project. ${linked.length ? `Use one of: ${linked.join(', ')}.` : 'This project has no Code folders; leave code_folder out.'}`,
-            );
-          }
-          return code_folder ? { ...task, codeFolder: code_folder } : task;
-        });
+        const tasks = params.tasks.map(taskFromInput);
         return {
           content: [
             {

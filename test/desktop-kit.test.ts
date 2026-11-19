@@ -45,6 +45,8 @@ function load(
   return {
     state,
     requests,
+    execute: (name: string, params: Record<string, unknown>) =>
+      registered.get(name)!.execute('call-1', params, undefined, undefined, ctx),
     call: (input: Record<string, unknown>, toolName = 'bash') =>
       handlers.get('tool_call')?.({ toolName, toolCallId: 'call-1', input }, ctx),
     submitPlan: () =>
@@ -53,6 +55,44 @@ function load(
         .execute('call-2', { title: 'Date helper', plan: 'Fix the month.' }, undefined, undefined, ctx),
   };
 }
+
+describe('Work session handoffs', () => {
+  const tool = 'pidesk_create_session';
+  const input = { title: 'Follow up', prompt: 'Check the release build', code_folder: '/repo', base_ref: 'release' };
+
+  it('remembers launch consent per folder, not for all Code folders or in plan mode', async () => {
+    const ask = vi
+      .fn<KitHost['ask']>()
+      .mockResolvedValueOnce({ value: 'Always allow' })
+      .mockResolvedValue({ value: 'Deny' });
+    const kit = load({ scope: { cwd: '/work', readable: () => ['/repo', '/other'] }, ask });
+    await expect(kit.call(input, tool)).resolves.toBeUndefined();
+    await expect(kit.call(input, tool)).resolves.toBeUndefined();
+    expect(ask).toHaveBeenCalledTimes(1);
+    await expect(kit.call({ ...input, code_folder: '/other' }, tool)).resolves.toMatchObject({ block: true });
+    kit.state.mode = 'plan';
+    await expect(kit.call(input, tool)).resolves.toMatchObject({ block: true });
+    expect(ask).toHaveBeenCalledTimes(2);
+  });
+
+  it('offers the same normalized handoff without starting it, and rejects unlinked destinations', async () => {
+    const createSession = vi
+      .fn<NonNullable<KitHost['createSession']>>()
+      .mockResolvedValue({ id: 'child', title: input.title });
+    const kit = load({
+      createSession,
+      project: { context: () => null, codeFolders: () => ['/repo'], remember: () => 0 },
+    });
+    const task = { title: input.title, prompt: input.prompt, codeFolder: '/repo', baseRef: 'release' };
+    await expect(kit.execute('pidesk_suggest_task', { tasks: [input] })).resolves.toMatchObject({
+      details: { tasks: [task] },
+    });
+    await expect(kit.execute(tool, { ...input, code_folder: '/other' })).rejects.toThrow(/not a Code folder/);
+    expect(createSession).not.toHaveBeenCalled();
+    await expect(kit.execute(tool, input)).resolves.toMatchObject({ details: { sessionId: 'child' } });
+    expect(createSession).toHaveBeenCalledExactlyOnceWith(task);
+  });
+});
 
 describe('Plan mode and subagent permissions', () => {
   it('blocks edits and tells a subagent to report instead of asking for plan approval', async () => {

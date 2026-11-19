@@ -53,7 +53,7 @@ import {
   togglePanel,
   welcomeDraftKey,
 } from '@/store/actions';
-import { updateSession, useApp, useCurrent } from '@/store/app';
+import { updateSession, useApp, useCurrent, type AppState } from '@/store/app';
 import { drafts, useDrafts } from '@/store/drafts';
 import { hasThinking } from '@/store/transcript';
 import type { SessionView } from '@/store/types';
@@ -460,26 +460,25 @@ function WorkWelcome() {
 // ------------------------------------------------------------ thread
 
 /** Render the submitted draft without inventing a session id for controls that need a live host session. */
-function CreatingThread({ draftKey }: { draftKey: string }) {
+function CreatingThread({ preview }: { preview: NonNullable<AppState['creating']> }) {
   const t = useT();
-  const draft = useDrafts((st) => st.drafts[draftKey]);
+  const draft = useDrafts((st) => (preview.kind === 'draft' ? st.drafts[preview.key] : undefined));
+  const text = preview.kind === 'task' ? preview.prompt : draft?.text;
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-[786px] flex-col gap-4 px-6 pt-6 pb-4">
-        {draft && (
-          <div className="flex flex-col items-end gap-1.5">
-            <AttachmentTiles attachments={draft.attachments} />
-            <ContextCards references={draft.references.filter((ref) => !ref.token)} />
-            {draft.text && (
-              <div
-                data-selectable
-                className="max-w-[85%] rounded-2xl bg-user-bubble px-4 py-2.5 break-words whitespace-pre-wrap"
-              >
-                {draft.text}
-              </div>
-            )}
-          </div>
-        )}
+        <div className="flex flex-col items-end gap-1.5">
+          {draft && <AttachmentTiles attachments={draft.attachments} />}
+          {draft && <ContextCards references={draft.references.filter((ref) => !ref.token)} />}
+          {text && (
+            <div
+              data-selectable
+              className="max-w-[85%] rounded-2xl bg-user-bubble px-4 py-2.5 break-words whitespace-pre-wrap"
+            >
+              {text}
+            </div>
+          )}
+        </div>
         <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
           <span aria-hidden className="spark spin" />
           {t('transcript.setupRunning')}
@@ -540,7 +539,7 @@ export function Main() {
   const t = useT();
   const s = useCurrent();
   const view = useApp((st) => st.view);
-  const creating = useApp((st) => st.creatingDraft);
+  const creating = useApp((st) => st.creating);
   const customize = useApp((st) => st.customize);
   const scheduled = useApp((st) => st.scheduled);
   const archived = useApp((st) => st.archived);
@@ -592,7 +591,7 @@ export function Main() {
           (s ? (
             <Thread key={s.meta.id} s={s} />
           ) : creating ? (
-            <CreatingThread draftKey={creating} />
+            <CreatingThread preview={creating} />
           ) : view === 'work' ? (
             <WorkWelcome />
           ) : (
