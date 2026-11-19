@@ -22,6 +22,7 @@ import {
   type UiResponse,
 } from '@shared/protocol';
 import { importAttachments } from '../src/agent/attachments';
+import { PLAN_MODE_MARKER } from '../src/agent/desktop-kit';
 import * as git from '../src/agent/git';
 import { sessionHandlers } from '../src/agent/handlers';
 import { SessionHub } from '../src/agent/hub';
@@ -666,6 +667,74 @@ describe('code sessions', { timeout: 120_000 }, () => {
       r.pi.some((e) => e.type === 'tool_execution_update' && e.toolName === 'pidesk_task'),
       'progress updates',
     ).toBe(true);
+  });
+
+  it('subagent: a background planner returns its report without entering plan approval', async () => {
+    const parent = fauxProvider({ provider: 'delegate-test', models: [{ id: 'm' }] });
+    const child = fauxProvider({ provider: 'planner-test', models: [{ id: 'm' }] });
+    const approvalTool = 'pidesk_exit_plan_mode';
+    const report = '1. Update the date helper. 2. Verify with date tests.';
+    parent.setResponses([
+      fauxAssistantMessage(
+        fauxToolCall('pidesk_task', {
+          description: 'Plan date helper changes',
+          prompt: 'Return a plan for the date helper change.',
+          subagent_type: 'test-planner',
+          run_in_background: true,
+        }),
+        { stopReason: 'toolUse' },
+      ),
+      fauxAssistantMessage('Delegated.'),
+      fauxAssistantMessage('Received the report.'),
+    ]);
+    let childTools: string[] = [];
+    let childSawApprovalPrompt = false;
+    child.setResponses([
+      ({ messages }) => {
+        childTools = getCurrentTools(messages).map((tool) => tool.name);
+        childSawApprovalPrompt = JSON.stringify(messages).includes(PLAN_MODE_MARKER);
+        // On the old path the model would follow this instruction, then the cancelled approval
+        // would terminate the run without an assistant text response.
+        return childSawApprovalPrompt
+          ? fauxAssistantMessage(fauxToolCall(approvalTool, { title: 'Date helper', plan: report }), {
+              stopReason: 'toolUse',
+            })
+          : fauxAssistantMessage(report);
+      },
+    ]);
+    driver.hub.models.registerNativeProvider(parent.provider);
+    driver.hub.models.registerNativeProvider(child.provider);
+    driver.hub.saveAgent({
+      name: 'test-planner',
+      description: 'Read-only planner',
+      body: 'Return an implementation plan to the caller.',
+      model: 'planner-test/m',
+    });
+    const { id } = await driver.hub.create({
+      kind: 'code',
+      projectPath: makeProject('subagent-plan'),
+      model: 'delegate-test/m',
+      mode: 'plan',
+      title: 'Subagent plan',
+      autoName: false,
+    });
+    const result = await driver.run(id, 'Delegate the plan.');
+    expect(result.tools.find((tool) => tool.toolName === 'pidesk_task')?.isError).toBe(false);
+    const finished = await vi.waitFor(
+      () => {
+        const event = driver.events.find(
+          (e) => e.type === 'task' && e.sessionId === id && e.update.state !== 'running',
+        );
+        assert.ok(event, 'background planner reached a terminal state');
+        return event;
+      },
+      { timeout: 10000 },
+    );
+    expect(finished).toMatchObject({ update: { state: 'done', text: report } });
+    expect(childSawApprovalPrompt).toBe(false);
+    expect(childTools).not.toContain(approvalTool);
+    expect(childTools).toContain('pidesk_ask_question');
+    expect(driver.hub.meta(id).mode).toBe('plan');
   });
 
   it('auto mode sends non-read-only commands through review (git push)', async () => {
