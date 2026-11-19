@@ -411,7 +411,7 @@ export class SessionHub {
   scheduler: Scheduler | null = null;
   private readonly store: Store;
   /** The Work projects, kept in the same store the app's Projects page edits. */
-  private readonly projects: ProjectBook;
+  readonly projects: ProjectBook;
   /** What the user did each day; fed by the handlers, so tasks, peers and PR watches never count. */
   readonly activity: ActivityRecorder;
   /** The user's S3-compatible bucket, for everything the app keeps off this machine. */
@@ -449,7 +449,7 @@ export class SessionHub {
   constructor(private readonly opts: HubOptions) {
     this.agentDir = opts.agentDir ?? getAgentDir();
     this.store = new Store(opts.dataDir);
-    this.projects = new ProjectBook(this.store);
+    this.projects = new ProjectBook(this.store, (resource) => this.resourceChanged(resource));
     this.activity = new ActivityRecorder(this.store);
     this.storage = new ObjectStorage(opts.dataDir);
     this.artifacts = new ArtifactService(opts.dataDir, this.storage);
@@ -740,6 +740,8 @@ export class SessionHub {
   private async start(id: string): Promise<Live> {
     const m = this.meta(id);
     if (m.archived) throw new Error('This session is archived');
+    // Headless starts can auto-link; an 'ask' result is only actionable by an interactive client.
+    if (m.kind === 'code') this.projects.resolveCode(m.projectPath);
     const steps: SetupStep[] = [];
     if (m.worktreeSetup)
       steps.push({ id: 'worktree', label: tr('ag.stepWorktree', { branch: m.branch ?? '' }), state: 'running' });
@@ -1031,13 +1033,26 @@ export class SessionHub {
       },
       get project(): KitHost['project'] {
         const m = hub.meta(live.id);
-        if (m.kind !== 'work' || m.scratch) return undefined;
+        if (m.scratch) return undefined;
+        if (m.kind === 'code') {
+          // Resolve per turn AND per write: a live worktree session can be rebound without reloading.
+          const owner = () => hub.projects.owner(m.projectPath);
+          return {
+            context: () => projectContext(owner(), 'code'),
+            codeFolders: () => [],
+            remember: (input) => {
+              const p = owner();
+              if (!p) throw new Error('This code folder has no linked Work project.');
+              return remember(hub.projects, p.path, input);
+            },
+          };
+        }
         const dir = m.projectPath;
         const find = () => hub.projects.workFolders().find((p) => p.path === dir);
         const project: NonNullable<KitHost['project']> = {
           context: () => projectContext(find()),
           codeFolders: () => find()?.codeFolders ?? [],
-          remember: (input) => remember(hub.projects, dir, input, () => hub.resourceChanged('workFolders')),
+          remember: (input) => remember(hub.projects, dir, input),
         };
         // What the Projects page edits, behind its switch under Settings → AI 工具.
         if (hub.storedSettings().aiProject) {
@@ -1047,7 +1062,7 @@ export class SessionHub {
               if (!found) throw new Error('This folder is no longer a Work project, so there is nothing to show.');
               return found;
             },
-            update: (patch) => editProject(hub.projects, dir, patch, () => hub.resourceChanged('workFolders')),
+            update: (patch) => editProject(hub.projects, dir, patch),
           };
         }
         return project;

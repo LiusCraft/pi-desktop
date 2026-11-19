@@ -62,6 +62,64 @@ describe('work project book', () => {
   });
 });
 
+describe('Code folder ownership', () => {
+  const make = (relative: string) => {
+    const abs = path.join(root, relative);
+    fs.mkdirSync(abs, { recursive: true });
+    return abs;
+  };
+
+  it('creates a persistent Work directory exactly once and isolates repositories with the same name', () => {
+    const a = make('org-a/api');
+    const b = make('org-b/api');
+    const occupied = make('data/workspace/api');
+    book.addProject(a);
+    book.addProject(b);
+    book.addProject(a);
+    const first = book.owner(a)!;
+    expect(first.path).not.toBe(occupied);
+    expect(path.dirname(first.path)).toBe(path.dirname(occupied));
+    expect(fs.statSync(first.path).isDirectory()).toBe(true);
+    expect(first.path).not.toBe(book.owner(b)?.path);
+    expect(book.workFolders()).toHaveLength(3);
+    expect(book.workFolders().filter((p) => p.codeFolders?.includes(a))).toHaveLength(1);
+  });
+
+  it('asks without writing, adopts the exact directory, and reuses it without altering its memory', () => {
+    const a = make('api');
+    const b = make('web');
+    const docs = make('shop-notes');
+    book.codePolicy('ask');
+    book.addProject(a);
+    expect(book.resolveCode(a)).toBe('ask');
+    expect(book.workFolders()).toHaveLength(1);
+    book.resolveCode(a, docs);
+    remember(book, docs, { note: 'Use UTC' });
+    book.resolveCode(b, docs);
+    expect(book.owner(b)).toMatchObject({ path: docs, codeFolders: [a, b], memory: '- Use UTC' });
+    expect(fs.existsSync(path.join(root, 'data', 'workspace'))).toBe(false);
+    book.codePolicy('never');
+    expect(book.resolveCode(a)).toBe('linked');
+    expect(book.resolveCode(make('other'))).toBe('skipped');
+    expect(book.workFolders()).toHaveLength(2);
+    expect(new ProjectBook(new Store(path.join(root, 'data'))).codePolicy()).toBe('never');
+  });
+
+  it('moves only the link on a rebind and never steals it after a stale picker returns', () => {
+    const repo = make('repo');
+    book.codePolicy('ask');
+    book.updateWorkFolder(dir, { codeFolders: [repo], memory: 'Original' });
+    const next = book.addWorkFolder(make('new'));
+    book.updateWorkFolder(next.path, { codeFolders: [repo] });
+    book.resolveCode(repo, dir);
+    expect(book.owner(repo)?.path).toBe(next.path);
+    expect(book.workFolders().find((p) => p.path === dir)).toMatchObject({ memory: 'Original', codeFolders: [] });
+    const prompt = projectContext(book.owner(repo), 'code');
+    expect(prompt).toContain('pidesk_remember');
+    expect(prompt).not.toContain('do not do it here');
+  });
+});
+
 describe('project context', () => {
   it('is empty for no project, and always offers memory for a project', () => {
     expect(projectContext(undefined)).toBeNull();

@@ -127,6 +127,38 @@ const codeSession = async (mode: PermissionMode = 'auto', worktree = false, auto
 const read = (dir: string, rel: string) => fs.readFileSync(path.join(dir, rel), 'utf8');
 
 describe('code sessions', { timeout: 120_000 }, () => {
+  it('writes Code worktree notes to the current Work project, including after a live rebind', async () => {
+    const repo = makeProject('linked-memory');
+    const faux = fauxProvider({ provider: 'memory-test', models: [{ id: 'm' }] });
+    driver.hub.models.registerNativeProvider(faux.provider);
+    const meta = await driver.hub.create({
+      kind: 'code',
+      projectPath: repo,
+      model: 'memory-test/m',
+      worktree: true,
+      title: 'memory',
+      mode: 'auto',
+    });
+    expect(meta.cwd).not.toBe(repo);
+    const save = async (note: string) => {
+      faux.setResponses([
+        fauxAssistantMessage(fauxToolCall('pidesk_remember', { note }), { stopReason: 'toolUse' }),
+        fauxAssistantMessage('Saved'),
+      ]);
+      const turn = await driver.run(meta.id, 'Save the project decision');
+      expect(turn.tools).toContainEqual(expect.objectContaining({ toolName: 'pidesk_remember', isError: false }));
+    };
+    await save('Use UTC');
+    const book = driver.hub.projects;
+    const old = book.owner(repo)!;
+    expect(old.memory).toBe('- Use UTC');
+    const next = book.addWorkFolder(fs.mkdtempSync(path.join(tmp, 'project-notes-')));
+    book.updateWorkFolder(next.path, { codeFolders: [repo] });
+    await save('Use ISO dates');
+    expect(book.owner(repo)?.memory).toBe('- Use ISO dates');
+    expect(book.workFolders().find((p) => p.path === old.path)?.memory).toBe('- Use UTC');
+  });
+
   it('continues an unfinished /goal, pre-arms only CI, and restores the verified result', async () => {
     const project = makeProject('goal-ci');
     const faux = fauxProvider({ provider: 'goal-test', models: [{ id: 'm' }] });

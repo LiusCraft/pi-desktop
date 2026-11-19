@@ -22,6 +22,7 @@ import { decodePeerMessage } from '@shared/peer-message';
 import { encodeTaskMessage } from '@shared/task-message';
 import { typedText } from '@shared/skill-message';
 import { call, errText, modKey } from '@/lib/api';
+import { resolveCodeProject } from '@/lib/code-project';
 import { bashCommand } from '@/lib/bash';
 import { t } from '@/lib/i18n';
 import { cuePet } from '@/lib/pet-cue';
@@ -592,6 +593,7 @@ export async function openSession(id: string, fresh = false) {
   savePref('pd_last_session', id);
   activateDraftFor();
   resumeSuggestion();
+  if (!fresh && view === 'code') await ensureInteractiveProject(s.meta.projectPath);
   if (s.loaded && !fresh) {
     void revalidateSession(id);
     return;
@@ -962,6 +964,7 @@ async function createSession(firstPrompt: string, draftKey: string) {
   const work = st.view === 'work';
   const project = st.prefs.project;
   setApp((x) => void (x.creating = { kind: 'draft', key: draftKey }));
+  if (!work && project) await ensureInteractiveProject(project);
   const meta = await call('sessions:create', {
     kind: work ? 'work' : 'code',
     projectPath: work ? st.prefs.workFolder || null : st.prefs.project,
@@ -1806,7 +1809,7 @@ export function selectProject(path: string) {
 }
 
 /** Pick a folder on the remote host: there is no native dialog for another machine, so walk its folders. */
-async function pickRemoteFolder(): Promise<string | null> {
+async function pickRemoteFolder(title?: string): Promise<string | null> {
   const host = getApp().remote?.name ?? t('act.remote');
   let listing = await call('remote:browse');
   for (;;) {
@@ -1816,7 +1819,7 @@ async function pickRemoteFolder(): Promise<string | null> {
       ...(listing.parent ? [{ label: t('act.up'), hint: listing.parent }] : []),
       ...listing.dirs.map((d) => ({ label: `${d.name}/` })),
     ];
-    const choice = await dialogs.choose(`${host}: ${listing.path}`, options);
+    const choice = await dialogs.choose(`${title ?? host}: ${listing.path}`, options);
     if (choice === null) return null;
     if (choice === 0) return listing.path;
     if (choice === 1) {
@@ -1831,6 +1834,12 @@ async function pickRemoteFolder(): Promise<string | null> {
   }
 }
 
+function ensureInteractiveProject(code: string) {
+  return resolveCodeProject(code, (title) =>
+    getApp().remote ? pickRemoteFolder(title) : call('app:pickFolder', title),
+  ).catch(fail);
+}
+
 export async function addProject() {
   if (getApp().remote) {
     try {
@@ -1838,6 +1847,7 @@ export async function addProject() {
       if (!dir) return;
       const project = await call('projects:addPath', dir);
       setApp((st) => void (st.projects = [project, ...st.projects.filter((p) => p.path !== project.path)]));
+      await ensureInteractiveProject(project.path);
       selectProject(project.path);
     } catch (err) {
       fail(err);
@@ -1868,6 +1878,7 @@ export async function addProject() {
       adopt = result.adopt;
     }
     if (!project) return;
+    await ensureInteractiveProject(project.path);
     const projects = await call('projects:list');
     setApp((st) => void (st.projects = projects));
     selectProject(project.path);

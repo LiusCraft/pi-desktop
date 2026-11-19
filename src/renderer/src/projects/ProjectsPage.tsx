@@ -200,9 +200,16 @@ function LinksEditor({ p }: { p: WorkProject }) {
 function CodeFoldersEditor({ p }: { p: WorkProject }) {
   const t = useT();
   const codeProjects = useApp((s) => s.projects);
+  const workFolders = useApp((s) => s.workFolders);
+  const ownerOf = (code: string) => workFolders.find((w) => w.path !== p.path && w.codeFolders?.includes(code));
   const linked = p.codeFolders ?? [];
   const available = codeProjects.filter((c) => !linked.includes(c.path));
   const save = (next: string[]) => updateWorkProject(p.path, { codeFolders: next });
+  const link = (code: string) => {
+    const old = ownerOf(code);
+    if (old && !window.confirm(t('projects.rebind', { code: fname(code), from: old.name, to: p.name }))) return;
+    void save([...linked, code]);
+  };
   return (
     <div className={SECTION}>
       <SectionTitle icon={<CodeIcon className="size-4" />} sub={t('projects.codeFolders.sub')}>
@@ -244,8 +251,11 @@ function CodeFoldersEditor({ p }: { p: WorkProject }) {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
           {available.map((c) => (
-            <DropdownMenuItem key={c.path} onSelect={() => void save([...linked, c.path])}>
+            <DropdownMenuItem key={c.path} onSelect={() => link(c.path)}>
               <span className="truncate">{c.name}</span>
+              {ownerOf(c.path) && (
+                <span className="truncate text-xs text-muted-foreground">{ownerOf(c.path)?.name}</span>
+              )}
               <span className="truncate font-mono text-xs text-muted-foreground">{c.path}</span>
             </DropdownMenuItem>
           ))}

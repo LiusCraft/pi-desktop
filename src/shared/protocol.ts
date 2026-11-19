@@ -30,6 +30,7 @@ import type {
   RemoteConnectionInfo,
   RemoteLinkState,
   RemoteListing,
+  RemoteWorkspaceMethod,
   RemoteServeSettings,
   RemoteServeState,
   RemoteTransferMethod,
@@ -733,6 +734,10 @@ export interface Project {
   addedAt: number;
 }
 
+export const CODE_PROJECT_POLICIES = ['auto', 'ask', 'never'] as const;
+export type CodeProjectPolicy = (typeof CODE_PROJECT_POLICIES)[number];
+export type CodeProjectResolution = 'linked' | 'ask' | 'skipped';
+
 export interface ProjectLink {
   title: string;
   url: string;
@@ -835,6 +840,7 @@ export const HOST_RESOURCES = [
   'tasks',
   'projects',
   'workFolders',
+  'codeProjectPolicy',
   'customize',
   'sessionResources',
   'plugins',
@@ -1228,7 +1234,7 @@ export interface Api {
   'update:install'(): void;
   'app:revealPath'(target: string, reveal?: boolean): void;
   /** Native folder picker (the only way the renderer can name an arbitrary folder). */
-  'app:pickFolder'(): string | null;
+  'app:pickFolder'(title?: string): string | null;
 
   'settings:open'(section?: string): void;
   'settings:get'(): SettingsPayload;
@@ -1253,6 +1259,8 @@ export interface Api {
   'projects:remove'(path: string): Project[];
   /** Add a project by path: the way to name a folder on a remote machine, where no native picker exists. */
   'projects:addPath'(path: string): Project;
+  'work:codePolicy'(policy?: CodeProjectPolicy): CodeProjectPolicy;
+  'work:resolveCode'(code: string, folder?: string): CodeProjectResolution;
   'work:folders'(): WorkProject[];
   'work:addFolder'(): WorkProject | null;
   'work:useFolder'(path: string): WorkProject | null;
@@ -1664,6 +1672,8 @@ export const MAIN_CHANNELS = [
   'projects:remove',
   'projects:addPath',
   'work:folders',
+  'work:codePolicy',
+  'work:resolveCode',
   'work:addFolder',
   'work:useFolder',
   'work:removeFolder',
@@ -1750,6 +1760,7 @@ export interface HostInternal {
   'host:importAttachments'(sources: AttachmentSource[]): AttachmentImportResult;
   /** A file-moving call of a remote client (see `REMOTE_TRANSFER_METHODS`). */
   'host:transfer'(method: RemoteTransferMethod, args: unknown[]): RemoteTransferResult;
+  'host:workspace'(method: RemoteWorkspaceMethod, args: unknown[]): unknown;
   'host:worktree'(dir: string): WorktreeInfo | null;
   /**
    * A call from one of a plugin's pages: `method` is one the plugin's host entry registered, or a
