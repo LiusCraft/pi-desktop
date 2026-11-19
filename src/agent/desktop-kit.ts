@@ -490,27 +490,46 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       const name = event.toolName;
       const input = event.input as Record<string, unknown>;
 
-      // Work stays in its own folder: other places need the user's say-so, whatever the tool.
-      const scope =
-        host.scope &&
-        checkScope(host.scope, state.allowed, name, input, ctx.cwd, isReadOnlyCommand(String(input.command ?? '')), {
-          read: (path) => tr('ag.scopeRead', { path }),
-          write: (path) => tr('ag.scopeWrite', { path }),
-          run: (command, path) => tr('ag.scopeRun', { command, path }),
-        });
-      if (scope?.kind === 'ask') return ask(ctx, event.toolCallId, scope.title, scope.key);
-      if (scope?.kind === 'granted' && !SHELL_TOOLS.has(name)) return undefined;
+      const readOnlyTool = READ_ONLY_TOOLS.has(name);
+      const isEdit = EDIT_TOOLS.has(name);
+      const isShell = SHELL_TOOLS.has(name);
+      const command = isShell ? String(input.command ?? '') : '';
+      const readOnlyCommand = isShell && isReadOnlyCommand(command);
+      // PR watcher git/forge steps are explicitly authorized by the PR bar, even in plan mode.
+      const prAutomation = isShell && host.prAutomation?.() && isPrAutomationCommand(command);
+      // MCP and other extension tools: trust their annotations.
+      const hints =
+        !readOnlyTool && !isEdit && !isShell ? pi.getAllTools().find((t) => t.name === name)?.annotations : undefined;
 
-      if (READ_ONLY_TOOLS.has(name)) return undefined;
-
-      if (EDIT_TOOLS.has(name)) {
-        if (mode === 'plan')
+      // A WorkScope approval changes where a call may run, not what plan mode allows it to do.
+      if (mode === 'plan' && !readOnlyTool) {
+        if (isEdit)
           return {
             block: true,
             reason: setMode
               ? 'Plan mode is read-only. Present your plan with pidesk_exit_plan_mode.'
               : 'Subagents are read-only. Return your findings in your final text response.',
           };
+        if (isShell) {
+          if (!readOnlyCommand && !prAutomation)
+            return { block: true, reason: 'Plan mode only allows read-only commands.' };
+        } else if (!hints?.readOnlyHint) {
+          return { block: true, reason: `Plan mode blocks ${name}.` };
+        }
+      }
+
+      // Work stays in its own folder: other places need the user's say-so, whatever the tool.
+      const scope =
+        host.scope &&
+        checkScope(host.scope, state.allowed, name, input, ctx.cwd, readOnlyCommand, {
+          read: (path) => tr('ag.scopeRead', { path }),
+          write: (path) => tr('ag.scopeWrite', { path }),
+          run: (command, path) => tr('ag.scopeRun', { command, path }),
+        });
+      if (scope?.kind === 'ask') return ask(ctx, event.toolCallId, scope.title, scope.key);
+      if (mode === 'plan' || readOnlyTool || (scope?.kind === 'granted' && !isShell)) return undefined;
+
+      if (isEdit) {
         const abs = resolve(ctx.cwd, String(input.path ?? ''));
         const rel = relative(ctx.cwd, abs);
         const outside = rel.startsWith('..') || isAbsolute(rel);
@@ -522,17 +541,11 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         );
       }
 
-      if (SHELL_TOOLS.has(name)) {
-        const command = String(input.command ?? '');
-        const readOnly = isReadOnlyCommand(command);
-        // A PR watcher is an explicit automation switch in the PR bar. Its git/forge steps do not
-        // become interactive just because the session is in default, accept-edits or plan mode.
-        if (host.prAutomation?.() && isPrAutomationCommand(command)) return undefined;
-        if (mode === 'plan')
-          return readOnly ? undefined : { block: true, reason: 'Plan mode only allows read-only commands.' };
+      if (isShell) {
+        if (prAutomation) return undefined;
         // The deterministic pre-check is deliberately small: only commands we can prove are read-only,
         // or a command the user already allowed, skip the model review.
-        if (readOnly || state.allowed.has(commandKey(command))) return undefined;
+        if (readOnlyCommand || state.allowed.has(commandKey(command))) return undefined;
         if (mode === 'auto') {
           // Everything else in auto mode gets the task-aware model review. Without that authorization
           // (review off, failed, timed out or doubtful) the user decides.
@@ -544,10 +557,7 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         return ask(ctx, event.toolCallId, `Run ${command}`, commandKey(command));
       }
 
-      // MCP and other extension tools: trust their annotations.
-      const hints = pi.getAllTools().find((t) => t.name === name)?.annotations;
       if (hints?.readOnlyHint) return undefined;
-      if (mode === 'plan') return { block: true, reason: `Plan mode blocks ${name}.` };
       if (mode === 'auto' && hints?.destructiveHint !== true) return undefined;
       if (state.allowed.has(`tool:${name}`)) return undefined;
       return ask(ctx, event.toolCallId, `Use ${name}`, `tool:${name}`);

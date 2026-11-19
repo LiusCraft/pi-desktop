@@ -1,45 +1,54 @@
-import type { ToolDefinition } from '@earendil-works/pi-coding-agent';
+import { resolve } from 'node:path';
+import type { ExtensionAPI, ToolDefinition } from '@earendil-works/pi-coding-agent';
 import { describe, expect, it, vi } from 'vitest';
 import { createDesktopKit, type KitHost, isPrAutomationCommand } from '../src/agent/desktop-kit';
+import { SCOPE_KEY } from '../src/agent/work-scope';
 import { PLAN_CHOICES, type UiResponse } from '../src/shared/protocol';
 
 type Review = NonNullable<KitHost['review']>;
+type ToolInfo = ReturnType<ExtensionAPI['getAllTools']>[number];
 
-function load(overrides: Partial<KitHost> = {}, reply: UiResponse = { value: 'Allow' }) {
+function load(
+  overrides: Partial<KitHost> = {},
+  {
+    response = { value: 'Allow' },
+    tools = [],
+  }: { response?: UiResponse; tools?: Pick<ToolInfo, 'name' | 'annotations'>[] } = {},
+) {
   const handlers = new Map<string, (...args: any[]) => any>();
-  const tools = new Map<string, ToolDefinition>();
+  const registered = new Map<string, ToolDefinition>();
   const requests: Parameters<KitHost['ask']>[0][] = [];
-  const state = {
+  const state: KitHost['state'] = overrides.state ?? {
     mode: 'auto',
     profile: 'code',
     outputStyle: 'default',
     allowed: new Set<string>(),
-  } as KitHost['state'];
+  };
   const pi = {
     on: (event: string, handler: (...args: any[]) => any) => handlers.set(event, handler),
-    getAllTools: () => [],
-    registerTool: (tool: ToolDefinition) => tools.set(tool.name, tool),
+    getAllTools: () => tools,
+    registerTool: (tool: ToolDefinition) => registered.set(tool.name, tool),
     sendMessage: () => {},
   };
   createDesktopKit({
     state,
     ask: async (request) => {
       requests.push(request);
-      return reply;
+      return response;
     },
     setMode: (mode) => {
       state.mode = mode;
     },
     ...overrides,
   })(pi as any);
-  const ctx = { cwd: process.cwd(), signal: undefined } as Parameters<ToolDefinition['execute']>[4];
+  const ctx = { cwd: overrides.cwd ?? process.cwd(), signal: undefined } as Parameters<ToolDefinition['execute']>[4];
   return {
     state,
     requests,
     call: (input: Record<string, unknown>, toolName = 'bash') =>
       handlers.get('tool_call')?.({ toolName, toolCallId: 'call-1', input }, ctx),
     submitPlan: () =>
-      tools
+      registered
         .get('pidesk_exit_plan_mode')!
         .execute('call-2', { title: 'Date helper', plan: 'Fix the month.' }, undefined, undefined, ctx),
   };
@@ -77,7 +86,7 @@ describe('Plan mode and subagent permissions', () => {
     [PLAN_CHOICES[0], 'acceptEdits'],
     [PLAN_CHOICES[1], 'default'],
   ] as const)('switches modes after %s', async (value, mode) => {
-    const loaded = load({}, { value });
+    const loaded = load({}, { response: { value } });
     loaded.state.mode = 'plan';
     await expect(loaded.submitPlan()).resolves.toMatchObject({ details: { status: 'approved', mode } });
     expect(loaded.requests).toEqual([{ kind: 'plan', toolCallId: 'call-2', title: 'Date helper' }]);
@@ -85,18 +94,98 @@ describe('Plan mode and subagent permissions', () => {
   });
 
   it.each([{ value: PLAN_CHOICES[2] }, { cancelled: true }])('stops to wait for plan feedback on %o', async (reply) => {
-    const loaded = load({}, reply);
+    const loaded = load({}, { response: reply });
     loaded.state.mode = 'plan';
     await expect(loaded.submitPlan()).resolves.toMatchObject({ details: { status: 'keep' }, terminate: true });
     expect(loaded.state.mode).toBe('plan');
   });
 
   it('switches to accept-edits mode when the user always allows an edit', async () => {
-    const loaded = load({}, { value: 'Always allow' });
+    const loaded = load({}, { response: { value: 'Always allow' } });
     loaded.state.mode = 'default';
     await expect(loaded.call({ path: 'date.ts' }, 'edit')).resolves.toBeUndefined();
     expect(loaded.requests).toHaveLength(1);
     expect(loaded.state.mode).toBe('acceptEdits');
+  });
+});
+
+describe('Plan mode and Work scope', () => {
+  const cwd = resolve('work-scope-fixture', 'work');
+  const outside = resolve(cwd, '..', 'outside');
+  const path = resolve(outside, 'notes.md');
+  const key = `${SCOPE_KEY}${outside}`;
+
+  // Work subagents use this same gate with their own plan-mode state and no PR automation.
+  const loadScoped = (options?: Parameters<typeof load>[1]) =>
+    load(
+      {
+        cwd,
+        scope: { cwd, readable: () => [] },
+        state: { mode: 'plan', profile: 'work', outputStyle: 'default', allowed: new Set() },
+      },
+      options,
+    );
+
+  it.each([
+    ['write', { path, content: 'notes' }],
+    ['edit', { path }],
+    ['bash', { command: 'npm test', workdir: outside }],
+    ['powershell', { command: 'npm test', workdir: outside }],
+    ['pidesk_bg_shell', { command: 'npm test', workdir: outside }],
+  ] as const)('blocks %s before asking for or honoring a directory grant', async (tool, input) => {
+    const loaded = loadScoped();
+    const blocked = { block: true, reason: expect.stringContaining('Plan mode') };
+    await expect(loaded.call(input, tool)).resolves.toEqual(blocked);
+    loaded.state.allowed.add(key);
+    await expect(loaded.call(input, tool)).resolves.toEqual(blocked);
+    expect(loaded.requests).toHaveLength(0);
+  });
+
+  it.each([
+    ['read', { path }],
+    ['bash', { command: 'ls', workdir: outside }],
+  ] as const)('still asks before %s reads outside the scope and honors a denial', async (tool, input) => {
+    const loaded = loadScoped({ response: { value: 'Deny' } });
+    await expect(loaded.call(input, tool)).resolves.toMatchObject({ block: true });
+    expect(loaded.requests).toHaveLength(1);
+    expect(loaded.state.allowed.size).toBe(0);
+  });
+
+  it('lets a directory grant extend read access without lifting plan restrictions', async () => {
+    const loaded = loadScoped({ response: { value: 'Always allow' } });
+    await expect(loaded.call({ path }, 'read')).resolves.toBeUndefined();
+    expect(loaded.state.allowed.has(key)).toBe(true);
+    await expect(loaded.call({ command: 'ls', workdir: outside })).resolves.toBeUndefined();
+    await expect(loaded.call({ path, content: 'notes' }, 'write')).resolves.toMatchObject({ block: true });
+    expect(loaded.requests).toHaveLength(1);
+    expect(loaded.state.mode).toBe('plan');
+  });
+
+  it('uses extension tool annotations to enforce Plan Mode even with a directory grant', async () => {
+    const loaded = loadScoped({
+      tools: [
+        { name: 'inspect', annotations: { readOnlyHint: true } },
+        { name: 'update', annotations: { readOnlyHint: false } },
+      ],
+    });
+    loaded.state.allowed.add(key);
+    await expect(loaded.call({ path }, 'inspect')).resolves.toBeUndefined();
+    await expect(loaded.call({ path }, 'update')).resolves.toEqual({ block: true, reason: 'Plan mode blocks update.' });
+    await expect(loaded.call({ path }, 'unannotated')).resolves.toEqual({
+      block: true,
+      reason: 'Plan mode blocks unannotated.',
+    });
+    expect(loaded.requests).toHaveLength(0);
+  });
+
+  it('honors a Work directory grant for edits outside Plan Mode without authorizing shell commands', async () => {
+    const loaded = loadScoped({ response: { value: 'Deny' } });
+    loaded.state.mode = 'default';
+    loaded.state.allowed.add(key);
+    await expect(loaded.call({ path, content: 'notes' }, 'write')).resolves.toBeUndefined();
+    expect(loaded.requests).toHaveLength(0);
+    await expect(loaded.call({ command: 'npm test', workdir: outside })).resolves.toMatchObject({ block: true });
+    expect(loaded.requests).toEqual([expect.objectContaining({ kind: 'permission', title: 'Run npm test' })]);
   });
 });
 
