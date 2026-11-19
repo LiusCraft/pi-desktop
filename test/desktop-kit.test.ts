@@ -1,12 +1,20 @@
 import { resolve } from 'node:path';
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { describe, expect, it, vi } from 'vitest';
 import { createDesktopKit, type KitHost, isPrAutomationCommand } from '../src/agent/desktop-kit';
 import { SCOPE_KEY } from '../src/agent/work-scope';
 import type { UiResponse } from '../src/shared/protocol';
 
 type Review = NonNullable<KitHost['review']>;
+type ToolInfo = ReturnType<ExtensionAPI['getAllTools']>[number];
 
-function load(overrides: Partial<KitHost> = {}, response: UiResponse = { value: 'Allow' }) {
+function load(
+  overrides: Partial<KitHost> = {},
+  {
+    response = { value: 'Allow' },
+    tools = [],
+  }: { response?: UiResponse; tools?: Pick<ToolInfo, 'name' | 'annotations'>[] } = {},
+) {
   const handlers = new Map<string, (...args: any[]) => any>();
   const requests: unknown[] = [];
   const state: KitHost['state'] = overrides.state ?? {
@@ -17,7 +25,7 @@ function load(overrides: Partial<KitHost> = {}, response: UiResponse = { value: 
   };
   const pi = {
     on: (event: string, handler: (...args: any[]) => any) => handlers.set(event, handler),
-    getAllTools: () => [],
+    getAllTools: () => tools,
     registerTool: () => {},
     sendMessage: () => {},
   };
@@ -48,14 +56,14 @@ describe('Plan mode and Work scope', () => {
   const key = `${SCOPE_KEY}${outside}`;
 
   // Work subagents use this same gate with their own plan-mode state and no PR automation.
-  const loadScoped = (response?: UiResponse) =>
+  const loadScoped = (options?: Parameters<typeof load>[1]) =>
     load(
       {
         cwd,
         scope: { cwd, readable: () => [] },
         state: { mode: 'plan', profile: 'work', outputStyle: 'default', allowed: new Set() },
       },
-      response,
+      options,
     );
 
   it.each([
@@ -73,21 +81,51 @@ describe('Plan mode and Work scope', () => {
     expect(loaded.requests).toHaveLength(0);
   });
 
-  it('still asks before reading outside the scope and honors a denial', async () => {
-    const loaded = loadScoped({ value: 'Deny' });
-    await expect(loaded.call({ path }, 'read')).resolves.toMatchObject({ block: true });
+  it.each([
+    ['read', { path }],
+    ['bash', { command: 'ls', workdir: outside }],
+  ] as const)('still asks before %s reads outside the scope and honors a denial', async (tool, input) => {
+    const loaded = loadScoped({ response: { value: 'Deny' } });
+    await expect(loaded.call(input, tool)).resolves.toMatchObject({ block: true });
     expect(loaded.requests).toHaveLength(1);
     expect(loaded.state.allowed.size).toBe(0);
   });
 
   it('lets a directory grant extend read access without lifting plan restrictions', async () => {
-    const loaded = loadScoped({ value: 'Always allow' });
+    const loaded = loadScoped({ response: { value: 'Always allow' } });
     await expect(loaded.call({ path }, 'read')).resolves.toBeUndefined();
     expect(loaded.state.allowed.has(key)).toBe(true);
     await expect(loaded.call({ command: 'ls', workdir: outside })).resolves.toBeUndefined();
     await expect(loaded.call({ path, content: 'notes' }, 'write')).resolves.toMatchObject({ block: true });
     expect(loaded.requests).toHaveLength(1);
     expect(loaded.state.mode).toBe('plan');
+  });
+
+  it('uses extension tool annotations to enforce Plan Mode even with a directory grant', async () => {
+    const loaded = loadScoped({
+      tools: [
+        { name: 'inspect', annotations: { readOnlyHint: true } },
+        { name: 'update', annotations: { readOnlyHint: false } },
+      ],
+    });
+    loaded.state.allowed.add(key);
+    await expect(loaded.call({ path }, 'inspect')).resolves.toBeUndefined();
+    await expect(loaded.call({ path }, 'update')).resolves.toEqual({ block: true, reason: 'Plan mode blocks update.' });
+    await expect(loaded.call({ path }, 'unannotated')).resolves.toEqual({
+      block: true,
+      reason: 'Plan mode blocks unannotated.',
+    });
+    expect(loaded.requests).toHaveLength(0);
+  });
+
+  it('honors a Work directory grant for edits outside Plan Mode without authorizing shell commands', async () => {
+    const loaded = loadScoped({ response: { value: 'Deny' } });
+    loaded.state.mode = 'default';
+    loaded.state.allowed.add(key);
+    await expect(loaded.call({ path, content: 'notes' }, 'write')).resolves.toBeUndefined();
+    expect(loaded.requests).toHaveLength(0);
+    await expect(loaded.call({ command: 'npm test', workdir: outside })).resolves.toMatchObject({ block: true });
+    expect(loaded.requests).toEqual([expect.objectContaining({ kind: 'permission', title: 'Run npm test' })]);
   });
 });
 
