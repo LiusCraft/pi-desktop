@@ -103,6 +103,7 @@ import { uploadAttachments } from './remote-upload';
 import { Terminals, terminalShells } from './terminal';
 import { PluginServer, PLUGIN_SCHEME } from './plugins';
 import { checkForUpdate, downloadInstaller } from './updater';
+import { configureWindowsAppId } from './windows-app-id';
 import { UPDATE_CHECK_INTERVAL_MS, UPDATE_FIRST_CHECK_MS } from '@shared/update';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -113,11 +114,7 @@ const DEV_URL = process.env.ELECTRON_RENDERER_URL;
 const WINDOW_ICON = app.isPackaged ? undefined : path.join(here, '../../build/icon-win.png');
 
 app.setName('Pi Desktop');
-if (process.platform === 'win32') {
-  // Must match appId in electron-builder.yml; dev toasts need a separate identity.
-  const installedAppId = 'dev.pi-desktop.app';
-  app.setAppUserModelId(app.isPackaged ? installedAppId : `${installedAppId}.dev`);
-}
+configureWindowsAppId(app, process.platform);
 // The offline demo (scripted model + sample workspaces) is a dev / test aid: packaged builds never enable it.
 const DEMO_ALLOWED = !app.isPackaged;
 const DEMO = DEMO_ALLOWED && process.argv.includes('--demo');
