@@ -27,6 +27,8 @@ beforeEach(() => {
     st.view = 'code';
     st.prefs.project = '/project';
     st.prefs.model = 'vendor/known-model';
+    st.adopt = null;
+    st.workFolders = [];
     st.settings.pet = false;
     st.sessions = {};
   });
@@ -137,11 +139,11 @@ const source = {
 } as SessionMeta;
 const child = { ...source, id: 'child', title: 'Child', parentId: source.id };
 const task = { title: 'Split CI', prompt: 'Move the CI fix from PR #3325 into a separate PR.' };
-async function openSource() {
+async function openSource(meta = source) {
   setApp((st) => {
-    st.sessions[source.id] = { ...emptySession(source), loaded: true };
+    st.sessions[meta.id] = { ...emptySession(meta), loaded: true };
   });
-  await openSession(source.id);
+  await openSession(meta.id);
   drafts.setText(activeDraft()!.key, 'Unsent parent draft');
 }
 
@@ -178,6 +180,51 @@ it('opens the handoff preview before spawn resolves; Start all follows only the 
   await opening;
   expect(getApp().current).toBe(child.id);
   expect(invoke.mock.calls.filter(([channel]) => channel === 'sessions:prompt')).toHaveLength(0);
+});
+
+it('passes only the linked Code destinations and their welcome choices with a Work prompt', async () => {
+  invoke.mockImplementation(async (ch) => (ch === 'sessions:prompt' ? { disposition: 'sent' } : null));
+  await openSource({ ...source, kind: 'work' });
+  setApp((st) => {
+    st.workFolders = [{ name: 'Work', addedAt: 0, path: source.projectPath, codeFolders: ['/repo'] }];
+    st.adopt = { mainRoot: '/repo', branch: 'feature', path: '/existing' };
+    st.prefs.worktree = false;
+  });
+  await send();
+  expect(invoke).toHaveBeenCalledWith('sessions:prompt', source.id, expect.anything(), 'steer', {
+    worktree: false,
+    projects: { '/repo': { adoptPath: '/existing' } },
+  });
+});
+
+it('restores the parent on a rejected suggestion and allows retry in its linked Code folder', async () => {
+  const attempt = deferred<SessionMeta>();
+  invoke.mockImplementation(async (ch) => (ch === 'sessions:spawn' ? attempt.promise : null));
+  await openSource({ ...source, kind: 'work' });
+  const retry = () => startSuggested(source.id, { toolCallId: 'retry' }, 0, { ...task, codeFolder: '/repo' });
+  const starting = retry();
+  expect(getApp().view).toBe('code');
+  await send(); // Pending preview must not submit the unsent parent draft.
+  expect(invoke.mock.calls.some(([ch]) => ch === 'sessions:prompt')).toBe(false);
+  attempt.reject(new Error('Worktree unavailable'));
+  await starting;
+  expect(getApp()).toMatchObject({ current: source.id, view: 'work', creating: null });
+  expect(activeDraft()?.text).toBe('Unsent parent draft');
+  invoke.mockResolvedValueOnce(child);
+  await retry();
+  expect(getApp().current).toBe(child.id);
+});
+
+it('recovers from a remote disconnect even if the parent was archived during launch', async () => {
+  invoke.mockResolvedValue(null);
+  await openSource();
+  const launch = { type: 'session_launch', sessionId: source.id, launchId: 'disconnected' } as const;
+  handleHostEvent({ ...launch, phase: 'starting', kind: 'code', prompt: task.prompt });
+  setApp((st) => void (st.sessions[source.id].meta.archived = true));
+  handleHostEvent({ type: 'remote_link', state: 'reconnecting' });
+  expect(getApp()).toMatchObject({ current: null, creating: null });
+  handleHostEvent({ ...launch, phase: 'created', meta: child });
+  expect(getApp().current).toBeNull();
 });
 
 it('restores the source draft on launch failure and does not steal focus after navigation', async () => {

@@ -3,10 +3,12 @@ import { createDesktopKit, type KitHost, isPrAutomationCommand } from '../src/ag
 import type { UiResponse } from '../src/shared/protocol';
 
 type Review = NonNullable<KitHost['review']>;
+type Execute = (id: string, params: Record<string, unknown>) => Promise<unknown>;
 
 function load(overrides: Partial<KitHost> = {}) {
   const handlers = new Map<string, (...args: any[]) => any>();
   const requests: unknown[] = [];
+  const tools = new Map<string, Execute>();
   const state = {
     mode: 'auto',
     profile: 'code',
@@ -16,7 +18,7 @@ function load(overrides: Partial<KitHost> = {}) {
   const pi = {
     on: (event: string, handler: (...args: any[]) => any) => handlers.set(event, handler),
     getAllTools: () => [],
-    registerTool: () => {},
+    registerTool: (tool: { name: string; execute: Execute }) => tools.set(tool.name, tool.execute),
     sendMessage: () => {},
   };
   createDesktopKit({
@@ -31,13 +33,49 @@ function load(overrides: Partial<KitHost> = {}) {
   return {
     state,
     requests,
-    call: (input: Record<string, unknown>) =>
-      handlers.get('tool_call')?.(
-        { toolName: 'bash', toolCallId: 'call-1', input },
-        { cwd: process.cwd(), signal: undefined },
-      ),
+    execute: (name: string, params: Record<string, unknown>) => tools.get(name)!('call-1', params),
+    call: (input: Record<string, unknown>, toolName = 'bash') =>
+      handlers.get('tool_call')?.({ toolName, toolCallId: 'call-1', input }, { cwd: process.cwd(), signal: undefined }),
   };
 }
+
+describe('Work session handoffs', () => {
+  const tool = 'pidesk_create_session';
+  const input = { title: 'Follow up', prompt: 'Check the release build', code_folder: '/repo', base_ref: 'release' };
+
+  it('remembers launch consent per folder, not for all Code folders or in plan mode', async () => {
+    const ask = vi
+      .fn<KitHost['ask']>()
+      .mockResolvedValueOnce({ value: 'Always allow' })
+      .mockResolvedValue({ value: 'Deny' });
+    const kit = load({ scope: { cwd: '/work', readable: () => ['/repo', '/other'] }, ask });
+    await expect(kit.call(input, tool)).resolves.toBeUndefined();
+    await expect(kit.call(input, tool)).resolves.toBeUndefined();
+    expect(ask).toHaveBeenCalledTimes(1);
+    await expect(kit.call({ ...input, code_folder: '/other' }, tool)).resolves.toMatchObject({ block: true });
+    kit.state.mode = 'plan';
+    await expect(kit.call(input, tool)).resolves.toMatchObject({ block: true });
+    expect(ask).toHaveBeenCalledTimes(2);
+  });
+
+  it('offers the same normalized handoff without starting it, and rejects unlinked destinations', async () => {
+    const createSession = vi
+      .fn<NonNullable<KitHost['createSession']>>()
+      .mockResolvedValue({ id: 'child', title: input.title });
+    const kit = load({
+      createSession,
+      project: { context: () => null, codeFolders: () => ['/repo'], remember: () => 0 },
+    });
+    const task = { title: input.title, prompt: input.prompt, codeFolder: '/repo', baseRef: 'release' };
+    await expect(kit.execute('pidesk_suggest_task', { tasks: [input] })).resolves.toMatchObject({
+      details: { tasks: [task] },
+    });
+    await expect(kit.execute(tool, { ...input, code_folder: '/other' })).rejects.toThrow(/not a Code folder/);
+    expect(createSession).not.toHaveBeenCalled();
+    await expect(kit.execute(tool, input)).resolves.toMatchObject({ details: { sessionId: 'child' } });
+    expect(createSession).toHaveBeenCalledExactlyOnceWith(task);
+  });
+});
 
 describe('PR automation command gate', () => {
   it('accepts only git and forge CLI steps', () => {
