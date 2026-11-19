@@ -19,6 +19,7 @@ const { selectProject, send, showWelcome, openSession, startSuggested, handleHos
   await import('../src/renderer/src/store/actions');
 const { emptySession } = await import('../src/renderer/src/store/transcript');
 const { useWelcomeBranches } = await import('../src/renderer/src/store/welcome-branches');
+const { dialogs } = await import('../src/renderer/src/store/dialogs');
 
 beforeEach(() => {
   useDrafts.setState({ active: null, drafts: {} });
@@ -41,6 +42,34 @@ const mount = () =>
       <Main />
     </TooltipProvider>,
   );
+
+it('can start from a PR without a project and cancels without creating a session', async () => {
+  const url = 'https://github.com/acme/app/pull/42';
+  const prompt = vi.spyOn(dialogs, 'prompt').mockResolvedValue(url);
+  const confirm = vi.spyOn(dialogs, 'confirm').mockResolvedValue(true);
+  try {
+    setApp((st) => {
+      st.projects = [];
+      st.prefs.project = '';
+    });
+    invoke.mockImplementation(async (channel) =>
+      channel === 'sessions:fromPr' ? { kind: 'folder', repo: 'acme/app' } : channel === 'git:branches' ? [] : null,
+    );
+    mount();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Start from PR' }));
+    });
+    expect(invoke.mock.calls.filter(([ch]) => ch === 'sessions:fromPr')).toEqual([
+      ['sessions:fromPr', url, [], null, expect.any(Object)],
+    ]);
+    expect(invoke.mock.calls.some(([ch]) => ch === 'app:pickFolder')).toBe(true);
+    expect(invoke.mock.calls.some(([ch]) => ch === 'projects:addPath')).toBe(false);
+    expect(getApp().current).toBeNull();
+  } finally {
+    prompt.mockRestore();
+    confirm.mockRestore();
+  }
+});
 
 it('offers /goal before a session exists without submitting the draft', async () => {
   invoke.mockImplementation(async (channel) => (channel === 'git:branches' ? [] : null));

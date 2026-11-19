@@ -25,6 +25,7 @@ export function sessionHandlers(
     return s;
   };
   return {
+    'sessions:fromPr': withHub((h, url, projects, parent, prefs) => h.fromPr(url, projects, parent, prefs)),
     'sessions:list': withHub((h) => h.list()),
     'sessions:create': withHub((h, opts) => h.create(opts)),
     'sessions:open': withHub((h, id) => h.open(id)),

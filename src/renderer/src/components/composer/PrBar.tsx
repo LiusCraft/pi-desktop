@@ -93,7 +93,8 @@ export function PrBar({ s }: { s: SessionView }) {
     branch: s.meta.branch,
     baseBranch: s.meta.baseBranch,
     st,
-    pr,
+    pr: pr ?? (s.meta.prBinding ? s.meta.pr : null),
+    binding: s.meta.prBinding,
     forge: pr?.forge ?? st?.forge,
     strategy,
   });

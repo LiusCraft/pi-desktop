@@ -45,6 +45,9 @@ import type {
   ChangeSet,
   ContextBreakdown,
   CreateSessionOptions,
+  FromPrOptions,
+  FromPrResult,
+  PrBinding,
   DiffBase,
   DiffComparison,
   HostEvent,
@@ -89,6 +92,7 @@ import {
   SHELL_SESSION_MODES,
 } from '@shared/protocol';
 import { decodeCommandMessage, encodeUserCommandMessage, isCommandMessage } from '@shared/command-message';
+import { bindRemotes, clonePrProject, fetchPrTips, findPrProject, parsePrUrl, resolvePr, trackPrHead } from './from-pr';
 import { expandUserCommand } from './prompt-template';
 import { sessionWorkspace } from '@shared/session-workspace';
 import {
@@ -622,7 +626,40 @@ export class SessionHub {
     };
   }
 
-  async create(opts: CreateSessionOptions): Promise<SessionMeta> {
+  private readonly importingPr = new Map<string, Promise<FromPrResult>>();
+
+  async fromPr(url: string, projects: string[], parent: string | null, prefs: FromPrOptions): Promise<FromPrResult> {
+    const id = parsePrUrl(url);
+    const known = this.metas.find(
+      (m) => !m.archived && m.kind === 'code' && (m.prBinding?.url ?? m.pr?.url)?.toLowerCase() === id.url,
+    );
+    if (known) return { kind: 'session', meta: known };
+    const pending = this.importingPr.get(id.url);
+    if (pending) return pending;
+    const importOne = async (): Promise<FromPrResult> => {
+      const { source, title, draft } = await resolvePr(id);
+      let root = await findPrProject(projects, source);
+      if (!root) {
+        if (!parent) return { kind: 'folder', repo: source.baseRepo };
+        root = await clonePrProject(parent, source);
+      }
+      const binding = await bindRemotes(root, source);
+      const tips = await fetchPrTips(root, binding);
+      const meta = await this.create(
+        { ...prefs, kind: 'code', projectPath: root, title: `#${id.num} · ${title}` },
+        { binding, draft, ...tips },
+      );
+      return { kind: 'session', meta };
+    };
+    const promise = importOne().finally(() => this.importingPr.delete(id.url));
+    this.importingPr.set(id.url, promise);
+    return promise;
+  }
+
+  async create(
+    opts: CreateSessionOptions,
+    pr?: { binding: PrBinding; draft: boolean; tip: string; fork: string; baseBranch: string },
+  ): Promise<SessionMeta> {
     const id = crypto.randomUUID();
     const slug = `${NAMES[Math.floor(Math.random() * NAMES.length)]}-${id.slice(0, 6)}`;
     const base = {
@@ -662,10 +699,10 @@ export class SessionHub {
       if (!projectPath) throw new Error('Choose a project first');
       const root = await git.repoRoot(projectPath);
       const wantsWorktree = !!root && opts.worktree !== false && !opts.adoptPath;
-      if (root && wantsWorktree) await git.fetchBase(root, opts.baseRef);
+      if (root && wantsWorktree && !pr) await git.fetchBase(root, opts.baseRef);
       const headCommit = root ? await git.head(root) : null;
       let baseRef = opts.baseRef;
-      if (root && wantsWorktree && !baseRef) {
+      if (root && wantsWorktree && !baseRef && !pr) {
         const defaultRef = await git.defaultBranch(root);
         if (defaultRef) baseRef = defaultRef;
       }
@@ -684,7 +721,10 @@ export class SessionHub {
         external = true;
       } else if (root && headCommit && opts.worktree !== false) {
         branch = `pi-desktop/${slug}`;
-        if (baseRef) {
+        if (pr) {
+          baseBranch = pr.baseBranch;
+          baseCommit = pr.fork;
+        } else if (baseRef) {
           const from = await git.resolveRef(root, baseRef);
           if (!from) throw new Error(`Branch not found: ${baseRef}`);
           baseCommit = from;
@@ -693,7 +733,7 @@ export class SessionHub {
         // The root is configurable in Settings; existing sessions keep their recorded cwd.
         cwd = path.join(this.worktreeRoot(), `${path.basename(root)}-${slug}`);
         // git is slow here: the first start makes the worktree, so creating the session returns at once.
-        worktreeSetup = { root, base: baseCommit ?? headCommit };
+        worktreeSetup = { root, base: pr?.tip ?? baseCommit ?? headCommit };
       }
       meta = {
         ...base,
@@ -705,6 +745,13 @@ export class SessionHub {
         baseBranch,
         baseCommit,
         worktree: cwd !== projectPath,
+        ...(pr
+          ? {
+              prBinding: pr.binding,
+              ownedPrBranch: branch!,
+              pr: { num: pr.binding.num, url: pr.binding.url, state: 'open', draft: pr.draft },
+            }
+          : {}),
         ...(external ? { external } : {}),
         ...(worktreeSetup ? { worktreeSetup } : {}),
       };
@@ -712,7 +759,7 @@ export class SessionHub {
     this.metas.unshift(meta);
     this.save();
     // Child sessions may start without a renderer RPC. Publish them before their first setup event.
-    if (opts.parentId) this.emitMeta(meta);
+    if (opts.parentId || pr) this.emitMeta(meta);
     // Warm up in the background so the agent is ready by the time the first message is sent.
     void this.ensure(id).catch(() => {});
     return meta;
@@ -772,6 +819,7 @@ export class SessionHub {
     if (!setup || !m.branch) return;
     // A folder with its own .git is a worktree an earlier, interrupted start already made.
     if (!fs.existsSync(path.join(m.cwd, '.git'))) await git.addWorktree(setup.root, m.cwd, m.branch, setup.base);
+    if (m.prBinding) await trackPrHead(m.cwd, m.branch, m.prBinding);
     delete m.worktreeSetup;
     this.save();
   }
@@ -913,7 +961,22 @@ export class SessionHub {
           additionalExtensionPaths: [appExtensionsDir(this.opts.dataDir)],
           // The app's own skills (see `builtin-skills.ts`), on top of pi's folders and the project's.
           additionalSkillPaths: [appSkillsDir(this.opts.dataDir)],
-          appendSystemPrompt: m.kind === 'work' ? [toolsPrompt, workPrompt] : [toolsPrompt],
+          appendSystemPrompt:
+            m.kind === 'work'
+              ? [toolsPrompt, workPrompt]
+              : [
+                  toolsPrompt,
+                  ...(m.prBinding
+                    ? [
+                        tr('prstart.context', {
+                          url: m.prBinding.url,
+                          repo: m.prBinding.headRepo,
+                          branch: m.prBinding.headBranch,
+                          remote: m.prBinding.headRemote,
+                        }),
+                      ]
+                    : []),
+                ],
         },
       });
       const created = await createAgentSessionFromServices({
@@ -2292,7 +2355,8 @@ export class SessionHub {
         await git.removeWorktree(root, m.cwd);
         result.worktreeRemoved = true;
         // Commits that exist nowhere else outlive the session on their branch.
-        if (m.branch && !(await git.deleteBranch(root, m.branch, m.baseCommit))) result.branchKept = m.branch;
+        const owned = m.ownedPrBranch ?? m.branch;
+        if (owned && !(await git.deleteBranch(root, owned, m.baseCommit))) result.branchKept = owned;
       }
     }
     // A session imported from the pi CLI points at the user's own file.
@@ -2748,7 +2812,9 @@ export class SessionHub {
     void this.fetchRemotes(m);
     // Session-base diff for the Diff panel, plus live working-tree state for the branch bar.
     const base = await git.diffBase(m.cwd, m.baseCommit, m.baseBranch);
-    const prBase = this.prBases.get(id);
+    const prBase = m.prBinding
+      ? `${m.prBinding.baseRemote}/${this.prBases.get(id) ?? m.prBinding.baseBranch}`
+      : this.prBases.get(id);
     const [files, state, root] = await Promise.all([
       git.changes(m.cwd, base),
       git.workState(m.cwd, prBase ?? m.baseBranch),
@@ -2815,20 +2881,23 @@ export class SessionHub {
   async prStatus(id: string) {
     const m = this.meta(id);
     await this.syncBranch(m);
-    const pr = await git.prStatus(m.cwd);
+    const pr = await git.prStatus(m.cwd, m.prBinding);
     // Publish null as well so a branch switch or a closed/deleted PR cannot leave stale metadata
     // in the renderer. A subsequent refresh can then discover a PR on the new current branch.
     this.publishPr(m, pr);
     return pr;
   }
   prThreads(id: string) {
-    return git.prThreads(this.meta(id).cwd);
+    const m = this.meta(id);
+    return git.prThreads(m.cwd, m.prBinding);
   }
   prReply(id: string, threadId: string, body: string) {
-    return git.replyToThread(this.meta(id).cwd, threadId, body);
+    const m = this.meta(id);
+    return git.replyToThread(m.cwd, threadId, body, m.prBinding);
   }
   prResolve(id: string, threadId: string, resolved: boolean) {
-    return git.setThreadResolved(this.meta(id).cwd, threadId, resolved);
+    const m = this.meta(id);
+    return git.setThreadResolved(m.cwd, threadId, resolved, m.prBinding);
   }
   existing(id: string, paths: string[]) {
     const cwd = this.meta(id).cwd;
@@ -2919,7 +2988,7 @@ export class SessionHub {
     const m = this.meta(id);
     await this.syncBranch(m);
     if (m.kind !== 'code' || m.archived || !m.branch || !this.live.has(id)) return this.stopPrWatch(id);
-    entry.read = git.readPr(m.cwd).catch(() => null);
+    entry.read = git.readPr(m.cwd, m.prBinding).catch(() => null);
     const snapshot = (await entry.read) as Awaited<ReturnType<typeof git.readPr>>;
     entry.read = undefined;
     // A look can outlive its session, or be overtaken by a newer one: drop the result then.
@@ -2961,7 +3030,7 @@ export class SessionHub {
         const m = this.metas.find((x) => x.id === id);
         if (!m || m.archived || this.prWatches.has(id) || !fs.existsSync(m.cwd)) continue;
         await this.syncBranch(m);
-        const read = git.readPr(m.cwd).catch(() => null);
+        const read = git.readPr(m.cwd, m.prBinding).catch(() => null);
         this.idlePrRead = { id, read };
         const snapshot = await read;
         this.idlePrRead = undefined;
