@@ -5,9 +5,10 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { decodePeerMessage } from '@shared/peer-message';
 import type { HostEvent } from '@shared/protocol';
+import * as fromPr from '../src/agent/from-pr';
 import * as git from '../src/agent/git';
 import { SessionHub, readTranscript } from '../src/agent/hub';
 import { sessionHandlers } from '../src/agent/handlers';
@@ -224,6 +225,60 @@ describe('opening a folder that is already a worktree', { timeout: 120_000 }, ()
     await hub.remove(meta.id);
     expect(fs.existsSync(path.join(linked, 'a.txt'))).toBe(true);
     expect(run(project, 'branch', '--list', 'feature/adopt')).toContain('feature/adopt');
+  });
+});
+
+describe('start from a fork PR', { timeout: 120_000 }, () => {
+  it('keeps the dirty checkout, compares against the base, and resumes the same PR', async () => {
+    const project = makeProject('pr-base');
+    const fork = path.join(tmp, 'fork.git');
+    run(tmp, 'clone', '--bare', project, fork);
+    const author = path.join(tmp, 'pr-author');
+    run(tmp, 'clone', fork, author);
+    run(author, 'switch', '-c', 'feature');
+    fs.writeFileSync(path.join(author, 'pr.txt'), 'from A');
+    run(author, 'add', 'pr.txt');
+    run(author, 'commit', '-qm', 'PR change');
+    run(author, 'push', 'origin', 'feature');
+    const checkout = path.join(tmp, 'on-b');
+    run(tmp, 'clone', project, checkout);
+    run(checkout, 'remote', 'add', 'fork', fork);
+    fs.writeFileSync(path.join(checkout, 'unfinished.txt'), 'keep me');
+    const url = 'https://github.com/acme/app/pull/42';
+    const source = { ...fromPr.parsePrUrl(url), headRepo: 'alice/app', headBranch: 'feature', baseBranch: 'main' };
+    const mocks = [
+      vi.spyOn(fromPr, 'resolvePr').mockResolvedValue({ source, title: 'Fix', draft: true }),
+      vi.spyOn(fromPr, 'bindRemotes').mockResolvedValue({ ...source, baseRemote: 'origin', headRemote: 'fork' }),
+      vi.spyOn(git, 'readPr').mockResolvedValue(null),
+    ];
+    try {
+      const options = { model: 'demo/demo-coder' };
+      expect(await hub.fromPr(url, [], null, options)).toEqual({ kind: 'folder', repo: 'acme/app' });
+      const match = vi.spyOn(fromPr, 'findPrProject').mockResolvedValue(checkout);
+      try {
+        const result = await hub.fromPr(url, [checkout], null, options);
+        if (result.kind !== 'session') throw new Error('expected a session');
+        const { meta } = result;
+        await hub.open(meta.id);
+        expect(run(meta.cwd, 'rev-parse', '--abbrev-ref', '@{u}').trim()).toBe('fork/feature');
+        expect((await hub.changes(meta.id)).files.map((f) => f.path)).toEqual(['pr.txt']);
+        const again = await hub.fromPr(url, [], null, options);
+        expect(again.kind === 'session' && again.meta.id).toBe(meta.id);
+        fs.appendFileSync(path.join(meta.cwd, 'pr.txt'), ' and B');
+        run(meta.cwd, 'commit', '-qam', 'continue');
+        run(meta.cwd, 'push', meta.prBinding!.headRemote, 'HEAD:refs/heads/' + meta.prBinding!.headBranch);
+        expect(run(fork, 'rev-parse', 'feature')).toBe(run(meta.cwd, 'rev-parse', 'HEAD'));
+        expect(run(project, 'branch', '--list', 'feature').trim()).toBe('');
+        await hub.remove(meta.id);
+        expect(fs.existsSync(meta.cwd)).toBe(false);
+        expect(run(checkout, 'branch', '--show-current').trim()).toBe('main');
+        expect(fs.readFileSync(path.join(checkout, 'unfinished.txt'), 'utf8')).toBe('keep me');
+      } finally {
+        match.mockRestore();
+      }
+    } finally {
+      mocks.forEach((m) => m.mockRestore());
+    }
   });
 });
 

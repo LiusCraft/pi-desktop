@@ -111,6 +111,20 @@ export interface PrAutoDone {
 /** Longest session title kept: the rename tool and the inline editor cut at this, and the host enforces it. */
 export const MAX_SESSION_TITLE = 80;
 
+/** Immutable identity of the imported PR; its head can belong to a fork. */
+export interface PrBinding {
+  url: string;
+  num: number;
+  baseRepo: string;
+  baseBranch: string;
+  baseRemote: string;
+  headRepo: string;
+  headBranch: string;
+  headRemote: string;
+}
+export type FromPrOptions = Pick<CreateSessionOptions, 'model' | 'thinking' | 'mode' | 'outputStyle'>;
+export type FromPrResult = { kind: 'folder'; repo: string } | { kind: 'session'; meta: SessionMeta };
+
 export interface SessionMeta {
   id: string;
   kind: SessionKind;
@@ -137,6 +151,9 @@ export interface SessionMeta {
   createdAt: number;
   updatedAt: number;
   pr: PrSummary | null;
+  prBinding?: PrBinding;
+  /** The branch Pi created, even if the user later switches branches. */
+  ownedPrBranch?: string;
   /** Session switches: handle CI failures, merge conflicts and review comments, or merge once ready. */
   autoFixCi?: boolean;
   /** Agent-enabled CI events use normal tool permissions, unlike an explicit PR-bar grant. */
@@ -1312,6 +1329,7 @@ export interface Api {
 
   // ---- forwarded to the agent host
   'sessions:list'(): SessionSummary[];
+  'sessions:fromPr'(url: string, projects: string[], parent: string | null, prefs: FromPrOptions): FromPrResult;
   'sessions:create'(opts: CreateSessionOptions): SessionMeta;
   'sessions:open'(id: string): OpenSessionResult;
   /** The session as the host holds it now, without its transcript; null when the host holds nothing more than its meta. */
@@ -1528,6 +1546,7 @@ export type WindowControlAction = (typeof WINDOW_CONTROL_ACTIONS)[number];
 export const HOST_CHANNELS = [
   'sessions:list',
   'sessions:create',
+  'sessions:fromPr',
   'sessions:open',
   'sessions:state',
   'sessions:prompt',
