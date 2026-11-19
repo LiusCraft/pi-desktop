@@ -105,9 +105,7 @@ export class PrWatcher {
         summary.push(tr('ag.prConflictWith', { base }));
         instructions.push(tr('ag.prResolveConflicts', { base }));
       }
-      const failed = mark.fix
-        ? (pr.checks ?? []).filter((c) => c.st === 'fail').map((c) => ({ name: c.n, url: c.url }))
-        : [];
+      const failed = mark.fix ? pr.checks.filter((c) => c.st === 'fail').map((c) => ({ name: c.n, url: c.url })) : [];
       if (mark.fix) {
         summary.push(
           failed.length

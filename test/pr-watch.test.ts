@@ -51,6 +51,13 @@ describe('PR watcher, CI', () => {
     assert.equal(w.observe(snap({ ...failing, head: 'def' }), auto).pending?.mark?.fix, '4:def');
   });
 
+  it('reports a failed run even when no individual check is named', () => {
+    const { pending } = new PrWatcher().observe(snap({ ci: 'fail', checks: [] }), auto);
+    assert.equal(pending?.event.kind, 'ci-fail');
+    assert.equal(pending.event.summary, 'CI 失败');
+    assert.equal(pending.event.failed, undefined);
+  });
+
   it('carries open comments into the fix turn instead of raising a second one', () => {
     const w = new PrWatcher();
     w.observe(snap({}, [note('c1')]), auto);
@@ -97,6 +104,13 @@ describe('PR watcher, conflicts', () => {
     const next = new PrWatcher();
     assert.equal(next.observe(snap(conflicting), restored).pending, null);
     assert.equal(next.observe(snap({ ...conflicting, head: 'def' }), restored).pending?.mark?.conflict, '4:def');
+  });
+
+  it('refers to the target branch without guessing its name when the forge omits it', () => {
+    const { pending } = new PrWatcher().observe(snap({ mergeable: 'conflicting' }), auto);
+    assert.equal(pending?.event.kind, 'conflict');
+    assert.equal(pending.event.summary, '与 目标分支 存在合并冲突');
+    assert.match(pending.event.instruction, /拉取 目标分支 的最新提交/);
   });
 
   it('never treats auto-merge alone, unknown status or a finished PR as a request to fix conflicts', () => {
