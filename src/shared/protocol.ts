@@ -103,6 +103,7 @@ export interface PrThread {
 /** Last PR head (`<number>:<sha>`) handed to the agent for each kind of automation. */
 export interface PrAutoDone {
   fix?: string;
+  conflict?: string;
   merge?: string;
 }
 
@@ -135,7 +136,7 @@ export interface SessionMeta {
   createdAt: number;
   updatedAt: number;
   pr: PrSummary | null;
-  /** Session switches: fix a red run and review comments, or merge once green. */
+  /** Session switches: handle CI failures, merge conflicts and review comments, or merge once ready. */
   autoFixCi?: boolean;
   /** Agent-enabled CI events use normal tool permissions, unlike an explicit PR-bar grant. */
   agentArmedCi?: boolean;

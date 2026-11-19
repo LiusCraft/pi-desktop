@@ -264,10 +264,10 @@ Code 会话输入框上方的 PR 条报告当前分支的 PR：状态颜色、`+
 
 还没建 PR 时也可以说「提前开启 CI 自动修复」。AI 设置当前 Code 会话的开关，PR 出现后由同一个 watcher 接手，不会开启自动合并。AI 预开的事件按会话的常规权限执行；随时可以在 PR 条的 **CI** 面板关闭。
 
-- **Auto-fix CI & address comments**：CI 变红时自动让 agent 读失败日志、修好并推送；同一个提交只触发一次，不会循环。新评论和 `CHANGES_REQUESTED` 也会处理（同一轮的修复会顺带带上它们）。
+- **Auto-fix CI, resolve conflicts & address comments**：CI 失败时读日志并修复；PR 与目标分支有冲突时，即使 CI 没有失败，也会把最新目标分支合入当前分支，解决冲突、测试并推送。同一提交的 CI 失败和冲突各只触发一次；同时发现时，与新评审意见在同一轮处理。此开关不会合并 PR。
 - **Auto-merge when ready**：GitHub 确认可合并、CI 明确通过、当前提交没有排队或运行中的工作流，也没有待处理的评审意见时，自动让 agent 用 `gh pr merge --auto` 开启自动合并；每个 PR 一次。尚未收到检查结果（包括未配置 CI）不会触发自动合并。
 
-**监听发生在 host 里，不是让 agent 去盯着。** 每个打开着的 Code 会话在 agent host 里有一个 PR watcher：`gh pr view` 每 15 秒看一次（CI 已结束就退到 60 秒，`gh` 连续失败则退避到 5 分钟），把状态推给 PR 条，并在 CI 变红、有新的评论/评审、PR 变得可合并时**自己起一个 turn**。这类 turn 的消息不是用户发的，transcript 里渲染成一张事件卡片——`CI 失败 · PR #4`、新评论原文、失败检查列表，下面实时显示「Pi 正在处理…」/「等待你的确认」；展开还能看到交给 Pi 的说明。重开会话后卡片仍在。修复的 turn 在 `push` 后就结束，不会自己去 `gh pr checks --watch` 或轮询 CI：下一次结果仍由 host 的 watcher 看准了再起新 turn。
+**监听发生在 host 里，不是让 agent 去盯着。** 每个打开着的 Code 会话在 agent host 里有一个 PR watcher：`gh pr view` 每 15 秒看一次（CI 已结束就退到 60 秒，`gh` 连续失败则退避到 5 分钟），把状态推给 PR 条，并在 CI 变红、出现合并冲突、有新的评论/评审或 PR 变得可合并时**自己起一个 turn**。这类 turn 的消息不是用户发的，transcript 里渲染成一张事件卡片——`CI 失败 · PR #4`、新评论原文、失败检查列表，下面实时显示「Pi 正在处理…」/「等待你的确认」；展开还能看到交给 Pi 的说明。重开会话后卡片仍在。修复的 turn 在 `push` 后就结束，不会自己去 `gh pr checks --watch` 或轮询 CI：下一次结果仍由 host 的 watcher 看准了再起新 turn。
 
 会话正在跑的时候事件不会插队，等它空闲后的下一次查看再发，所以既不会打断你，也不会丢。因为那是真正的 turn，`git push` 这类高风险命令仍然会先问你（这就是卡片上「等待你的确认」的由来）。
 

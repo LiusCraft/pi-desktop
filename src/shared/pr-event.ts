@@ -14,7 +14,7 @@ const ASK = '## 交给 Pi 的处理';
 const FOOTER = '<!-- pi-desktop: ';
 const FOOTER_END = ' -->';
 
-export type PrEventKind = 'ci-fail' | 'notes' | 'merge';
+export type PrEventKind = 'ci-fail' | 'conflict' | 'notes' | 'merge';
 
 /** One comment or review body, as the code host reports it. */
 export interface PrNote {
