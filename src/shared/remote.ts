@@ -43,6 +43,8 @@ export const REMOTE_WORKSPACE_METHODS = [
   'projects:addPath',
   'projects:remove',
   'work:folders',
+  'work:codePolicy',
+  'work:resolveCode',
   'work:addPath',
   'work:useFolder',
   'work:removeFolder',

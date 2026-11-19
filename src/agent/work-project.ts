@@ -1,13 +1,13 @@
 // What a Work project adds to every turn of its sessions: the user's instructions, links and the notes
 // the model keeps. Read fresh at the start of each turn, so an edit on the Projects page applies at once.
-import { PROJECT_LIMITS, type WorkProject, type WorkProjectPatch } from '@shared/protocol';
+import { PROJECT_LIMITS, type SessionKind, type WorkProject, type WorkProjectPatch } from '@shared/protocol';
 import type { ProjectBook } from './remote/workspace';
 
 /** What the model may change on a project: the Projects page fields, minus the memory `pidesk_remember` owns. */
 export type ProjectEdit = Pick<WorkProjectPatch, 'name' | 'description' | 'instructions' | 'links'>;
 
 /** The system-prompt section for a project, or null when it holds nothing worth saying. */
-export function projectContext(p: WorkProject | undefined): string | null {
+export function projectContext(p: WorkProject | undefined, kind: SessionKind = 'work'): string | null {
   if (!p) return null;
   const parts: string[] = [];
   if (p.description?.trim()) parts.push(`## About this project\n${p.description.trim()}`);
@@ -15,7 +15,7 @@ export function projectContext(p: WorkProject | undefined): string | null {
     parts.push(`## Instructions from the user (apply to every task in this project)\n${p.instructions.trim()}`);
   if (p.links?.length)
     parts.push(`## Reference links\n${p.links.map((l) => `- ${l.title ? `${l.title}: ` : ''}${l.url}`).join('\n')}`);
-  if (p.codeFolders?.length) {
+  if (kind === 'work' && p.codeFolders?.length) {
     parts.push(
       `## Code folders\nThe code of this project lives in:\n${p.codeFolders.map((f) => `- ${f}`).join('\n')}\n\n` +
         'Read them directly when the task needs the code. When you find coding work (a bug, a change, a refactor), do not do it here: ' +
@@ -26,6 +26,9 @@ export function projectContext(p: WorkProject | undefined): string | null {
     `## Project memory\n${p.memory?.trim() || '(empty)'}\n\n` +
       'The instructions, links and memory above are authoritative: use the paths, documents and addresses they name directly, and only search the computer for something they do not cover. ' +
       "Use `pidesk_remember` to save what a later task in this project should know: decisions made, the user's preferences, where things live, what is still open. " +
+      (kind === 'code'
+        ? 'Proactively save confirmed architecture decisions, non-obvious constraints and their rationale, not a transcript or routine progress. '
+        : '') +
       'Keep notes short and factual; do not store secrets or things that are obvious from the files.',
   );
   return `# Project: ${p.name}\n\n${parts.join('\n\n')}`;

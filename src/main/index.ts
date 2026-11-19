@@ -91,7 +91,7 @@ import { localPath } from '../agent/local-path';
 import { RemoteClient, pingRemote } from '../agent/remote/client';
 import { Tunnel } from '../agent/remote/tunnel';
 import { newRemoteToken, remoteUrls, RemoteServer } from '../agent/remote/server';
-import { browse, existingFolder, ProjectBook, workspaceCall } from '../agent/remote/workspace';
+import { browse, ProjectBook } from '../agent/remote/workspace';
 import { resolveLocale } from '@shared/i18n';
 import { setActiveLocale, tr } from '@shared/i18n/runtime';
 import { Store } from '../agent/store';
@@ -140,32 +140,20 @@ let pendingWorktree: WorktreeInfo | null = null;
 
 let book: ProjectBook;
 const projects = () => book.projects();
-/**
- * The Code project and Work folder lists are this process's to keep, and two windows show them: the main
- * window's sidebar and the settings window. A write announces itself, so neither holds a stale copy.
- */
-function listsChanged(resource: 'projects' | 'workFolders') {
-  broadcast('host:event', { type: 'changed', resource });
-}
-const addProject = (dir: string) => {
-  const project = book.addProject(dir);
-  listsChanged('projects');
-  return project;
-};
+// Serialize project edits with agent memory writes on the host that owns the workspace.
+const workspace = <K extends RemoteWorkspaceMethod>(method: K, ...args: ApiArgs<K>) =>
+  agent.call<ApiResult<K>>('host:workspace', method, args);
+const addProject = (dir: string) => workspace('projects:addPath', dir);
 /** Work folders the user has worked in, most recent first. */
 const workFolders = () => book.workFolders();
-const addWorkFolder = (dir: string) => {
-  const folder = book.addWorkFolder(dir);
-  listsChanged('workFolders');
-  return folder;
-};
+
 const demoSource = (name: string) => path.join(app.getAppPath(), 'demo', name);
 /** Pi Desktop's own data folder; Electron's profile stays at the platform default. */
 const dataDir = () => appDataDir();
 function ensureDemoWork() {
   const dest = path.join(appDemoDir(dataDir()), 'work-workspace');
   if (!fs.existsSync(dest)) fs.cpSync(demoSource('work-workspace'), dest, { recursive: true });
-  return addWorkFolder(dest);
+  return book.addWorkFolder(dest);
 }
 /** Copy the bundled demo project into the app data folder and make it a git repo. */
 function ensureDemoProject() {
@@ -179,7 +167,7 @@ function ensureDemoProject() {
       g('-c', 'user.name=Pi Desktop', '-c', 'user.email=demo@pi.desktop', 'commit', '-qm', 'Initial commit');
     } catch {} // git is optional: diffs simply stay empty without it
   }
-  return addProject(dest);
+  return book.addProject(dest);
 }
 
 // ------------------------------------------------------------ settings
@@ -856,7 +844,7 @@ const serveBackend = {
     if (isTerminalMethod(method)) return remoteTerminalCall(method, args);
     if (isTransferMethod(method)) return agent.call('host:transfer', method, args);
     if ((REMOTE_WORKSPACE_METHODS as readonly string[]).includes(method))
-      return workspaceCall(book, method as RemoteWorkspaceMethod, args);
+      return agent.call('host:workspace', method, args);
     if (method === 'sessions:remove') remoteTerminals.closeSession(String(args[0]));
     return agent.call(method as Parameters<AgentClient['call']>[0], ...args);
   },
@@ -920,10 +908,10 @@ function knownRoot(target: string) {
     throw new Error('Path outside the app folders');
   return abs;
 }
-async function pickFolder() {
-  const r = win
-    ? await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] })
-    : await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
+async function pickFolder(title?: string) {
+  const parent = BrowserWindow.getFocusedWindow() ?? win;
+  const options: Electron.OpenDialogOptions = { title, properties: ['openDirectory', 'createDirectory'] };
+  const r = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options);
   return r.canceled ? null : r.filePaths[0];
 }
 const importAttachments = (sources: AttachmentSource[]) =>
@@ -1030,7 +1018,7 @@ const handlers: MainHandlers = {
   'app:openExternal': (url) => {
     if (/^https?:/.test(url)) void shell.openExternal(url);
   },
-  'app:pickFolder': () => pickFolder(),
+  'app:pickFolder': (title) => pickFolder(title),
   // Reveal or open a folder the app already knows about; anything else is refused.
   'app:revealPath': (target, reveal) => {
     const abs = knownRoot(target);
@@ -1090,26 +1078,21 @@ const handlers: MainHandlers = {
         known: store.get<Project[]>('projects', []).some((p) => p.path === info.mainRoot),
       };
     }
-    return { kind: 'added', project: addProject(dir) };
+    return { kind: 'added', project: await addProject(dir) };
   },
-  'projects:adoptWorktree': (choice) => {
+  'projects:adoptWorktree': async (choice) => {
     const info = pendingWorktree;
     pendingWorktree = null;
     if (!info) return null;
     return choice === 'session'
-      ? { project: addProject(info.mainRoot), adopt: info }
-      : { project: addProject(info.path), adopt: null };
+      ? { project: await addProject(info.mainRoot), adopt: info }
+      : { project: await addProject(info.path), adopt: null };
   },
-  'projects:remove': (dir) => {
-    store.set(
-      'projects',
-      store.get<Project[]>('projects', []).filter((p) => p.path !== dir),
-    );
-    listsChanged('projects');
-    return projects();
-  },
-  'projects:addPath': (dir) => addProject(existingFolder(dir)),
-  'work:addPath': (dir) => addWorkFolder(existingFolder(dir)),
+  'projects:remove': (dir) => workspace('projects:remove', dir),
+  'projects:addPath': addProject,
+  'work:addPath': (dir) => workspace('work:addPath', dir),
+  'work:codePolicy': (policy) => workspace('work:codePolicy', policy),
+  'work:resolveCode': (dir, selected) => workspace('work:resolveCode', dir, selected),
   'remote:browse': (dir) => browse(dir),
   'remote:list': () => ({ connections: connectionInfos(), active: activeRemote?.info ?? null }),
   'remote:save': (draft) => saveConnection(draft),
@@ -1122,19 +1105,11 @@ const handlers: MainHandlers = {
   'work:folders': () => workFolders(),
   'work:addFolder': async () => {
     const dir = await pickFolder();
-    return dir ? addWorkFolder(dir) : null;
+    return dir ? workspace('work:addPath', dir) : null;
   },
-  'work:useFolder': (dir) => (fs.existsSync(dir) ? addWorkFolder(dir) : null),
-  'work:removeFolder': (dir) => {
-    const folders = book.removeWorkFolder(dir);
-    listsChanged('workFolders');
-    return folders;
-  },
-  'work:update': (dir, patch) => {
-    const folders = book.updateWorkFolder(dir, patch);
-    listsChanged('workFolders');
-    return folders;
-  },
+  'work:useFolder': (dir) => workspace('work:useFolder', dir),
+  'work:removeFolder': (dir) => workspace('work:removeFolder', dir),
+  'work:update': (dir, patch) => workspace('work:update', dir, patch),
 
   'attachments:import': (sources) => importAttachments(sources),
   'attachments:pick': async () => {
@@ -1272,8 +1247,8 @@ void app.whenReady().then(async () => {
     },
   );
   void agent.start().catch((err) => console.error('[main] agent host failed to start:', err));
-  if (DEMO || (DEMO_ALLOWED && !projects().length)) ensureDemoProject();
   if (DEMO || (DEMO_ALLOWED && !workFolders().length)) ensureDemoWork();
+  if (DEMO || (DEMO_ALLOWED && !projects().length)) ensureDemoProject();
   protocol.handle(PLUGIN_SCHEME, (request) => pluginServer.handle(request.url));
   registerIpc();
   void applyServe();

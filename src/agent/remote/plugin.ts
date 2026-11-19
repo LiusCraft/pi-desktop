@@ -22,7 +22,7 @@ import { Store } from '../store';
 import { newRemoteToken, remoteUrls, RemoteServer } from './server';
 import { transferCall } from './transfer';
 import { Tunnel } from './tunnel';
-import { ProjectBook, workspaceCall } from './workspace';
+import { workspaceCall } from './workspace';
 
 const ENV_HOME = 'PI_REMOTE_HOME';
 const HOME_DIR_NAME = '.pi-remote';
@@ -81,7 +81,6 @@ export default function piRemote(pi: ExtensionAPI) {
     if (state.running) await stop();
     const cfg = config(patch);
     const dataDir = homeDir();
-    const book = new ProjectBook(new Store(dataDir));
     let server!: RemoteServer;
     const hub = new SessionHub({ dataDir, agentDir: getAgentDir(), emit: (event) => server.publish(event) });
     const ready = hub.init().then(() => hub);
@@ -96,7 +95,7 @@ export default function piRemote(pi: ExtensionAPI) {
           if (isTerminalMethod(method)) throw new Error(tr('remote.terminal.unavailable'));
           if (isTransferMethod(method)) return transferCall(dataDir, method, args);
           if ((REMOTE_WORKSPACE_METHODS as readonly string[]).includes(method))
-            return workspaceCall(book, method as RemoteWorkspaceMethod, args);
+            return workspaceCall(hub.projects, method as RemoteWorkspaceMethod, args);
           const handler = handlers[method as (typeof HOST_CHANNELS)[number]];
           if (!handler) throw new Error(`Unknown method: ${method}`);
           return handler(...args);
