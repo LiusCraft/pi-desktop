@@ -1,18 +1,20 @@
+import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createDesktopKit, type KitHost, isPrAutomationCommand } from '../src/agent/desktop-kit';
+import { SCOPE_KEY } from '../src/agent/work-scope';
 import type { UiResponse } from '../src/shared/protocol';
 
 type Review = NonNullable<KitHost['review']>;
 
-function load(overrides: Partial<KitHost> = {}) {
+function load(overrides: Partial<KitHost> = {}, response: UiResponse = { value: 'Allow' }) {
   const handlers = new Map<string, (...args: any[]) => any>();
   const requests: unknown[] = [];
-  const state = {
+  const state: KitHost['state'] = overrides.state ?? {
     mode: 'auto',
     profile: 'code',
     outputStyle: 'default',
     allowed: new Set<string>(),
-  } as KitHost['state'];
+  };
   const pi = {
     on: (event: string, handler: (...args: any[]) => any) => handlers.set(event, handler),
     getAllTools: () => [],
@@ -23,7 +25,7 @@ function load(overrides: Partial<KitHost> = {}) {
     state,
     ask: async (request) => {
       requests.push(request);
-      return { value: 'Allow' } as UiResponse;
+      return response;
     },
     setMode: () => {},
     ...overrides,
@@ -31,13 +33,63 @@ function load(overrides: Partial<KitHost> = {}) {
   return {
     state,
     requests,
-    call: (input: Record<string, unknown>) =>
+    call: (input: Record<string, unknown>, toolName = 'bash') =>
       handlers.get('tool_call')?.(
-        { toolName: 'bash', toolCallId: 'call-1', input },
-        { cwd: process.cwd(), signal: undefined },
+        { toolName, toolCallId: 'call-1', input },
+        { cwd: overrides.cwd ?? process.cwd(), signal: undefined },
       ),
   };
 }
+
+describe('Plan mode and Work scope', () => {
+  const cwd = resolve('work-scope-fixture', 'work');
+  const outside = resolve(cwd, '..', 'outside');
+  const path = resolve(outside, 'notes.md');
+  const key = `${SCOPE_KEY}${outside}`;
+
+  // Work subagents use this same gate with their own plan-mode state and no PR automation.
+  const loadScoped = (response?: UiResponse) =>
+    load(
+      {
+        cwd,
+        scope: { cwd, readable: () => [] },
+        state: { mode: 'plan', profile: 'work', outputStyle: 'default', allowed: new Set() },
+      },
+      response,
+    );
+
+  it.each([
+    ['write', { path, content: 'notes' }],
+    ['edit', { path }],
+    ['bash', { command: 'npm test', workdir: outside }],
+    ['powershell', { command: 'npm test', workdir: outside }],
+    ['pidesk_bg_shell', { command: 'npm test', workdir: outside }],
+  ] as const)('blocks %s before asking for or honoring a directory grant', async (tool, input) => {
+    const loaded = loadScoped();
+    const blocked = { block: true, reason: expect.stringContaining('Plan mode') };
+    await expect(loaded.call(input, tool)).resolves.toEqual(blocked);
+    loaded.state.allowed.add(key);
+    await expect(loaded.call(input, tool)).resolves.toEqual(blocked);
+    expect(loaded.requests).toHaveLength(0);
+  });
+
+  it('still asks before reading outside the scope and honors a denial', async () => {
+    const loaded = loadScoped({ value: 'Deny' });
+    await expect(loaded.call({ path }, 'read')).resolves.toMatchObject({ block: true });
+    expect(loaded.requests).toHaveLength(1);
+    expect(loaded.state.allowed.size).toBe(0);
+  });
+
+  it('lets a directory grant extend read access without lifting plan restrictions', async () => {
+    const loaded = loadScoped({ value: 'Always allow' });
+    await expect(loaded.call({ path }, 'read')).resolves.toBeUndefined();
+    expect(loaded.state.allowed.has(key)).toBe(true);
+    await expect(loaded.call({ command: 'ls', workdir: outside })).resolves.toBeUndefined();
+    await expect(loaded.call({ path, content: 'notes' }, 'write')).resolves.toMatchObject({ block: true });
+    expect(loaded.requests).toHaveLength(1);
+    expect(loaded.state.mode).toBe('plan');
+  });
+});
 
 describe('PR automation command gate', () => {
   it('accepts only git and forge CLI steps', () => {
