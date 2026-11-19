@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import './renderer-dom';
 import { fireEvent, render, screen } from '@testing-library/react';
+import { produce } from 'immer';
 import { describe, expect, it, vi } from 'vitest';
 import { encodePeerMessage, SEND_MESSAGE_TOOL } from '../src/shared/peer-message';
 import { TASK_NOTIFICATION_TYPE } from '../src/shared/task-message';
 import type { AgentMessage, SessionMeta } from '../src/shared/protocol';
 import { TooltipProvider } from '../src/renderer/src/components/ui/tooltip';
 import { applyPiEvent, emptySession, replay } from '../src/renderer/src/store/transcript';
+import type { SessionView, Todo } from '../src/renderer/src/store/types';
 
 const { Transcript } = await import('../src/renderer/src/components/thread/Transcript');
 const meta = { id: 's1', cwd: '/p', title: 'Main', kind: 'code' } as SessionMeta;
@@ -87,6 +89,131 @@ describe('session traffic in the normal transcript', () => {
     expect(screen.getByText('Inspecting')).toBeTruthy();
     expect(screen.getByText('Inspect')).toBeTruthy();
   });
+
+  it('refreshes consecutive live todo updates in the same card without stale rows', () => {
+    const toolName = 'pidesk_todo_write';
+    const update = (s: SessionView, id: string, todos: Todo[]) =>
+      produce(s, (draft) => {
+        applyPiEvent(draft, { type: 'tool_execution_start', toolCallId: id, toolName, args: { todos } }, 'normal');
+        applyPiEvent(
+          draft,
+          { type: 'tool_execution_end', toolCallId: id, toolName, result: { details: { todos } } },
+          'normal',
+        );
+      });
+    let s = update(emptySession(meta), 'first', [
+      { content: 'Inspect', status: 'in_progress', activeForm: 'Inspecting' },
+      { content: 'Old step', status: 'pending' },
+    ]);
+    const first = s.items[0];
+    const { container, rerender } = render(<Transcript s={s} />, { wrapper: TooltipProvider });
+    const card = container.querySelector('[data-item-key]');
+    expect(screen.getByText('Inspecting')).toBeTruthy();
+
+    const latest: Todo[] = [
+      { content: 'Inspect', status: 'completed' },
+      { content: 'Verify', status: 'in_progress', activeForm: 'Verifying' },
+    ];
+    s = update(s, 'second', latest);
+    rerender(<Transcript s={s} />);
+    expect(s.items).toEqual([{ ...first, items: latest }]);
+    expect(s.lastTodos).toEqual(latest);
+    expect(container.querySelectorAll('[data-item-key]')).toHaveLength(1);
+    expect(container.querySelector('[data-item-key]')).toBe(card);
+    expect(screen.queryByText('Inspecting')).toBeNull();
+    expect(screen.queryByText('Old step')).toBeNull();
+    expect(screen.getByText('Inspect').parentElement?.className).toContain('line-through');
+    expect(screen.getByText('Verifying')).toBeTruthy();
+
+    s = update(
+      s,
+      'third',
+      latest.map((todo) => ({ ...todo, status: 'completed' })),
+    );
+    rerender(<Transcript s={s} />);
+    expect(container.querySelector('[data-item-key]')).toBe(card);
+    expect(container.querySelectorAll('[data-item-key]')).toHaveLength(1);
+    expect(screen.queryByText('Verifying')).toBeNull();
+    expect(screen.getByText('Verify').parentElement?.className).toContain('line-through');
+  });
+
+  it.each(['normal', 'verbose'] as const)('replays consecutive todo calls as one latest list (%s)', (view) => {
+    const toolName = 'pidesk_todo_write';
+    const first: Todo[] = [{ content: 'Inspect', status: 'in_progress', activeForm: 'Inspecting' }];
+    const latest: Todo[] = [{ content: 'Inspect', status: 'completed' }];
+    const s = emptySession(meta);
+    replay(
+      s,
+      [first, latest, latest].flatMap((todos, index): AgentMessage[] => [
+        {
+          role: 'assistant',
+          content: [{ type: 'toolCall', id: `${index}`, name: toolName, arguments: { todos } }],
+        },
+        { role: 'toolResult', toolCallId: `${index}`, toolName, details: { todos } },
+      ]),
+      view,
+    );
+    expect(s.items.filter((i) => i.kind !== 'foot')).toEqual([
+      { kind: 'todos', key: expect.any(String), items: latest },
+    ]);
+    expect(s.lastTodos).toEqual(latest);
+    render(<Transcript s={s} />, { wrapper: TooltipProvider });
+    expect(screen.queryByText('Inspecting')).toBeNull();
+    expect(screen.getAllByText('Inspect')).toHaveLength(1);
+  });
+
+  it.each([
+    { role: 'assistant', content: [{ type: 'text', text: 'Found the issue.' }] },
+    { role: 'assistant', content: [{ type: 'thinking', thinking: 'Check the next step.' }] },
+    { role: 'assistant', content: [{ type: 'toolCall', id: 'read', name: 'read', arguments: { path: 'a.ts' } }] },
+    { role: 'user', content: 'Continue.' },
+    { role: 'custom', customType: 'notice', display: true, content: 'A notification.' },
+    { role: 'compactionSummary', summary: 'Earlier work.', tokensBefore: 1000 },
+  ] satisfies AgentMessage[])('keeps todo snapshots separated by $role content', (between) => {
+    const toolName = 'pidesk_todo_write';
+    const first: Todo[] = [{ content: 'Inspect', status: 'in_progress' }];
+    const latest: Todo[] = [{ content: 'Inspect', status: 'completed' }];
+    const s = emptySession(meta);
+    replay(
+      s,
+      [
+        { role: 'toolResult', toolCallId: 'first', toolName, details: { todos: first } },
+        between,
+        { role: 'toolResult', toolCallId: 'second', toolName, details: { todos: latest } },
+      ],
+      'normal',
+    );
+    expect(s.items.filter((i) => i.kind === 'todos').map((i) => i.items)).toEqual([first, latest]);
+    expect(s.lastTodos).toEqual(latest);
+  });
+
+  it.each([{ isError: true, details: { todos: [] } }, { details: undefined }, { details: { todos: 'invalid' } }])(
+    'ignores failed or malformed todo updates without replacing the visible list: %j',
+    (result) => {
+      const toolName = 'pidesk_todo_write';
+      const todos: Todo[] = [{ content: 'Inspect', status: 'in_progress' }];
+      const s = emptySession(meta);
+      applyPiEvent(
+        s,
+        { type: 'tool_execution_end', toolCallId: 'first', toolName, result: { details: { todos } } },
+        'normal',
+      );
+      const card = s.items[0];
+      applyPiEvent(
+        s,
+        {
+          type: 'tool_execution_end',
+          toolCallId: 'invalid',
+          toolName,
+          isError: result.isError,
+          result: { details: result.details },
+        },
+        'normal',
+      );
+      expect(s.items).toEqual([card]);
+      expect(s.lastTodos).toEqual(todos);
+    },
+  );
 
   it('leaves a short notification readable without a redundant disclosure', () => {
     const s = emptySession(meta);

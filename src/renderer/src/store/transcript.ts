@@ -337,8 +337,10 @@ export function toolEnd(
   if (bareName(ev.toolName) === 'todo_write') {
     const items = ev.result?.details?.todos as Todo[] | undefined;
     if (ev.isError || !Array.isArray(items)) return fx;
-    // The panel follows the latest list; the transcript keeps each snapshot where it was written.
-    push(s, { kind: 'todos', key: newKey(), items }, view);
+    // Adjacent updates refresh one card in place; intervening items preserve earlier snapshots.
+    const last = s.items.at(-1);
+    if (last?.kind === 'todos') last.items = items;
+    else push(s, { kind: 'todos', key: newKey(), items }, view);
     s.lastTodos = items;
     return fx;
   }
