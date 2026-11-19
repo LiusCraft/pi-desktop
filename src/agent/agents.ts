@@ -2,7 +2,7 @@
  * Subagent identities for the `pidesk_task` tool: the built-in ones below plus any
  * `<app data>/agents/*.md` the user adds (Customize → Subagents edits those files). An
  * identity is a system-prompt addendum, an optional model and an optional tool
- * allowlist; every subagent still runs in plan mode, so configuration can never widen
+ * allowlist; every subagent still runs with plan mode's read-only permissions, so configuration can never widen
  * what it is allowed to change.
  *
  * ```md
@@ -36,7 +36,7 @@ export interface AgentType {
   file?: string;
 }
 
-const SHARED = `You are a subagent started by another agent. You cannot change anything: you only read, search and report. When a decision is genuinely the user's and you cannot settle it yourself, call \`pidesk_ask_question\`: the question appears in the caller's session and you wait for the answer, so ask sparingly and never for things you can look up. Use \`read\`, \`grep\`, \`find\` and \`ls\` for that, with absolute or working-directory-relative paths; do not use shell \`cat\`, \`sed -n\`, \`head\`, \`tail\` or \`cd ... &&\` chains to view files. Your final message is the only thing the caller sees, so make it complete and self-contained.`;
+const SHARED = `You are a subagent started by another agent. You cannot change anything: you only read, search and report. When a decision is genuinely the user's and you cannot settle it yourself, call \`pidesk_ask_question\`: the question appears in the caller's session and you wait for the answer, so ask sparingly and never for things you can look up. Use \`read\`, \`grep\`, \`find\` and \`ls\` for that, with absolute or working-directory-relative paths; do not use shell \`cat\`, \`sed -n\`, \`head\`, \`tail\` or \`cd ... &&\` chains to view files. Finish with a complete, self-contained report in your final text response. If asked for an implementation plan, write it in that response for the caller, not as a request for approval.`;
 
 /** What gets appended to a subagent's system prompt. */
 export const agentPrompt = (agent: AgentType) => `${SHARED}\n\n${agent.body}`;

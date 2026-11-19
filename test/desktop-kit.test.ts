@@ -1,9 +1,9 @@
 import { resolve } from 'node:path';
-import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import type { ExtensionAPI, ToolDefinition } from '@earendil-works/pi-coding-agent';
 import { describe, expect, it, vi } from 'vitest';
 import { createDesktopKit, type KitHost, isPrAutomationCommand } from '../src/agent/desktop-kit';
 import { SCOPE_KEY } from '../src/agent/work-scope';
-import type { UiResponse } from '../src/shared/protocol';
+import { PLAN_CHOICES, type UiResponse } from '../src/shared/protocol';
 
 type Review = NonNullable<KitHost['review']>;
 type ToolInfo = ReturnType<ExtensionAPI['getAllTools']>[number];
@@ -16,7 +16,8 @@ function load(
   }: { response?: UiResponse; tools?: Pick<ToolInfo, 'name' | 'annotations'>[] } = {},
 ) {
   const handlers = new Map<string, (...args: any[]) => any>();
-  const requests: unknown[] = [];
+  const registered = new Map<string, ToolDefinition>();
+  const requests: Parameters<KitHost['ask']>[0][] = [];
   const state: KitHost['state'] = overrides.state ?? {
     mode: 'auto',
     profile: 'code',
@@ -26,7 +27,7 @@ function load(
   const pi = {
     on: (event: string, handler: (...args: any[]) => any) => handlers.set(event, handler),
     getAllTools: () => tools,
-    registerTool: () => {},
+    registerTool: (tool: ToolDefinition) => registered.set(tool.name, tool),
     sendMessage: () => {},
   };
   createDesktopKit({
@@ -35,19 +36,78 @@ function load(
       requests.push(request);
       return response;
     },
-    setMode: () => {},
+    setMode: (mode) => {
+      state.mode = mode;
+    },
     ...overrides,
   })(pi as any);
+  const ctx = { cwd: overrides.cwd ?? process.cwd(), signal: undefined } as Parameters<ToolDefinition['execute']>[4];
   return {
     state,
     requests,
     call: (input: Record<string, unknown>, toolName = 'bash') =>
-      handlers.get('tool_call')?.(
-        { toolName, toolCallId: 'call-1', input },
-        { cwd: overrides.cwd ?? process.cwd(), signal: undefined },
-      ),
+      handlers.get('tool_call')?.({ toolName, toolCallId: 'call-1', input }, ctx),
+    submitPlan: () =>
+      registered
+        .get('pidesk_exit_plan_mode')!
+        .execute('call-2', { title: 'Date helper', plan: 'Fix the month.' }, undefined, undefined, ctx),
   };
 }
+
+describe('Plan mode and subagent permissions', () => {
+  it('blocks edits and tells a subagent to report instead of asking for plan approval', async () => {
+    const loaded = load({ setMode: undefined });
+    loaded.state.mode = 'plan';
+    await expect(loaded.call({ path: 'date.ts' }, 'write')).resolves.toEqual({
+      block: true,
+      reason: 'Subagents are read-only. Return your findings in your final text response.',
+    });
+    expect(loaded.requests).toHaveLength(0);
+  });
+
+  it('directs a normal plan-mode session to submit its plan instead of editing', async () => {
+    const loaded = load();
+    loaded.state.mode = 'plan';
+    await expect(loaded.call({ path: 'date.ts' }, 'edit')).resolves.toEqual({
+      block: true,
+      reason: expect.stringContaining('pidesk_exit_plan_mode'),
+    });
+    expect(loaded.requests).toHaveLength(0);
+  });
+
+  it('skips approval outside plan mode', async () => {
+    const loaded = load();
+    await expect(loaded.submitPlan()).resolves.toMatchObject({ details: { status: 'skipped' } });
+    expect(loaded.requests).toHaveLength(0);
+    expect(loaded.state.mode).toBe('auto');
+  });
+
+  it.each([
+    [PLAN_CHOICES[0], 'acceptEdits'],
+    [PLAN_CHOICES[1], 'default'],
+  ] as const)('switches modes after %s', async (value, mode) => {
+    const loaded = load({}, { response: { value } });
+    loaded.state.mode = 'plan';
+    await expect(loaded.submitPlan()).resolves.toMatchObject({ details: { status: 'approved', mode } });
+    expect(loaded.requests).toEqual([{ kind: 'plan', toolCallId: 'call-2', title: 'Date helper' }]);
+    expect(loaded.state.mode).toBe(mode);
+  });
+
+  it.each([{ value: PLAN_CHOICES[2] }, { cancelled: true }])('stops to wait for plan feedback on %o', async (reply) => {
+    const loaded = load({}, { response: reply });
+    loaded.state.mode = 'plan';
+    await expect(loaded.submitPlan()).resolves.toMatchObject({ details: { status: 'keep' }, terminate: true });
+    expect(loaded.state.mode).toBe('plan');
+  });
+
+  it('switches to accept-edits mode when the user always allows an edit', async () => {
+    const loaded = load({}, { response: { value: 'Always allow' } });
+    loaded.state.mode = 'default';
+    await expect(loaded.call({ path: 'date.ts' }, 'edit')).resolves.toBeUndefined();
+    expect(loaded.requests).toHaveLength(1);
+    expect(loaded.state.mode).toBe('acceptEdits');
+  });
+});
 
 describe('Plan mode and Work scope', () => {
   const cwd = resolve('work-scope-fixture', 'work');

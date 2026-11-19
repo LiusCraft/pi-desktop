@@ -1383,15 +1383,13 @@ export class SessionHub {
         cwd,
         agentDir: this.agentDir,
         settingsManager,
-        // Questions and permission prompts surface in the parent session's transcript and the subagent
-        // waits for the user. Plan approval has no meaning here (a subagent's mode never changes).
+        // Questions and permission prompts go to the parent session. With no setMode, the kit
+        // enforces read-only permissions without offering plan approval or asking the model to use it.
         extensionFactories: [
           createDesktopKit({
             state: kit,
             scope: this.workScope(live.id),
-            ask: async (request, signal) =>
-              request.kind === 'plan' ? { cancelled: true } : this.ask(live, request, signal),
-            setMode: () => {},
+            ask: (request, signal) => this.ask(live, request, signal),
           }),
           createToolSearchExtension(),
           createMcpExtension(),

@@ -123,8 +123,8 @@ export interface KitHost {
   registerShell?(shell: ShellCommands | null): void;
   /** Ask the user. Resolves `{ cancelled: true }` when nobody can answer. */
   ask(request: KitRequest, signal?: AbortSignal): Promise<UiResponse>;
-  /** Called when the kit itself changes the mode (plan approval, "Always allow" on an edit). */
-  setMode(mode: PermissionMode): void;
+  /** Changes the mode from inside the kit; omit for fixed read-only subagents with no plan approval. */
+  setMode?(mode: PermissionMode): void;
   /** Runs a subagent and returns its report; omit it to leave out the `task` tool. */
   runSubagent?(run: SubagentRun): Promise<string>;
   /** The app's other sessions; omit it to leave out the session tools (subagents have none). */
@@ -468,7 +468,7 @@ function describeAnswer(a: QuestionAnswer | undefined): string {
 
 export function createDesktopKit(host: KitHost): ExtensionFactory {
   return (pi: ExtensionAPI) => {
-    const state = host.state;
+    const { state, setMode } = host;
 
     // ---------------------------------------------------------------- permissions
     const ask = async (ctx: ExtensionContext, toolCallId: string, title: string, key?: string) => {
@@ -477,7 +477,7 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         return { block: true, reason: 'Approval required but nobody answered the prompt.' };
       if (answer.value === 'Always allow') {
         if (key) state.allowed.add(key);
-        else host.setMode('acceptEdits'); // "always allow" on an edit = accept edits for this session
+        else setMode?.('acceptEdits'); // "always allow" on an edit = accept edits for this session
         return undefined;
       }
       if (answer.value === 'Allow') return undefined;
@@ -504,7 +504,12 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       // A WorkScope approval changes where a call may run, not what plan mode allows it to do.
       if (mode === 'plan' && !readOnlyTool) {
         if (isEdit)
-          return { block: true, reason: 'Plan mode is read-only. Present your plan with pidesk_exit_plan_mode.' };
+          return {
+            block: true,
+            reason: setMode
+              ? 'Plan mode is read-only. Present your plan with pidesk_exit_plan_mode.'
+              : 'Subagents are read-only. Return your findings in your final text response.',
+          };
         if (isShell) {
           if (!readOnlyCommand && !prAutomation)
             return { block: true, reason: 'Plan mode only allows read-only commands.' };
@@ -562,7 +567,7 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       const style = state.outputStyle;
       const stylePrompt = style !== 'default' ? STYLE_PROMPTS[style] : null;
       const planMessage =
-        state.mode === 'plan'
+        state.mode === 'plan' && setMode
           ? {
               customType: 'pi-desktop-plan-mode',
               display: false,
@@ -628,43 +633,45 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
     });
 
     // ---------------------------------------------------------------- pidesk_exit_plan_mode
-    pi.registerTool({
-      name: 'pidesk_exit_plan_mode',
-      exposure: 'model-only',
-      label: 'Plan',
-      description: 'In plan mode, present the implementation plan (markdown) to the user for approval.',
-      parameters: Type.Object({
-        title: Type.String({ description: 'Short plan title' }),
-        plan: Type.String({ description: 'The plan in markdown' }),
-      }),
-      async execute(
-        toolCallId,
-        params,
-        signal,
-      ): Promise<{ content: { type: 'text'; text: string }[]; details: PlanDetails; terminate?: boolean }> {
-        if (state.mode !== 'plan') {
+    if (setMode) {
+      pi.registerTool({
+        name: 'pidesk_exit_plan_mode',
+        exposure: 'model-only',
+        label: 'Plan',
+        description: 'In plan mode, present the implementation plan (markdown) to the user for approval.',
+        parameters: Type.Object({
+          title: Type.String({ description: 'Short plan title' }),
+          plan: Type.String({ description: 'The plan in markdown' }),
+        }),
+        async execute(
+          toolCallId,
+          params,
+          signal,
+        ): Promise<{ content: { type: 'text'; text: string }[]; details: PlanDetails; terminate?: boolean }> {
+          if (state.mode !== 'plan') {
+            return {
+              content: [{ type: 'text', text: 'Not in plan mode. Proceed with the task.' }],
+              details: { status: 'skipped' },
+            };
+          }
+          const choice = (await host.ask({ kind: 'plan', toolCallId, title: params.title }, signal)).value;
+          if (choice === PLAN_CHOICES[0] || choice === PLAN_CHOICES[1]) {
+            setMode(choice === PLAN_CHOICES[0] ? 'acceptEdits' : 'default');
+            return {
+              content: [{ type: 'text', text: 'The user approved the plan. Implement it now, step by step.' }],
+              details: { status: 'approved', mode: state.mode },
+            };
+          }
           return {
-            content: [{ type: 'text', text: 'Not in plan mode. Proceed with the task.' }],
-            details: { status: 'skipped' },
+            content: [
+              { type: 'text', text: 'The user wants to keep refining the plan. Stop and wait for their feedback.' },
+            ],
+            details: { status: 'keep' },
+            terminate: true,
           };
-        }
-        const choice = (await host.ask({ kind: 'plan', toolCallId, title: params.title }, signal)).value;
-        if (choice === PLAN_CHOICES[0] || choice === PLAN_CHOICES[1]) {
-          host.setMode(choice === PLAN_CHOICES[0] ? 'acceptEdits' : 'default');
-          return {
-            content: [{ type: 'text', text: 'The user approved the plan. Implement it now, step by step.' }],
-            details: { status: 'approved', mode: state.mode },
-          };
-        }
-        return {
-          content: [
-            { type: 'text', text: 'The user wants to keep refining the plan. Stop and wait for their feedback.' },
-          ],
-          details: { status: 'keep' },
-          terminate: true,
-        };
-      },
-    });
+        },
+      });
+    }
 
     // ---------------------------------------------------------------- pidesk_ask_question
     const Option = Type.Object({
