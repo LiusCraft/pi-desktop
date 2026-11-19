@@ -51,6 +51,13 @@ describe('PR watcher, CI', () => {
     assert.equal(w.observe(snap({ ...failing, head: 'def' }), auto).pending?.mark?.fix, '4:def');
   });
 
+  it('reports a failed run even when no individual check is named', () => {
+    const { pending } = new PrWatcher().observe(snap({ ci: 'fail', checks: [] }), auto);
+    assert.equal(pending?.event.kind, 'ci-fail');
+    assert.equal(pending.event.summary, 'CI 失败');
+    assert.equal(pending.event.failed, undefined);
+  });
+
   it('carries open comments into the fix turn instead of raising a second one', () => {
     const w = new PrWatcher();
     w.observe(snap({}, [note('c1')]), auto);
@@ -81,6 +88,62 @@ describe('PR watcher, CI', () => {
     w.observe(snap(), auto);
     const r = w.observe(snap(failing), { ...auto, done: { fix: '4:abc' } });
     assert.equal(r.pending, null);
+  });
+});
+
+describe('PR watcher, conflicts', () => {
+  const conflicting = { mergeable: 'conflicting' as const, base: 'release' };
+
+  it('requests a repair even without CI, once per known PR head across restarts', () => {
+    const w = new PrWatcher();
+    const r = w.observe(snap({ ...conflicting, ci: 'none' }), auto).pending;
+    assert.equal(r?.event.kind, 'conflict');
+    assert.match(r.event.instruction, /release/);
+    assert.deepEqual(r.mark, { conflict: '4:abc' });
+    const restored = { ...auto, done: r.mark };
+    const next = new PrWatcher();
+    assert.equal(next.observe(snap(conflicting), restored).pending, null);
+    assert.equal(next.observe(snap({ ...conflicting, head: 'def' }), restored).pending?.mark?.conflict, '4:def');
+  });
+
+  it('refers to the target branch without guessing its name when the forge omits it', () => {
+    const { pending } = new PrWatcher().observe(snap({ mergeable: 'conflicting' }), auto);
+    assert.equal(pending?.event.kind, 'conflict');
+    assert.equal(pending.event.summary, '与 目标分支 存在合并冲突');
+    assert.match(pending.event.instruction, /拉取 目标分支 的最新提交/);
+  });
+
+  it('never treats auto-merge alone, unknown status or a finished PR as a request to fix conflicts', () => {
+    const w = new PrWatcher();
+    assert.equal(w.observe(snap(conflicting), { autoMerge: true }).pending, null);
+    for (const p of [
+      { state: 'merged' },
+      { state: 'closed' },
+      { head: undefined },
+      { mergeable: 'unknown' as const },
+    ]) {
+      assert.equal(w.observe(snap({ ...conflicting, ...p }), withMerge).pending, null);
+    }
+  });
+
+  it('handles simultaneous failures and fresh comments in the conflict turn', () => {
+    const w = new PrWatcher();
+    w.observe(snap(), withMerge);
+    const both = snap({ ...conflicting, ...failing }, [note('c1')]);
+    const r = w.observe(both, withMerge).pending;
+    assert.equal(r?.event.kind, 'conflict');
+    assert.deepEqual(r.mark, { conflict: '4:abc', fix: '4:abc' });
+    assert.deepEqual(r.event.failed, [{ name: 'build (ubuntu)', url: 'https://example.com/log' }]);
+    assert.deepEqual(r.event.notes, both.notes);
+    w.accept(r);
+    assert.equal(w.observe(both, { ...withMerge, done: r.mark }).pending, null);
+  });
+
+  it('does not let an earlier repair suppress a different problem on the same head', () => {
+    const both = snap({ ...conflicting, ...failing });
+    const w = new PrWatcher();
+    assert.equal(w.observe(both, { ...auto, done: { fix: '4:abc' } }).pending?.event.kind, 'conflict');
+    assert.equal(w.observe(both, { ...auto, done: { conflict: '4:abc' } }).pending?.event.kind, 'ci-fail');
   });
 });
 

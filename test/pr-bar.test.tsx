@@ -60,7 +60,7 @@ it('exposes the pre-armed CI switch before a PR or diff exists', async () => {
   invoke.mockResolvedValue({ ...s.meta, autoFixCi: false });
   render(bar(s));
   fireEvent.click(screen.getByRole('button', { name: 'CI' }));
-  const toggle = await screen.findByRole('checkbox', { name: 'Auto-fix CI & address comments' });
+  const toggle = await screen.findByRole('checkbox', { name: 'Auto-fix CI, resolve conflicts & address comments' });
   expect(toggle.getAttribute('aria-checked')).toBe('true');
   expect(screen.getByRole('checkbox', { name: 'Auto-merge when ready' }).getAttribute('aria-checked')).toBe('false');
   fireEvent.click(toggle);

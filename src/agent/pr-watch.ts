@@ -92,21 +92,41 @@ export class PrWatcher {
     if (pr.state !== 'open') return null;
     const w = forgeWords(pr.forge);
     const fix = cfg.autoFixCi ? prFixKey(pr) : null;
-    if (fix && cfg.done?.fix !== fix) {
-      const failed = (pr.checks ?? []).filter((c) => c.st === 'fail').map((c) => ({ name: c.n, url: c.url }));
-      // The fix turn handles open comments too, so carry them along instead of raising a second turn.
-      const withNotes = fresh.length ? ` · ${tr('ag.prNewComments', { n: fresh.length })}` : '';
+    const conflict = cfg.autoFixCi && pr.mergeable === 'conflicting' ? prHeadKey(pr) : null;
+    // CI and conflicts can appear separately on the same head, or together in one look.
+    const mark: PrAutoDone = {};
+    if (conflict && cfg.done?.conflict !== conflict) mark.conflict = conflict;
+    if (fix && cfg.done?.fix !== fix) mark.fix = fix;
+    if (mark.conflict || mark.fix) {
+      const summary: string[] = [];
+      const instructions: string[] = [];
+      if (mark.conflict) {
+        const base = pr.base ?? tr('gitact.targetFallback');
+        summary.push(tr('ag.prConflictWith', { base }));
+        instructions.push(tr('ag.prResolveConflicts', { base }));
+      }
+      const failed = mark.fix ? pr.checks.filter((c) => c.st === 'fail').map((c) => ({ name: c.n, url: c.url })) : [];
+      if (mark.fix) {
+        summary.push(
+          failed.length
+            ? tr('ag.prFailedNamed', { names: failed.map((f) => f.name).join(tr('ag.prNamesSep')) })
+            : tr('ag.prCiFailed'),
+        );
+        instructions.push(tr('ag.prFixCi', { checks: w.checks(pr.num) }));
+      }
+      if (fresh.length) summary.push(tr('ag.prNewComments', { n: fresh.length }));
+      instructions.push(tr('ag.prFinishFix', { noun: w.noun, num: pr.num }));
       return {
-        mark: { fix },
+        mark,
         event: {
-          kind: 'ci-fail',
+          kind: mark.conflict ? 'conflict' : 'ci-fail',
           num: pr.num,
           url: pr.url,
           head: pr.head,
-          summary: `${failed.length ? tr('ag.prFailedNamed', { names: failed.map((f) => f.name).join(tr('ag.prNamesSep')) }) : tr('ag.prCiFailed')}${withNotes}`,
-          failed,
+          summary: summary.join(' · '),
+          ...(failed.length ? { failed } : {}),
           ...(fresh.length ? { notes: fresh } : {}),
-          instruction: tr('ag.prFixCi', { checks: w.checks(pr.num), noun: w.noun, num: pr.num }),
+          instruction: instructions.join('\n'),
         },
       };
     }

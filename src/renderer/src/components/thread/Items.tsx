@@ -472,6 +472,7 @@ export const PrEventItem = memo(function PrEventItem({ sid, item }: { sid: strin
   const { event } = item;
   const look = {
     'ci-fail': { Icon: CircleAlertIcon, tone: 'text-destructive', label: t('prevent.ciFail') },
+    conflict: { Icon: GitMergeIcon, tone: 'text-warning', label: t('pr.conflicts') },
     notes: { Icon: MessagesSquareIcon, tone: 'text-info', label: t('prevent.notes') },
     merge: { Icon: GitMergeIcon, tone: 'text-success', label: t('prevent.merge') },
   }[event.kind];

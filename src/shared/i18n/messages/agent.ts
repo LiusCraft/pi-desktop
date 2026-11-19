@@ -3,12 +3,12 @@ import { defineMessages } from '../define';
 /** Texts the agent host writes: errors shown in toasts and forms, and the prompts it sends the model on the user's behalf. */
 export const agent = defineMessages({
   'ag.ciWatchOn': {
-    en: 'CI and review handling enabled for this session. Merge settings unchanged.',
-    zh: '已开启当前会话的 CI 修复和评审处理，合并设置未变。',
+    en: 'This session will handle CI failures, merge conflicts and review comments. Auto-merge is unchanged.',
+    zh: '当前会话将自动处理 CI 失败、合并冲突和评审意见。自动合并设置未变。',
   },
   'ag.ciWatchOff': {
-    en: 'CI and review handling disabled for this session.',
-    zh: '已关闭当前会话的 CI 修复和评审处理。',
+    en: 'This session will no longer handle CI failures, merge conflicts or review comments automatically.',
+    zh: '当前会话不再自动处理 CI 失败、合并冲突或评审意见。',
   },
   'ag.goalDescription': {
     en: 'Work toward a goal · /goal [objective | pause | resume | clear]',
@@ -217,9 +217,18 @@ export const agent = defineMessages({
   'ag.prCiFailed': { en: 'CI failed', zh: 'CI 失败' },
   'ag.prNewComments': { en: '{n} new comments', zh: '{n} 条新评论' },
   'ag.prNamesSep': { en: ', ', zh: '、' },
+  'ag.prConflictWith': { en: 'Conflicts with {base}', zh: '与 {base} 存在合并冲突' },
+  'ag.prResolveConflicts': {
+    en: 'Fetch the latest version of {base}, merge it into the current branch and resolve the conflicts. Do not merge the request into its target branch.',
+    zh: '拉取 {base} 的最新提交，将其合并进当前分支并解决冲突。不要把当前分支合入目标分支。',
+  },
   'ag.prFixCi': {
-    en: 'Use {checks} to read why it failed, fix the code, then commit and push to the current branch; also handle the unresolved review comments on {noun} #{num}. Finish after pushing: the PR watcher keeps watching and starts a new turn if CI still fails.',
-    zh: '用 {checks} 读出失败原因，修好代码后提交并推送到当前分支；{noun} #{num} 上未解决的评审意见也一并处理。推送后就结束这一轮：PR 监听会继续盯着，检查再失败时会自动起新的一轮。',
+    en: 'Use {checks} to read the failure logs and fix the failing checks.',
+    zh: '用 {checks} 查看失败日志并修复失败的检查。',
+  },
+  'ag.prFinishFix': {
+    en: 'Also address unresolved review comments on {noun} #{num}. Run the relevant tests, then commit and push to the current branch. End the turn after pushing; the PR watcher will follow up.',
+    zh: '一并处理 {noun} #{num} 上未解决的评审意见。运行相关测试，通过后提交并推送到当前分支。推送后结束本轮，由 PR 监听继续跟进。',
   },
   'ag.prNotes': {
     en: 'Use {comments} to read each comment (inline comments: {inline}), fix them, commit and push to the current branch, reply to each resolved comment, then tell me which ones still need a human.',

@@ -112,7 +112,7 @@ export interface KitHost {
   review?(command: string, cwd: string, signal?: AbortSignal): Promise<CommandVerdict | null>;
   /** True while a PR watcher turn is running; its git/gh commands were enabled by the PR bar. */
   prAutomation?: () => boolean;
-  /** Code session only. Changes the CI/review switch, never the independent merge permission. */
+  /** Code session only. Changes PR repair automation, never the independent merge permission. */
   setCiWatch?(enabled: boolean): void;
   /** How the model's shell commands keep their folder; read for every command (see `SHELL_SESSION_MODES`). */
   shellSession?: () => ShellSessionMode;
@@ -603,7 +603,7 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
         name: 'pidesk_set_ci_watch',
         label: 'Set CI automation',
         description:
-          'Set the PR bar’s auto-fix CI and review comments switch for this Code session, even before its PR exists. Use when the user requests ongoing CI or review handling. Do not poll CI or enable auto-merge.',
+          'Set the PR bar’s automatic handling of CI failures, merge conflicts and review comments for this Code session, even before its PR exists. Use when the user requests ongoing handling. Do not poll CI or enable auto-merge.',
         parameters: Type.Object({ enabled: Type.Boolean() }),
         async execute(_id, { enabled }) {
           setCiWatch(enabled);
