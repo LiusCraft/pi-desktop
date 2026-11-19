@@ -68,6 +68,18 @@ const SUBAGENT_MARK = '只读、小范围探索';
 
 const scenarios: Scenario[] = [
   {
+    match: (p) => /交给新会话|hand off to a new session/i.test(p),
+    steps: [
+      () => [
+        call('pidesk_create_session', {
+          title: '检查日期显示',
+          prompt: '检查 src/utils/date.js 的日期格式化逻辑，说明月份是否正确。',
+        }),
+      ],
+      () => [text('已把日期显示问题交给新会话。')],
+    ],
+  },
+  {
     match: (p) => /建议任务|suggest/i.test(p),
     steps: [
       () => [

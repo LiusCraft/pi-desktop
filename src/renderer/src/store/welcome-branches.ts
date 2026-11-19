@@ -1,6 +1,8 @@
 // Git is external state: show the last read for this project and revalidate on each welcome visit.
 import { create } from 'zustand';
 import { call } from '@/lib/api';
+import type { WorkspaceDefaults } from '@shared/protocol';
+import { getApp } from './app';
 
 interface BranchInfo {
   current: string | null;
@@ -12,6 +14,23 @@ interface BranchInfo {
 // Absent = first read pending; null = read failed (not the same as a non-Git folder).
 export const useWelcomeBranches = create<Record<string, BranchInfo | null>>(() => ({}));
 const pending = new Map<string, Promise<void>>();
+
+export function workspaceDefaults(projects: string[]): WorkspaceDefaults {
+  const { prefs, adopt } = getApp();
+  const branches = useWelcomeBranches.getState();
+  return {
+    worktree: prefs.worktree,
+    projects: Object.fromEntries(
+      projects.map((project) => [
+        project,
+        {
+          baseRef: branches[project]?.selected ?? branches[project]?.defaultRef ?? undefined,
+          adoptPath: adopt?.mainRoot === project ? adopt.path : undefined,
+        },
+      ]),
+    ),
+  };
+}
 
 export function chooseBase(project: string, selected: string | null) {
   const info = useWelcomeBranches.getState()[project];

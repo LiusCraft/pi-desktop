@@ -230,13 +230,19 @@ describe('suggested tasks', { timeout: 120_000 }, () => {
   it('starts a task in a new session of the same project and records the choice', async () => {
     const project = makeProject('spawn');
     const from = await code(project, { worktree: false });
-    const child = await hub.spawn(from.id, { title: 'Tidy the date helper', prompt: '你好' }, 'call-1:0');
+    run(project, 'branch', 'release');
+    const child = await hub.spawn(from.id, { title: 'Tidy the date helper', prompt: '你好' }, 'call-1:0', {
+      worktree: true,
+      projects: { [project]: { baseRef: 'release' } },
+    });
     expect(child).toMatchObject({
       kind: 'code',
       projectPath: project,
       parentId: from.id,
       title: 'Tidy the date helper',
       titleLocked: true,
+      worktree: true,
+      baseBranch: 'release',
     });
     expect(hub.meta(from.id).suggestions?.['call-1:0']).toEqual({ state: 'started', sessionId: child.id });
     await waitSettled(child.id);
@@ -255,6 +261,24 @@ describe('suggested tasks', { timeout: 120_000 }, () => {
     const from = await code(project, { worktree: false, mode: 'bypass' });
     const child = await hub.spawn(from.id, { title: 'x', prompt: 'hi' });
     expect(child.mode).toBe('auto');
+  });
+
+  it('launches from an explicit request, using the submitting window’s checkout preference', async () => {
+    const project = makeProject('direct-handoff');
+    const from = await code(project, { worktree: true });
+    await hub.prompt(from.id, { text: '交给新会话', attachments: [] }, 'steer', 'user', {
+      worktree: false,
+      projects: {},
+    });
+    await waitSettled(from.id);
+    const launch = events.filter((e) => e.type === 'session_launch' && e.sessionId === from.id);
+    expect(launch).toMatchObject([
+      { phase: 'starting', kind: 'code' },
+      { phase: 'created', meta: { parentId: from.id, worktree: false, cwd: project } },
+    ]);
+    const child = hub.list().find((m) => m.parentId === from.id)!;
+    await waitSettled(child.id);
+    expect((await hub.open(child.id)).messages.filter((m) => m.role === 'user')).toHaveLength(1);
   });
 
   it('remembers what the user did with a suggestion', async () => {

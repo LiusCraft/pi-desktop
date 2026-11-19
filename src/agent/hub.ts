@@ -67,6 +67,7 @@ import type {
   Settings,
   SideChat,
   SpawnTask,
+  WorkspaceDefaults,
   SubagentProgress,
   WorkIdea,
   WorkIdeasModelMode,
@@ -89,6 +90,7 @@ import {
 } from '@shared/protocol';
 import { decodeCommandMessage, encodeUserCommandMessage, isCommandMessage } from '@shared/command-message';
 import { expandUserCommand } from './prompt-template';
+import { sessionWorkspace } from '@shared/session-workspace';
 import {
   decodePeerMessage,
   encodePeerMessage,
@@ -266,6 +268,8 @@ interface Live {
   id: string;
   runtime: AgentSessionRuntime;
   kit: KitState;
+  /** New Session choices from the window asking for the handoff, not the parent's own checkout. */
+  workspaceDefaults?: WorkspaceDefaults;
   pending: Map<string, PendingUi>;
   unsubscribe?: () => void;
   status: 'idle' | 'running';
@@ -707,6 +711,8 @@ export class SessionHub {
     }
     this.metas.unshift(meta);
     this.save();
+    // Child sessions may start without a renderer RPC. Publish them before their first setup event.
+    if (opts.parentId) this.emitMeta(meta);
     // Warm up in the background so the agent is ready by the time the first message is sent.
     void this.ensure(id).catch(() => {});
     return meta;
@@ -955,6 +961,7 @@ export class SessionHub {
         this.emit({ type: 'session_outputs', sessionId: live.id, files });
       },
       rename: (title) => void this.update(live.id, { title }),
+      createSession: (task) => this.launchChild(live.id, task, live.workspaceDefaults),
       peers: {
         list: (scope, query) => this.peerList(live.id, scope, query),
         read: (id, limit) => this.peerRead(live.id, id, limit),
@@ -1691,6 +1698,7 @@ export class SessionHub {
     payload: unknown,
     behavior: StreamingBehavior,
     origin: 'user' | 'pr' = 'user',
+    defaults?: WorkspaceDefaults,
   ): Promise<{ disposition: string }> {
     const live = await this.ensure(id);
     // The ghost text predicted the previous turn; a real message makes it stale.
@@ -1726,6 +1734,7 @@ export class SessionHub {
         'The selected model does not support image attachments. Choose an image-capable model or remove the images.',
       );
     }
+    if (defaults) live.workspaceDefaults = defaults;
     const busy = session.isStreaming || live.status === 'running';
     // A long gap means the prompt cache is gone: rebuild the context before this message instead of
     // re-sending the whole history at full price. Skipped while a turn runs and for injected messages.
@@ -2296,8 +2305,27 @@ export class SessionHub {
     return result;
   }
 
-  /** Start a suggested task in a new session beside this one, and send it the task. */
-  async spawn(fromId: string, task: SpawnTask, key?: string): Promise<SessionMeta> {
+  /** Explicit agent handoff: open the preview before even resolving/fetching the Git base. */
+  private async launchChild(fromId: string, task: SpawnTask, defaults?: WorkspaceDefaults) {
+    const launch = { type: 'session_launch', sessionId: fromId, launchId: crypto.randomUUID() } as const;
+    this.emit({
+      ...launch,
+      phase: 'starting',
+      kind: task.codeFolder ? 'code' : this.meta(fromId).kind,
+      prompt: task.prompt,
+    });
+    try {
+      const meta = await this.spawn(fromId, task, undefined, defaults);
+      this.emit({ ...launch, phase: 'created', meta });
+      return meta;
+    } catch (err) {
+      this.emit({ ...launch, phase: 'failed', error: err instanceof Error ? err.message : String(err) });
+      throw err;
+    }
+  }
+
+  /** Both handoff paths create one child and dispatch its first prompt here, never in the view. */
+  async spawn(fromId: string, task: SpawnTask, key?: string, defaults?: WorkspaceDefaults): Promise<SessionMeta> {
     const from = this.meta(fromId);
     const prompt = task.prompt.trim();
     if (!prompt) throw new Error('The task has no instructions');
@@ -2315,11 +2343,15 @@ export class SessionHub {
     ) {
       throw new Error(`${codeFolder} is not a Code folder of this project`);
     }
+    const kind = codeFolder ? 'code' : from.kind;
+    const projectPath = codeFolder ?? (kind === 'work' ? from.cwd : from.projectPath);
+    if ((kind === 'work' && (task.worktree !== undefined || task.baseRef)) || (task.worktree === false && task.baseRef))
+      throw new Error(tr('ag.taskWorkspaceConflict'));
+    if (task.baseRef?.startsWith('-')) throw new Error(tr('ag.invalidBaseRef'));
     const meta = await this.create({
-      kind: codeFolder ? 'code' : from.kind,
-      projectPath: codeFolder ?? (from.kind === 'work' ? from.cwd : from.projectPath),
-      // Coding work assigned from Work gets its own worktree, so it never touches the folder's checkout.
-      worktree: codeFolder ? true : from.kind === 'code' ? from.worktree : false,
+      kind,
+      projectPath,
+      ...(kind === 'code' && sessionWorkspace(projectPath, defaults, task)),
       title: task.title.trim().slice(0, 80) || 'New session',
       model: from.model,
       thinking: from.thinking,
@@ -2333,7 +2365,6 @@ export class SessionHub {
       this.save();
       this.emitMeta(from);
     }
-    this.emitMeta(meta);
     void this.prompt(
       meta.id,
       { text: encodeTaskMessage(task.title, prompt), attachments: [], clientId: crypto.randomUUID() },

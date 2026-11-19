@@ -207,7 +207,8 @@ Renderer (src/renderer)            Main (src/main)                  Agent host (
 - **归档 / 删除**（侧边栏会话右侧的「…」、顶栏菜单、More → Archived sessions）：归档只关闭 Agent，对话和 worktree 原样保留，可随时恢复；删除会清掉对话文件和 Pi Desktop 自己创建的 worktree（有未提交改动或未推送提交时先在确认框里说明；有只存在于该分支的提交时分支会保留）。用户自己建的 worktree、从 pi CLI 导入的会话文件永远不会被删。
 - **移除项目**（项目标题右侧「…」）：只是不再出现在 Pi Desktop 里，文件夹不动，它的会话被归档，可以在 Archived sessions 里找回。
 - **打开的文件夹本身是另一个项目的 worktree**：添加项目时会问“作为主仓库项目下的新会话”还是“独立项目”。前者直接在这个 worktree 里工作（不再新建 worktree，Diff 以它离开主分支的位置为基线），需要时一并添加主仓库为项目。
-- **建议任务**：Agent 发现当前任务之外的事时调用 `pidesk_suggest_task`，对话里出现卡片：**Start** 在同一项目里新开一个会话（侧边栏里挂在当前会话下面，你留在原处）、**Do it here** 作为一条消息发给当前会话、忽略；多条时有 **Start all**。选择会记在会话里，重开后不会再点一次。
+- **交给新会话**：可以直接说「把刚讨论的 CI 问题交给新会话，从 `origin/main` 开新 worktree」。Agent 用 `pidesk_create_session` 把相关讨论整理为新会话的首条任务，不复制聊天记录或未提交改动。默认沿用 New Session 页对目标项目的工作树和基准分支选择，不继承父会话的分支。
+- **建议任务**：Agent 发现额外工作时用 `pidesk_suggest_task` 提议，不会自行启动。**Start** 立即打开新会话的启动页，**Do it here** 发给当前会话，也可以忽略。**Start all** 打开第一条，其余在后台启动。子会话挂在来源会话下面，选择会记在卡片上。
 - **会话之间通信**：同一项目的会话可以互相 `pidesk_list_sessions` / `pidesk_read_session` / `pidesk_send_message`。消息以带发送者标记的用户消息送达，接收方显示为“来自会话 …”卡片，可点回发送方；对方正忙时排队到当前一轮结束后；已归档会话收不到；同一对会话 10 分钟内最多 8 条，防止互相回复停不下来。发送受权限模式约束（plan 模式拒绝，default 模式会先问）。
 
 ### 会话命名

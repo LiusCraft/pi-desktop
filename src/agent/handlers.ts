@@ -30,8 +30,8 @@ export function sessionHandlers(
     'sessions:open': withHub((h, id) => h.open(id)),
     'sessions:state': withHub((h, id) => h.sessionState(id)),
     // Only this call is the user typing; tasks, peers and PR events reach `hub.prompt` directly.
-    'sessions:prompt': withHub(async (h, id, payload, behavior) => {
-      const result = await h.prompt(id, payload, behavior);
+    'sessions:prompt': withHub(async (h, id, payload, behavior, defaults) => {
+      const result = await h.prompt(id, payload, behavior, 'user', defaults);
       const m = h.meta(id);
       h.activity.recordPrompt(m.kind, id, m.scratch ? TEMPORARY_WORKSPACE : m.projectPath);
       // The activity page counts prompts: a new one changes what it shows.
@@ -47,7 +47,7 @@ export function sessionHandlers(
     'sessions:unarchive': withHub((h, id) => h.unarchive(id)),
     'sessions:inspect': withHub((h, id) => h.inspect(id)),
     'sessions:remove': withHub((h, id) => h.remove(id)),
-    'sessions:spawn': withHub((h, fromId, task, key) => h.spawn(fromId, task, key)),
+    'sessions:spawn': withHub((h, fromId, task, key, defaults) => h.spawn(fromId, task, key, defaults)),
     'sessions:abort': withHub((h, id) => h.abort(id)),
     'sessions:clearQueue': withHub((h, id) => h.clearQueue(id)),
     'sessions:newContext': withHub((h, id) => h.newContext(id)),

@@ -91,8 +91,8 @@ export interface AppState {
   /** Which side of the app is showing. */
   view: SessionKind;
   current: string | null;
-  /** The welcome draft being shown as a conversation before the host assigns its session id. */
-  creatingDraft: string | null;
+  /** The first message, shown as a conversation before the host assigns a session id. */
+  creating: { kind: 'draft'; key: string } | { kind: 'task'; key: string; parentId: string; prompt: string } | null;
   lastByView: Record<SessionKind, string | null>;
   projects: Project[];
   workFolders: WorkProject[];
@@ -144,7 +144,7 @@ export const useApp = create<AppState>()(
     settings: boot.settings ?? {},
     view: initialView(),
     current: null,
-    creatingDraft: null,
+    creating: null,
     lastByView: { code: null, work: null },
     projects: [],
     workFolders: [],
