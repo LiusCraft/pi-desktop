@@ -673,7 +673,9 @@ describe('code sessions', { timeout: 120_000 }, () => {
     const parent = fauxProvider({ provider: 'delegate-test', models: [{ id: 'm' }] });
     const child = fauxProvider({ provider: 'planner-test', models: [{ id: 'm' }] });
     const approvalTool = 'pidesk_exit_plan_mode';
-    const report = '1. Update the date helper. 2. Verify with date tests.';
+    const question = 'Which date should the helper use?';
+    const choice = 'UTC date (Recommended)';
+    const report = '1. Update the helper to use the UTC date. 2. Verify with date tests.';
     parent.setResponses([
       fauxAssistantMessage(
         fauxToolCall('pidesk_task', {
@@ -699,7 +701,21 @@ describe('code sessions', { timeout: 120_000 }, () => {
           ? fauxAssistantMessage(fauxToolCall(approvalTool, { title: 'Date helper', plan: report }), {
               stopReason: 'toolUse',
             })
-          : fauxAssistantMessage(report);
+          : fauxAssistantMessage(
+              fauxToolCall('pidesk_ask_question', {
+                questions: [{ question, header: 'Date', options: [{ label: choice }, { label: 'Local date' }] }],
+              }),
+              { stopReason: 'toolUse' },
+            );
+      },
+      ({ messages }) => {
+        const answered = messages.some(
+          (message) =>
+            message.role === 'toolResult' &&
+            message.toolName === 'pidesk_ask_question' &&
+            message.content.some((block) => block.type === 'text' && block.text.includes(`→ "${choice}"`)),
+        );
+        return fauxAssistantMessage(answered ? report : 'No answer reached the subagent.');
       },
     ]);
     driver.hub.models.registerNativeProvider(parent.provider);
@@ -718,7 +734,10 @@ describe('code sessions', { timeout: 120_000 }, () => {
       title: 'Subagent plan',
       autoName: false,
     });
-    const result = await driver.run(id, 'Delegate the plan.');
+    const answer = vi.fn<Answer>((request) =>
+      request.kind === 'questions' ? { answers: [{ selected: [choice] }] } : { cancelled: true },
+    );
+    const result = await driver.run(id, 'Delegate the plan.', answer);
     expect(result.tools.find((tool) => tool.toolName === 'pidesk_task')?.isError).toBe(false);
     const finished = await vi.waitFor(
       () => {
@@ -734,6 +753,7 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect(childSawApprovalPrompt).toBe(false);
     expect(childTools).not.toContain(approvalTool);
     expect(childTools).toContain('pidesk_ask_question');
+    expect(answer).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ kind: 'questions', title: question }));
     expect(driver.hub.meta(id).mode).toBe('plan');
   });
 
