@@ -121,6 +121,12 @@ export const settings = defineMessages({
   },
   'settings.secondsUnit': { en: 'sec', zh: '秒' },
   'settings.autoReview.pickerLabel': { en: 'Model used to review', zh: '审查使用的模型' },
+  'settings.sessions': { en: 'Sessions', zh: '会话' },
+  'settings.sessionPeerHints': { en: 'Discover related sessions', zh: '发现相关会话' },
+  'settings.sessionPeerHints.tip': {
+    en: 'Share a few titles, descriptions and statuses with the model while it works in the same project. This does not automatically load other conversations.',
+    zh: '工作时让模型看到同项目少量会话的标题、描述和状态，不会自动读入其他会话的对话。',
+  },
   'settings.aiTools': { en: 'AI tools', zh: 'AI 工具' },
   'settings.aiTools.sub': { en: 'Let the AI operate these pages for you.', zh: '让 AI 在对话里替你操作这些页面。' },
   'settings.aiTools.tip': {

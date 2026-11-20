@@ -1286,6 +1286,15 @@ export async function setSessionTitle(id: string, title: string) {
   }
 }
 
+/** The host publishes the new metadata to every window. */
+export async function setSessionAutoUpdateMetadata(id: string, enabled: boolean) {
+  try {
+    await call('sessions:update', id, { autoUpdateMetadata: enabled });
+  } catch (err) {
+    fail(err);
+  }
+}
+
 export async function setSessionPinned(id: string, pinned: boolean) {
   try {
     const meta = await call('sessions:update', id, { pinned });

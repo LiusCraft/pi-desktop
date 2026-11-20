@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useId, useState, useSyncExternalStore } from 'react';
 import {
   ArchiveIcon,
   BoxIcon,
@@ -25,6 +25,7 @@ import {
   PinOffIcon,
   PlusIcon,
   PuzzleIcon,
+  RefreshCwIcon,
   SearchIcon,
   SettingsIcon,
   ShapesIcon,
@@ -61,6 +62,7 @@ import {
   pinSessions,
   removeProject,
   selectProject,
+  setSessionAutoUpdateMetadata,
   setSessionTitle,
   setView,
   showActivity,
@@ -269,11 +271,13 @@ const CONTEXT_PARTS: MenuParts = { Item: ContextMenuItem, Separator: ContextMenu
 function SessionActions({
   id,
   pinned,
+  autoUpdateMetadata,
   parts: { Item, Separator },
   onRename,
 }: {
   id: string;
   pinned?: boolean;
+  autoUpdateMetadata: boolean;
   parts: MenuParts;
   onRename: () => void;
 }) {
@@ -325,6 +329,10 @@ function SessionActions({
       <Item onSelect={onRename}>
         <PencilIcon />
         {t('sidebar.rename')}
+      </Item>
+      <Item onSelect={() => void setSessionAutoUpdateMetadata(id, !autoUpdateMetadata)}>
+        <RefreshCwIcon />
+        {t(autoUpdateMetadata ? 'sidebar.pauseSessionUpdates' : 'sidebar.resumeSessionUpdates')}
       </Item>
       <Item onSelect={() => void archiveSessions([id])}>
         <ArchiveIcon />
@@ -393,25 +401,31 @@ function SessionRow({
     !child,
   );
   const [renaming, setRenaming] = useState(false);
+  const descriptionId = useId();
   const picked = useSelection().has(s.meta.id);
   const relativeTime = useAgo(s.meta.updatedAt || Date.now());
   const prNote = s.pr
     ? ` · PR #${s.pr.num} ${s.pr.state === 'open' && s.pr.draft ? t('sidebar.prDraft') : PR_STATE_KEY[s.pr.state as keyof typeof PR_STATE_KEY] ? t(PR_STATE_KEY[s.pr.state as keyof typeof PR_STATE_KEY]) : s.pr.state}`
     : '';
-  const title = s.waiting
+  const status = s.waiting
     ? t('sidebar.waiting')
     : s.compacting
       ? t('status.compacting')
       : s.running
         ? t('sidebar.working')
-        : `${s.meta.title} · ${relativeTime}${prNote}`;
+        : `${relativeTime}${prNote}`;
+  // The first prompt can be both placeholders; don't show the same line twice.
+  const description = s.meta.description === s.meta.title ? undefined : s.meta.description;
+  const title = [s.meta.title, description, status].filter(Boolean).join('\n');
+  const autoUpdateMetadata = s.meta.autoUpdateMetadata !== false;
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
           {...sort.props}
           className={cn(
-            'group flex h-7 items-center gap-2 rounded-lg px-2.5 text-sm',
+            'group flex items-center gap-2 rounded-lg px-2.5 text-sm',
+            description ? 'min-h-11 py-1' : 'h-7',
             sort.line,
             child && 'ml-4',
             picked
@@ -441,6 +455,8 @@ function SessionRow({
               <button
                 className="flex min-w-0 flex-1 items-center gap-2 text-left"
                 title={title}
+                aria-label={s.meta.title}
+                aria-describedby={description ? descriptionId : undefined}
                 onClick={(e) => {
                   if (pick(e, s.meta.id, visible)) return;
                   void openSession(s.meta.id);
@@ -449,7 +465,14 @@ function SessionRow({
                 onDoubleClick={() => setRenaming(true)}
               >
                 <StatusIcon s={s} />
-                <span className={cn('truncate', s.unread && 'font-semibold')}>{s.meta.title}</span>
+                <span className="min-w-0">
+                  <span className={cn('block truncate', s.unread && 'font-semibold')}>{s.meta.title}</span>
+                  {description && (
+                    <span id={descriptionId} className="block truncate text-xs text-muted-foreground">
+                      {description}
+                    </span>
+                  )}
+                </span>
               </button>
               {tag && (
                 <span
@@ -474,10 +497,11 @@ function SessionRow({
                     <MoreHorizontalIcon className="size-4" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-44">
+                <DropdownMenuContent align="start" className="min-w-52">
                   <SessionActions
                     id={s.meta.id}
                     pinned={s.meta.pinned}
+                    autoUpdateMetadata={autoUpdateMetadata}
                     parts={DROPDOWN_PARTS}
                     onRename={() => setRenaming(true)}
                   />
@@ -499,10 +523,11 @@ function SessionRow({
           )}
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent className="w-44">
+      <ContextMenuContent className="min-w-52">
         <SessionActions
           id={s.meta.id}
           pinned={s.meta.pinned}
+          autoUpdateMetadata={autoUpdateMetadata}
           parts={CONTEXT_PARTS}
           onRename={() => setRenaming(true)}
         />

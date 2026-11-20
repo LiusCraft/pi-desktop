@@ -88,6 +88,7 @@ import {
   AUTO_REVIEW_DEFAULT_TIMEOUT,
   AUTO_REVIEW_MAX_TIMEOUT,
   AUTO_REVIEW_MIN_TIMEOUT,
+  MAX_SESSION_DESCRIPTION,
   MAX_SESSION_TITLE,
   SHELL_SESSION_MODES,
 } from '@shared/protocol';
@@ -162,6 +163,7 @@ import * as git from './git';
 import { ModelAdmin } from './model-admin';
 import { IDLE_FIRST_MS, IDLE_MS, PrWatcher, type PrPending } from './pr-watch';
 import * as naming from './naming';
+import { formatPeerHints } from './session-peers';
 import type { Scheduler } from './scheduler';
 import { pickSideModel } from './side-model';
 import { ActivityRecorder } from './activity';
@@ -277,6 +279,8 @@ interface Live {
   pending: Map<string, PendingUi>;
   unsubscribe?: () => void;
   status: 'idle' | 'running';
+  metadataTurn?: { task: string; startedAt: number; progress?: string; checkpoint?: string };
+  metadataRun?: AbortController;
   /** Bumped on dispose: prompts still preparing must not reach a new session. */
   generation: number;
   /** Exclusive session updates: history navigation or resource reload. */
@@ -1029,6 +1033,11 @@ export class SessionHub {
       createSession: (task) => this.launchChild(live.id, task, live.workspaceDefaults),
       peers: {
         list: (scope, query) => this.peerList(live.id, scope, query),
+        hints: (task) => {
+          if (!hub.storedSettings().sessionPeerHints) return undefined;
+          const { title, description } = hub.meta(live.id);
+          return formatPeerHints(`${task} ${title} ${description ?? ''}`, hub.peerList(live.id));
+        },
         read: (id, limit) => this.peerRead(live.id, id, limit),
         send: (id, text) => this.peerSend(live.id, id, text),
       },
@@ -1215,6 +1224,7 @@ export class SessionHub {
 
     if (event.type === 'agent_start') this.setStatus(live, 'running');
     if (event.type === 'agent_settled') {
+      this.finishMetadataTurn(live, m, event.aborted);
       this.setStatus(live, 'idle');
       m.updatedAt = Date.now();
       this.save();
@@ -1222,13 +1232,33 @@ export class SessionHub {
       this.emitMeta(m);
     }
     if (event.type === 'session_info_changed' && event.name && event.name !== m.title) {
-      m.title = event.name;
+      Object.assign(m, { title: event.name, autoName: false, titleLocked: true });
       this.save();
       this.emitMeta(m);
     }
-    // pi persists message_end after notifying listeners. Defer user messages so
-    // the UI receives their durable entry IDs along with the delivery event.
+    if (event.type === 'message_end' && event.message.role === 'assistant' && live.metadataTurn) {
+      const turn = live.metadataTurn;
+      const { stopReason, content } = event.message;
+      if (stopReason === 'error' || stopReason === 'aborted') turn.progress = undefined;
+      else {
+        const progress = naming.progressText(prediction.contentText(content));
+        if (progress) {
+          turn.progress = progress;
+          if (
+            stopReason === 'toolUse' &&
+            !turn.checkpoint &&
+            Date.now() - turn.startedAt >= naming.CHECKPOINT_AFTER_MS
+          ) {
+            turn.checkpoint = progress;
+            this.refreshMetadata(live, m, turn.task, progress);
+          }
+        }
+      }
+    }
+    // Track only delivered prompts, not follow-ups still in the queue. pi persists
+    // message_end after notifying listeners; defer the UI event for its durable ID.
     if (event.type === 'message_end' && event.message.role === 'user') {
+      this.beginMetadataTurn(live, m, event.message.content);
       queueMicrotask(() => {
         if (live.disposed) return;
         const entry = live.runtime.session.sessionManager.getLeafEntry();
@@ -1711,9 +1741,12 @@ export class SessionHub {
         session.sessionManager.appendCustomEntry('pi-desktop-rewind', { entryId });
         live.outputPaths.clear();
         this.restoreOutputPaths(live);
-        this.meta(id).updatedAt = Date.now();
+        this.cancelMetadata(live);
+        const m = this.meta(id);
+        if (m.autoUpdateMetadata !== false) delete m.description;
+        m.updatedAt = Date.now();
         this.save();
-        this.emitMeta(this.meta(id));
+        this.emitMeta(m);
         return { session: await this.open(id), draft };
       }
       const original = this.meta(id);
@@ -1726,6 +1759,7 @@ export class SessionHub {
         ...original,
         id: crypto.randomUUID(),
         title: tr('ag.branchSuffix', { title: original.title }),
+        description: undefined,
         autoName: false,
         titleLocked: true,
         autoNamed: false,
@@ -1818,7 +1852,7 @@ export class SessionHub {
     const m = this.meta(id);
     m.updatedAt = Date.now();
     this.save();
-    this.maybeNameFromPrompt(id, message);
+    this.emitMeta(m);
     this.kickPrWatch(id, 1_000);
     // follow_up queues while streaming, but does not start an idle agent.
     if (busy && behavior === 'followUp' && !goal) return { disposition: await session.followUp(message, images) };
@@ -1844,85 +1878,87 @@ export class SessionHub {
     });
   }
 
-  /**
-   * First real user message: show it as the title immediately, then let a cheap
-   * side model produce a better one. Both happen at most once per session.
-   */
-  private maybeNameFromPrompt(id: string, message: string) {
-    const m = this.meta(id);
-    const text = message.trim();
-    if (
-      !m.autoName ||
-      m.titleLocked ||
-      m.nameAttempted ||
-      !text ||
-      text.startsWith('/') ||
-      isPeerMessage(text) ||
-      isPrEvent(text) ||
-      isCommandMessage(text) ||
-      isTaskMessage(text)
-    )
-      return;
-    const placeholder = naming.titleFromPrompt(text);
-    if (!placeholder) return;
-    m.nameAttempted = true;
-    this.save();
-    this.setTitle(id, placeholder);
-    void this.nameSession(id, text).catch((err) => console.warn('[naming] nameSession threw:', err));
+  // ------------------------------------------------------------ session metadata
+
+  private beginMetadataTurn(live: Live, m: SessionMeta, content: unknown) {
+    if (m.autoUpdateMetadata === false) return;
+    const task = naming.requestText(content);
+    // The SDK may deliver a queued peer message before settling the current run.
+    // Keep the session's own progress without summarizing the peer's request as its task.
+    if (!task) return this.finishMetadataTurn(live, m);
+    this.cancelMetadata(live);
+    live.metadataTurn = { task, startedAt: Date.now() };
+    if (!m.description) {
+      // Show a bounded placeholder immediately, including when the model is offline.
+      const title = m.autoName && !m.titleLocked && !m.nameAttempted ? naming.titleFromPrompt(task) : null;
+      m.nameAttempted = true;
+      this.setMetadata(live, m, naming.titleFromPrompt(task, MAX_SESSION_DESCRIPTION - 1), title);
+    }
   }
 
-  /** Names the session with the session's own model: one tool-less request, outside the conversation. */
+  private finishMetadataTurn(live: Live, m: SessionMeta, aborted = false) {
+    const turn = live.metadataTurn;
+    live.metadataTurn = undefined;
+    if (!turn) return;
+    if (aborted) this.cancelMetadata(live);
+    else if (turn.progress && turn.progress !== turn.checkpoint)
+      this.refreshMetadata(live, m, turn.task, turn.progress);
+  }
+
+  private cancelMetadata(live: Live) {
+    live.metadataRun?.abort();
+    live.metadataRun = undefined;
+  }
+
   /** A one-off model call of the app's own, recorded under `origin`. */
   private complete(origin: RequestOrigin, ...args: Parameters<ModelRuntime['completeSimple']>) {
     return withOrigin({ origin }, () => this.models.completeSimple(...args));
   }
 
-  private async nameSession(id: string, prompt: string) {
-    const m = this.meta(id);
-    if (!m.autoName || m.titleLocked || m.autoNamed) return;
-    const session = this.live.get(id)?.runtime.session;
-    const current = session?.model ? `${session.model.provider}/${session.model.id}` : m.model;
-    const model = this.findModel(current);
-    if (!model || model.provider === 'demo') return; // demo/offline: there is no real model to ask
-    const label = `${model.provider}/${model.id}`;
+  private refreshMetadata(live: Live, m: SessionMeta, task: string, progress: string) {
+    const session = live.runtime.session;
+    const model = session.model;
+    if (m.autoUpdateMetadata === false || !model || model.provider === 'demo') return;
+    this.cancelMetadata(live);
     const controller = new AbortController();
-    this.namers.add(controller);
+    live.metadataRun = controller;
     const timer = setTimeout(() => controller.abort(), naming.TIMEOUT_MS);
-    let raw = '';
-    try {
-      const reply = await this.complete(
-        REQUEST_ORIGIN.naming,
-        model,
-        {
-          systemPrompt: naming.SYSTEM_PROMPT,
-          messages: [{ role: 'user', content: prompt.slice(0, 2000), timestamp: Date.now() }],
-          // Room for a reasoning model to think before it writes the title.
-        },
-        { signal: controller.signal, maxTokens: 512, sessionId: id },
-      );
-      if (reply.stopReason === 'error' || reply.stopReason === 'aborted') {
-        console.warn(`[naming] ${label} failed: ${(reply as any).errorMessage ?? reply.stopReason}`);
-        return;
-      }
-      raw = reply.content
-        .filter((c: any) => c.type === 'text')
-        .map((c: any) => c.text)
-        .join('');
-    } finally {
-      clearTimeout(timer);
-      this.namers.delete(controller);
-    }
-    const title = naming.cleanTitle(raw);
-    if (!title) {
-      console.warn(`[naming] ${label} gave no usable title: ${JSON.stringify(raw)}`);
-      return;
-    }
-    const now = this.meta(id);
-    // A rename that landed while the model was thinking wins.
-    if (now.titleLocked || !now.autoName || now.autoNamed || now.archived) return;
-    now.autoNamed = true;
-    this.save();
-    this.setTitle(id, title);
+    const content = JSON.stringify({
+      title: m.title,
+      titleIsPlaceholder: m.autoName && !m.autoNamed,
+      description: m.description,
+      task,
+      progress,
+    });
+    void this.complete(
+      REQUEST_ORIGIN.naming,
+      model,
+      { systemPrompt: tr('ag.sessionDigestPrompt'), messages: [{ role: 'user', content, timestamp: Date.now() }] },
+      { signal: controller.signal, maxTokens: 512, sessionId: m.id },
+    )
+      .then((reply) => {
+        if (
+          controller.signal.aborted ||
+          live.disposed ||
+          live.historyBusy ||
+          session !== live.runtime.session ||
+          m.archived ||
+          m.autoUpdateMetadata === false
+        )
+          return;
+        if (reply.stopReason === 'error' || reply.stopReason === 'aborted') return;
+        const digest = naming.parseDigest(prediction.contentText(reply.content));
+        if (!digest) return;
+        // A manual rename while the model was thinking wins, but the description can still move forward.
+        const title = m.autoName && !m.titleLocked ? digest.title : null;
+        if (title) m.autoNamed = true;
+        this.setMetadata(live, m, digest.description, title);
+      })
+      .catch(() => {}) // Progress and interaction continue normally even if the side request fails.
+      .finally(() => {
+        clearTimeout(timer);
+        if (live.metadataRun === controller) live.metadataRun = undefined;
+      });
   }
 
   // ------------------------------------------------------------ work ideas
@@ -2260,13 +2296,13 @@ export class SessionHub {
     }
   }
 
-  /** Persist a title, tell pi (it records session_info) and tell the UI. */
-  private setTitle(id: string, title: string) {
-    const m = this.meta(id);
-    if (!title || m.title === title) return;
-    m.title = title;
+  private setMetadata(live: Live, m: SessionMeta, description: string, title: string | null) {
+    const renamed = !!title && m.title !== title;
+    if (!renamed && description === m.description) return;
+    m.description = description;
+    if (renamed) m.title = title;
     this.save();
-    this.live.get(id)?.runtime.session.setSessionName(title);
+    if (renamed) live.runtime.session.setSessionName(title);
     this.emitMeta(m);
   }
 
@@ -2296,6 +2332,14 @@ export class SessionHub {
   update(id: string, patch: ApiArgs<'sessions:update'>[1], source: 'user' | 'agent' = 'user') {
     const m = this.meta(id);
     if (patch.pr !== undefined) m.pr = patch.pr;
+    if (typeof patch.autoUpdateMetadata === 'boolean') {
+      m.autoUpdateMetadata = patch.autoUpdateMetadata;
+      const live = this.live.get(id);
+      if (!patch.autoUpdateMetadata && live) {
+        live.metadataTurn = undefined;
+        this.cancelMetadata(live);
+      }
+    }
     if (patch.pinned !== undefined) m.pinned = patch.pinned || undefined;
     if (patch.prAuto) {
       const a = patch.prAuto;
@@ -2464,7 +2508,7 @@ export class SessionHub {
 
   /**
    * Other open sessions, most recently active first: this session's project, or every Work and Code session
-   * with `scope` "all". A query keeps the ones whose title, folder or messages contain it.
+   * with `scope` "all". A query matches metadata first, then the latest messages.
    */
   peerList(fromId: string, scope: SessionScope = 'project', query = '') {
     const from = this.meta(fromId);
@@ -2486,7 +2530,11 @@ export class SessionHub {
     return (
       q
         ? pool.filter(
-            (m, i) => m.title.toLowerCase().includes(q) || m.projectPath.toLowerCase().includes(q) || said(m, i),
+            (m, i) =>
+              m.title.toLowerCase().includes(q) ||
+              m.description?.toLowerCase().includes(q) ||
+              m.projectPath.toLowerCase().includes(q) ||
+              said(m, i),
           )
         : pool
     )
@@ -2496,7 +2544,8 @@ export class SessionHub {
         kind: m.kind,
         project: m.projectPath,
         title: m.title,
-        status: this.live.get(m.id)?.status ?? 'idle',
+        description: m.description,
+        status: this.live.get(m.id)?.status ?? ('idle' as const),
         branch: m.branch,
         updatedAt: m.updatedAt,
       }));
@@ -2544,6 +2593,7 @@ export class SessionHub {
     const live = this.live.get(id);
     if (!live) return;
     this.abortSuggestion(id);
+    this.cancelMetadata(live);
     live.disposed = true;
     live.generation++;
     this.live.delete(id);

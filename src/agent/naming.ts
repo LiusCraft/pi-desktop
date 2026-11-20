@@ -1,15 +1,50 @@
-// Session naming: one tool-less request to the session's own model.
-//
-// The request goes straight through the shared ModelRuntime, outside any session,
-// so it never enters the conversation's context. The session shows the user's
-// first prompt as a placeholder until the generated title arrives.
-
-export const SYSTEM_PROMPT = `You name chat sessions.
-Given the user's first message, reply with ONLY a title: 2-5 words, at most 40 characters, in the same language as the message.
-No quotes, no markdown, no trailing punctuation, no explanations.`;
+// Session metadata is derived from short excerpts, not attachments, tool output or peer turns.
+import { decodeUserContent } from '@shared/attachments';
+import { decodeCommandMessage, isCommandMessage } from '@shared/command-message';
+import { decodeReferencePrompt } from '@shared/context-reference';
+import { isPeerMessage } from '@shared/peer-message';
+import { isPrEvent } from '@shared/pr-event';
+import { MAX_SESSION_DESCRIPTION } from '@shared/protocol';
+import { decodeTaskMessage } from '@shared/task-message';
 
 const MAX_TITLE = 60;
+const MAX_EXCERPT = 2_000;
 export const TIMEOUT_MS = 20_000;
+/** A longer turn can report one intermediate checkpoint before settling. */
+export const CHECKPOINT_AFTER_MS = 30_000;
+
+export function requestText(content: unknown): string {
+  const wire = decodeUserContent(content).text.trim();
+  if (!wire || wire.startsWith('/') || isPeerMessage(wire) || isPrEvent(wire)) return '';
+  const command = isCommandMessage(wire) ? decodeCommandMessage(wire) : null;
+  if (isCommandMessage(wire) && !command?.user) return '';
+  const text = decodeTaskMessage(wire)?.prompt ?? command?.prompt ?? wire;
+  const task = decodeReferencePrompt(text)?.text ?? text;
+  return titleFromPrompt(task, MAX_EXCERPT);
+}
+
+export function progressText(text: string): string {
+  return flat(text.replace(/```[\s\S]*?```/g, ' ')).slice(-MAX_EXCERPT);
+}
+
+const flat = (text: string) => text.replace(/\s+/g, ' ').trim();
+
+export function parseDigest(raw: string): { title: string | null; description: string } | null {
+  try {
+    const value = JSON.parse(
+      raw
+        .trim()
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/, ''),
+    );
+    if (typeof value?.description !== 'string') return null;
+    const description = flat(value.description);
+    if (!description || description.length > MAX_SESSION_DESCRIPTION) return null;
+    return { title: typeof value.title === 'string' ? cleanTitle(value.title) : null, description };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Placeholder shown until the model names the session: the user's own words,

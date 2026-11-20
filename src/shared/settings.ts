@@ -29,6 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
   workIdeas: true,
   workIdeasModel: 'session',
   workIdeasModelId: null,
+  sessionPeerHints: true,
   autoReview: true,
   autoReviewModel: 'session',
   autoReviewModelId: null,

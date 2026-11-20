@@ -18,6 +18,7 @@ import {
   type HostEvent,
   type PermissionMode,
   type PiEvent,
+  type Settings,
   type UiRequest,
   type UiResponse,
 } from '@shared/protocol';
@@ -26,6 +27,7 @@ import { PLAN_MODE_MARKER } from '../src/agent/desktop-kit';
 import * as git from '../src/agent/git';
 import { sessionHandlers } from '../src/agent/handlers';
 import { SessionHub } from '../src/agent/hub';
+import { Store } from '../src/agent/store';
 import { setActiveLocale } from '../src/shared/i18n/runtime';
 
 // These assertions read the host's Chinese messages.
@@ -140,6 +142,8 @@ describe('code sessions', { timeout: 120_000 }, () => {
       mode: 'auto',
     });
     expect(meta.cwd).not.toBe(repo);
+    // Background summaries use the same model and could consume the next scripted tool call.
+    driver.hub.update(meta.id, { autoUpdateMetadata: false });
     const save = async (note: string) => {
       faux.setResponses([
         fauxAssistantMessage(fauxToolCall('pidesk_remember', { note }), { stopReason: 'toolUse' }),
@@ -1092,6 +1096,187 @@ describe('code sessions', { timeout: 120_000 }, () => {
     // A pasted-in paragraph is cut, not stored whole.
     driver.hub.update(meta.id, { title: 'x'.repeat(MAX_SESSION_TITLE + 20) });
     expect(driver.hub.meta(meta.id).title).toHaveLength(MAX_SESSION_TITLE);
+  });
+
+  it('updates session metadata across turns without overwriting a manual title or a paused summary', async () => {
+    const projectPath = makeProject('progress-metadata');
+    const faux = fauxProvider({ provider: 'progress-metadata', models: [{ id: 'm' }] });
+    driver.hub.models.registerNativeProvider(faux.provider);
+    const { id } = await driver.hub.create({
+      kind: 'code',
+      projectPath,
+      worktree: false,
+      model: 'progress-metadata/m',
+    });
+    const complete = vi.spyOn(driver.hub.models, 'completeSimple');
+    const digest = (title: string, description: string) => fauxAssistantMessage(JSON.stringify({ title, description }));
+    const run = async (task: string, reply: string) => {
+      faux.setResponses([fauxAssistantMessage(reply)]);
+      await driver.run(id, task);
+    };
+    try {
+      complete.mockResolvedValueOnce(digest('Investigate redirects', 'Traced the login redirect to the cache key.'));
+      await run('Trace login redirects', 'The login redirect uses the old cache key.');
+      await vi.waitFor(() =>
+        expect(driver.hub.meta(id)).toMatchObject({
+          title: 'Investigate redirects',
+          description: 'Traced the login redirect to the cache key.',
+        }),
+      );
+      expect(complete.mock.lastCall?.[1].messages[0]).toMatchObject({
+        role: 'user',
+        content: expect.stringContaining('The login redirect uses the old cache key.'),
+      });
+
+      complete.mockResolvedValueOnce(digest('Replace redirects', 'Updated the login redirect and checked the tests.'));
+      await run('Replace the redirect', 'The tests pass with the new route.');
+      await vi.waitFor(() => expect(driver.hub.meta(id).title).toBe('Replace redirects'));
+
+      const pending = Promise.withResolvers<ReturnType<typeof digest>>();
+      complete.mockReturnValueOnce(pending.promise);
+      await run('Review the new route', 'Review finished.');
+      const signal = complete.mock.lastCall?.[2]?.signal;
+      expect(signal?.aborted).toBe(false);
+      driver.hub.update(id, { autoUpdateMetadata: false, title: 'Custom title' });
+      expect(signal?.aborted).toBe(true);
+      await run('Wait for approval', 'Waiting for approval.');
+      expect(complete).toHaveBeenCalledTimes(3);
+      driver.hub.update(id, { autoUpdateMetadata: true });
+      pending.resolve(digest('Stale title', 'Stale description.'));
+      await pending.promise;
+      expect(driver.hub.meta(id)).toMatchObject({
+        title: 'Custom title',
+        description: 'Updated the login redirect and checked the tests.',
+      });
+
+      complete.mockResolvedValueOnce(digest('Keep redirects', 'The redirect is approved and ready to ship.'));
+      await run('Approval received', 'The redirect can ship.');
+      const expected = { title: 'Custom title', description: 'The redirect is approved and ready to ship.' };
+      await vi.waitFor(() => expect(driver.hub.meta(id)).toMatchObject(expected));
+      expect(driver.events).toContainEqual(
+        expect.objectContaining({ type: 'meta', sessionId: id, meta: expect.objectContaining(expected) }),
+      );
+      const disk = new Store(path.join(tmp, 'data'));
+      expect(disk.get('sessions', [])).toContainEqual(expect.objectContaining({ id, ...expected }));
+      expect(driver.hub.peerRead('another-session', id)).not.toContainEqual(
+        expect.objectContaining({ text: expected.description }),
+      );
+    } finally {
+      complete.mockRestore();
+    }
+  });
+
+  it('keeps a task summary when a queued peer message arrives before the run settles', async () => {
+    const projectPath = makeProject('progress-follow-up');
+    const faux = fauxProvider({ provider: 'progress-follow-up', models: [{ id: 'm' }] });
+    driver.hub.models.registerNativeProvider(faux.provider);
+    const { id } = await driver.hub.create({
+      kind: 'code',
+      projectPath,
+      worktree: false,
+      model: 'progress-follow-up/m',
+    });
+    const peer = await driver.hub.create({ kind: 'code', projectPath, worktree: false, title: 'Reviewer' });
+    const description = 'Moved the cache key and verified the login route.';
+    const complete = vi
+      .spyOn(driver.hub.models, 'completeSimple')
+      .mockResolvedValue(fauxAssistantMessage(JSON.stringify({ title: 'Login redirects', description })));
+    let delivery: string | undefined;
+    const peerText = 'Different request from the reviewer';
+    faux.setResponses([
+      async () => {
+        delivery = await driver.hub.peerSend(peer.id, id, peerText);
+        return fauxAssistantMessage('Verified the route using the new cache key.');
+      },
+      fauxAssistantMessage('Responding to the reviewer, not changing the redirect task.'),
+    ]);
+    try {
+      await driver.run(id, 'Fix the login redirect');
+      expect(delivery).toBe('queued');
+      expect(driver.hub.peerRead(peer.id, id)).toContainEqual(
+        expect.objectContaining({ text: expect.stringContaining(peerText) }),
+      );
+      await vi.waitFor(() => expect(driver.hub.meta(id).description).toBe(description));
+      expect(driver.hub.peerList(peer.id, 'project', 'moved the cache key')).toMatchObject([{ id, description }]);
+      expect(complete).toHaveBeenCalledTimes(1);
+      const input = JSON.stringify(complete.mock.lastCall?.[1].messages);
+      expect(input).toContain('Verified the route using the new cache key.');
+      expect(input).not.toContain(peerText);
+    } finally {
+      complete.mockRestore();
+    }
+  });
+
+  it('discovers current peers between model requests without adding their transcripts to the prompt', async () => {
+    const projectPath = makeProject('discovery');
+    const demo = (dir: string) =>
+      driver.hub.create({ kind: 'code', projectPath: dir, worktree: false, model: 'demo/demo-coder' });
+    const source = await demo(projectPath);
+    const archived = await demo(projectPath);
+    const outside = await demo(makeProject('discovery-other'));
+    await driver.run(archived.id, 'Old login redirect');
+    await driver.hub.archive(archived.id);
+    await driver.run(outside.id, 'Unrelated project login redirect');
+
+    const faux = fauxProvider({ provider: 'peer-discovery', models: [{ id: 'm' }] });
+    const request = (name: string, args: Record<string, string>) =>
+      fauxAssistantMessage(fauxToolCall(name, args), { stopReason: 'toolUse' });
+    const seen: string[] = [];
+    const opaque = 'An opaque transcript-only line';
+    faux.setResponses([
+      async ({ messages }) => {
+        seen.push(JSON.stringify(messages));
+        // A starts work after B's first request; B should see it on the next request in the same turn.
+        await driver.run(source.id, 'Check the login redirect cache');
+        await driver.run(source.id, opaque);
+        return request('read', { path: 'src/utils/date.js' });
+      },
+      ({ messages }) => {
+        seen.push(JSON.stringify(messages));
+        return request('pidesk_read_session', { session_id: source.id });
+      },
+      ({ messages }) => {
+        seen.push(JSON.stringify(messages));
+        return request('pidesk_send_message', { session_id: source.id, message: 'Is the redirect cache key shared?' });
+      },
+      fauxAssistantMessage('Continue the redirect work.'),
+    ]);
+    driver.hub.models.registerNativeProvider(faux.provider);
+    const { id } = await driver.hub.create({
+      kind: 'code',
+      projectPath,
+      worktree: false,
+      model: 'peer-discovery/m',
+      mode: 'default',
+    });
+    driver.hub.update(id, { autoUpdateMetadata: false });
+    const { ui, tools } = await driver.run(id, 'Implement the login redirect', () => ({ value: 'Allow' }));
+    expect(seen[0]).not.toContain(source.id);
+    expect(seen[1]).toContain(source.id);
+    expect(seen[1]).toContain('Check the login redirect cache');
+    expect(seen[1]).not.toContain(opaque);
+    expect(seen[2]).toContain(opaque);
+    expect(seen.join('')).not.toContain(outside.id);
+    expect(seen.join('')).not.toContain(archived.id);
+    expect(ui).toContainEqual(expect.objectContaining({ kind: 'permission', title: 'Use pidesk_send_message' }));
+    expect(tools.find((e) => e.toolName === 'pidesk_send_message')).toMatchObject({ isError: false });
+    expect(JSON.stringify((await driver.hub.open(id)).messages)).not.toContain('同项目的其他近期会话');
+
+    const store = new Store(path.join(tmp, 'data'));
+    const settings = store.get<Partial<Settings>>('settings', {});
+    store.set('settings', { ...settings, sessionPeerHints: false });
+    try {
+      faux.setResponses([
+        ({ messages }) => {
+          seen.push(JSON.stringify(messages));
+          return fauxAssistantMessage('Continue without automatic peer hints.');
+        },
+      ]);
+      await driver.run(id, 'Recheck the login redirect');
+      expect(seen.at(-1)).not.toContain('同项目的其他近期会话');
+    } finally {
+      store.set('settings', settings);
+    }
   });
 
   it('skips next-message prediction when only the offline demo model exists', async () => {
