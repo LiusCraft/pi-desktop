@@ -142,6 +142,8 @@ describe('code sessions', { timeout: 120_000 }, () => {
       mode: 'auto',
     });
     expect(meta.cwd).not.toBe(repo);
+    // Background summaries use the same model and could consume the next scripted tool call.
+    driver.hub.update(meta.id, { autoUpdateMetadata: false });
     const save = async (note: string) => {
       faux.setResponses([
         fauxAssistantMessage(fauxToolCall('pidesk_remember', { note }), { stopReason: 'toolUse' }),
