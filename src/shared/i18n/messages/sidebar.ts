@@ -4,6 +4,8 @@ export const sidebar = defineMessages({
   'sidebar.show': { en: 'Show sidebar', zh: '显示侧边栏' },
   'sidebar.hide': { en: 'Hide sidebar', zh: '隐藏侧边栏' },
   'sidebar.rename': { en: 'Rename', zh: '重命名' },
+  'sidebar.pauseSessionUpdates': { en: 'Pause title & description updates', zh: '暂停自动更新标题与描述' },
+  'sidebar.resumeSessionUpdates': { en: 'Resume title & description updates', zh: '恢复自动更新标题与描述' },
   'sidebar.archive': { en: 'Archive', zh: '归档' },
   'sidebar.delete': { en: 'Delete', zh: '删除' },
   'sidebar.newSession': { en: 'New session', zh: '新会话' },

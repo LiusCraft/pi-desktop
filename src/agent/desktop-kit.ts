@@ -26,6 +26,8 @@ import {
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
 import { SEND_MESSAGE_TOOL } from '@shared/peer-message';
+import { requestText } from './naming';
+import type { PeerSession } from './session-peers';
 import { TASK_NOTIFICATION_TYPE } from '@shared/task-message';
 import { StringEnum } from './tool-schema';
 import { Type, type Static } from 'typebox';
@@ -132,18 +134,8 @@ export interface KitHost {
   createSession?(task: SpawnTask): Promise<{ id: string; title: string }>;
   /** The app's other sessions; omit it to leave out the session tools (subagents have none). */
   peers?: {
-    list(
-      scope: SessionScope,
-      query: string,
-    ): {
-      id: string;
-      kind: SessionKind;
-      project: string;
-      title: string;
-      status: string;
-      branch: string | null;
-      updatedAt: number;
-    }[];
+    list(scope: SessionScope, query: string): PeerSession[];
+    hints?(task: string): string | undefined;
     read(id: string, limit: number): { role: string; text: string }[];
     send(id: string, text: string): Promise<'delivered' | 'queued'>;
   };
@@ -1056,12 +1048,36 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
     // ---------------------------------------------------------------- other sessions of the project
     const peers = host.peers;
     if (peers) {
+      // The snapshot is rebuilt for each model request, including steps in a long turn.
+      // It is never written into history or inserted between a tool call and its result.
+      pi.on('context', ({ messages }) => {
+        const index = messages.findLastIndex((m) => m.role === 'user');
+        const message = messages[index];
+        if (!peers.hints || message?.role !== 'user') return;
+        const task = requestText(message.content);
+        if (!task) return;
+        const hints = peers.hints(task);
+        if (!hints) return;
+        return {
+          messages: [
+            ...messages.slice(0, index),
+            {
+              role: 'custom',
+              customType: 'pi-desktop-peer-hints',
+              display: false,
+              content: hints,
+              timestamp: message.timestamp,
+            },
+            ...messages.slice(index),
+          ],
+        };
+      });
       pi.registerTool({
         name: 'pidesk_list_sessions',
         label: 'Sessions',
         description:
-          "List the user's other Pi Desktop sessions (id, Work or Code, project folder, title, status, branch, last activity), most recent first. " +
-          'By default only this project; scope "all" covers every Work and Code session. `query` keeps sessions whose title, folder or messages contain the text. ' +
+          "List the user's other Pi Desktop sessions (id, Work or Code, project folder, title, description, status, branch, last activity), most recent first. " +
+          'By default only this project; scope "all" covers every Work and Code session. `query` matches titles, descriptions, folders or messages. ' +
           'Use it to find a session to read or message, or to answer what the user did or discussed in the app.',
         promptSnippet: "Find the user's Work and Code sessions in this app",
         promptGuidelines: [
@@ -1073,7 +1089,9 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
               description: '"project" (default): this project only. "all": every Work and Code session.',
             }),
           ),
-          query: Type.Optional(Type.String({ description: 'Text to look for in titles, folders and messages' })),
+          query: Type.Optional(
+            Type.String({ description: 'Text to look for in titles, descriptions, folders and messages' }),
+          ),
         }),
         annotations: { readOnlyHint: true },
         async execute(_id, params) {
@@ -1083,7 +1101,7 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
             ? list
                 .map(
                   (s) =>
-                    `- ${s.id} · ${s.kind} · ${s.project} · ${s.title} · ${s.status}${s.branch ? ` · ${s.branch}` : ''} · active ${new Date(s.updatedAt).toISOString()}`,
+                    `- ${s.id} · ${s.kind} · ${s.project} · ${s.title} · ${s.status}${s.branch ? ` · ${s.branch}` : ''} · active ${new Date(s.updatedAt).toISOString()}${s.description ? `\n  ${s.description}` : ''}`,
                 )
                 .join('\n')
             : params.query

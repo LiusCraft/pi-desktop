@@ -101,6 +101,7 @@ const SECTIONS: { id: Section; label: MessageKey | null; icon: ReactNode; groups
     icon: <SettingsIcon className="size-4" />,
     groups: [
       { id: 'basics', label: 'settings.basics' },
+      { id: 'sessions', label: 'settings.sessions' },
       { id: 'aiTools', label: 'settings.aiTools' },
       { id: 'autoReview', label: 'settings.autoReview' },
       { id: 'replyRendering', label: 'settings.replyRendering' },
@@ -640,6 +641,18 @@ export function SettingsApp() {
                     { id: 'command', label: t('settings.shellSession.each') },
                   ]}
                   onChange={(m) => void patch({ shellSession: m })}
+                />
+              </Row>
+            </Panel>
+          </Group>
+
+          <Group id="sessions" title={t('settings.sessions')}>
+            <Panel>
+              <Row title={t('settings.sessionPeerHints')} tip={t('settings.sessionPeerHints.tip')}>
+                <Switch
+                  aria-label={t('settings.sessionPeerHints')}
+                  checked={settings.sessionPeerHints !== false}
+                  onCheckedChange={(v) => void patch({ sessionPeerHints: v })}
                 />
               </Row>
             </Panel>

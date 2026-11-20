@@ -109,12 +109,17 @@ export interface PrAutoDone {
 
 /** Longest session title kept: the rename tool and the inline editor cut at this, and the host enforces it. */
 export const MAX_SESSION_TITLE = 80;
+export const MAX_SESSION_DESCRIPTION = 240;
 
 export interface SessionMeta {
   id: string;
   kind: SessionKind;
   title: string;
-  /** The title is a placeholder until the model names the session. */
+  /** A short summary of the task and its latest progress, absent before there is work to describe. */
+  description?: string;
+  /** Pausing automatic updates keeps both fields as they are. On unless explicitly paused. */
+  autoUpdateMetadata?: boolean;
+  /** The title may be updated automatically. */
   autoName: boolean;
   /** The user renamed the session: never auto-name it again. */
   titleLocked: boolean;
@@ -1099,6 +1104,8 @@ export interface Settings {
   workIdeasModel: WorkIdeasModelMode;
   /** provider/model id used by `workIdeasModel: 'fixed'`; unavailable ids fall back to auto. */
   workIdeasModelId: string | null;
+  /** Give working sessions request-time hints about other sessions in the same project. */
+  sessionPeerHints: boolean;
   /** Auto mode: a model reviews each command that no rule settles before it runs; off runs such commands unreviewed. */
   autoReview: boolean;
   /** session: the session's own model; auto: cheapest model of its provider; fixed: `autoReviewModelId`. */
@@ -1327,6 +1334,7 @@ export interface Api {
     id: string,
     patch: {
       title?: string;
+      autoUpdateMetadata?: boolean;
       pinned?: boolean;
       pr?: PrSummary | null;
       suggestion?: { key: string; state: 'here' | 'dismissed' };
