@@ -12,6 +12,7 @@ import type {
   GitDiffBase,
   GitState,
   PrStatus,
+  PrBinding,
   PrThread,
   WorktreeInfo,
 } from '@shared/protocol';
@@ -42,6 +43,7 @@ function run(
   });
 }
 export const git = (cwd: string, ...args: string[]) => run('git', args, cwd);
+export const gh = (cwd: string, args: string[]) => run('gh', args, cwd, { env: { GH_PROMPT_DISABLED: '1' } });
 const gitSafe = (cwd: string, ...args: string[]) => run('git', args, cwd, { allowFail: true });
 
 /** How long a repository's remotes are trusted before the next background fetch. */
@@ -549,8 +551,8 @@ function viewer(forge: Forge, cwd: string): Promise<string | null> {
 }
 
 /** PR (or GitLab merge request) state for the current branch via gh / glab; null when the CLI or the PR is unavailable. */
-export async function prStatus(cwd: string): Promise<PrStatus | null> {
-  return (await readPr(cwd))?.status ?? null;
+export async function prStatus(cwd: string, binding?: PrBinding): Promise<PrStatus | null> {
+  return (await readPr(cwd, binding))?.status ?? null;
 }
 
 /** Which CLI talks to this repo's PR: the remote's name says, else whichever finds a PR for the branch. */
@@ -563,20 +565,34 @@ async function prForge(cwd: string): Promise<Forge> {
 const byPlace = (a: PrThread, b: PrThread) => a.path.localeCompare(b.path) || (a.line ?? 0) - (b.line ?? 0);
 
 /** Inline review comments of the branch's PR, grouped into threads in diff order; empty when gh/glab or a PR is unavailable. */
-export async function prThreads(cwd: string): Promise<PrThread[]> {
-  return (await prForge(cwd)) === 'gitlab' ? gitlabThreads(cwd) : githubThreads(cwd);
+export async function prThreads(cwd: string, binding?: PrBinding): Promise<PrThread[]> {
+  return !binding && (await prForge(cwd)) === 'gitlab' ? gitlabThreads(cwd) : githubThreads(cwd, binding);
 }
 
-async function githubThreads(cwd: string): Promise<PrThread[]> {
-  const num = (await run('gh', ['pr', 'view', '--json', 'number', '-q', '.number'], cwd, { allowFail: true }))?.trim();
+async function githubThreads(cwd: string, binding?: PrBinding): Promise<PrThread[]> {
+  const num = binding
+    ? String(binding.num)
+    : (await run('gh', ['pr', 'view', '--json', 'number', '-q', '.number'], cwd, { allowFail: true }))?.trim();
   if (!num || !/^\d+$/.test(num)) return [];
   const pick =
     '.[] | {id, reply: .in_reply_to_id, path, line, original_line, side, outdated: (.line == null), author: .user.login, body, url: .html_url, at: .created_at}';
   const [out, states] = await Promise.all([
-    run('gh', ['api', `repos/{owner}/{repo}/pulls/${num}/comments`, '--paginate', '--jq', pick], cwd, {
-      allowFail: true,
-    }),
-    githubThreadStates(cwd, num),
+    run(
+      'gh',
+      [
+        'api',
+        ...apiHost(binding),
+        `repos/${binding?.baseRepo ?? '{owner}/{repo}'}/pulls/${num}/comments`,
+        '--paginate',
+        '--jq',
+        pick,
+      ],
+      cwd,
+      {
+        allowFail: true,
+      },
+    ),
+    githubThreadStates(cwd, num, binding),
   ]);
   const threads = groupThreads(jsonLines(out));
   for (const t of threads) t.resolved = states.get(t.id)?.resolved ?? false;
@@ -597,18 +613,23 @@ const THREAD_STATES =
   'query($owner:String!,$name:String!,$num:Int!){repository(owner:$owner,name:$name){pullRequest(number:$num){reviewThreads(first:100){nodes{id isResolved comments(first:1){nodes{databaseId}}}}}}}';
 
 /** GitHub keeps "resolved" on the GraphQL thread, keyed here by its first comment's REST id. */
-async function githubThreadStates(cwd: string, num: string): Promise<Map<string, { node: string; resolved: boolean }>> {
+async function githubThreadStates(
+  cwd: string,
+  num: string,
+  binding?: PrBinding,
+): Promise<Map<string, { node: string; resolved: boolean }>> {
   const jq =
     '.data.repository.pullRequest.reviewThreads.nodes[] | {node: .id, resolved: .isResolved, root: .comments.nodes[0].databaseId}';
   const out = await run(
     'gh',
     [
       'api',
+      ...apiHost(binding),
       'graphql',
       '-F',
-      'owner={owner}',
+      `owner=${binding?.baseRepo.split('/')[0] ?? '{owner}'}`,
       '-F',
-      'name={repo}',
+      `name=${binding?.baseRepo.split('/')[1] ?? '{repo}'}`,
       '-F',
       `num=${num}`,
       '-f',
@@ -671,36 +692,51 @@ async function gitlabThreads(cwd: string): Promise<PrThread[]> {
 }
 
 /** Post a reply into a review thread, on whichever host the PR lives. */
-export async function replyToThread(cwd: string, threadId: string, body: string): Promise<void> {
-  if ((await prForge(cwd)) === 'gitlab') {
+export async function replyToThread(cwd: string, threadId: string, body: string, binding?: PrBinding): Promise<void> {
+  if (!binding && (await prForge(cwd)) === 'gitlab') {
     const mr = await gitlabMr(cwd);
     if (!mr) throw new Error(tr('ag.gitNoMr'));
     await run('glab', ['api', '-X', 'POST', `${mr.base}/discussions/${threadId}/notes`, '-f', `body=${body}`], cwd);
     return;
   }
-  const num = (await run('gh', ['pr', 'view', '--json', 'number', '-q', '.number'], cwd))?.trim();
+  const num = binding?.num ?? (await run('gh', ['pr', 'view', '--json', 'number', '-q', '.number'], cwd))?.trim();
   await run(
     'gh',
-    ['api', '-X', 'POST', `repos/{owner}/{repo}/pulls/${num}/comments/${threadId}/replies`, '-f', `body=${body}`],
+    [
+      'api',
+      ...apiHost(binding),
+      '-X',
+      'POST',
+      `repos/${binding?.baseRepo ?? '{owner}/{repo}'}/pulls/${num}/comments/${threadId}/replies`,
+      '-f',
+      `body=${body}`,
+    ],
     cwd,
   );
 }
 
 /** Mark a review thread resolved (or reopen it). */
-export async function setThreadResolved(cwd: string, threadId: string, resolved: boolean): Promise<void> {
-  if ((await prForge(cwd)) === 'gitlab') {
+export async function setThreadResolved(
+  cwd: string,
+  threadId: string,
+  resolved: boolean,
+  binding?: PrBinding,
+): Promise<void> {
+  if (!binding && (await prForge(cwd)) === 'gitlab') {
     const mr = await gitlabMr(cwd);
     if (!mr) throw new Error(tr('ag.gitNoMr'));
     await run('glab', ['api', '-X', 'PUT', `${mr.base}/discussions/${threadId}?resolved=${resolved}`], cwd);
     return;
   }
-  const num = (await run('gh', ['pr', 'view', '--json', 'number', '-q', '.number'], cwd))?.trim() ?? '';
-  const node = (await githubThreadStates(cwd, num)).get(threadId)?.node;
+  const num = binding
+    ? String(binding.num)
+    : ((await run('gh', ['pr', 'view', '--json', 'number', '-q', '.number'], cwd))?.trim() ?? '');
+  const node = (await githubThreadStates(cwd, num, binding)).get(threadId)?.node;
   if (!node) throw new Error(tr('ag.gitNoThread'));
   const mutation = resolved
     ? 'mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{id}}}'
     : 'mutation($id:ID!){unresolveReviewThread(input:{threadId:$id}){thread{id}}}';
-  await run('gh', ['api', 'graphql', '-F', `id=${node}`, '-f', `query=${mutation}`], cwd);
+  await run('gh', ['api', ...apiHost(binding), 'graphql', '-F', `id=${node}`, '-f', `query=${mutation}`], cwd);
 }
 
 /** Raw `pulls/:n/comments` rows (already trimmed by jq) into threads: replies join their root, in file/line order. */
@@ -734,7 +770,8 @@ export function groupThreads(rows: any[]): PrThread[] {
 }
 
 /** The remote's name picks the CLI; a host we cannot tell by name (self-hosted) gets both, GitHub first. */
-export async function readPr(cwd: string): Promise<PrSnapshot | null> {
+export async function readPr(cwd: string, binding?: PrBinding): Promise<PrSnapshot | null> {
+  if (binding) return readGithubPr(cwd, binding);
   const known = await remoteForge(cwd);
   for (const forge of known ? [known] : (['github', 'gitlab'] as const)) {
     const snapshot = forge === 'github' ? await readGithubPr(cwd) : await readGitlabPr(cwd);
@@ -797,12 +834,21 @@ function rollupChecks(rows: RollupContext[]): PrStatus['checks'] {
 }
 
 /** Inline review comments (replies included): `gh pr view` leaves them out, yet they are most of a review. */
-async function githubInlineCount(cwd: string, num: unknown): Promise<number> {
+const apiHost = (binding?: PrBinding) => (binding ? ['--hostname', 'github.com'] : []);
+
+async function githubInlineCount(cwd: string, num: unknown, binding?: PrBinding): Promise<number> {
   if (typeof num !== 'number') return 0;
   // --paginate runs the jq per page, so each page prints its own count.
   const out = await run(
     'gh',
-    ['api', `repos/{owner}/{repo}/pulls/${num}/comments`, '--paginate', '--jq', 'length'],
+    [
+      'api',
+      ...apiHost(binding),
+      `repos/${binding?.baseRepo ?? '{owner}/{repo}'}/pulls/${num}/comments`,
+      '--paginate',
+      '--jq',
+      'length',
+    ],
     cwd,
     { allowFail: true },
   );
@@ -818,12 +864,13 @@ function checksCi(checks: PrStatus['checks'], pipeline?: Exclude<Ci, 'none'>): C
 }
 
 /** Actions can queue a workflow before its first job appears in statusCheckRollup. */
-async function githubWorkflowsPending(cwd: string, head: string): Promise<boolean | null> {
+async function githubWorkflowsPending(cwd: string, head: string, binding?: PrBinding): Promise<boolean | null> {
   const out = await run(
     'gh',
     [
       'api',
-      `repos/{owner}/{repo}/actions/runs?head_sha=${encodeURIComponent(head)}&per_page=100`,
+      ...apiHost(binding),
+      `repos/${binding?.baseRepo ?? '{owner}/{repo}'}/actions/runs?head_sha=${encodeURIComponent(head)}&per_page=100`,
       '--paginate',
       '--jq',
       '.workflow_runs[].status',
@@ -836,20 +883,18 @@ async function githubWorkflowsPending(cwd: string, head: string): Promise<boolea
   return out.split(/\s+/).some((s) => s !== '' && s !== 'completed');
 }
 
-async function readGithubPr(cwd: string): Promise<PrSnapshot | null> {
+async function readGithubPr(cwd: string, binding?: PrBinding): Promise<PrSnapshot | null> {
+  const view = ['pr', 'view', ...(binding ? [binding.url] : []), '--json'];
   const full =
     'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author,additions,deletions,changedFiles,mergeable,mergeStateStatus,reviewDecision,headRefOid,updatedAt,baseRefName';
-  let out = await run('gh', ['pr', 'view', '--json', full], cwd, { allowFail: true });
+  let out = await run('gh', [...view, full], cwd, { allowFail: true });
   // Older gh builds reject a field they do not know; the card is worth more than the full query, so ask for less.
   if (!out)
-    out = await run(
-      'gh',
-      ['pr', 'view', '--json', 'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author'],
-      cwd,
-      { allowFail: true },
-    );
+    out = await run('gh', [...view, 'number,url,state,isDraft,statusCheckRollup,comments,reviews,title,author'], cwd, {
+      allowFail: true,
+    });
   // Some tokens can read the PR but not CI/reviews. Still expose its identity/state.
-  if (!out) out = await run('gh', ['pr', 'view', '--json', 'number,url,state,isDraft'], cwd, { allowFail: true });
+  if (!out) out = await run('gh', [...view, 'number,url,state,isDraft'], cwd, { allowFail: true });
   if (!out) return null;
   try {
     const pr = JSON.parse(out);
@@ -857,7 +902,7 @@ async function readGithubPr(cwd: string): Promise<PrSnapshot | null> {
     const reported = checksCi(checks);
     const workflowsPending =
       pr.state === 'OPEN' && pr.headRefOid && (reported === 'pass' || reported === 'none')
-        ? await githubWorkflowsPending(cwd, pr.headRefOid)
+        ? await githubWorkflowsPending(cwd, pr.headRefOid, binding)
         : null;
     const ci = workflowsPending ? 'pending' : reported;
     // MERGEABLE only means conflict-free; GitHub may still be waiting for a required check.
@@ -868,7 +913,7 @@ async function readGithubPr(cwd: string): Promise<PrSnapshot | null> {
     const review = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes', REVIEW_REQUIRED: 'required' } as const;
     const size = (n: unknown) => (typeof n === 'number' ? n : undefined);
     // A token that cannot read the comments (the identity-only fallback) will not read these either.
-    const inline = Array.isArray(pr.comments) ? await githubInlineCount(cwd, pr.number) : 0;
+    const inline = Array.isArray(pr.comments) ? await githubInlineCount(cwd, pr.number, binding) : 0;
     const status: PrStatus = {
       num: pr.number,
       url: pr.url,

@@ -41,6 +41,15 @@ export const pages = defineMessages({
     zh: '属于这个项目的 Code 项目，任务里发现的编码工作可指派给它们。',
   },
   'projects.addCodeFolder': { en: 'Link folder', zh: '关联文件夹' },
+  'projects.codeLimit': {
+    en: 'A Work project can link at most {n} Code folders.',
+    zh: '每个 Work 项目最多关联 {n} 个代码库。',
+  },
+  'projects.chooseDirectory': { en: 'Choose the Work project folder for {name}', zh: '为「{name}」选择 Work 项目目录' },
+  'projects.rebind': {
+    en: 'Move {code} from “{from}” to “{to}”? Existing notes stay in “{from}”.',
+    zh: '将「{code}」从「{from}」改绑到「{to}」？已有记忆仍保留在「{from}」。',
+  },
   'projects.noCodeProjects': { en: 'Add a project in Code first.', zh: '请先在 Code 里添加项目。' },
   'projects.open': { en: 'Open', zh: '打开' },
   'projects.remove': { en: 'Remove', zh: '移除' },

@@ -20,6 +20,7 @@ import {
 import { toast } from 'sonner';
 import type {
   AppInfo,
+  CodeProjectPolicy,
   Palette,
   Project,
   Settings,
@@ -32,6 +33,7 @@ import type {
 import { LOCALES, LOCALE_NAMES, type LanguageSetting, type MessageKey } from '@shared/i18n';
 import {
   PALETTES,
+  CODE_PROJECT_POLICIES,
   UI_DENSITIES,
   AUTO_REVIEW_DEFAULT_TIMEOUT,
   AUTO_REVIEW_MAX_TIMEOUT,
@@ -63,6 +65,7 @@ import { Toaster } from 'sonner';
 import { bridge, call, errText, isMac, isRemote } from '@/lib/api';
 import { useLocale, useT } from '@/lib/i18n';
 import { petVoices, previewSound } from '@/lib/sounds';
+import { resolveCodeProject } from '@/lib/code-project';
 import { applyTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import { allPets, PetSprite } from '@/components/composer/Clawd';
@@ -329,6 +332,16 @@ export function SettingsApp() {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [shells, setShells] = useState<TerminalShell[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [policy, setPolicy] = useState<CodeProjectPolicy>();
+  useEffect(() => {
+    if (section !== 'projects') return;
+    const load = () =>
+      void call('work:codePolicy')
+        .then(setPolicy)
+        .catch((e) => toast.error(errText(e)));
+    load();
+    return subscribeResource('codeProjectPolicy', load);
+  }, [section]);
   const [folders, setFolders] = useState<Project[]>([]);
   const { copied, copy } = useCopy();
 
@@ -977,9 +990,13 @@ export function SettingsApp() {
     );
     const add = async (kind: 'project' | 'folder') => {
       try {
-        const added = await (kind === 'project' ? call('projects:add') : call('work:addFolder'));
-        // A worktree is asked about in the main window's flow; here it simply becomes a project of its own.
-        if (added && 'kind' in added && added.kind === 'worktree') await call('projects:adoptWorktree', 'project');
+        if (kind === 'folder') await call('work:addFolder');
+        else {
+          const added = await call('projects:add');
+          const project =
+            added?.kind === 'worktree' ? (await call('projects:adoptWorktree', 'project'))?.project : added?.project;
+          if (project) await resolveCodeProject(project.path, (title) => call('app:pickFolder', title));
+        }
       } catch (e) {
         toast.error(errText(e));
       }
@@ -1032,7 +1049,31 @@ export function SettingsApp() {
               </Button>
             )}
           </div>
-          {list(projects, 'project')}
+          <Panel>
+            <Row title={t('settings.codeProjectPolicy')}>
+              <Select
+                value={policy ?? ''}
+                disabled={!policy}
+                onValueChange={(value) =>
+                  void call('work:codePolicy', value as CodeProjectPolicy)
+                    .then(setPolicy)
+                    .catch((e) => toast.error(errText(e)))
+                }
+              >
+                <SelectTrigger className="w-48" aria-label={t('settings.codeProjectPolicy')}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CODE_PROJECT_POLICIES.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {t(`settings.codeProjectPolicy.${value}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Row>
+          </Panel>
+          <div className="mt-2">{list(projects, 'project')}</div>
         </div>
         <div id={groupDomId('workFolders')} className="scroll-mt-2">
           <div className="mt-6 mb-2 flex items-center justify-between">

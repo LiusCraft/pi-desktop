@@ -30,6 +30,7 @@ import type {
   RemoteConnectionInfo,
   RemoteLinkState,
   RemoteListing,
+  RemoteWorkspaceMethod,
   RemoteServeSettings,
   RemoteServeState,
   RemoteTransferMethod,
@@ -111,6 +112,20 @@ export interface PrAutoDone {
 export const MAX_SESSION_TITLE = 80;
 export const MAX_SESSION_DESCRIPTION = 240;
 
+/** Immutable identity of the imported PR; its head can belong to a fork. */
+export interface PrBinding {
+  url: string;
+  num: number;
+  baseRepo: string;
+  baseBranch: string;
+  baseRemote: string;
+  headRepo: string;
+  headBranch: string;
+  headRemote: string;
+}
+export type FromPrOptions = Pick<CreateSessionOptions, 'model' | 'thinking' | 'mode' | 'outputStyle'>;
+export type FromPrResult = { kind: 'folder'; repo: string } | { kind: 'session'; meta: SessionMeta };
+
 export interface SessionMeta {
   id: string;
   kind: SessionKind;
@@ -141,6 +156,9 @@ export interface SessionMeta {
   createdAt: number;
   updatedAt: number;
   pr: PrSummary | null;
+  prBinding?: PrBinding;
+  /** The branch Pi created, even if the user later switches branches. */
+  ownedPrBranch?: string;
   /** Session switches: handle CI failures, merge conflicts and review comments, or merge once ready. */
   autoFixCi?: boolean;
   /** Agent-enabled CI events use normal tool permissions, unlike an explicit PR-bar grant. */
@@ -738,6 +756,10 @@ export interface Project {
   addedAt: number;
 }
 
+export const CODE_PROJECT_POLICIES = ['auto', 'ask', 'never'] as const;
+export type CodeProjectPolicy = (typeof CODE_PROJECT_POLICIES)[number];
+export type CodeProjectResolution = 'linked' | 'ask' | 'skipped';
+
 export interface ProjectLink {
   title: string;
   url: string;
@@ -840,6 +862,7 @@ export const HOST_RESOURCES = [
   'tasks',
   'projects',
   'workFolders',
+  'codeProjectPolicy',
   'customize',
   'sessionResources',
   'plugins',
@@ -1235,7 +1258,7 @@ export interface Api {
   'update:install'(): void;
   'app:revealPath'(target: string, reveal?: boolean): void;
   /** Native folder picker (the only way the renderer can name an arbitrary folder). */
-  'app:pickFolder'(): string | null;
+  'app:pickFolder'(title?: string): string | null;
 
   'settings:open'(section?: string): void;
   'settings:get'(): SettingsPayload;
@@ -1260,6 +1283,8 @@ export interface Api {
   'projects:remove'(path: string): Project[];
   /** Add a project by path: the way to name a folder on a remote machine, where no native picker exists. */
   'projects:addPath'(path: string): Project;
+  'work:codePolicy'(policy?: CodeProjectPolicy): CodeProjectPolicy;
+  'work:resolveCode'(code: string, folder?: string): CodeProjectResolution;
   'work:folders'(): WorkProject[];
   'work:addFolder'(): WorkProject | null;
   'work:useFolder'(path: string): WorkProject | null;
@@ -1311,6 +1336,7 @@ export interface Api {
 
   // ---- forwarded to the agent host
   'sessions:list'(): SessionSummary[];
+  'sessions:fromPr'(url: string, projects: string[], parent: string | null, prefs: FromPrOptions): FromPrResult;
   'sessions:create'(opts: CreateSessionOptions): SessionMeta;
   'sessions:open'(id: string): OpenSessionResult;
   /** The session as the host holds it now, without its transcript; null when the host holds nothing more than its meta. */
@@ -1528,6 +1554,7 @@ export type WindowControlAction = (typeof WINDOW_CONTROL_ACTIONS)[number];
 export const HOST_CHANNELS = [
   'sessions:list',
   'sessions:create',
+  'sessions:fromPr',
   'sessions:open',
   'sessions:state',
   'sessions:prompt',
@@ -1672,6 +1699,8 @@ export const MAIN_CHANNELS = [
   'projects:remove',
   'projects:addPath',
   'work:folders',
+  'work:codePolicy',
+  'work:resolveCode',
   'work:addFolder',
   'work:useFolder',
   'work:removeFolder',
@@ -1758,6 +1787,7 @@ export interface HostInternal {
   'host:importAttachments'(sources: AttachmentSource[]): AttachmentImportResult;
   /** A file-moving call of a remote client (see `REMOTE_TRANSFER_METHODS`). */
   'host:transfer'(method: RemoteTransferMethod, args: unknown[]): RemoteTransferResult;
+  'host:workspace'(method: RemoteWorkspaceMethod, args: unknown[]): unknown;
   'host:worktree'(dir: string): WorktreeInfo | null;
   /**
    * A call from one of a plugin's pages: `method` is one the plugin's host entry registered, or a

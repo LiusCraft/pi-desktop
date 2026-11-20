@@ -9,6 +9,7 @@ import { sessionHandlers } from './handlers';
 import { applyChildPath } from './env';
 import { SessionHub } from './hub';
 import { isTransferMethod } from '@shared/remote';
+import { workspaceCall } from './remote/workspace';
 import { transferCall } from './remote/transfer';
 import { Scheduler } from './scheduler';
 import { Store } from './store';
@@ -69,6 +70,7 @@ const handlers: Record<HostMethod, Handler> = {
     if (!isTransferMethod(method)) throw new Error(`Unknown transfer: ${method}`);
     return transferCall(dataDir, method, args);
   },
+  'host:workspace': withHub((h, method, args) => workspaceCall(h.projects, method, args)),
   'host:worktree': (dir) => git.worktreeInfo(dir),
   // A desktop plugin's page asked for something: its own host entry answers (see `PluginHosts`).
   'host:pluginCall': withHub((h, plugin, method, args) => h.pluginHosts.call(plugin, method, args)),

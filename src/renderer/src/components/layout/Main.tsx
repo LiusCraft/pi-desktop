@@ -45,6 +45,7 @@ import { WindowControls } from '@/components/common/WindowControls';
 import { cn } from '@/lib/utils';
 import {
   archiveSession,
+  startFromPr,
   deleteSession,
   exportHtml,
   setOutputStyle,
@@ -390,6 +391,7 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
 
 function CodeWelcome() {
   const t = useT();
+  const [importing, setImporting] = useState(false);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-1 flex-col items-center justify-center gap-4 overflow-y-auto px-6">
@@ -397,6 +399,21 @@ function CodeWelcome() {
           <span className="spark size-6!" aria-hidden />
           {t('main.letsBuild')}
         </h1>
+        <button
+          type="button"
+          className="rounded-md surface-flat px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-60"
+          disabled={importing}
+          onClick={async () => {
+            setImporting(true);
+            try {
+              await startFromPr();
+            } finally {
+              setImporting(false);
+            }
+          }}
+        >
+          {t(importing ? 'prstart.preparing' : 'prstart.label')}
+        </button>
         <Inbox />
       </div>
       <CodeComposer />

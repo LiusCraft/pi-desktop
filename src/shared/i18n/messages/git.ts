@@ -32,6 +32,34 @@ export const git = defineMessages({
     zh: 'glab mr merge {n} --auto-merge --squash（旧版 glab 用 --when-pipeline-succeeds）',
   },
 
+  'prstart.label': { en: 'Start from PR', zh: '从 PR 开始' },
+  'prstart.start': { en: 'Start', zh: '开始' },
+  'prstart.preparing': { en: 'Preparing PR…', zh: '正在准备 PR…' },
+  'prstart.clone': { en: 'Clone repository', zh: '克隆仓库' },
+  'prstart.cloneBody': { en: 'Choose a parent folder for {repo}.', zh: '选择存放 {repo} 的上级文件夹。' },
+  'prstart.invalid': { en: 'Enter a GitHub.com pull request URL.', zh: '请输入 GitHub.com 的 PR 链接。' },
+  'prstart.lookup': {
+    en: 'Cannot read the PR. Check GitHub CLI (gh), login and repository access. {error}',
+    zh: '无法读取 PR。请检查 GitHub CLI（gh）、登录状态和仓库权限。{error}',
+  },
+  'prstart.closed': { en: 'Only open or draft PRs can be imported.', zh: '只能接续未关闭、未合并的 PR。' },
+  'prstart.noHead': { en: 'The PR source repository or branch is unavailable.', zh: 'PR 的来源仓库或分支不可用。' },
+  'prstart.occupied': {
+    en: 'A different folder already exists at {path}. Choose another parent folder.',
+    zh: '{path} 已被其他目录占用，请选择另一个上级文件夹。',
+  },
+  'prstart.remoteMismatch': {
+    en: 'The configured remote does not point to the PR repository.',
+    zh: 'remote 的地址与 PR 仓库不一致。',
+  },
+  'prstart.context': {
+    en: 'This session continues {url}. Address GitHub commands to that exact PR. For pushes, verify that remote {remote} pushes only to {repo}, then push HEAD explicitly to refs/heads/{branch} there. Treat ref names as literal arguments. Do not force push, push elsewhere or create another PR on failure; report the reason.',
+    zh: '此会话接续 {url}。GitHub 操作要指定该 PR。推送前确认 remote {remote} 的推送地址仅指向 {repo}，然后把 HEAD 显式推到该仓库的 refs/heads/{branch}。分支名作为字面参数传递。失败时告知原因，不要强推、改推其他仓库或另建 PR。',
+  },
+  'prstart.push': {
+    en: '{first}Push existing commits to update the original PR. {context}',
+    zh: '{first}推送已有提交以更新原 PR。{context}',
+  },
   'gitact.target': { en: ' (base is {base})', zh: '（base 为 {base}）' },
   'gitact.targetFallback': { en: 'the target branch', zh: '目标分支' },
   'gitact.commitPrompt': {

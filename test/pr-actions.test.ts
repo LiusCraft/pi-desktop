@@ -36,6 +36,30 @@ describe('branch bar actions', () => {
     assert.equal(action(work(), 'sync').enabled, false);
   });
 
+  it('targets the fork and original PR even before the first status refresh', () => {
+    const w = work({
+      binding: {
+        url: 'https://github.com/acme/app/pull/42',
+        num: 42,
+        baseRepo: 'acme/app',
+        baseRemote: 'origin',
+        baseBranch: 'main',
+        headRemote: 'my-fork',
+        headRepo: 'alice/app',
+        headBranch: 'fix/thing',
+      },
+      st: state({ ahead: 1 }),
+    });
+    assert.equal(action(w, 'pr').command, 'update-pr');
+    for (const act of ['push', 'pr'] as const) {
+      const prompt = action(w, act).prompt;
+      assert.match(prompt, /alice\/app/);
+      assert.match(prompt, /refs\/heads\/fix\/thing/);
+      assert.match(prompt, /my-fork/);
+      assert.doesNotMatch(prompt, /to origin|gh pr create/);
+    }
+  });
+
   it('has no sync action on the base branch itself', () => {
     assert.equal(
       gitActions(work({ branch: 'main' })).actions.some((a) => a.act === 'sync'),
