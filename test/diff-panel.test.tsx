@@ -86,6 +86,7 @@ const { TooltipProvider } = await import('../src/renderer/src/components/ui/tool
 const { emptySession } = await import('../src/renderer/src/store/transcript');
 const { getApp, setApp, updateSession, useApp } = await import('../src/renderer/src/store/app');
 const { diffTarget, togglePanel } = await import('../src/renderer/src/store/actions');
+const { useShortcuts } = await import('../src/renderer/src/lib/use-shortcuts');
 
 const change = (path: string, status: FileChange['status'] = 'M'): FileChange => ({
   path,
@@ -151,6 +152,7 @@ const host = async (channel: string, ...args: unknown[]): Promise<unknown> => {
 };
 
 function MountedPanel() {
+  useShortcuts();
   const s = useApp((state) => state.sessions[id]);
   return (
     <TooltipProvider>
@@ -205,10 +207,25 @@ beforeEach(() => {
   setApp((state) => {
     state.sessions = { [id]: s };
     state.current = id;
+    state.settings = {};
   });
 });
 
 describe('Diff panel scope orchestration', () => {
+  it('honors the remapped local find shortcut without opening the Files panel', async () => {
+    setApp((state) => void (state.settings.shortcuts = { findFile: 'F7', findAll: null }));
+    render(<MountedPanel />);
+    const contents = await screen.findByTestId('review');
+    const search = () => screen.queryByPlaceholderText('Find in changes');
+    fireEvent.keyDown(contents, { key: 'f', ctrlKey: true });
+    fireEvent.keyDown(contents, { key: 'F', ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(contents, { key: 'F7', repeat: true });
+    expect(search()).toBeNull();
+    fireEvent.keyDown(contents, { key: 'F7' });
+    expect(search()).toBe(document.activeElement);
+    expect(getApp().sessions[id].panels.files).toBe(false);
+  });
+
   it('switches files, lazy contents, commits, counts and review threads without changing the PR target', async () => {
     render(<MountedPanel />);
     expect(await screen.findByText('branch-base:before:src/app.ts → branch-base:after:src/app.ts')).toBeTruthy();

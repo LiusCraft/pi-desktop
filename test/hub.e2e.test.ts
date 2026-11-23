@@ -129,6 +129,35 @@ const codeSession = async (mode: PermissionMode = 'auto', worktree = false, auto
 const read = (dir: string, rel: string) => fs.readFileSync(path.join(dir, rel), 'utf8');
 
 describe('code sessions', { timeout: 120_000 }, () => {
+  it('runs the keyboard demo through the question tool and records the completed reply', async () => {
+    const { meta } = await codeSession();
+    expect(meta.lastResponseAt).toBeUndefined();
+    const answers = [{ selected: ['Plain text'] }, { selected: ['Summary (Recommended)', 'Details'] }];
+    let lastResponseBeforeAnswer: number | undefined;
+    const previousAnswer = driver.answer;
+    const turn = await driver
+      .run(meta.id, 'keyboard shortcut demo', (request) => {
+        lastResponseBeforeAnswer = driver.hub.meta(meta.id).lastResponseAt;
+        return request.kind === 'questions' ? { answers } : { cancelled: true };
+      })
+      .finally(() => {
+        driver.answer = previousAnswer;
+      });
+    expect(lastResponseBeforeAnswer).toBeUndefined();
+    expect(turn.ui).toHaveLength(1);
+    expect(turn.ui[0]).toMatchObject({
+      kind: 'questions',
+      questions: [{ header: 'Format' }, { header: 'Sections', multiSelect: true }],
+    });
+    expect(turn.finalText).toContain('Plain text');
+    expect(turn.finalText).toContain('"Summary (Recommended)", "Details"');
+    const lastResponseAt = driver.hub.meta(meta.id).lastResponseAt;
+    expect(lastResponseAt).toBeGreaterThanOrEqual(meta.createdAt);
+    expect(turn.events).toContainEqual(
+      expect.objectContaining({ type: 'meta', meta: expect.objectContaining({ lastResponseAt }) }),
+    );
+  });
+
   it('writes Code worktree notes to the current Work project, including after a live rebind', async () => {
     const repo = makeProject('linked-memory');
     const faux = fauxProvider({ provider: 'memory-test', models: [{ id: 'm' }] });
