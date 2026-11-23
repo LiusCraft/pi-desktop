@@ -1,8 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowUpIcon,
-  CircleStopIcon,
-  CornerDownLeftIcon,
   FolderIcon,
   FolderPlusIcon,
   GitBranchIcon,
@@ -10,6 +8,7 @@ import {
   LaptopIcon,
   LoaderCircleIcon,
   PlusIcon,
+  SquareIcon,
   XIcon,
 } from 'lucide-react';
 import {
@@ -34,8 +33,9 @@ import { chooseBase, refreshBranches, useWelcomeBranches } from '@/store/welcome
 import { useDrafts } from '@/store/drafts';
 import type { SessionView } from '@/store/types';
 import { bashRunning } from '@/store/transcript';
-import { Clawd, moodOf, PET_GROUND } from './Clawd';
+import { Clawd, moodOf, PET_GROUND, type Mood } from './Clawd';
 import { ComposerInput, pickAttachments, type ComposerHandle } from './ComposerInput';
+import { ComposerTodos } from './ComposerTodos';
 import { ContextRing, EffortMenu, FootButton, ModeMenu, ModelMenu } from './Menus';
 import { PrBar } from './PrBar';
 import { WorktreeBasePicker } from './WorktreeBasePicker';
@@ -222,16 +222,83 @@ function NewSessionChips() {
   );
 }
 
+function ComposerCard({
+  placeholder,
+  mood,
+  maxHeight,
+  leading,
+  children,
+}: {
+  placeholder: string;
+  mood: Mood;
+  maxHeight?: number;
+  leading: ReactNode;
+  children: ReactNode;
+}) {
+  const input = useRef<ComposerHandle>(null);
+  const [drag, setDrag] = useState(false);
+  return (
+    // Clicking the card's padding brings focus back to the editor.
+    // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+    <div
+      className={cn('relative rounded-3xl surface-flat bg-card px-2.5 pt-3 pb-2', drag && 'ring-2 ring-primary/50')}
+      onClick={(e) => e.target === e.currentTarget && input.current?.focus()}
+    >
+      <Clawd mood={mood} />
+      <ComposerInput
+        ref={input}
+        placeholder={placeholder}
+        minRows={2}
+        maxHeight={maxHeight}
+        className="px-2"
+        onDragState={setDrag}
+      />
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <div className="flex max-w-full items-center gap-0.5">{leading}</div>
+        <div className="flex min-w-0 flex-[1_1_11rem] items-center justify-end gap-0.5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function ComposerAction({
+  label,
+  disabled,
+  stopping = false,
+  onClick,
+}: {
+  label: string;
+  disabled: boolean;
+  stopping?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="ml-1 flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors outline-none hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring disabled:bg-muted disabled:text-muted-foreground"
+    >
+      {stopping ? (
+        <SquareIcon aria-hidden className="size-3 fill-current" />
+      ) : (
+        <ArrowUpIcon aria-hidden className="size-5" />
+      )}
+    </button>
+  );
+}
+
 /** The Code composer, also used inside every running thread (Code and Work). */
 export function CodeComposer() {
   const t = useT();
   const { s, ready, busy, stopMode } = useSendState();
   const prefs = useApp((st) => st.prefs);
   const levels = useApp((st) => st.levels);
-  const input = useRef<ComposerHandle>(null);
-  const [drag, setDrag] = useState(false);
   const modelTarget = useShortcutTarget('model', t('shortcuts.model'));
   const attachmentsTarget = useShortcutTarget('attachments', t('composer.addFilesRef'));
+  const model = s ? s.model : prefs.model;
   const placeholder = s?.running
     ? t('composer.placeholderQueue', { mod: modKey })
     : s
@@ -246,64 +313,50 @@ export function CodeComposer() {
           <PrBar s={s} />
         </div>
       )}
-      {/* The composer shell handles drag and drop; the textarea and buttons inside are keyboard accessible. */}
-      {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-      <div
-        className={cn(
-          'relative rounded-xl surface-flat bg-card px-3.5 py-2 transition-colors focus-within:border-ring',
-          drag && 'ring-2 ring-primary/50',
-        )}
-        onClick={(e) => !(e.target as HTMLElement).closest('button') && input.current?.focus()}
+      {s && <ComposerTodos items={s.lastTodos} />}
+      <ComposerCard
+        placeholder={placeholder}
+        mood={moodOf(s)}
+        leading={
+          <>
+            <FootButton
+              {...attachmentsTarget}
+              aria-label={t('composer.addFiles')}
+              className="w-8 shrink-0 justify-center px-0"
+              onClick={pickAttachments}
+            >
+              <PlusIcon aria-hidden className="size-5" />
+            </FootButton>
+            <ModeMenu mode={s ? s.meta.mode : prefs.mode} />
+            {s && <SessionRate s={s} />}
+          </>
+        }
       >
-        <Clawd mood={moodOf(s)} />
-        <div className="flex items-end gap-2">
-          <ComposerInput
-            ref={input}
-            placeholder={placeholder}
-            className="min-w-0 flex-1 py-0.5"
-            onDragState={setDrag}
-          />
-          <button
-            disabled={busy}
-            onClick={() => (stopMode ? void stop(s!.meta.id) : void send(false))}
-            title={t(stopMode ? 'composer.stop' : 'composer.sendEnter')}
-            className={cn(
-              'flex size-7 shrink-0 items-center justify-center rounded-md transition-colors disabled:opacity-40',
-              stopMode
-                ? 'text-foreground hover:bg-accent'
-                : ready
-                  ? 'text-foreground hover:bg-accent'
-                  : 'text-muted-foreground/70',
-            )}
-          >
-            {stopMode ? <CircleStopIcon className="size-[18px]" /> : <CornerDownLeftIcon className="size-4" />}
-          </button>
-        </div>
-      </div>
-      <div className="mt-1.5 flex items-center gap-0.5">
-        <FootButton {...attachmentsTarget} className="w-7 justify-center px-0" onClick={pickAttachments}>
-          <PlusIcon className="size-4" />
-        </FootButton>
-        <ModeMenu mode={s ? s.meta.mode : prefs.mode} />
-        {s && <SessionRate s={s} />}
-        <span className="flex-1" />
         <ModelMenu
-          model={s ? s.model : prefs.model}
+          model={model}
           trigger={
-            <FootButton {...modelTarget}>
-              <ModelLabel id={s ? s.model : prefs.model} />
+            <FootButton {...modelTarget} className="min-w-0 text-foreground">
+              <ModelLabel id={model} />
             </FootButton>
           }
         />
         <EffortMenu levels={s ? s.levels : levels} effort={s ? s.thinking : prefs.effort} />
-        <ContextRing
-          pct={s?.ctxPct ?? null}
-          cacheRate={s?.cacheRate ?? null}
-          cost={s?.cost ?? null}
-          busy={!!(s?.running || s?.compacting)}
-          sid={s?.meta.id}
+        {s && (
+          <ContextRing
+            pct={s.ctxPct ?? null}
+            cacheRate={s.cacheRate ?? null}
+            cost={s.cost ?? null}
+            busy={s.running || s.compacting}
+            sid={s.meta.id}
+          />
+        )}
+        <ComposerAction
+          label={t(stopMode ? 'composer.stop' : 'composer.sendEnter')}
+          disabled={busy || (!ready && !stopMode)}
+          stopping={stopMode}
+          onClick={() => (stopMode && s ? void stop(s.meta.id) : void send(false))}
         />
-      </div>
+      </ComposerCard>
     </div>
   );
 }
@@ -320,67 +373,45 @@ function ModelLabel({ id }: { id: string | null }) {
   );
 }
 
-/** Work's welcome composer: bigger box, model chip inside, folder tray underneath. */
+/** Work's welcome composer, with the folder tray underneath. */
 export function WorkComposer() {
   const t = useT();
   const { ready, busy } = useSendState();
   const prefs = useApp((st) => st.prefs);
   const levels = useApp((st) => st.levels);
   const folders = useApp((st) => st.workFolders);
-  const input = useRef<ComposerHandle>(null);
-  const [drag, setDrag] = useState(false);
   const folder = prefs.workFolder;
   const folderTarget = useShortcutTarget('folder', folder || t('composer.tempWorkspaceTip'));
   const modelTarget = useShortcutTarget('model', t('shortcuts.model'));
   const attachmentsTarget = useShortcutTarget('attachments', t('composer.addFiles'));
   return (
     <div className="w-full">
-      {/* The composer shell handles drag and drop; the textarea and buttons inside are keyboard accessible. */}
-      {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-      <div
-        className={cn(
-          'relative rounded-2xl surface-flat bg-card p-3 transition-colors focus-within:border-ring',
-          drag && 'ring-2 ring-primary/50',
-        )}
-        onClick={(e) => !(e.target as HTMLElement).closest('button') && input.current?.focus()}
-      >
-        <Clawd mood="idle" />
-        <ComposerInput
-          ref={input}
-          placeholder={t('composer.workPlaceholder')}
-          minRows={2}
-          maxHeight={240}
-          className="px-1"
-          onDragState={setDrag}
-        />
-        <div className="mt-2 flex items-center gap-1">
-          <button
-            className="rounded-lg border p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+      <ComposerCard
+        placeholder={t('composer.workPlaceholder')}
+        mood="idle"
+        maxHeight={240}
+        leading={
+          <FootButton
             {...attachmentsTarget}
+            aria-label={t('composer.addFiles')}
+            className="w-8 shrink-0 justify-center px-0"
             onClick={pickAttachments}
           >
-            <PlusIcon className="size-4" />
-          </button>
-          <span className="flex-1" />
-          <ModelMenu
-            model={prefs.model}
-            trigger={
-              <FootButton {...modelTarget} className="text-sm">
-                <ModelLabel id={prefs.model} />
-              </FootButton>
-            }
-          />
-          <EffortMenu levels={levels} effort={prefs.effort} />
-          <button
-            disabled={!ready || busy}
-            onClick={() => void send(false)}
-            title={t('composer.send')}
-            className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground disabled:opacity-40"
-          >
-            <ArrowUpIcon className="size-4" />
-          </button>
-        </div>
-      </div>
+            <PlusIcon aria-hidden className="size-5" />
+          </FootButton>
+        }
+      >
+        <ModelMenu
+          model={prefs.model}
+          trigger={
+            <FootButton {...modelTarget} className="min-w-0 text-foreground">
+              <ModelLabel id={prefs.model} />
+            </FootButton>
+          }
+        />
+        <EffortMenu levels={levels} effort={prefs.effort} />
+        <ComposerAction label={t('composer.send')} disabled={!ready || busy} onClick={() => void send(false)} />
+      </ComposerCard>
       <div className="mt-2 flex items-center gap-1">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

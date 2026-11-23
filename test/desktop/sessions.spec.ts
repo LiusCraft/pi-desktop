@@ -71,6 +71,57 @@ async function startSession(text: string) {
   await expect(page.getByText(text).first()).toBeVisible();
 }
 
+async function composerCard(sendLabel: string) {
+  const input = page.locator('textarea[data-composer-input]');
+  const card = page.locator('.surface-flat').filter({ has: input });
+  const attachments = card.getByRole('button', { name: 'Add files', exact: true });
+  const model = card.locator('[data-shortcut=model]');
+  const send = card.getByRole('button', { name: sendLabel, exact: true });
+  await expect(attachments).toBeVisible();
+  await expect(model).toBeVisible();
+  await expect(send).toBeVisible();
+  const editor = (await input.boundingBox())!;
+  const bounds = (await card.boundingBox())!;
+  for (const control of [attachments, model, send]) {
+    const box = (await control.boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(editor.y + editor.height - 1);
+    expect(box.x).toBeGreaterThanOrEqual(bounds.x);
+    expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+    expect(box.y + box.height).toBeLessThanOrEqual(bounds.y + bounds.height);
+  }
+  return { input, card, send };
+}
+
+test('Code and Work use one card for the editor and its controls', async () => {
+  const code = await composerCard('Send (↵)');
+  await expect(page.getByRole('button', { name: /^Tasks (\d+ remaining|All done)$/ })).toHaveCount(0);
+  await expect(code.card.locator('[data-shortcut=mode]')).toBeVisible();
+  await code.input.blur();
+  const borderColor = await code.card.evaluate((element) => getComputedStyle(element).borderTopColor);
+  await code.input.focus();
+  await expect(code.input).toBeFocused();
+  await expect(code.card).toHaveCSS('border-top-color', borderColor);
+  await expect(code.send).toBeDisabled();
+  const emptyHeight = (await code.input.boundingBox())!.height;
+  await code.input.fill('A longer draft\nwith more than\ntwo lines');
+  await expect(code.send).toBeEnabled();
+  await expect.poll(async () => (await code.input.boundingBox())!.height).toBeGreaterThan(emptyHeight);
+  await code.input.clear();
+
+  await page.getByRole('tab', { name: 'Work', exact: true }).click();
+  await expect(page.getByPlaceholder('How can I help you today?')).toBeVisible();
+  const work = await composerCard('Send');
+  await expect(work.send).toBeDisabled();
+  await work.input.fill('Hello from Work');
+  await work.send.click();
+  await expect(page.getByText('Hello from Work', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rewind to here', exact: true })).toBeEnabled();
+
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(720, 900));
+  const thread = await composerCard('Send (↵)');
+  await expect(thread.card.getByRole('button', { name: 'Context window usage' })).toBeVisible();
+});
+
 test('workspace boundaries stay clear without elevation in populated layouts', async ({}, testInfo) => {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1800, 1100));
   await startSession('添加深色模式');
@@ -95,6 +146,30 @@ test('workspace boundaries stay clear without elevation in populated layouts', a
   const branch = page.getByRole('region', { name: 'Branch status' });
   await expect(branch).toBeVisible();
   await expect(branch.getByRole('button', { name: 'Commit', exact: true })).toBeVisible();
+
+  const tasks = page.getByRole('button', { name: 'Tasks All done', exact: true });
+  const taskCard = page.locator('.surface-flat').filter({ has: tasks });
+  await expect(tasks).toHaveAttribute('aria-expanded', 'true');
+  const list = taskCard.getByRole('list');
+  await expect(list.getByRole('listitem')).toHaveCount(4);
+  const drawer = taskCard.locator('[data-slot=collapsible-content]');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  const editor = page.locator('.surface-flat').filter({ has: page.locator('[data-composer-input]') });
+  const editorTop = (await editor.boundingBox())!.y;
+  const openTop = (await taskCard.boundingBox())!.y;
+  await tasks.press('Enter');
+  await expect(tasks).toHaveAttribute('aria-expanded', 'false');
+  await expect(list).toBeHidden();
+  await expect(tasks).toBeFocused();
+  expect((await taskCard.boundingBox())!.y).toBeGreaterThan(openTop);
+  expect((await editor.boundingBox())!.y).toBeCloseTo(editorTop, 0);
+  // Radix skips animation on initial mount; check a user-triggered expansion instead.
+  await tasks.press('Space');
+  await expect(tasks).toHaveAttribute('aria-expanded', 'true');
+  await expect(drawer).toHaveCSS('animation-name', 'collapsible-down');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(drawer).toHaveCSS('animation-name', 'none');
+  await expect(list.getByRole('listitem')).toHaveCount(4);
 
   const expectFlatSurfaces = async (view: Page) => {
     const surfaces = view.locator('.surface-flat');
@@ -154,6 +229,13 @@ test('workspace boundaries stay clear without elevation in populated layouts', a
         const headingBox = await heading.boundingBox();
         const closeBox = await heading.getByRole('button', { name: 'Close', exact: true }).boundingBox();
         expect(closeBox!.x + closeBox!.width).toBeLessThanOrEqual(headingBox!.x + headingBox!.width);
+        const { card: editorCard } = await composerCard('Send (↵)');
+        const editorBox = (await editorCard.boundingBox())!;
+        const tasksBox = (await taskCard.boundingBox())!;
+        expect(tasksBox.y + tasksBox.height).toBeGreaterThan(editorBox.y);
+        const listBox = (await list.boundingBox())!;
+        expect(listBox.y + listBox.height).toBeLessThanOrEqual(editorBox.y);
+        expect(tasksBox.width).toBeLessThan(editorBox.width);
         await page.screenshot({ path: testInfo.outputPath(`${palette}-${theme}-narrow.png`) });
         await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1800, 1100));
         await files.getByRole('button', { name: /^Expand \(/ }).click();
