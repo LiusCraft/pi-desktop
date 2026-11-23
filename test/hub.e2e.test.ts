@@ -1025,14 +1025,17 @@ describe('code sessions', { timeout: 120_000 }, () => {
     );
     const live = emptySession(meta);
     const liveUpdates: Todo[][] = [];
+    const listsAtNestedCompletion: Todo[][] = [];
     for (const event of pi) {
       applyPiEvent(live, event, 'normal');
       if (event.type === 'message_end' && event.message?.customType === TODO_ENTRY_TYPE)
         liveUpdates.push(live.lastTodos);
       if (event.type === 'tool_execution_end' && event.parentToolCallId && event.toolName === TODO_TOOL)
-        expect(live.lastTodos).toEqual(scripted); // Visible before the parent script returns, even after invalid input.
+        listsAtNestedCompletion.push(live.lastTodos);
     }
     expect(liveUpdates).toEqual([first, scripted]);
+    // Already visible before the script ends; the invalid call does not replace it.
+    expect(listsAtNestedCompletion).toEqual([scripted, scripted]);
     await driver.hub.archive(meta.id);
     driver.hub.meta(meta.id).archived = false;
     const reopened = await driver.hub.open(meta.id);
