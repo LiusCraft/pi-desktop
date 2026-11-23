@@ -4,10 +4,9 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { FromPrResult, OpenSessionResult, SessionMeta } from '../src/shared/protocol';
 
-// Virtualized workspace panels depend on browser layout; they aren't part of the welcome screen.
+// The workspace is covered separately; these tests exercise session creation and setup.
 vi.mock('@/components/workspace/Workspace', () => ({
-  openCards: () => ({ primary: [], secondary: [] }),
-  soloCard: () => null,
+  NewWorkspaceTabMenu: () => null,
   Workspace: () => null,
 }));
 
