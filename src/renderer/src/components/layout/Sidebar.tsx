@@ -1,4 +1,4 @@
-import { useId, useState, useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import {
   ArchiveIcon,
   BoxIcon,
@@ -78,7 +78,7 @@ import {
 } from '@/store/actions';
 import { setApp, useApp } from '@/store/app';
 import { InlineEdit } from '@/components/common/InlineEdit';
-import { TooltipHint } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipHint, TooltipTrigger } from '@/components/ui/tooltip';
 import type { MessageKey } from '@shared/i18n';
 import { projectPathKey } from '@shared/project-path';
 import { MAX_SESSION_TITLE, type SessionKind } from '@shared/protocol';
@@ -403,7 +403,6 @@ function SessionRow({
     !child,
   );
   const [renaming, setRenaming] = useState(false);
-  const descriptionId = useId();
   const picked = useSelection().has(s.meta.id);
   const relativeTime = useAgo(s.meta.updatedAt || Date.now());
   const prNote = s.pr
@@ -416,9 +415,9 @@ function SessionRow({
       : s.running
         ? t('sidebar.working')
         : `${relativeTime}${prNote}`;
-  // The first prompt can be both placeholders; don't show the same line twice.
+  // The first prompt can fill both fields; don't repeat it in the tooltip.
   const description = s.meta.description === s.meta.title ? undefined : s.meta.description;
-  const title = [s.meta.title, description, status].filter(Boolean).join('\n');
+  const tooltipText = [s.meta.title, description, status].filter(Boolean).join('\n');
   const autoUpdateMetadata = s.meta.autoUpdateMetadata !== false;
   return (
     <ContextMenu>
@@ -426,8 +425,7 @@ function SessionRow({
         <div
           {...sort.props}
           className={cn(
-            'group flex items-center gap-2 rounded-lg px-2.5 text-sm',
-            description ? 'min-h-11 py-1' : 'h-7',
+            'group flex h-7 items-center gap-2 rounded-lg px-2.5 text-sm',
             sort.line,
             child && 'ml-4',
             picked
@@ -454,28 +452,26 @@ function SessionRow({
             />
           ) : (
             <>
-              <button
-                className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                title={title}
-                aria-label={s.meta.title}
-                aria-describedby={description ? descriptionId : undefined}
-                onClick={(e) => {
-                  if (pick(e, s.meta.id, visible)) return;
-                  void openSession(s.meta.id);
-                  collapseSidebarIfCompact();
-                }}
-                onDoubleClick={() => setRenaming(true)}
-              >
-                <StatusIcon s={s} />
-                <span className="min-w-0">
-                  <span className={cn('block truncate', s.unread && 'font-semibold')}>{s.meta.title}</span>
-                  {description && (
-                    <span id={descriptionId} className="block truncate text-xs text-muted-foreground">
-                      {description}
-                    </span>
-                  )}
-                </span>
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    aria-label={s.meta.title}
+                    onClick={(e) => {
+                      if (pick(e, s.meta.id, visible)) return;
+                      void openSession(s.meta.id);
+                      collapseSidebarIfCompact();
+                    }}
+                    onDoubleClick={() => setRenaming(true)}
+                  >
+                    <StatusIcon s={s} />
+                    <span className={cn('truncate', s.unread && 'font-semibold')}>{s.meta.title}</span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="text-wrap whitespace-pre-line">
+                  {tooltipText}
+                </TooltipContent>
+              </Tooltip>
               {tag && (
                 <span
                   className="max-w-[35%] shrink-0 truncate rounded bg-muted px-1.5 text-[10px] leading-4 text-muted-foreground"
