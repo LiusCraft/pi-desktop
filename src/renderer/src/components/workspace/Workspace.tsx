@@ -5,8 +5,10 @@ import {
   FileIcon,
   FolderIcon,
   GlobeIcon,
+  InfoIcon,
   ListChecksIcon,
   Maximize2Icon,
+  MessageSquareIcon,
   Minimize2Icon,
   PlusIcon,
   SquareTerminalIcon,
@@ -20,8 +22,17 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { canTerminal } from '@/lib/api';
 import { useT } from '@/lib/i18n';
-import { closeDetail, selectWorkspaceTab, togglePanel, toggleWorkspaceExpanded } from '@/store/actions';
-import { selectedWorkspaceTab } from '@/store/layout';
+import {
+  closeDetail,
+  selectWorkspaceTab,
+  togglePanel,
+  toggleSessionInfo,
+  toggleWorkspaceExpanded,
+} from '@/store/actions';
+import { isSideChatTab, selectedWorkspaceTab, sideChatId } from '@/store/layout';
+import { createSide, hideSide, reportSideError, useSideList } from '@/store/side';
+import { SideChatView } from '@/components/side/SideChat';
+import { SessionInfo, sideChatLabel } from './SessionOverview';
 import type { SessionView, WorkspaceTab } from '@/store/types';
 import { IconBtn } from './PanelToolbar';
 import { WorkPanel, DetailPanel, DiffPanel, FilesPanel, PreviewPanel, TasksPanel } from './Panels';
@@ -35,6 +46,7 @@ const TABS = {
   files: { label: 'panel.files', icon: FolderIcon, Panel: FilesPanel },
   terminal: { label: 'main.terminal', icon: SquareTerminalIcon, Panel: TerminalPanel },
   detail: { label: 'panel.details', icon: FileIcon, Panel: DetailPanel },
+  sessionInfo: { label: 'overview.title', icon: InfoIcon, Panel: SessionInfo },
 } as const;
 
 const CODE_TABS = ['tasks', 'terminal', 'diff', 'preview', 'files'] as const;
@@ -67,6 +79,14 @@ export function NewWorkspaceTabMenu({ s }: { s: SessionView }) {
             </DropdownMenuItem>
           );
         })}
+        <DropdownMenuItem onSelect={() => toggleSessionInfo(s.meta.id, true)}>
+          <InfoIcon aria-hidden />
+          {t('overview.title')}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => void createSide(s.meta.id).catch(reportSideError)}>
+          <MessageSquareIcon aria-hidden />
+          {t('side.new')}
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -78,6 +98,7 @@ export function Workspace({ s, tabs }: { s: SessionView; tabs: WorkspaceTab[] })
   const prefix = useId();
   const sid = s.meta.id;
   const active = selectedWorkspaceTab(s, tabs);
+  const { chats } = useSideList(sid, s.sideTabs.length > 0);
   const list = useRef<HTMLDivElement>(null);
   const buttons = useRef(new Map<WorkspaceTab, HTMLButtonElement>());
 
@@ -89,7 +110,9 @@ export function Workspace({ s, tabs }: { s: SessionView; tabs: WorkspaceTab[] })
   function close(tab: WorkspaceTab, moveFocus: boolean) {
     const index = tabs.indexOf(tab);
     const target = tab === active ? (tabs[index + 1] ?? tabs[index - 1]) : active;
-    if (tab === 'detail') closeDetail(sid);
+    if (isSideChatTab(tab)) hideSide(sid, sideChatId(tab));
+    else if (tab === 'detail') closeDetail(sid);
+    else if (tab === 'sessionInfo') toggleSessionInfo(sid, false);
     else togglePanel(sid, tab, false);
     if (!moveFocus) return;
     if (target) buttons.current.get(target)?.focus();
@@ -126,8 +149,11 @@ export function Workspace({ s, tabs }: { s: SessionView; tabs: WorkspaceTab[] })
       <div className="panel-tabs">
         <div ref={list} role="tablist" aria-label={t('main.panels')} className="flex min-w-0 flex-1 overflow-x-auto">
           {tabs.map((tab) => {
-            const { icon: Icon } = TABS[tab];
-            const label = tab === 'detail' && s.detail?.type === 'plan' ? t('plan.title') : t(TABS[tab].label);
+            const sideIndex = isSideChatTab(tab) ? chats.findIndex((chat) => chat.id === sideChatId(tab)) : -1;
+            const Icon = isSideChatTab(tab) ? MessageSquareIcon : TABS[tab].icon;
+            const label = isSideChatTab(tab)
+              ? sideChatLabel(t, chats[sideIndex], sideIndex)
+              : t(tab === 'detail' && s.detail?.type === 'plan' ? 'plan.title' : TABS[tab].label);
             const id = `${prefix}-${tab}`;
             return (
               <div
@@ -146,12 +172,13 @@ export function Workspace({ s, tabs }: { s: SessionView; tabs: WorkspaceTab[] })
                   aria-selected={active === tab}
                   aria-controls={`${id}-panel`}
                   tabIndex={active === tab ? 0 : -1}
-                  className="flex h-full items-center gap-1.5 rounded-sm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                  title={label}
+                  className="flex h-full min-w-0 items-center gap-1.5 rounded-sm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
                   onClick={() => selectWorkspaceTab(sid, tab)}
                   onKeyDown={(event) => onKeyDown(event, tab)}
                 >
                   <Icon className="size-3.5 shrink-0" aria-hidden />
-                  {label}
+                  <span className="max-w-36 truncate">{label}</span>
                 </button>
                 <IconBtn
                   title={t('panel.closeTab', { name: label })}
@@ -175,7 +202,7 @@ export function Workspace({ s, tabs }: { s: SessionView; tabs: WorkspaceTab[] })
         </div>
       </div>
       {tabs.map((tab) => {
-        const { Panel } = TABS[tab];
+        const Panel = isSideChatTab(tab) ? null : TABS[tab].Panel;
         const id = `${prefix}-${tab}`;
         return (
           <div
@@ -188,7 +215,11 @@ export function Workspace({ s, tabs }: { s: SessionView; tabs: WorkspaceTab[] })
             hidden={active !== tab}
             className="min-h-0 min-w-0 flex-1"
           >
-            <Panel s={s} />
+            {isSideChatTab(tab) ? (
+              <SideChatView sid={sid} chatId={sideChatId(tab)} mode="embedded" active={active === tab} />
+            ) : (
+              Panel && <Panel s={s} />
+            )}
           </div>
         );
       })}

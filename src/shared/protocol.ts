@@ -331,16 +331,21 @@ export interface SideTurn {
   /** User turns: the passage of the conversation the question is about. */
   quote?: string;
 }
-/** The side conversation of a session. The host owns it so the panel and a popped-out window show the same thing. */
 /** A suggested Work task: the card's label and the prompt it puts in the composer. */
 export interface WorkIdea {
   label: string;
   prompt: string;
 }
 
-export interface SideChat {
-  sessionId: string;
+export interface SideChatSummary {
+  id: string;
+  /** Derived from the first question; empty until it is asked. */
   title: string;
+}
+
+/** A host-held conversation separate from the session transcript. */
+export interface SideChat extends SideChatSummary {
+  sessionId: string;
   turns: SideTurn[];
   busy: boolean;
   error?: string;
@@ -872,6 +877,7 @@ export const HOST_RESOURCES = [
   'plugins',
   'artifacts',
   'activity',
+  'sideChats',
 ] as const;
 export type HostResource = (typeof HOST_RESOURCES)[number];
 
@@ -1242,8 +1248,13 @@ export interface TerminalAttach {
   exited: boolean;
 }
 /** A side chat that lives in its own window. */
+export function sideWindowKey(sessionId: string, chatId: string) {
+  return `${sessionId}:${chatId}`;
+}
+
 export interface SideWindow {
   sessionId: string;
+  chatId: string;
   pinned: boolean;
 }
 /** An "Open in" choice; `icon` is the installed app's own icon as a data URL, when it could be read. */
@@ -1320,11 +1331,11 @@ export interface Api {
 
   /** Editors found on this machine, plus the terminal and file manager. */
   /** Open (or focus) the side chat of a session in a window of its own. */
-  'side:pop'(sessionId: string): void;
+  'side:pop'(sessionId: string, chatId: string): void;
   /** Keep a popped-out side chat above other windows. */
-  'side:pin'(sessionId: string, pinned: boolean): void;
+  'side:pin'(sessionId: string, chatId: string, pinned: boolean): void;
   /** Close the side chat window; the chat goes back into its session. */
-  'side:dock'(sessionId: string): void;
+  'side:dock'(sessionId: string, chatId: string): void;
   'side:windows'(): SideWindow[];
   'app:openTargets'(): OpenTargetEntry[];
   /** Shells found on this machine, for the terminal setting. */
@@ -1410,13 +1421,15 @@ export interface Api {
   /** One tool-less request that guesses the user's next message; null when unavailable. */
   'sessions:suggest'(id: string, options: SuggestionOptions): { text: string } | null;
   /** Ask the side chat (/btw) of a session; returns once the question is queued, and the answer arrives as `side` host events. The session itself is left untouched. */
-  'sessions:side'(id: string, input: { text: string; quote?: string }): void;
-  'sessions:sideGet'(id: string): SideChat;
+  'sessions:side'(id: string, chatId: string, input: { text: string; quote?: string }): void;
+  'sessions:sideList'(id: string): SideChatSummary[];
+  'sessions:sideCreate'(id: string): SideChatSummary;
+  'sessions:sideGet'(id: string, chatId: string): SideChat;
   /** Stage (or clear, with null) the passage the next side question is about. */
-  'sessions:sideStage'(id: string, quote: string | null): void;
-  'sessions:sideAbort'(id: string): void;
+  'sessions:sideStage'(id: string, chatId: string, quote: string | null): void;
+  'sessions:sideAbort'(id: string, chatId: string): void;
   /** Forget the side conversation and start over. */
-  'sessions:sideReset'(id: string): void;
+  'sessions:sideReset'(id: string, chatId: string): void;
   /** Task ideas drawn from the recent Work sessions; null when there is nothing to base them on or no model could answer. */
   'sessions:workIdeas'(): WorkIdea[] | null;
   'sessions:changes'(id: string): ChangeSet;
@@ -1597,6 +1610,8 @@ export const HOST_CHANNELS = [
   'sessions:commands',
   'sessions:suggest',
   'sessions:side',
+  'sessions:sideList',
+  'sessions:sideCreate',
   'sessions:sideGet',
   'sessions:sideStage',
   'sessions:sideAbort',

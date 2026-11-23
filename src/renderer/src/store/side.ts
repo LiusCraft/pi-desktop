@@ -1,88 +1,174 @@
-// Side chat (/btw) on the renderer side. The conversation itself lives in the agent
-// host and arrives as `side` events, so the panel inside a session and a window it was
-// popped out to always show the same thread. What is kept here is only where it shows.
+// The host owns side chats. The renderer only decides where to display them.
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { create } from 'zustand';
-import type { SideChat, SideWindow } from '@shared/protocol';
-import { bridge, call, errText } from '@/lib/api';
+import { sideWindowKey, type SideChat, type SideChatSummary, type SideWindow } from '@shared/protocol';
+import { bridge, call, canTerminal, errText } from '@/lib/api';
+import { getApp, updateSession } from './app';
+import { closeWorkspaceTab, isSideChatTab, sideChatId, sideChatTab } from './layout';
+import { subscribeResource } from './resources';
 
-interface SideState {
-  /** Sessions whose side chat panel is open inside the session. */
-  open: Record<string, boolean>;
-  /** Side chats living in a window of their own. */
-  windows: Record<string, { pinned: boolean }>;
+export const useSide = create<{ windows: Record<string, { pinned: boolean }> }>(() => ({ windows: {} }));
+
+function openSideTab(sid: string, chatId: string) {
+  const tab = sideChatTab(chatId);
+  updateSession(sid, (s) => {
+    if (!s.sideTabs.includes(tab)) s.sideTabs.push(tab);
+    s.activeTab = tab;
+  });
 }
 
-export const useSide = create<SideState>(() => ({ open: {}, windows: {} }));
-
-const setSide = (fn: (s: SideState) => Partial<SideState>) => useSide.setState((s) => fn(s));
+export function hideSide(sid: string, chatId: string) {
+  const tab = sideChatTab(chatId);
+  updateSession(sid, (s) =>
+    closeWorkspaceTab(s, tab, canTerminal, () => {
+      s.sideTabs = s.sideTabs.filter((t) => t !== tab);
+    }),
+  );
+}
 
 /** Follow the side chat windows main reports; returns the unsubscribe. */
 export function watchSideWindows() {
-  const apply = (w: SideWindow & { open?: boolean; docked?: boolean }) =>
-    setSide((s) => {
+  let live = true;
+  const changed = new Set<string>();
+  const apply = ({ sessionId, chatId, pinned, open, docked }: SideWindow & { open?: boolean; docked?: boolean }) => {
+    const key = sideWindowKey(sessionId, chatId);
+    useSide.setState((s) => {
       const windows = { ...s.windows };
-      if (w.open === false) delete windows[w.sessionId];
-      else windows[w.sessionId] = { pinned: w.pinned };
-      // Docking puts the chat back into its session; closing the window just closes it.
-      return w.docked ? { windows, open: { ...s.open, [w.sessionId]: true } } : { windows };
+      if (open === false) delete windows[key];
+      else windows[key] = { pinned };
+      return { windows };
     });
+    if (docked) openSideTab(sessionId, chatId);
+    else if (open) hideSide(sessionId, chatId);
+  };
+  const off = bridge.on('side:window', (event) => {
+    changed.add(sideWindowKey(event.sessionId, event.chatId));
+    apply(event);
+  });
   void call('side:windows')
-    .then((list) => list.forEach(apply))
+    .then((list) => {
+      if (live) list.filter((w) => !changed.has(sideWindowKey(w.sessionId, w.chatId))).forEach(apply);
+    })
     .catch(() => {});
-  return bridge.on('side:window', apply);
+  return () => {
+    live = false;
+    off();
+  };
 }
 
-/** Show the side chat inside the session, or bring its window forward when it was popped out. */
-export function showSide(sid: string) {
-  if (useSide.getState().windows[sid]) return void call('side:pop', sid).catch(() => {});
-  setSide((s) => ({ open: { ...s.open, [sid]: true } }));
+export async function openSide(sid: string, chatId: string) {
+  if (useSide.getState().windows[sideWindowKey(sid, chatId)]) await call('side:pop', sid, chatId);
+  else openSideTab(sid, chatId);
 }
 
-export function hideSide(sid: string) {
-  setSide((s) => ({ open: { ...s.open, [sid]: false } }));
+export async function createSide(sid: string) {
+  const chat = await call('sessions:sideCreate', sid);
+  await openSide(sid, chat.id);
+  return chat.id;
 }
 
-export function popOutSide(sid: string) {
-  hideSide(sid);
-  void call('side:pop', sid).catch(() => {});
+// Concurrent /btw and selection requests should not both create the first thread.
+const opening = new Map<string, Promise<string>>();
+export async function showSide(sid: string) {
+  const tab = getApp().sessions[sid]?.activeTab ?? null;
+  if (isSideChatTab(tab)) return sideChatId(tab);
+  const pending = opening.get(sid);
+  if (pending) return pending;
+  const resolving = (async () => {
+    const chat = (await call('sessions:sideList', sid)).at(-1);
+    if (!chat) return createSide(sid);
+    await openSide(sid, chat.id);
+    return chat.id;
+  })();
+  opening.set(sid, resolving);
+  try {
+    return await resolving;
+  } finally {
+    opening.delete(sid);
+  }
 }
 
-/** Back into the session it belongs to (main reports the dock to the session's window). */
-export function dockSide(sid: string) {
-  void call('side:dock', sid).catch(() => {});
-}
-
-/** Ask a question (from /btw); a passage selected in the conversation can go with it. */
+/** /btw and selected passages use the open thread, or create the first thread. */
 export async function askSide(sid: string, text: string, quote?: string) {
-  showSide(sid);
-  await call('sessions:side', sid, { text, quote });
+  const chatId = await showSide(sid);
+  await call('sessions:side', sid, chatId, { text, quote });
 }
 
-/** Open the side chat with a passage staged, ready for the question. */
-export async function quoteSide(sid: string, quote: string) {
-  showSide(sid);
-  await call('sessions:sideStage', sid, quote);
+const EMPTY_LIST: SideChatSummary[] = [];
+export function useSideList(sid: string, enabled = true) {
+  const [result, setResult] = useState<{ sid: string; chats: SideChatSummary[]; error: string | null }>();
+  useEffect(() => {
+    if (!enabled) return;
+    let live = true;
+    let revision = 0;
+    function load() {
+      const request = ++revision;
+      const apply = (chats: SideChatSummary[], error: string | null) => {
+        if (live && request === revision) setResult({ sid, chats, error });
+      };
+      void call('sessions:sideList', sid).then(
+        (chats) => apply(chats, null),
+        (err) => apply(EMPTY_LIST, errText(err)),
+      );
+    }
+    const off = subscribeResource('sideChats', load);
+    const offHost = bridge.on('host:event', (event) => {
+      if (event.type === 'host_exit') {
+        revision++;
+        setResult({ sid, chats: EMPTY_LIST, error: null });
+      }
+    });
+    load();
+    return () => {
+      live = false;
+      off();
+      offHost();
+    };
+  }, [sid, enabled]);
+  return result?.sid === sid ? result : { chats: EMPTY_LIST, error: null };
 }
 
-const empty = (sid: string): SideChat => ({ sessionId: sid, title: '', turns: [], busy: false, quote: null });
+export function reportSideError(err: unknown) {
+  toast.error(errText(err));
+}
 
-/** The host's side conversation of a session, kept current by its events. */
-export function useSideChat(sid: string): SideChat {
-  const [chat, setChat] = useState<SideChat>(() => empty(sid));
+const empty = (sid: string, id: string): SideChat => ({
+  sessionId: sid,
+  id,
+  title: '',
+  turns: [],
+  busy: false,
+  quote: null,
+});
+
+export function useSideChat(sid: string, chatId: string): SideChat {
+  const [chat, setChat] = useState<SideChat>(() => empty(sid, chatId));
   useEffect(() => {
     let live = true;
-    setChat(empty(sid));
+    let received = false;
     const off = bridge.on('host:event', (ev) => {
-      if (ev.type === 'side' && ev.sessionId === sid) setChat(ev.chat);
+      if (ev.type === 'side' && ev.sessionId === sid && ev.chat.id === chatId) {
+        received = true;
+        setChat(ev.chat);
+      }
+      if (ev.type === 'host_exit') {
+        received = true;
+        setChat((now) => ({ ...now, busy: false }));
+      }
     });
-    call('sessions:sideGet', sid)
-      .then((c) => live && setChat((now) => (now.turns.length || now.busy ? now : c)))
-      .catch((err) => live && setChat({ ...empty(sid), error: errText(err) }));
+    void call('sessions:sideGet', sid, chatId).then(
+      (c) => {
+        if (live && !received) setChat(c);
+      },
+      (err) => {
+        if (live && !received) setChat({ ...empty(sid, chatId), error: errText(err) });
+      },
+    );
     return () => {
       live = false;
       off();
     };
-  }, [sid]);
+  }, [sid, chatId]);
   return chat;
 }

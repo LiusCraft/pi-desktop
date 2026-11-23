@@ -90,7 +90,8 @@ const { openWorkspaceTabs, readWorkspaceTab } = await import('../src/renderer/sr
 const { TooltipProvider } = await import('../src/renderer/src/components/ui/tooltip');
 const { emptySession } = await import('../src/renderer/src/store/transcript');
 const { getApp, setApp, updateSession, useApp } = await import('../src/renderer/src/store/app');
-const { diffTarget, openFileRef, openPlan, requestFind } = await import('../src/renderer/src/store/actions');
+const { diffTarget, handleHostEvent, openFileRef, openPlan, requestFind } =
+  await import('../src/renderer/src/store/actions');
 const { useShortcuts } = await import('../src/renderer/src/lib/use-shortcuts');
 
 const change = (path: string, status: FileChange['status'] = 'M'): FileChange => ({
@@ -219,6 +220,62 @@ beforeEach(() => {
 });
 
 describe('Workspace tabs', () => {
+  it('shows live session, branch and PR information and routes changes to the existing Diff tab', async () => {
+    invoke.mockImplementation((channel, ...args) => {
+      if (channel === 'sessions:sideList') return Promise.resolve([]);
+      if (channel === 'app:openExternal') return Promise.resolve();
+      return host(channel, ...args);
+    });
+    updateSession(id, (s) => {
+      s.meta.title = 'Fix the login redirect';
+      s.meta.description = 'Tracked to a stale cache key';
+      s.meta.mode = 'auto';
+      s.meta.cwd = '/worktrees/redirect';
+      s.meta.worktree = true;
+      s.pr = {
+        num: 42,
+        title: 'Refresh redirect',
+        state: 'open',
+        draft: false,
+        url: 'https://github.com/org/project/pull/42',
+        ci: 'pending',
+      };
+    });
+    render(
+      <TooltipProvider>
+        <Main />
+      </TooltipProvider>,
+    );
+    const overview = screen.getByRole('button', { name: 'Session overview' });
+    fireEvent.click(overview);
+    const dialog = screen.getByRole('dialog', { name: 'Session overview' });
+    expect(within(dialog).getByText('Tracked to a stale cache key')).toBeTruthy();
+    expect(within(dialog).getByText('project · topic')).toBeTruthy();
+    expect(within(dialog).getByText('+2')).toBeTruthy();
+    expect(within(dialog).getByText('−1')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: /#42.*Refresh redirect/ }));
+    const info = screen.getByRole('tabpanel', { name: 'Session overview' });
+    expect(within(info).getByText('/worktrees/redirect')).toBeTruthy();
+    expect(within(info).getByText('Git worktree', { exact: false })).toBeTruthy();
+    fireEvent.click(within(info).getByRole('button', { name: /#42/ }));
+    expect(invoke).toHaveBeenCalledWith('app:openExternal', 'https://github.com/org/project/pull/42');
+
+    act(() =>
+      handleHostEvent({
+        type: 'meta',
+        sessionId: id,
+        meta: { ...getApp().sessions[id].meta, description: 'Tests now passing' },
+      }),
+    );
+    expect(await within(info).findByText('Tests now passing')).toBeTruthy();
+    fireEvent.click(overview);
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Session overview' })).getByRole('button', { name: /project · topic/ }),
+    );
+    expect(screen.getByRole('tabpanel', { name: 'Changes' })).toBeTruthy();
+    expect(screen.getAllByRole('tab', { name: 'Changes' })).toHaveLength(1);
+  });
+
   it('opens task output from the real session layout and restores the dock without remounting the task tab', async () => {
     const shell = toolFromArgs('shell-result', 'pidesk_bg_shell', { command: 'npm test', description: 'Run tests' });
     updateSession(id, (s) => {
@@ -286,7 +343,7 @@ describe('Workspace tabs', () => {
     expect(screen.getByRole('tabpanel', { name: 'Files' })).toBe(files);
   });
 
-  it('keeps Work file previews in a standalone detail tab and offers only Work panels', async () => {
+  it('keeps Work file previews in a standalone detail tab and offers shared tabs without Code panels', async () => {
     updateSession(id, (s) => {
       s.meta.kind = 'work';
     });
@@ -295,6 +352,8 @@ describe('Workspace tabs', () => {
     expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual([
       'Progress',
       'Background tasks',
+      'Session overview',
+      'New side chat',
     ]);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Progress' }));
     const progress = screen.getByRole('tabpanel', { name: 'Progress' });

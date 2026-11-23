@@ -84,6 +84,8 @@ export function emptySession(meta: SessionMeta): SessionView {
     fileDetail: null,
     panels: readPanels(meta.id),
     activeTab: readWorkspaceTab(meta.id),
+    sessionInfoOpen: false,
+    sideTabs: [],
     workspaceExpanded: false,
     detail: null,
     previewUrl: null,
