@@ -80,6 +80,7 @@ import { setApp, useApp } from '@/store/app';
 import { InlineEdit } from '@/components/common/InlineEdit';
 import { TooltipHint } from '@/components/ui/tooltip';
 import type { MessageKey } from '@shared/i18n';
+import { projectPathKey } from '@shared/project-path';
 import { MAX_SESSION_TITLE, type SessionKind } from '@shared/protocol';
 import type { SessionView } from '@/store/types';
 
@@ -396,7 +397,7 @@ function SessionRow({
   const sort = useSortable(
     'session',
     s.meta.id,
-    s.meta.pinned ? PINNED_GROUP : s.meta.projectPath,
+    s.meta.pinned ? PINNED_GROUP : s.meta.kind === 'code' ? projectPathKey(s.meta.projectPath) : s.meta.projectPath,
     ids,
     'sessions',
     !child,
@@ -759,17 +760,19 @@ const usePage = () =>
 
 function FolderHeader({
   path,
+  folderKey,
   folded,
   ids,
   onToggle,
 }: {
   path: string;
+  folderKey: string;
   folded: boolean;
   ids: string[];
   onToggle: () => void;
 }) {
   const t = useT();
-  const sort = useSortable('folder', path, 'folders', ids, 'folders');
+  const sort = useSortable('folder', folderKey, 'folders', ids, 'folders');
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -878,35 +881,46 @@ function CodeNav() {
       return n;
     });
   const saved = useOrder();
-  const found = new Map<string, SessionView[]>();
-  for (const p of projects) found.set(p.path, []);
+  const found = new Map<string, { path: string; list: SessionView[] }>();
+  const folder = (path: string) => {
+    const key = projectPathKey(path);
+    const existing = found.get(key);
+    if (existing) return existing;
+    const group = { path, list: [] as SessionView[] };
+    found.set(key, group);
+    return group;
+  };
+  for (const p of projects) folder(p.path);
   const all = Object.values(sessions)
     .filter((x) => !x.meta.archived && x.meta.kind === 'code')
     .sort((a, b) => (b.meta.updatedAt || 0) - (a.meta.updatedAt || 0));
-  for (const s of all.filter((x) => !x.meta.pinned)) {
-    if (!found.has(s.meta.projectPath)) found.set(s.meta.projectPath, []);
-    found.get(s.meta.projectPath)!.push(s);
-  }
-  const groups = arrange([...found], ([path]) => path, saved.folders);
-  const folderIds = groups.map(([path]) => path);
+  for (const s of all.filter((x) => !x.meta.pinned)) folder(s.meta.projectPath).list.push(s);
+  const groups = arrange([...found], ([key]) => key, saved.folders.map(projectPathKey));
+  const folderIds = groups.map(([key]) => key);
   return (
     <>
       <TopNav view="code" />
       <PinnedGroup list={all.filter((x) => x.meta.pinned)} page={page} current={current} className="mt-3 px-2" />
       <div className="space-y-1 mt-3 px-2">
-        {groups.map(([path, list]) => {
+        {groups.map(([key, { path, list }]) => {
           const LIMIT = 5;
           const ordered = arrange(list, (x) => x.meta.id, saved.sessions);
           const rows = nest(ordered);
           const ids = ordered.map((x) => x.meta.id);
-          const isFolded = folded.has(path);
+          const isFolded = folded.has(key);
           const collapsed =
-            rows.length > LIMIT && !expanded.has(path) && !rows.slice(LIMIT).some((r) => r.s.meta.id === current);
+            rows.length > LIMIT && !expanded.has(key) && !rows.slice(LIMIT).some((r) => r.s.meta.id === current);
           const shown = collapsed ? rows.slice(0, LIMIT) : rows;
           const visible = shown.map((r) => r.s.meta.id);
           return (
-            <Collapsible key={path} open={!isFolded}>
-              <FolderHeader path={path} folded={isFolded} ids={folderIds} onToggle={() => toggleFolded(path)} />
+            <Collapsible key={key} open={!isFolded}>
+              <FolderHeader
+                path={path}
+                folderKey={key}
+                folded={isFolded}
+                ids={folderIds}
+                onToggle={() => toggleFolded(key)}
+              />
               <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
                 {shown.map(({ s, child }) => (
                   <SessionRow
@@ -921,7 +935,7 @@ function CodeNav() {
                 {collapsed && (
                   <button
                     className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground"
-                    onClick={() => setExpanded((e) => new Set(e).add(path))}
+                    onClick={() => setExpanded((e) => new Set(e).add(key))}
                   >
                     {t('sidebar.showMore')}
                   </button>

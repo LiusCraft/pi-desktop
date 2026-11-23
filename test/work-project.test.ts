@@ -69,6 +69,31 @@ describe('Code folder ownership', () => {
     return abs;
   };
 
+  it('hides stale and duplicate Code project entries and keeps unrelated projects on removal', () => {
+    const repo = make('repo');
+    // On Windows this exercises the two spellings from the folder picker and Git.
+    const alias = repo.replaceAll('\\', '/');
+    const registered = book.addProject(repo);
+    const other = book.addProject(make('other'));
+    const store = new Store(path.join(root, 'data'));
+    const stale = { ...registered, path: path.join(root, 'missing') };
+    const duplicates = [registered, { ...registered, path: alias }];
+    const legacy = [stale, ...duplicates, other];
+    store.set('projects', legacy);
+
+    expect(book.projects()).toEqual([registered, other]);
+    expect(store.get('projects', [])).toEqual(legacy);
+    expect(book.addProject(alias).path).toBe(repo);
+    expect(book.projects().map((p) => p.path)).toEqual([repo, other.path]);
+    expect(store.get('projects', [])).toHaveLength(3);
+
+    store.set('projects', legacy);
+    expect(book.removeProject(alias)).toEqual([other]);
+    expect(store.get('projects', [])).toEqual([stale, other]);
+    expect(fs.existsSync(repo)).toBe(true);
+    expect(book.owner(repo)).toBeDefined();
+  });
+
   it('creates a persistent Work directory exactly once and isolates repositories with the same name', () => {
     const a = make('org-a/api');
     const b = make('org-b/api');
