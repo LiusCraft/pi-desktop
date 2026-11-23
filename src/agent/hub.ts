@@ -151,6 +151,8 @@ import {
 } from './desktop-kit';
 import { sessionGoal } from './session-goal';
 import type { ShellCommands } from './shell-session';
+import { CODEMODE_TOOL, hasScriptToolRow } from '@shared/script-tools';
+import { SCRIPT_TOOL_ENTRY, scriptToolResult, withScriptTools } from './script-tool-history';
 import { toWireEvent } from './events';
 import {
   locateSessionFile,
@@ -303,6 +305,8 @@ interface Live {
   pendingOutputPaths: Map<string, string>;
   /** File snapshots captured before a write/edit tool finishes. */
   pendingUndo: Map<string, { path: string; before: FileSnapshot }>;
+  scriptParents: Set<string>;
+  pendingScriptTools: Map<string, { parentToolCallId: string; args: Record<string, unknown> }>;
 }
 
 /** Rough token count for text the SDK does not measure for us. */
@@ -874,6 +878,8 @@ export class SessionHub {
       outputPaths: new Set(),
       pendingOutputPaths: new Map(),
       pendingUndo: new Map(),
+      scriptParents: new Set(),
+      pendingScriptTools: new Map(),
     };
     const resumed = m.sessionFile && fs.existsSync(m.sessionFile);
     const sessionManager = resumed
@@ -1248,8 +1254,30 @@ export class SessionHub {
       live.pendingUndo.delete(event.toolCallId);
     }
 
+    if (event.type === 'tool_execution_start') {
+      if (event.toolName === CODEMODE_TOOL) live.scriptParents.add(event.toolCallId);
+      if (live.scriptParents.has(event.parentToolCallId) && hasScriptToolRow(event.toolName)) {
+        live.pendingScriptTools.set(event.toolCallId, {
+          parentToolCallId: event.parentToolCallId,
+          args: event.args ?? {},
+        });
+      }
+    } else if (event.type === 'tool_execution_end') {
+      live.scriptParents.delete(event.toolCallId);
+      const started = live.pendingScriptTools.get(event.toolCallId);
+      if (started) {
+        live.pendingScriptTools.delete(event.toolCallId);
+        live.runtime.session.sessionManager.appendCustomEntry(
+          SCRIPT_TOOL_ENTRY,
+          scriptToolResult(event, started.parentToolCallId, started.args),
+        );
+      }
+    }
+
     if (event.type === 'agent_start') this.setStatus(live, 'running');
     if (event.type === 'agent_settled') {
+      live.scriptParents.clear();
+      live.pendingScriptTools.clear();
       this.finishMetadataTurn(live, m, event.aborted);
       this.setStatus(live, 'idle');
       m.updatedAt = Date.now();
@@ -1705,8 +1733,11 @@ export class SessionHub {
         break;
       }
     }
-    return messages.map((message) =>
-      byMessage.has(message) ? { ...message, nestedFileOutputs: byMessage.get(message) } : message,
+    return withScriptTools(
+      session.sessionManager,
+      messages.map((message) =>
+        byMessage.has(message) ? { ...message, nestedFileOutputs: byMessage.get(message) } : message,
+      ),
     );
   }
 
@@ -2737,13 +2768,15 @@ export class SessionHub {
   /** Messages the latest compaction left out of the context, for showing them again on demand. */
   async compactedHistory(id: string): Promise<AgentMessage[]> {
     const live = await this.ensure(id);
-    return this.compactedMessages(live.runtime.session);
+    const { session } = live.runtime;
+    return withScriptTools(session.sessionManager, this.compactedMessages(session));
   }
 
   /** Messages an idle rebuild left out of the context: the ones behind the newest handoff card. */
   async handoffHistory(id: string): Promise<AgentMessage[]> {
     const live = await this.ensure(id);
-    return this.omittedMessages(live.runtime.session);
+    const { session } = live.runtime;
+    return withScriptTools(session.sessionManager, this.omittedMessages(session));
   }
 
   private omittedMessages(session: AgentSession): AgentMessage[] {

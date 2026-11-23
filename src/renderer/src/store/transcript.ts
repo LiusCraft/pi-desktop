@@ -18,10 +18,11 @@ import { peerMessageBody, queuedPeerMessages, SEND_MESSAGE_TOOL } from '@shared/
 import { TASK_NOTIFICATION_TYPE, taskNotificationText } from '@shared/task-message';
 import { decodePrEvent } from '@shared/pr-event';
 import { typedText } from '@shared/skill-message';
+import { CODEMODE_TOOL, hasScriptToolRow } from '@shared/script-tools';
 import * as previews from '@shared/tool-previews';
 import { fmtDur, fmtTok, relPath } from '@/lib/format';
 import { t } from '@/lib/i18n';
-import { bareName, CODEMODE_TOOL, nestedCalls, toolFromArgs, toolLabel, type ToolState } from '@/lib/tools';
+import { bareName, nestedCalls, toolFromArgs, toolLabel, type ToolState } from '@/lib/tools';
 import type { ViewMode } from '@/lib/constants';
 import { readPanels, readWorkspaceTab } from './layout';
 import type { Item, ItemOf, SessionChange, SessionView, ThinkStep, Todo } from './types';
@@ -235,7 +236,7 @@ function recordSessionChange(
   recordChange(s.turnChanges, path, kind, oldText, newText, stats, toolId);
 }
 
-/** Nested calls belong to the script's one row, but have the same file side effects as direct calls. */
+/** Use the host's actual before/after snapshots for nested file side effects. */
 function recordNestedOutput(s: SessionView, output: NestedFileOutput) {
   const path = relPath(s.meta.cwd, output.path);
   recordOutput(s, path, output.kind);
@@ -318,6 +319,22 @@ export function toolStart(
   if (!replay) s.statusText = `${toolLabel(tool)}…`;
 }
 
+function startScriptTool(
+  s: SessionView,
+  ev: { parentToolCallId: string; toolCallId: string; toolName: string; args?: Record<string, unknown> },
+  replay = false,
+) {
+  if (!hasScriptToolRow(ev.toolName) || findTool(s, ev.toolCallId)) return;
+  const parent = findTool(s, ev.parentToolCallId);
+  if (!parent || parent.tool.name !== CODEMODE_TOOL) return;
+  const tool = { ...toolFromArgs(ev.toolCallId, ev.toolName, ev.args), parentToolCallId: ev.parentToolCallId };
+  // Keep calls beside their script even if independent tools run in parallel.
+  const rows = parent.group.tools;
+  const last = rows.findLastIndex((row) => row.id === parent.tool.id || row.parentToolCallId === parent.tool.id);
+  rows.splice(last + 1, 0, tool);
+  if (!replay) s.statusText = `${toolLabel(tool)}…`;
+}
+
 export function toolEnd(
   s: SessionView,
   ev: { toolCallId: string; toolName: string; result?: { content?: unknown; details?: any }; isError?: boolean },
@@ -385,13 +402,21 @@ export function toolEnd(
       t.add = preview.add;
       t.del = preview.del;
     }
-    if (!ev.isError && t.path && (t.kind === 'edit' || t.kind === 'write')) {
+    if (!t.parentToolCallId && !ev.isError && t.path && (t.kind === 'edit' || t.kind === 'write')) {
       const rel = relPath(s.meta.cwd, t.path);
       recordSessionChange(s, rel, t.kind, t.args, preview, t.id);
     }
   }
-  if (t.kind === 'websearch' && !ev.isError) t.count = ev.result?.details?.hits?.length;
-  if (bareName(ev.toolName) === CODEMODE_TOOL) t.calls = nestedCalls(ev.result?.details?.calls);
+  if (t.kind === 'websearch' && !ev.isError) t.count = ev.result?.details?.hits?.length ?? ev.result?.details?.hitCount;
+  if (bareName(ev.toolName) === CODEMODE_TOOL) {
+    t.calls = nestedCalls(ev.result?.details?.calls);
+    const calls = new Map(t.calls.map((call) => [call.id, call]));
+    for (const row of found.group.tools) {
+      if (row.parentToolCallId !== t.id) continue;
+      const call = calls.get(row.id);
+      if (row.status === 'running' || call?.status === 'cancelled') row.status = 'denied';
+    }
+  }
   // Live, the host pushes these as they happen (also from inside a script); this rebuilds them when a transcript is replayed.
   if (replay && bareName(ev.toolName) === 'present_files' && !ev.isError)
     addOutputs(s, ev.result?.details?.files ?? []);
@@ -407,7 +432,7 @@ export function toolEnd(
   }
   if (t.kind === 'bash') t.output = text;
   else if (t.kind === 'edit' || t.kind === 'write') {
-    if (!ev.isError && t.path) recordOutput(s, relPath(s.meta.cwd, t.path), t.kind);
+    if (!t.parentToolCallId && !ev.isError && t.path) recordOutput(s, relPath(s.meta.cwd, t.path), t.kind);
     if (!replay) fx.scheduleChanges = true;
   } else if (t.kind === 'agent' && ev.result?.details?.background) {
     // The call only started the task; its real end arrives as a `task` event.
@@ -683,6 +708,7 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
     }
     case 'tool_execution_start':
       if (!ev.parentToolCallId || ev.toolName === SEND_MESSAGE_TOOL) toolStart(s, ev as any, view);
+      else startScriptTool(s, ev as any);
       return {};
     case 'tool_execution_update':
       if (bareName(ev.toolName) === 'task') {
@@ -699,9 +725,10 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
       return {};
     case 'tool_execution_end':
       if (!ev.parentToolCallId || ev.toolName === SEND_MESSAGE_TOOL) return toolEnd(s, ev as any, view);
-      if (!ev.fileOutput || ev.isError) return {};
+      const fx = hasScriptToolRow(ev.toolName) ? toolEnd(s, ev as any, view) : {};
+      if (!ev.fileOutput || ev.isError) return fx;
       recordNestedOutput(s, ev.fileOutput);
-      return { scheduleChanges: true };
+      return { ...fx, scheduleChanges: true };
     case 'auto_retry_start':
       push(
         s,
@@ -974,8 +1001,16 @@ function appendMessages(s: SessionView, messages: AgentMessage[], view: ViewMode
           g.thoughts.push({ text: b.thinking, done: true, t0: 0, open: verbose(view) });
         } else if (b.type === 'text' && b.text)
           s.items.push({ kind: 'text', key: newKey(), text: b.text, live: false });
-        else if (b.type === 'toolCall')
+        else if (b.type === 'toolCall') {
           toolStart(s, { toolCallId: b.id!, toolName: b.name!, args: b.arguments }, view, true);
+          if (b.name === CODEMODE_TOOL) {
+            for (const row of m.scriptTools ?? []) {
+              if (row.parentToolCallId !== b.id) continue;
+              startScriptTool(s, row, true);
+              toolEnd(s, row, view, true);
+            }
+          }
+        }
       }
       if (m.stopReason === 'error' && m.errorMessage)
         s.items.push({ kind: 'note', key: newKey(), level: 'error', text: `Error: ${m.errorMessage}` });

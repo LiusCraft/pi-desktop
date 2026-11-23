@@ -66,8 +66,8 @@ describe('codemode nested calls', () => {
       'read',
     ]);
     assert.deepEqual(calls, [
-      { name: 'read', args: '{"path":"a.ts"}', status: 'ok', durationMs: 12 },
-      { name: 'bash', args: '{}', status: 'error', error: 'exit 1', durationMs: 300 },
+      { id: 'c/1', name: 'read', args: '{"path":"a.ts"}', status: 'ok', durationMs: 12 },
+      { id: 'c/2', name: 'bash', args: '{}', status: 'error', error: 'exit 1', durationMs: 300 },
       { name: 'models.classify', args: '', status: 'ok', cost: 0.0004 },
       { name: 'weird', args: '', status: 'ok' },
     ]);

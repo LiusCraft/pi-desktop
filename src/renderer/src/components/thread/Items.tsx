@@ -984,7 +984,7 @@ function ArtifactPreviewButton({ tool }: { tool: ToolState }) {
   );
 }
 
-function ToolDetail({ sid, tool }: { sid: string; tool: ToolState }) {
+function ToolDetail({ sid, tool, rowIds }: { sid: string; tool: ToolState; rowIds?: Set<string> }) {
   if (tool.preview)
     return (
       <ToolPreviewView
@@ -995,7 +995,7 @@ function ToolDetail({ sid, tool }: { sid: string; tool: ToolState }) {
       />
     );
   if (tool.kind === 'bash') return <TermOutput cmd={tool.cmd} dir={tool.dir} out={tool.output ?? ''} />;
-  if (bareName(tool.name) === CODEMODE_TOOL) return <CodemodeDetail tool={tool} />;
+  if (bareName(tool.name) === CODEMODE_TOOL) return <CodemodeDetail tool={tool} rowIds={rowIds} />;
   if (tool.output) return <ToolOutput text={tool.output} />;
   return (
     <div className="px-3 py-2 text-xs text-muted-foreground">
@@ -1055,11 +1055,12 @@ function NestedCalls({ calls }: { calls: NestedToolCall[] }) {
 }
 
 /** A codemode call: when the script ran, the script, the tools it called, then its output. */
-function CodemodeDetail({ tool }: { tool: ToolState }) {
+function CodemodeDetail({ tool, rowIds }: { tool: ToolState; rowIds?: Set<string> }) {
   const t = useT();
   const head = tool.output ? splitScriptHeader(tool.output) : null;
   const code = typeof tool.args?.code === 'string' ? tool.args.code.trim() : '';
   const body = (head ? head.body : (tool.output ?? '')).trim();
+  const calls = tool.calls?.filter((call) => !call.id || !rowIds?.has(call.id));
   const failed = tool.status !== 'running' && (tool.status === 'err' || (head ? !head.ok : false));
   return (
     <>
@@ -1070,7 +1071,7 @@ function CodemodeDetail({ tool }: { tool: ToolState }) {
         </div>
       )}
       {!!code && <CodeBlock lang="js" code={code} flush collapsible />}
-      {!!tool.calls?.length && <NestedCalls calls={tool.calls} />}
+      {!!calls?.length && <NestedCalls calls={calls} />}
       {!!body && <ToolOutput text={body} />}
     </>
   );
@@ -1121,7 +1122,7 @@ function ToolIcon({ tool }: { tool: ToolState }) {
   }
 }
 
-const ToolRow = memo(function ToolRow({ sid, tool }: { sid: string; tool: ToolState }) {
+const ToolRow = memo(function ToolRow({ sid, tool, rowIds }: { sid: string; tool: ToolState; rowIds?: Set<string> }) {
   const t = useT();
   const running = tool.status === 'running';
   const err = tool.status === 'err',
@@ -1230,7 +1231,7 @@ const ToolRow = memo(function ToolRow({ sid, tool }: { sid: string; tool: ToolSt
       {expandable && (
         <TraceCollapsibleContent>
           <div className="overflow-hidden rounded-lg border bg-code">
-            <ToolDetail sid={sid} tool={tool} />
+            <ToolDetail sid={sid} tool={tool} rowIds={rowIds} />
             {bareName(tool.name) === ARTIFACT_TOOL && tool.args?.action === ARTIFACT_SAVE && tool.status === 'done' && (
               <ArtifactPreviewButton tool={tool} />
             )}
@@ -1261,7 +1262,16 @@ export const GroupItem = memo(function GroupItem({
   const t = useT();
   const thoughts = view === 'normal' ? [] : item.thoughts;
   if (!item.tools.length && !thoughts.length) return null;
-  const running = item.tools.find((tool) => tool.status === 'running');
+  const running =
+    item.tools.find((tool) => tool.status === 'running' && tool.parentToolCallId) ??
+    item.tools.find((tool) => tool.status === 'running');
+  const scriptRows = new Map<string, Set<string>>();
+  for (const tool of item.tools) {
+    if (!tool.parentToolCallId) continue;
+    const ids = scriptRows.get(tool.parentToolCallId) ?? new Set<string>();
+    ids.add(tool.id);
+    scriptRows.set(tool.parentToolCallId, ids);
+  }
   const { add, del } = groupStats(item.tools);
   const label = running ? `${toolLabel(running)}…` : groupSummary(item.tools);
   return (
@@ -1311,7 +1321,7 @@ export const GroupItem = memo(function GroupItem({
           <TraceCollapsibleContent>
             <Trace className="gap-1.5">
               {item.tools.map((tool) => (
-                <ToolRow key={tool.id} sid={sid} tool={tool} />
+                <ToolRow key={tool.id} sid={sid} tool={tool} rowIds={scriptRows.get(tool.id)} />
               ))}
             </Trace>
           </TraceCollapsibleContent>

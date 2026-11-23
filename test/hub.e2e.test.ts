@@ -9,7 +9,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentSession, ProjectTrustStore } from '@earendil-works/pi-coding-agent';
 import { fauxAssistantMessage, fauxProvider, fauxToolCall, getCurrentTools } from '@earendil-works/pi-ai';
-import { applyPiEvent, emptySession, replay } from '../src/renderer/src/store/transcript';
+import { applyPiEvent, emptySession, findTool, replay } from '../src/renderer/src/store/transcript';
 import { decodeUserContent } from '@shared/attachments';
 import {
   HOST_CHANNELS,
@@ -1029,7 +1029,7 @@ describe('code sessions', { timeout: 120_000 }, () => {
     }
   });
 
-  it('tracks real codemode edits live and on replay, and rewinds only the successful local writes', async () => {
+  it('shows real codemode tool rows live and on replay, and rewinds only the successful local writes', async () => {
     const project = fs.mkdtempSync(path.join(tmp, 'nested-'));
     const outside = path.join(tmp, 'published.txt');
     fs.mkdirSync(path.join(project, '.pi'));
@@ -1039,6 +1039,7 @@ describe('code sessions', { timeout: 120_000 }, () => {
     const script = [
       "await tools.read({ path: 'original.txt' });",
       "await tools.edit({ path: 'original.txt', edits: [{ oldText: 'original', newText: 'edited' }] });",
+      "await tools.bash({ command: 'echo codemode-command-output' });",
       "await Promise.all(['one', 'two'].map(content => tools.write({ path: 'overlap.txt', content })));",
       "await tools.write({ content: 'x'.repeat(10000), path: 'large.txt' });",
       `await tools.write({ path: ${JSON.stringify(outside)}, content: 'outside' });`,
@@ -1058,9 +1059,20 @@ describe('code sessions', { timeout: 120_000 }, () => {
       title: 'nested files',
     });
     const { pi, tools } = await driver.run(meta.id, 'Run the script');
-    expect(tools.find((e) => e.toolName === 'codemode')).toMatchObject({ isError: true });
+    const scriptEnd = tools.find((e) => e.toolName === 'codemode')!;
+    expect(scriptEnd).toMatchObject({ isError: true });
     const live = emptySession(meta);
-    for (const event of pi) applyPiEvent(live, event, 'normal');
+    const editProgress = [];
+    for (const event of pi) {
+      applyPiEvent(live, event, 'normal');
+      if (event.parentToolCallId !== scriptEnd.toolCallId || event.toolName !== 'edit') continue;
+      const edit = findTool(live, event.toolCallId)?.tool;
+      if (event.type === 'tool_execution_start') editProgress.push(edit?.status);
+      if (event.type === 'tool_execution_end') {
+        editProgress.push([findTool(live, scriptEnd.toolCallId)?.tool.status, edit?.preview?.type]);
+      }
+    }
+    expect(editProgress).toEqual(['running', ['running', 'diff'], 'running', ['running', 'error']]);
     const summary = (s: typeof live) => s.outputs.map(({ path, kind }) => ({ path, kind }));
     expect(summary(live)).toEqual([
       { path: 'original.txt', kind: 'edit' },
@@ -1072,12 +1084,37 @@ describe('code sessions', { timeout: 120_000 }, () => {
       before: 'original',
       after: 'edited',
     });
-    expect(live.items.flatMap((i) => (i.kind === 'group' ? i.tools.map((t) => t.name) : []))).toEqual(['codemode']);
+    const rows = (s: typeof live) =>
+      s.items.flatMap((i) =>
+        i.kind === 'group'
+          ? i.tools.map(({ name, path, status, preview, add, del, output }) => ({
+              name,
+              path,
+              status,
+              preview,
+              add,
+              del,
+              output,
+            }))
+          : [],
+      );
+    expect(rows(live)).toMatchObject([
+      { name: 'codemode', status: 'err' },
+      { name: 'read', path: 'original.txt', status: 'done', preview: { type: 'code', lines: ['original'] } },
+      { name: 'edit', path: 'original.txt', status: 'done', preview: { type: 'diff' }, add: 1, del: 1 },
+      { name: 'bash', status: 'done', output: expect.stringContaining('codemode-command-output') },
+      { name: 'write', path: 'overlap.txt', status: 'done', preview: { type: 'snapshot', lines: ['one'] } },
+      { name: 'write', path: 'overlap.txt', status: 'done', preview: { type: 'snapshot', lines: ['two'] } },
+      { name: 'write', path: 'large.txt', status: 'done', preview: { type: 'snapshot', lines: ['x'.repeat(10000)] } },
+      { name: 'write', path: outside, status: 'done', preview: { type: 'snapshot', lines: ['outside'] } },
+      { name: 'edit', path: 'missing.txt', status: 'err', preview: { type: 'error' } },
+    ]);
     await driver.hub.archive(meta.id);
     driver.hub.meta(meta.id).archived = false;
     const reopened = await driver.hub.open(meta.id);
     const view = emptySession(meta);
     replay(view, reopened.messages, 'normal');
+    expect(rows(view)).toEqual(rows(live));
     expect(summary(view)).toEqual(summary(live));
     expect(view.sessionChanges.map((c) => c.after)).toEqual(live.sessionChanges.map((c) => c.after));
     expect((await driver.hub.diff(meta.id, { kind: 'lastTurn' })).files.map((f) => f.path)).toEqual([
@@ -1099,6 +1136,7 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect(fs.existsSync(path.join(project, 'overlap.txt'))).toBe(false);
     expect(fs.readFileSync(outside, 'utf8')).toBe('outside');
     replay(view, result.session.messages, 'normal');
+    expect(rows(view)).toEqual([]);
     expect(view.outputs).toEqual([]);
   });
 
