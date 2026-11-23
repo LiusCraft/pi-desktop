@@ -275,7 +275,9 @@ describe('shortcut bindings', () => {
     const decision = dialogs.confirm('Close?', 'This blocks global shortcuts.');
     key(window, ctrl('n'));
     expect(showWelcome).toHaveBeenCalledOnce();
-    useDialogs.getState().current?.resolve(false);
+    const current = useDialogs.getState().current;
+    if (current?.kind !== 'confirm') throw new Error('Expected a confirmation dialog');
+    current.resolve(false);
     return expect(decision).resolves.toBe(false);
   });
 
@@ -345,7 +347,9 @@ describe('shortcut bindings', () => {
     // jsdom does not implement CSS.escape; this fixture uses only selector-safe request keys.
     const originalCSS = globalThis.CSS;
     vi.stubGlobal('CSS', { escape: (value: string) => value });
-    onTestFinished(() => vi.stubGlobal('CSS', originalCSS));
+    onTestFinished(() => {
+      vi.stubGlobal('CSS', originalCSS);
+    });
     const item: ItemOf<'ask'> = {
       kind: 'ask',
       key: 'questions',
