@@ -16,6 +16,7 @@ import type {
 } from '@shared/protocol';
 import { decodePeerMessage, peerMessageBody, queuedPeerMessages, SEND_MESSAGE_TOOL } from '@shared/peer-message';
 import { TASK_NOTIFICATION_TYPE, taskNotificationText } from '@shared/task-message';
+import { TODO_ENTRY_TYPE, TODO_STATUSES } from '@shared/todo-message';
 import { decodePrEvent } from '@shared/pr-event';
 import { typedText } from '@shared/skill-message';
 import * as previews from '@shared/tool-previews';
@@ -318,6 +319,25 @@ export function toolStart(
   if (!replay) s.statusText = `${toolLabel(tool)}…`;
 }
 
+function applyTodos(s: SessionView, items: unknown, view: ViewMode) {
+  if (
+    !Array.isArray(items) ||
+    !items.every(
+      (item: Todo) =>
+        item &&
+        typeof item.content === 'string' &&
+        TODO_STATUSES.includes(item.status) &&
+        (item.activeForm === undefined || typeof item.activeForm === 'string'),
+    )
+  )
+    return;
+  // Adjacent updates refresh one card in place; intervening items preserve earlier snapshots.
+  const last = s.items.at(-1);
+  if (last?.kind === 'todos') last.items = items;
+  else push(s, { kind: 'todos', key: newKey(), items }, view);
+  s.lastTodos = items;
+}
+
 export function toolEnd(
   s: SessionView,
   ev: { toolCallId: string; toolName: string; result?: { content?: unknown; details?: any }; isError?: boolean },
@@ -335,13 +355,7 @@ export function toolEnd(
     return fx;
   }
   if (bareName(ev.toolName) === 'todo_write') {
-    const items = ev.result?.details?.todos as Todo[] | undefined;
-    if (ev.isError || !Array.isArray(items)) return fx;
-    // Adjacent updates refresh one card in place; intervening items preserve earlier snapshots.
-    const last = s.items.at(-1);
-    if (last?.kind === 'todos') last.items = items;
-    else push(s, { kind: 'todos', key: newKey(), items }, view);
-    s.lastTodos = items;
+    if (!ev.isError) applyTodos(s, ev.result?.details?.todos, view);
     return fx;
   }
   if (bareName(ev.toolName) === 'suggest_task') {
@@ -683,8 +697,7 @@ export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effec
         if (m.stopReason === 'aborted') push(s, { kind: 'note', key: newKey(), text: t('status.interrupted') }, view);
         s.cur = null;
       } else if (m.role === 'custom') {
-        const item = customItem(m);
-        if (item) push(s, item, view);
+        appendCustomMessage(s, m, view);
       }
       return {};
     }
@@ -908,10 +921,15 @@ export function transcriptItems(meta: SessionMeta, messages: AgentMessage[], vie
   return s.items;
 }
 
-/**
- * A handoff card carries a long, model-facing text. The transcript shows one line instead: the text
- * is there for the model, not the reader.
- */
+function appendCustomMessage(s: SessionView, m: AgentMessage, view: ViewMode) {
+  if (m.customType === TODO_ENTRY_TYPE) applyTodos(s, m.details?.todos, view);
+  else {
+    const item = customItem(m);
+    if (item) push(s, item, view);
+  }
+}
+
+/** A handoff shows a single line; its full text is for the model, not the reader. */
 function customItem(m: AgentMessage): Item | null {
   if (m.customType === TASK_NOTIFICATION_TYPE)
     return { kind: 'taskEvent', key: newKey(), text: taskNotificationText(textOf(m.content)) };
@@ -1008,8 +1026,7 @@ function appendMessages(s: SessionView, messages: AgentMessage[], view: ViewMode
         true,
       );
     } else if (m.role === 'custom') {
-      const item = customItem(m);
-      if (item) s.items.push(item);
+      appendCustomMessage(s, m, view);
     } else if (m.role === 'bashExecution') {
       s.items.push(bashExecutionItem(m));
     } else if (m.role === 'compactionSummary') {

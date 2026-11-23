@@ -5,6 +5,7 @@ import { produce } from 'immer';
 import { describe, expect, it, vi } from 'vitest';
 import { encodePeerMessage, SEND_MESSAGE_TOOL } from '../src/shared/peer-message';
 import { TASK_NOTIFICATION_TYPE } from '../src/shared/task-message';
+import { TODO_ENTRY_TYPE, TODO_TOOL, todoMessage } from '../src/shared/todo-message';
 import type { AgentMessage, SessionMeta } from '../src/shared/protocol';
 import { TooltipProvider } from '../src/renderer/src/components/ui/tooltip';
 import { applyPiEvent, emptySession, replay } from '../src/renderer/src/store/transcript';
@@ -78,7 +79,7 @@ describe('session traffic in the normal transcript', () => {
 
   it('shows only the latest replayed checklist outside the transcript', () => {
     const s = emptySession(meta);
-    const toolName = 'pidesk_todo_write';
+    const toolName = TODO_TOOL;
     const inspecting = [{ content: 'Inspect', status: 'in_progress', activeForm: 'Inspecting' }];
     const inspected = [{ content: 'Inspect', status: 'completed' }];
     replay(
@@ -86,7 +87,7 @@ describe('session traffic in the normal transcript', () => {
       [
         { role: 'toolResult', toolCallId: 'first', toolName, details: { todos: inspecting } },
         { role: 'assistant', content: [{ type: 'text', text: 'Found the issue.' }] },
-        { role: 'toolResult', toolCallId: 'second', toolName, details: { todos: inspected } },
+        ...todoMessage({ type: 'custom', customType: TODO_ENTRY_TYPE, data: inspected }),
         { role: 'toolResult', toolCallId: 'failed', toolName, isError: true, details: { todos: [] } },
       ],
       'normal',
@@ -112,11 +113,10 @@ describe('session traffic in the normal transcript', () => {
       { content: 'Inspect', status: 'completed' },
       { content: 'Verify', status },
     ];
-    const toolName = 'pidesk_todo_write';
-    const update = { toolCallId: 'todos', toolName, details: { todos } };
+    const [update] = todoMessage({ type: 'custom', customType: TODO_ENTRY_TYPE, data: todos });
     const message = { role: 'user', content: 'Start a new task.' };
     const live = emptySession(meta);
-    applyPiEvent(live, { type: 'tool_execution_end', ...update, result: { details: update.details } }, 'normal');
+    applyPiEvent(live, { type: 'message_end', message: update }, 'normal');
     // A prompt can be queued or fail. Only delivery should clear the list.
     live.items.push({ kind: 'user', key: 'queued', text: message.content, attachments: [], queued: true });
     live.pendingUser = ['queued'];
@@ -127,7 +127,7 @@ describe('session traffic in the normal transcript', () => {
     expect(live.lastTodos).toEqual(clears ? [] : todos);
 
     const history = emptySession(meta);
-    const messages = [{ role: 'toolResult', ...update }, received];
+    const messages = [update, received];
     replay(history, messages, 'normal');
     expect(history.lastTodos).toEqual(todos);
     replay(history, [...messages, message], 'normal');
@@ -138,17 +138,12 @@ describe('session traffic in the normal transcript', () => {
   });
 
   it('refreshes consecutive live todo updates in the same card without stale rows', () => {
-    const toolName = 'pidesk_todo_write';
-    const update = (s: SessionView, id: string, todos: Todo[]) =>
+    const update = (s: SessionView, todos: Todo[]) =>
       produce(s, (draft) => {
-        applyPiEvent(draft, { type: 'tool_execution_start', toolCallId: id, toolName, args: { todos } }, 'normal');
-        applyPiEvent(
-          draft,
-          { type: 'tool_execution_end', toolCallId: id, toolName, result: { details: { todos } } },
-          'normal',
-        );
+        const [message] = todoMessage({ type: 'custom', customType: TODO_ENTRY_TYPE, data: todos });
+        applyPiEvent(draft, { type: 'message_end', message }, 'normal');
       });
-    let s = update(emptySession(meta), 'first', [
+    let s = update(emptySession(meta), [
       { content: 'Inspect', status: 'in_progress', activeForm: 'Inspecting' },
       { content: 'Old step', status: 'pending' },
     ]);
@@ -161,7 +156,7 @@ describe('session traffic in the normal transcript', () => {
       { content: 'Inspect', status: 'completed' },
       { content: 'Verify', status: 'in_progress', activeForm: 'Verifying' },
     ];
-    s = update(s, 'second', latest);
+    s = update(s, latest);
     rerender(conversation(s));
     expect(s.items).toEqual([{ ...first, items: latest }]);
     expect(s.lastTodos).toEqual(latest);
@@ -174,7 +169,6 @@ describe('session traffic in the normal transcript', () => {
 
     s = update(
       s,
-      'third',
       latest.map((todo) => ({ ...todo, status: 'completed' })),
     );
     rerender(conversation(s));

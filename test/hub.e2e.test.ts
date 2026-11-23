@@ -11,6 +11,7 @@ import { AgentSession, ProjectTrustStore } from '@earendil-works/pi-coding-agent
 import { fauxAssistantMessage, fauxProvider, fauxToolCall, getCurrentTools } from '@earendil-works/pi-ai';
 import { applyPiEvent, emptySession, replay } from '../src/renderer/src/store/transcript';
 import { decodeUserContent } from '@shared/attachments';
+import { TODO_ENTRY_TYPE, TODO_TOOL, type Todo } from '@shared/todo-message';
 import {
   HOST_CHANNELS,
   MAX_SESSION_TITLE,
@@ -957,20 +958,20 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect(result.session.messages.filter((message) => message.role === 'user')).toHaveLength(0);
   });
 
-  it('keeps user-facing tools top-level even in codemode-only sessions', async () => {
+  it.each(['on', 'only'])('keeps both todo entry points live and replayable in codemode %s mode', async (mode) => {
     const project = fs.mkdtempSync(path.join(tmp, 'visible-tools-'));
     fs.mkdirSync(path.join(project, '.pi'));
     fs.writeFileSync(
       path.join(project, '.pi/settings.json'),
       JSON.stringify({
         defaultTools: ['+codemode'],
-        codemode: { mode: 'only' },
+        codemode: { mode },
       }),
     );
     new ProjectTrustStore(agentDir).set(project, true);
-    const faux = fauxProvider({ provider: 'visible-tools', models: [{ id: 'm' }] });
+    const provider = `visible-tools-${mode}`;
+    const faux = fauxProvider({ provider, models: [{ id: 'm' }] });
     const uiTools = [
-      'pidesk_todo_write',
       'pidesk_exit_plan_mode',
       'pidesk_ask_question',
       'pidesk_suggest_task',
@@ -979,54 +980,79 @@ describe('code sessions', { timeout: 120_000 }, () => {
       'pidesk_task',
       'pidesk_bg_shell',
     ];
-    const first = [{ content: 'Inspect', status: 'in_progress' }];
-    const last = [{ content: 'Inspect', status: 'completed' }];
+    const first: Todo[] = [{ content: 'Inspect', status: 'in_progress' }];
+    // The SDK omits nested call arguments above 8 KiB; replay must use the saved snapshot instead.
+    const scripted: Todo[] = [{ content: 'x'.repeat(10_000), status: 'in_progress', activeForm: 'Verifying' }];
+    fs.writeFileSync(path.join(project, 'check.txt'), 'check');
     const call = (name: string, args: Record<string, any>) =>
       fauxAssistantMessage(fauxToolCall(name, args), { stopReason: 'toolUse' });
     let declared: string[] = [];
     faux.setResponses([
       ({ messages }) => {
         declared = getCurrentTools(messages).map((tool) => tool.name);
-        return call('pidesk_todo_write', { todos: first });
+        return call(TODO_TOOL, { todos: first });
       },
       call('codemode', {
         code: `const names = ALL_TOOLS.map(t => t.name);
         if (!names.includes('read') || ${JSON.stringify(uiTools)}.some(n => names.includes(n))) throw Error('wrong callable tools');
-        return 'verified';`,
+        await Promise.allSettled([tools.${TODO_TOOL}({ todos: ${JSON.stringify(scripted)} }), tools.read({ path: 'check.txt' })]);
+        await Promise.allSettled([tools.${TODO_TOOL}({ todos: [{ content: 'Invalid', status: 'unknown' }] })]);
+        throw Error('after successful update');`,
       }),
-      call('pidesk_todo_write', { todos: last }),
       fauxAssistantMessage('Done'),
     ]);
     driver.hub.models.registerNativeProvider(faux.provider);
     const meta = await driver.hub.create({
       kind: 'code',
       projectPath: project,
-      model: 'visible-tools/m',
+      model: `${provider}/m`,
       mode: 'bypass',
       title: 'Visible tools',
       autoName: false,
     });
     const { pi, tools } = await driver.run(meta.id, 'Track progress');
-    expect(declared).toEqual(expect.arrayContaining(['codemode', ...uiTools]));
-    expect(declared).not.toContain('read');
-    expect(tools.filter((e) => e.isError).map((e) => e.result?.content)).toEqual([]);
-    expect(tools.map((e) => [e.toolName, e.isError])).toEqual([
-      ['pidesk_todo_write', false],
-      ['codemode', false],
-      ['pidesk_todo_write', false],
+    expect(declared).toEqual(expect.arrayContaining(['codemode', TODO_TOOL, ...uiTools]));
+    expect(declared.includes('read')).toBe(mode === 'on');
+    expect(tools.filter((e) => e.toolName === TODO_TOOL).map((e) => [!!e.parentToolCallId, e.isError])).toEqual([
+      [false, false],
+      [true, false],
+      [true, true],
     ]);
+    const scriptEnd = tools.find((e) => e.toolName === 'codemode')!;
+    expect(scriptEnd.isError).toBe(true);
+    expect(scriptEnd.result.content).toEqual(
+      expect.arrayContaining([expect.objectContaining({ text: expect.stringContaining('after successful update') })]),
+    );
     const live = emptySession(meta);
-    for (const event of pi) applyPiEvent(live, event, 'normal');
-    const history = emptySession(meta);
-    replay(history, (await driver.hub.open(meta.id)).messages, 'normal');
-    for (const s of [live, history]) {
-      expect(
-        s.items
-          .filter((i) => i.kind === 'todos' || i.kind === 'group')
-          .map((i) => (i.kind === 'todos' ? i.items : i.tools.map((t) => t.name))),
-      ).toEqual([first, ['codemode'], last]);
-      expect(s.lastTodos).toEqual(last);
+    const liveUpdates: Todo[][] = [];
+    for (const event of pi) {
+      applyPiEvent(live, event, 'normal');
+      if (event.type === 'message_end' && event.message?.customType === TODO_ENTRY_TYPE)
+        liveUpdates.push(live.lastTodos);
+      if (event.type === 'tool_execution_end' && event.parentToolCallId && event.toolName === TODO_TOOL)
+        expect(live.lastTodos).toEqual(scripted); // Visible before the parent script returns, even after invalid input.
     }
+    expect(liveUpdates).toEqual([first, scripted]);
+    await driver.hub.archive(meta.id);
+    driver.hub.meta(meta.id).archived = false;
+    const reopened = await driver.hub.open(meta.id);
+    const scriptResult = reopened.messages.find((m) => m.role === 'toolResult' && m.toolName === 'codemode');
+    const nestedTodo = scriptResult?.nestedCalls?.calls.find((c) => c.name === TODO_TOOL && c.status === 'ok');
+    expect(nestedTodo).toBeDefined();
+    expect(nestedTodo?.arguments).toBeUndefined();
+    const history = emptySession(meta);
+    replay(history, reopened.messages, 'normal');
+    for (const s of [live, history]) {
+      expect(s.items.filter((i) => i.kind === 'todos').map((i) => i.items)).toEqual([first, scripted]);
+      expect(s.items.filter((i) => i.kind === 'group').flatMap((i) => i.tools.map((tool) => tool.name))).toEqual([
+        'codemode',
+      ]);
+      expect(s.lastTodos).toEqual(scripted);
+    }
+    expect(reopened.messages.filter((m) => m.customType === TODO_ENTRY_TYPE).map((m) => m.details.todos)).toEqual([
+      first,
+      scripted,
+    ]);
   });
 
   it('tracks real codemode edits live and on replay, and rewinds only the successful local writes', async () => {
