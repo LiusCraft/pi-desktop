@@ -170,18 +170,18 @@ describe('shortcut bindings', () => {
       );
     }
     render(<Settings />, { wrapper: TooltipProvider });
-    const edit = screen.getByRole('button', { name: 'Switch to Work: Ctrl+Shift+1' });
+    const edit = screen.getByRole('button', { name: 'Switch to Chat: Ctrl+Shift+1' });
     fireEvent.click(edit);
     key(edit, { key: 'k', ctrlKey: true });
     expect(screen.getByRole('alert').textContent).toContain('Open command palette');
     key(edit, { key: 'F7' });
     await waitFor(() => expect(save).toHaveBeenLastCalledWith({ work: 'F7' }));
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Restore default: Switch to Work' }).hasAttribute('disabled')).toBe(
+      expect(screen.getByRole('button', { name: 'Restore default: Switch to Chat' }).hasAttribute('disabled')).toBe(
         false,
       ),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Restore default: Switch to Work' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Restore default: Switch to Chat' }));
     await waitFor(() => expect(save).toHaveBeenLastCalledWith({}));
     const clear = screen.getByRole('button', { name: 'Remove shortcut: Switch to Code' });
     await waitFor(() => expect(clear.hasAttribute('disabled')).toBe(false));

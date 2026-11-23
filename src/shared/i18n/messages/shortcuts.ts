@@ -11,7 +11,7 @@ export const shortcuts = defineMessages({
   'shortcuts.creation': { en: 'New session', zh: '创建会话' },
   'shortcuts.palette': { en: 'Open command palette', zh: '打开命令面板' },
   'shortcuts.sessions': { en: 'Session list', zh: '会话列表' },
-  'shortcuts.work': { en: 'Switch to Work', zh: '切换到 Work' },
+  'shortcuts.work': { en: 'Switch to Chat', zh: '切换到 Chat' },
   'shortcuts.code': { en: 'Switch to Code', zh: '切换到 Code' },
   'shortcuts.newSession': { en: 'New session in current view', zh: '在当前视图创建会话' },
   'shortcuts.sidebar': { en: 'Toggle sidebar', zh: '显示或隐藏侧边栏' },
