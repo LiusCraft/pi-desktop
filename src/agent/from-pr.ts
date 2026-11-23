@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { tr } from '@shared/i18n/runtime';
+import { projectPathKey } from '@shared/project-path';
 import type { PrBinding } from '@shared/protocol';
 import { gh, git, remotes, repoRoot } from './git';
 
@@ -54,7 +55,10 @@ async function remoteFor(root: string, repo: string, push = false) {
 export async function findPrProject(projects: string[], source: Source) {
   for (const project of projects) {
     const root = await repoRoot(project);
-    if (root && ((await remoteFor(root, source.baseRepo)) || (await remoteFor(root, source.headRepo)))) return root;
+    if (root && ((await remoteFor(root, source.baseRepo)) || (await remoteFor(root, source.headRepo)))) {
+      // Keep the registered spelling only if it is the repository root, not a subdirectory.
+      return projectPathKey(project) === projectPathKey(root) ? project : root;
+    }
   }
   return null;
 }

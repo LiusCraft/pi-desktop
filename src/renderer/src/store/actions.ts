@@ -49,6 +49,7 @@ import { primeSuggestion, resumeSuggestion } from './predict';
 import { notifyResource, subscribeResource } from './resources';
 import { notifyPluginEvent } from '@/plugin/events';
 import { chooseBase, workspaceDefaults } from './welcome-branches';
+import { projectPathKey } from '@shared/project-path';
 import { sessionWorkspace } from '@shared/session-workspace';
 import { forgetScroll } from './scroll';
 import { askSide, showSide } from './side';
@@ -1900,7 +1901,9 @@ export async function startFromPr() {
     if (result.kind !== 'session') return;
     setStage('opening');
     const { meta } = result;
-    if (!projects.some((p) => p.path === meta.projectPath)) await call('projects:addPath', meta.projectPath);
+    const key = projectPathKey(meta.projectPath);
+    if (!getApp().projects.some((p) => projectPathKey(p.path) === key))
+      await call('projects:addPath', meta.projectPath);
     setApp((st) => {
       st.sessions[meta.id] ??= emptySession(meta);
     });
@@ -1964,8 +1967,9 @@ export async function addProject() {
 
 /** Take a project out of Pi Desktop's list. The folder stays; its sessions are archived, not deleted. */
 export async function removeProject(path: string) {
+  const key = projectPathKey(path);
   const sessions = Object.values(getApp().sessions).filter(
-    (s) => s.meta.kind === 'code' && s.meta.projectPath === path && !s.meta.archived,
+    (s) => s.meta.kind === 'code' && projectPathKey(s.meta.projectPath) === key && !s.meta.archived,
   );
   const note = sessions.length ? t('act.removeProjectNote', { n: sessions.length }) : '';
   if (
@@ -1988,11 +1992,11 @@ export async function removeProject(path: string) {
     }
     const projects = await call('projects:remove', path);
     const cur = currentSession();
-    if (cur && cur.meta.projectPath === path) showWelcome();
+    if (cur?.meta.kind === 'code' && projectPathKey(cur.meta.projectPath) === key) showWelcome();
     setApp((st) => {
       st.projects = projects;
-      if (st.prefs.project === path) st.prefs.project = null;
-      if (st.adopt?.mainRoot === path) st.adopt = null;
+      if (st.prefs.project && projectPathKey(st.prefs.project) === key) st.prefs.project = null;
+      if (st.adopt && projectPathKey(st.adopt.mainRoot) === key) st.adopt = null;
     });
     if (!getApp().prefs.project) setPref('project', projects[0]?.path ?? null);
   } catch (err) {

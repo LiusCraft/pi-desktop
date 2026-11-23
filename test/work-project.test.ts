@@ -69,6 +69,25 @@ describe('Code folder ownership', () => {
     return abs;
   };
 
+  it.skipIf(process.platform !== 'win32')('lists and registers Windows aliases as one Code project', () => {
+    const repo = make('repo');
+    const alias = repo.replaceAll('\\', '/');
+    const registered = book.addProject(repo);
+    const store = new Store(path.join(root, 'data'));
+    const legacy = [registered, { ...registered, path: alias }];
+    store.set('projects', legacy);
+
+    expect(book.projects()).toEqual([registered]);
+    expect(store.get('projects', [])).toEqual(legacy);
+    expect(book.addProject(alias).path).toBe(repo);
+    expect(store.get('projects', [])).toHaveLength(1);
+
+    store.set('projects', legacy);
+    expect(book.removeProject(alias)).toEqual([]);
+    expect(fs.existsSync(repo)).toBe(true);
+    expect(book.owner(repo)).toBeDefined();
+  });
+
   it('creates a persistent Work directory exactly once and isolates repositories with the same name', () => {
     const a = make('org-a/api');
     const b = make('org-b/api');

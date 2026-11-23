@@ -12,6 +12,7 @@ import {
   type WorkProject,
   type WorkProjectPatch,
 } from '@shared/protocol';
+import { projectPathKey } from '@shared/project-path';
 import type { RemoteListing, RemoteWorkspaceMethod } from '@shared/remote';
 import { tr } from '@shared/i18n/runtime';
 import { expandHome } from '../app-paths';
@@ -92,20 +93,29 @@ export class ProjectBook {
   private exists = (p: Project) => fs.existsSync(p.path);
 
   projects(): Project[] {
-    return this.store.get<Project[]>('projects', []).filter(this.exists);
+    const seen = new Set<string>();
+    return this.store.get<Project[]>('projects', []).filter((p) => {
+      const key = projectPathKey(p.path);
+      if (seen.has(key) || !this.exists(p)) return false;
+      seen.add(key);
+      return true;
+    });
   }
   addProject(dir: string): Project {
-    const list = this.store.get<Project[]>('projects', []).filter((p) => p.path !== dir);
-    const project = { path: dir, name: path.basename(dir), addedAt: Date.now() };
-    this.resolveCode(dir);
-    this.store.set('projects', [project, ...list]);
+    const key = projectPathKey(dir);
+    const list = this.store.get<Project[]>('projects', []);
+    const registered = list.find((p) => projectPathKey(p.path) === key)?.path ?? dir;
+    const project = { path: registered, name: path.basename(registered), addedAt: Date.now() };
+    this.resolveCode(registered);
+    this.store.set('projects', [project, ...list.filter((p) => projectPathKey(p.path) !== key)]);
     this.changed?.('projects');
     return project;
   }
   removeProject(dir: string): Project[] {
+    const key = projectPathKey(dir);
     this.store.set(
       'projects',
-      this.store.get<Project[]>('projects', []).filter((p) => p.path !== dir),
+      this.store.get<Project[]>('projects', []).filter((p) => projectPathKey(p.path) !== key),
     );
     this.changed?.('projects');
     return this.projects();
