@@ -98,7 +98,7 @@ test.afterEach(async ({}, info) => {
 
 test('opens new-session pickers and answers the offline demo with the keyboard', async ({}, info) => {
   await page.keyboard.press(WORK);
-  await expect(tab('Work', true)).toBeVisible();
+  await expect(tab('Chat', true)).toBeVisible();
   await expect(page.getByPlaceholder('How can I help you today?')).toBeVisible();
   await page.keyboard.press(`${MOD}+Alt+L`);
   await expect(page.getByRole('menu')).toContainText('Work in a folder');
@@ -197,12 +197,12 @@ test('orders the live Work and Code list, searches it, and opens a result by key
 
 test('records and restores shortcuts in the separate Settings window', async ({}, info) => {
   let settings = await openSettings();
-  await settings.getByRole('button', { name: `Switch to Work: ${WORK_LABEL}`, exact: true }).click();
+  await settings.getByRole('button', { name: `Switch to Chat: ${WORK_LABEL}`, exact: true }).click();
   await settings.keyboard.press(`${MOD}+K`);
   await expect(settings.getByRole('alert')).toHaveText('Already assigned to: Open command palette');
   await settings.keyboard.press(`${MOD}+Shift+J`);
   const newWorkLabel = MAC ? '⌘⇧J' : 'Ctrl+Shift+J';
-  await expect(settings.getByRole('button', { name: `Switch to Work: ${newWorkLabel}`, exact: true })).toBeEnabled();
+  await expect(settings.getByRole('button', { name: `Switch to Chat: ${newWorkLabel}`, exact: true })).toBeEnabled();
   await expect.poll(settingsValue).toEqual({ work: 'Mod+Shift+J' });
   await settings.screenshot({ path: info.outputPath('settings-shortcuts.png') });
   await settings.close();
@@ -210,18 +210,18 @@ test('records and restores shortcuts in the separate Settings window', async ({}
   await page.keyboard.press(WORK);
   await expect(tab('Code', true)).toBeVisible();
   await page.keyboard.press(`${MOD}+Shift+J`);
-  await expect(tab('Work', true)).toBeVisible();
+  await expect(tab('Chat', true)).toBeVisible();
 
   settings = await openSettings();
-  await expect(settings.getByRole('button', { name: `Switch to Work: ${newWorkLabel}`, exact: true })).toBeVisible();
-  await settings.getByRole('button', { name: 'Restore default: Switch to Work', exact: true }).click();
-  await expect(settings.getByRole('button', { name: `Switch to Work: ${WORK_LABEL}`, exact: true })).toBeEnabled();
+  await expect(settings.getByRole('button', { name: `Switch to Chat: ${newWorkLabel}`, exact: true })).toBeVisible();
+  await settings.getByRole('button', { name: 'Restore default: Switch to Chat', exact: true }).click();
+  await expect(settings.getByRole('button', { name: `Switch to Chat: ${WORK_LABEL}`, exact: true })).toBeEnabled();
   await settings.getByRole('button', { name: 'Remove shortcut: Switch to Code', exact: true }).click();
   await expect(settings.getByRole('button', { name: 'Switch to Code: Not assigned', exact: true })).toBeEnabled();
   await expect.poll(settingsValue).toEqual({ code: null });
   await settings.close();
   await page.keyboard.press(CODE);
-  await expect(tab('Work', true)).toBeVisible();
+  await expect(tab('Chat', true)).toBeVisible();
 
   settings = await openSettings();
   await settings.getByRole('button', { name: 'Restore all defaults', exact: true }).click();
