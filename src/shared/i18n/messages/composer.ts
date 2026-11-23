@@ -83,6 +83,9 @@ export const composer = defineMessages({
     zh: '添加文件（输入 @ 引用文件、终端、变更或其它会话）',
   },
   'composer.addFiles': { en: 'Add files', zh: '添加文件' },
+  'composer.todos': { en: 'Tasks', zh: '任务' },
+  'composer.todosRemaining': { en: '{count} remaining', zh: '{count} 待处理' },
+  'composer.todosDone': { en: 'All done', zh: '全部完成' },
   'composer.workPlaceholder': { en: 'How can I help you today?', zh: '今天想让我帮你做什么？' },
   'composer.tempWorkspaceTip': {
     en: 'A temporary workspace is created for every task',

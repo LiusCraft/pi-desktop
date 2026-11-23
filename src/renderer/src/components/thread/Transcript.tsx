@@ -32,7 +32,6 @@ import {
   SuggestItem,
   TaskEventItem,
   TextItem,
-  TodosItem,
   UserItem,
 } from './Items';
 
@@ -160,8 +159,6 @@ function renderItem(
       return <NoteItem item={item} />;
     case 'group':
       return <GroupItem sid={sid} item={item} view={view} />;
-    case 'todos':
-      return <TodosItem item={item} />;
     case 'perm':
       return <PermItem sid={sid} item={item} />;
     case 'ask':
@@ -331,9 +328,11 @@ export function Transcript({ s }: { s: SessionView }) {
   const handledScrollRequest = useRef<string | null>(null);
   const [atBottom, setAtBottom] = useState(true);
   const sid = s.meta.id;
-  const links = useMemo(() => quoteLinks(s.items), [s.items]);
-  const collapse = useMemo(() => collapsedItems(s.items), [s.items]);
-  const showChangedFiles = !s.running && s.items.at(-1)?.kind === 'foot';
+  // The composer owns the live checklist. Historical updates are not transcript rows.
+  const items = useMemo(() => s.items.filter((item) => item.kind !== 'todos'), [s.items]);
+  const links = useMemo(() => quoteLinks(items), [items]);
+  const collapse = useMemo(() => collapsedItems(items), [items]);
+  const showChangedFiles = !s.running && items.at(-1)?.kind === 'foot';
   const quoted = useRef<{ range: Range; userKey: string }[]>([]);
 
   // The exact text that was replied to stays faintly marked.
@@ -509,10 +508,10 @@ export function Transcript({ s }: { s: SessionView }) {
         className="h-full overflow-y-auto"
       >
         <div ref={content} className="mx-auto flex w-full max-w-[786px] flex-col gap-4 px-6 pt-6 pb-4">
-          {s.items.map((item, i) =>
+          {items.map((item, i) =>
             isPendingAsk(item) || collapse.hidden.has(item.key) ? null : (
               <div key={item.key} data-item-key={item.key} className="transcript-item">
-                {renderItem(s.meta.id, item, s.items, i, view, links.targets.get(item.key), collapse.before)}
+                {renderItem(s.meta.id, item, items, i, view, links.targets.get(item.key), collapse.before)}
                 <QuotePins pins={links.pins.get(item.key)} />
               </div>
             ),
