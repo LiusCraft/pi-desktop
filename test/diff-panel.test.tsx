@@ -28,7 +28,9 @@ vi.mock('react-resizable-panels', () => ({
 }));
 vi.mock('../src/renderer/src/components/ui/resizable', () => ({
   ResizablePanelGroup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  ResizablePanel: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  ResizablePanel: ({ children, inert }: { children: ReactNode; inert?: boolean }) => (
+    <div inert={inert}>{children}</div>
+  ),
   ResizableHandle: () => <hr />,
 }));
 vi.mock('../src/renderer/src/components/common/ReviewCodeView', async () => {
@@ -81,11 +83,14 @@ vi.mock('../src/renderer/src/components/workspace/PathTree', () => ({
   ),
 }));
 
-const { DiffPanel } = await import('../src/renderer/src/components/workspace/Panels');
+const { Main } = await import('../src/renderer/src/components/layout/Main');
+const { toolFromArgs } = await import('../src/renderer/src/lib/tools');
+const { NewWorkspaceTabMenu, Workspace } = await import('../src/renderer/src/components/workspace/Workspace');
+const { openWorkspaceTabs, readWorkspaceTab } = await import('../src/renderer/src/store/layout');
 const { TooltipProvider } = await import('../src/renderer/src/components/ui/tooltip');
 const { emptySession } = await import('../src/renderer/src/store/transcript');
 const { getApp, setApp, updateSession, useApp } = await import('../src/renderer/src/store/app');
-const { diffTarget, togglePanel } = await import('../src/renderer/src/store/actions');
+const { diffTarget, openFileRef, openPlan, requestFind } = await import('../src/renderer/src/store/actions');
 const { useShortcuts } = await import('../src/renderer/src/lib/use-shortcuts');
 
 const change = (path: string, status: FileChange['status'] = 'M'): FileChange => ({
@@ -147,6 +152,8 @@ const host = async (channel: string, ...args: unknown[]): Promise<unknown> => {
     };
   if (channel === 'git:branchBases') return ['main', 'release'].map((name) => ({ ...commit, name }));
   if (channel === 'sessions:prThreads') return [];
+  if (channel === 'sessions:files') return ['src/app.ts'];
+  if (channel === 'sessions:readFile') return 'file contents';
   if (channel === 'app:openTargets') return [];
   throw new Error(`Unexpected host call: ${channel}`);
 };
@@ -154,14 +161,9 @@ const host = async (channel: string, ...args: unknown[]): Promise<unknown> => {
 function MountedPanel() {
   useShortcuts();
   const s = useApp((state) => state.sessions[id]);
+  const tabs = openWorkspaceTabs(s, true);
   return (
-    <TooltipProvider>
-      {s.panels.diff ? (
-        <DiffPanel s={s} expanded={false} onExpand={() => {}} />
-      ) : (
-        <button onClick={() => togglePanel(id, 'diff', true)}>Reopen Diff</button>
-      )}
-    </TooltipProvider>
+    <TooltipProvider>{tabs.length ? <Workspace s={s} tabs={tabs} /> : <NewWorkspaceTabMenu s={s} />}</TooltipProvider>
   );
 }
 const since = () => screen.getByRole('button', { name: 'Compare against…' });
@@ -169,6 +171,11 @@ const fileRow = (path: string) =>
   within(screen.getByRole('navigation', { name: 'Changed files' })).getByRole('button', {
     name: new RegExp(`^${path} `),
   });
+async function addWorkspaceTab(name: string) {
+  fireEvent.keyDown(screen.getByRole('button', { name: 'New workspace tab' }), { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('menuitem', { name }));
+}
+
 async function pickScope(name: 'Last commit' | 'Last turn') {
   fireEvent.keyDown(since(), { key: 'Enter' });
   fireEvent.click(await screen.findByRole('menuitem', { name: new RegExp(name) }));
@@ -211,6 +218,149 @@ beforeEach(() => {
   });
 });
 
+describe('Workspace tabs', () => {
+  it('opens task output from the real session layout and restores the dock without remounting the task tab', async () => {
+    const shell = toolFromArgs('shell-result', 'pidesk_bg_shell', { command: 'npm test', description: 'Run tests' });
+    updateSession(id, (s) => {
+      s.panels.diff = false;
+      s.items.push({
+        kind: 'group',
+        key: 'task-group',
+        open: false,
+        thoughts: [],
+        tools: [{ ...shell, status: 'done', sh: { command: 'npm test', output: 'Checks passed', exitCode: 0 } }],
+      });
+    });
+    render(
+      <TooltipProvider>
+        <Main />
+      </TooltipProvider>,
+    );
+    expect(screen.queryByRole('tablist', { name: 'Panels' })).toBeNull();
+    await addWorkspaceTab('Background tasks');
+    const taskTab = screen.getByRole('tabpanel', { name: 'Background tasks' });
+    fireEvent.click(within(taskTab).getByRole('button', { name: 'View output' }));
+    const detail = screen.getByRole('tabpanel', { name: 'Details' });
+    expect(within(detail).getByText(/Checks passed/)).toBeTruthy();
+    const transcriptItem = document.querySelector('[data-item-key="task-group"]');
+    expect(transcriptItem).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Expand workspace' }));
+    expect(transcriptItem?.closest('[inert]')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Restore workspace' }));
+    expect(transcriptItem?.closest('[inert]')).toBeNull();
+    fireEvent.click(within(detail).getByRole('button', { name: 'Back' }));
+    expect(screen.getByRole('tabpanel', { name: 'Background tasks' })).toBe(taskTab);
+    expect(screen.queryByRole('tab', { name: 'Details' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Expand workspace' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close Background tasks' }));
+    expect(screen.queryByRole('tablist', { name: 'Panels' })).toBeNull();
+    expect(getApp().sessions[id].workspaceExpanded).toBe(false);
+    expect(screen.getByRole('button', { name: 'New workspace tab' })).toBeTruthy();
+  });
+
+  it('selects an already-open tab from the menu without reading the file again or creating a duplicate', async () => {
+    render(<MountedPanel />);
+    await act(() => openFileRef('src/app.ts', 1, undefined, true));
+    const tab = (name: string) => within(screen.getByRole('tablist', { name: 'Panels' })).getByRole('tab', { name });
+    const files = screen.getByRole('tabpanel', { name: 'Files' });
+    fireEvent.keyDown(tab('Files'), { key: 'Home' });
+    expect(document.activeElement).toBe(tab('Changes'));
+    fireEvent.keyDown(tab('Changes'), { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(tab('Files'));
+    fireEvent.click(tab('Changes'));
+    await addWorkspaceTab('Files');
+    expect(screen.getByRole('tabpanel', { name: 'Files' })).toBe(files);
+    expect(screen.getAllByRole('tab', { name: 'Files' })).toHaveLength(1);
+    expect(invoke.mock.calls.filter(([channel]) => channel === 'sessions:readFile')).toHaveLength(1);
+  });
+
+  it('selects a neighboring file or clears only the preview when closing inner file tabs', async () => {
+    render(<MountedPanel />);
+    await act(() => openFileRef('src/app.ts', 1, undefined, true));
+    await act(() => openFileRef('src/other.ts', 1, undefined, true));
+    const files = screen.getByRole('tabpanel', { name: 'Files' });
+    await act(async () => void fireEvent.click(within(files).getByRole('button', { name: 'Close other.ts' })));
+    expect(getApp().sessions[id].fileDetail?.path).toBe('src/app.ts');
+    fireEvent.click(within(files).getByRole('button', { name: 'Close app.ts' }));
+    expect(within(files).getByText(/Pick a file/)).toBeTruthy();
+    expect(screen.getByRole('tabpanel', { name: 'Files' })).toBe(files);
+  });
+
+  it('keeps Work file previews in a standalone detail tab and offers only Work panels', async () => {
+    updateSession(id, (s) => {
+      s.meta.kind = 'work';
+    });
+    render(<MountedPanel />);
+    fireEvent.keyDown(screen.getByRole('button', { name: 'New workspace tab' }), { key: 'Enter' });
+    expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual([
+      'Progress',
+      'Background tasks',
+    ]);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Progress' }));
+    const progress = screen.getByRole('tabpanel', { name: 'Progress' });
+    await act(() => openFileRef('notes.md'));
+    expect(within(screen.getByRole('tabpanel', { name: 'Details' })).getByText('file contents')).toBeTruthy();
+    expect(getApp().sessions[id].fileTabs).toEqual([]);
+    expect(getApp().sessions[id].fileDetail).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Close Details' }));
+    expect(screen.getByRole('tabpanel', { name: 'Progress' })).toBe(progress);
+  });
+
+  it('loads image, media and error previews in the Files tab without opening Details', async () => {
+    const src = 'data:image/png;base64,iVBORw0KGgo=';
+    invoke.mockImplementation(async (channel, ...args) => {
+      if (channel === 'sessions:readImage') return { src, mimeType: 'image/png' };
+      if (channel === 'sessions:readMedia')
+        return { kind: 'video', src: 'file:///project/video.mp4', mimeType: 'video/mp4' };
+      if (channel === 'sessions:readFile') throw new Error('File no longer exists');
+      return host(channel, ...args);
+    });
+    render(<MountedPanel />);
+    await act(() => openFileRef('photo.png'));
+    const files = screen.getByRole('tabpanel', { name: 'Files' });
+    expect(within(files).getByRole('img', { name: 'photo.png' }).getAttribute('src')).toBe(src);
+    await act(() => openFileRef('video.mp4'));
+    expect(files.querySelector('video')?.getAttribute('src')).toBe('file:///project/video.mp4');
+    await act(() => openFileRef('missing.txt'));
+    expect(within(files).getByText('File no longer exists')).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'Details' })).toBeNull();
+  });
+
+  it('keeps open content and search state when switching, and closes tabs without stealing the selection', async () => {
+    render(<MountedPanel />);
+    await screen.findByTestId('review');
+    const dock = screen.getByRole('tablist', { name: 'Panels' });
+    const tab = (name: string) => within(dock).getByRole('tab', { name });
+    await act(() => openFileRef('src/app.ts', 1, undefined, true));
+    const files = screen.getByRole('tabpanel', { name: 'Files' });
+    expect(within(files).getByRole('tab', { name: /app\.ts/ })).toBeTruthy();
+
+    fireEvent.keyDown(tab('Files'), { key: 'ArrowLeft' });
+    expect(document.activeElement).toBe(tab('Changes'));
+    expect(screen.queryByRole('tabpanel', { name: 'Files' })).toBeNull();
+    expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
+    expect(readWorkspaceTab(id)).toBe('diff');
+
+    act(() => requestFind('all'));
+    expect(screen.getByPlaceholderText('Search in all files')).toBe(document.activeElement);
+    expect(screen.getByRole('tabpanel', { name: 'Files' })).toBe(files);
+    expect(getApp().sessions[id].fileDetail?.text).toBe('file contents');
+
+    // Plan and task detail requests must not replace the file shown in Files.
+    act(() => openPlan(id, 'plan-key'));
+    expect(tab('Plan').getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(tab('Plan'), { key: 'Delete' });
+    expect(tab('Files').getAttribute('aria-selected')).toBe('true');
+    expect(getApp().sessions[id].fileTabs).toEqual([{ path: 'src/app.ts', pinned: true }]);
+
+    fireEvent.click(within(dock).getByRole('button', { name: 'Close Changes' }));
+    expect(screen.getByRole('tabpanel', { name: 'Files' })).toBe(files);
+    fireEvent.keyDown(tab('Files'), { key: 'Delete' });
+    expect(screen.queryByRole('tablist', { name: 'Panels' })).toBeNull();
+    expect(readWorkspaceTab(id)).toBeNull();
+  });
+});
+
 describe('Diff panel scope orchestration', () => {
   it('honors the remapped local find shortcut without opening the Files panel', async () => {
     setApp((state) => void (state.settings.shortcuts = { findFile: 'F7', findAll: null }));
@@ -244,9 +394,9 @@ describe('Diff panel scope orchestration', () => {
       invoke.mock.calls.some(([channel, , path]) => channel === 'sessions:changeContent' && path === 'turn.ts'),
     ).toBe(false);
     expect(getApp().sessions[id].meta).toMatchObject({ branch: 'topic', baseBranch: 'main', baseCommit: 'recorded' });
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close Changes' }));
     expect(getApp().sessions[id].diffScope).toBe('lastTurn');
-    fireEvent.click(screen.getByRole('button', { name: 'Reopen Diff' }));
+    await addWorkspaceTab('Changes');
     expect(await screen.findByText('turn before → turn after')).toBeTruthy();
     expect(since().textContent).toContain('Last turn');
   });

@@ -31,6 +31,16 @@ describe('GitHub PR import', () => {
     await expect(resolvePr(id)).rejects.toThrow(tr('prstart.noHead'));
     expect(gh).toHaveBeenCalledWith(expect.any(String), ['api', '--hostname', 'github.com', 'repos/acme/app/pulls/42']);
   });
+  it('reuses the registered Windows root spelling but not a nested project path', async () => {
+    const registered = 'F:\\coding\\app';
+    const root = 'F:/coding/app';
+    vi.spyOn(git, 'repoRoot').mockResolvedValue(root);
+    vi.spyOn(git, 'remotes').mockResolvedValue(['origin']);
+    vi.spyOn(git, 'git').mockResolvedValue('https://github.com/acme/app.git');
+    expect(await findPrProject([registered], source)).toBe(registered);
+    expect(await findPrProject([`${registered}\\docs`], source)).toBe(root);
+  });
+
   it('matches repository identity, protects occupied destinations and does not reuse a mismatched push URL', async () => {
     const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-pr-match-'));
     try {

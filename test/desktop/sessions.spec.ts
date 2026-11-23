@@ -58,6 +58,11 @@ function removeTemporary(dir: string) {
   }
 }
 
+async function addWorkspaceTab(name: string) {
+  await page.getByRole('button', { name: 'New workspace tab' }).click();
+  await page.getByRole('menuitem', { name, exact: true }).click();
+}
+
 const sidebar = () => page.locator('aside');
 const row = (title: string) =>
   sidebar().locator('div.group', { has: page.getByRole('button', { name: title, exact: true }) });
@@ -126,23 +131,30 @@ test('workspace boundaries stay clear without elevation in populated layouts', a
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1800, 1100));
   await startSession('添加深色模式');
   await expect(page.getByRole('button', { name: 'Rewind to here', exact: true })).toBeEnabled({ timeout: 60_000 });
-  await page.getByRole('button', { name: 'Files', exact: true }).click();
-  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+d' : 'Control+d');
+  await expect(page.getByRole('button', { name: 'Files', exact: true })).toHaveCount(0);
+  await addWorkspaceTab('Files');
+  const workspace = page.locator('[data-slot="workspace"]');
+  const dock = workspace.getByRole('tablist', { name: 'Panels' });
+  const files = workspace.locator('[data-tab="files"]');
+  const diff = workspace.locator('[data-tab="diff"]');
+  const terminal = workspace.locator('[data-tab="terminal"]');
 
-  const panels = page.locator('[data-slot="workspace-panel"]');
-  const files = panels.filter({ has: page.locator('header').getByText('Files', { exact: true }) });
-  const diff = panels.filter({ has: page.locator('header').getByText('Changes', { exact: true }) });
-  await expect(panels).toHaveCount(2);
   await files.locator('[data-item-path="src/"]').click();
   await files.locator('[data-item-path="src/App.jsx"]').dblclick();
   await files.locator('[data-item-path="src/styles.css"]').click();
   await expect(files.getByRole('tab')).toHaveCount(2);
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+d' : 'Control+d');
+  await expect(files).toBeHidden();
   await expect(diff.locator('[data-line-type="change-addition"]').first()).toBeVisible();
   await expect(diff.locator('[data-overflow="scroll"]').first()).toBeVisible();
-  await page.getByRole('button', { name: 'Terminal', exact: true }).click();
-  const terminal = panels.filter({ has: page.locator('header').getByText('Terminal', { exact: true }) });
+  await addWorkspaceTab('Terminal');
   await expect(terminal.locator('.xterm-screen')).toBeVisible();
-  await expect(panels).toHaveCount(3);
+  await expect(dock.getByRole('tab')).toHaveCount(3);
+  await expect(workspace.getByRole('tabpanel')).toHaveCount(1);
+  await expect(diff).toBeHidden();
+  await addWorkspaceTab('Files');
+  await expect(dock.getByRole('tab')).toHaveCount(3);
+  await expect(files.getByRole('tab')).toHaveCount(2);
   const branch = page.getByRole('region', { name: 'Branch status' });
   await expect(branch).toBeVisible();
   await expect(branch.getByRole('button', { name: 'Commit', exact: true })).toBeVisible();
@@ -197,17 +209,19 @@ test('workspace boundaries stay clear without elevation in populated layouts', a
         await expect(page.locator('html')).toHaveAttribute('data-palette', palette);
         await expect(page.locator('html')).toHaveClass(theme === 'dark' ? /dark/ : /^(?!.*dark)/);
         await expectFlatSurfaces(page);
-        for (const panel of await panels.all()) {
-          const heading = panel.locator(':scope > header');
-          expect(
-            await heading.evaluate((element) => parseFloat(getComputedStyle(element).borderBottomWidth)),
-          ).toBeGreaterThan(0);
-          expect(await heading.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(
-            await panel.evaluate((element) => getComputedStyle(element).backgroundColor),
-          );
-          // Opaque surfaces stay legible when expanded over the conversation.
-          expect(await panel.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toMatch(/rgba/);
-        }
+        const strip = workspace.locator(':scope > .panel-tabs');
+        expect(
+          await strip.evaluate((element) => parseFloat(getComputedStyle(element).borderBottomWidth)),
+        ).toBeGreaterThan(0);
+        expect(await strip.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(
+          await workspace.evaluate((element) => getComputedStyle(element).backgroundColor),
+        );
+        expect(await workspace.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toMatch(/rgba/);
+        const activePanelTab = dock.getByRole('tab', { selected: true }).locator('..');
+        const inactivePanelTab = dock.getByRole('tab', { selected: false }).first().locator('..');
+        expect(await activePanelTab.evaluate((element) => getComputedStyle(element).borderBottomColor)).not.toBe(
+          await inactivePanelTab.evaluate((element) => getComputedStyle(element).borderBottomColor),
+        );
         for (const tab of await files.getByRole('tab').all()) {
           await expect(tab).toHaveCSS('border-right-width', '0px');
         }
@@ -224,11 +238,7 @@ test('workspace boundaries stay clear without elevation in populated layouts', a
         expect(searchBox!.x + searchBox!.width).toBeLessThanOrEqual(treeBox!.x + treeBox!.width);
         await page.screenshot({ path: testInfo.outputPath(`${palette}-${theme}.png`) });
         await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 1000));
-        const heading = files.locator(':scope > header');
-        await expect(heading.getByText('Files', { exact: true })).toBeVisible();
-        const headingBox = await heading.boundingBox();
-        const closeBox = await heading.getByRole('button', { name: 'Close', exact: true }).boundingBox();
-        expect(closeBox!.x + closeBox!.width).toBeLessThanOrEqual(headingBox!.x + headingBox!.width);
+        await expect(dock.getByRole('tab', { name: 'Files', selected: true })).toBeVisible();
         const { card: editorCard } = await composerCard('Send (↵)');
         const editorBox = (await editorCard.boundingBox())!;
         const tasksBox = (await taskCard.boundingBox())!;
@@ -238,18 +248,16 @@ test('workspace boundaries stay clear without elevation in populated layouts', a
         expect(tasksBox.width).toBeLessThan(editorBox.width);
         await page.screenshot({ path: testInfo.outputPath(`${palette}-${theme}-narrow.png`) });
         await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1800, 1100));
-        await files.getByRole('button', { name: /^Expand \(/ }).click();
-        await expect(panels).toHaveCount(1);
+        const original = (await workspace.boundingBox())!.width;
+        await workspace.getByRole('button', { name: 'Expand workspace' }).click();
+        await expect.poll(async () => (await workspace.boundingBox())!.width).toBeGreaterThan(original);
         await expectFlatSurfaces(page);
-        await files.getByRole('button', { name: 'Restore', exact: true }).click();
-        await expect(panels).toHaveCount(3);
-        await files.getByRole('button', { name: /^Expand \(/ }).click({
-          modifiers: [process.platform === 'darwin' ? 'Meta' : 'Control'],
-        });
-        await expect(panels).toHaveCount(1);
-        await expectFlatSurfaces(page);
-        await files.getByRole('button', { name: 'Restore', exact: true }).click();
-        await expect(panels).toHaveCount(3);
+        await dock.getByRole('tab', { name: 'Terminal' }).click();
+        await expect(terminal.locator('.xterm-screen')).toBeVisible();
+        await dock.getByRole('tab', { name: 'Files' }).click();
+        await expect(files.getByRole('tab')).toHaveCount(2);
+        await workspace.getByRole('button', { name: 'Restore workspace' }).click();
+        await expect(dock.getByRole('tab')).toHaveCount(3);
       });
     }
   }
@@ -281,12 +289,22 @@ test('workspace boundaries stay clear without elevation in populated layouts', a
   await search.getByRole('button', { name: 'Close search' }).click();
   await files.getByRole('button', { name: 'Panel options' }).click();
   await page.getByRole('menuitem', { name: 'Flat list', exact: true }).click();
+  await dock.getByRole('tab', { name: 'Changes' }).click();
   await diff.getByRole('button', { name: 'Panel options' }).click();
   await page.getByRole('menuitem', { name: 'Collapse all', exact: true }).click();
   await expect(diff.locator('[data-line-type="change-addition"]')).toHaveCount(0);
   await diff.getByRole('button', { name: 'Panel options' }).click();
   await page.getByRole('menuitem', { name: 'Expand all', exact: true }).click();
   await expect(diff.locator('[data-line-type="change-addition"]').first()).toBeVisible();
+
+  await dock.getByRole('button', { name: 'Close Terminal' }).click();
+  await expect(dock.getByRole('tab', { name: 'Changes', selected: true })).toBeVisible();
+  await dock.getByRole('tab', { name: 'Changes' }).press('Delete');
+  await expect(dock.getByRole('tab', { name: 'Files', selected: true })).toBeFocused();
+  await dock.getByRole('button', { name: 'Close Files' }).click();
+  await expect(workspace).toHaveCount(0);
+  await addWorkspaceTab('Files');
+  await expect(dock.getByRole('tab', { name: 'Files', selected: true })).toBeVisible();
 
   const settingsWindow = app.waitForEvent('window');
   await page.evaluate(() => window.piDesktop.invoke('settings:open', 'appearance'));
@@ -300,37 +318,36 @@ test('panel actions overflow one at a time and return when the panel grows', asy
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(2200, 1100));
   await startSession('添加深色模式');
   await expect(page.getByRole('button', { name: 'Rewind to here', exact: true })).toBeEnabled({ timeout: 60_000 });
-  await page.getByRole('button', { name: 'Files', exact: true }).click();
+  await addWorkspaceTab('Files');
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+d' : 'Control+d');
-  await page.getByRole('button', { name: 'Terminal', exact: true }).click();
-  const panels = page.locator('[data-slot="workspace-panel"]');
-  const diff = panels.filter({ has: page.locator('header').getByText(/^(Changes|变更)$/) });
-  const files = panels.filter({ has: page.locator('header').getByText(/^(Files|文件)$/) });
-  const terminal = panels.filter({ has: page.locator('header').getByText(/^(Terminal|终端)$/) });
-  const columns = page
-    .locator('[data-slot="resizable-panel-group"]')
-    .filter({ has: diff })
-    .filter({ has: files })
-    .last();
-  const divider = columns.locator(':scope > [data-slot="resizable-handle"]');
+  await addWorkspaceTab('Terminal');
+  const workspace = page.locator('[data-slot="workspace"]');
+  const dock = workspace.getByRole('tablist', { name: /^(Panels|面板)$/ });
+  const diff = workspace.locator('[data-tab="diff"]');
+  const files = workspace.locator('[data-tab="files"]');
+  const terminal = workspace.locator('[data-tab="terminal"]');
+  const divider = page.locator('[id$=":thread"] > [data-slot="resizable-handle"]');
+  await dock.getByRole('tab', { name: 'Changes' }).click();
   const toolbar = diff.locator('[data-slot="panel-toolbar"]');
   const visibleActions = () =>
     toolbar
       .locator('[data-panel-action]:visible')
       .evaluateAll((elements) => elements.map((element) => element.getAttribute('data-panel-action')!));
   const resize = async (width: number) => {
-    const panelBox = await diff.boundingBox();
+    const panelBox = await workspace.boundingBox();
     const grip = await divider.boundingBox();
-    await page.mouse.move(grip!.x + grip!.width / 2, grip!.y + grip!.height / 2);
+    const x = grip!.x + grip!.width / 2;
+    const y = grip!.y + grip!.height / 2;
+    await page.mouse.move(x, y);
     await page.mouse.down();
-    await page.mouse.move(grip!.x + grip!.width / 2 + width - panelBox!.width, grip!.y + grip!.height / 2, {
-      steps: 2,
-    });
+    // Move beyond the hit area first so even a small resize is registered as a drag.
+    await page.mouse.move(x - 24, y);
+    await page.mouse.move(x + panelBox!.width - width, y, { steps: 4 });
     await page.mouse.up();
-    await expect.poll(async () => Math.abs((await diff.boundingBox())!.width - width)).toBeLessThan(2);
+    await expect.poll(async () => Math.abs((await workspace.boundingBox())!.width - width)).toBeLessThan(2);
   };
   const expectHeadingFits = async (panel: Locator) => {
-    const heading = panel.locator(':scope > header');
+    const heading = panel.locator('header.panel-heading');
     const bounds = await heading.boundingBox();
     const title = heading.locator('[data-slot="panel-title"]');
     await expect(title).toHaveCSS('white-space', 'nowrap');
@@ -342,12 +359,13 @@ test('panel actions overflow one at a time and return when the panel grows', asy
     }
   };
 
+  await page.evaluate(() => window.piDesktop.invoke('settings:set', { density: 'comfortable', fontSize: 24 }));
   await resize(420);
   const all = await visibleActions();
-  expect(all).toEqual(['tree', 'find', 'open-in', 'expand', 'close']);
+  expect(all).toEqual(['tree', 'find', 'open-in']);
   let previous = all;
   const transitions: string[] = [];
-  for (let width = 410; width >= 220; width -= 10) {
+  for (let width = 410; width >= 230; width -= 10) {
     await resize(width);
     const visible = await visibleActions();
     const removed = previous.filter((id) => !visible.includes(id));
@@ -357,19 +375,11 @@ test('panel actions overflow one at a time and return when the panel grows', asy
     previous = visible;
     await expectHeadingFits(diff);
   }
-  expect(transitions.length).toBeGreaterThanOrEqual(2);
-  expect(transitions.slice(0, 2)).toEqual(['open-in', 'find']);
+  expect(transitions[0]).toBe('open-in');
   await toolbar.getByRole('button', { name: 'Panel options' }).click();
   await page.getByRole('menuitem', { name: 'Open in…', exact: true }).hover();
   await expect(page.getByRole('menuitem', { name: 'Terminal', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
-  await toolbar.getByRole('button', { name: 'Panel options' }).click();
-  // Open the overflowed search with the keyboard, not a second handler specific to the menu.
-  const findItem = page.getByRole('menuitem', { name: /Find in the diff/ });
-  await findItem.focus();
-  await page.keyboard.press('Enter');
-  await expect(diff.getByRole('search').getByRole('textbox')).toBeFocused();
-  await diff.getByRole('button', { name: 'Close search' }).click();
   await resize(420);
   await expect.poll(visibleActions).toEqual(all);
   await toolbar.getByRole('button', { name: /Find in the diff/ }).click();
@@ -384,51 +394,40 @@ test('panel actions overflow one at a time and return when the panel grows', asy
       fontSize: 24,
     }),
   );
-  await expect(files.locator('header').getByText('文件', { exact: true })).toBeVisible();
-  for (const width of [220, 260, 320, 420]) {
+  for (const width of [230, 320, 420]) {
     await resize(width);
-    await expectHeadingFits(diff);
-    await expectHeadingFits(files);
-    await expectHeadingFits(terminal);
+    for (const [name, panel] of [
+      ['文件', files],
+      ['终端', terminal],
+      ['变更', diff],
+    ] as const) {
+      await dock.getByRole('tab', { name, exact: true }).click();
+      await expectHeadingFits(panel);
+    }
   }
-  await resize(220);
+  await resize(230);
   await page.screenshot({ path: testInfo.outputPath('chinese-large-text-narrow.png') });
-  await toolbar.getByRole('button', { name: '面板选项' }).click();
-  const toggle = page.getByRole('menuitemcheckbox', { name: '隐藏改动文件', exact: true });
-  await expect(toggle).toBeChecked();
+  const toggle = toolbar.getByRole('button', { name: '隐藏改动文件', exact: true });
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   await toggle.click();
   await expect(diff.getByRole('navigation', { name: '改动文件' })).toHaveCount(0);
-  await toolbar.getByRole('button', { name: '面板选项' }).click();
-  await expect(page.getByRole('menuitemcheckbox', { name: '显示改动文件', exact: true })).not.toBeChecked();
-  await page.getByRole('menuitem', { name: /^展开（/ }).click();
-  await expect(panels).toHaveCount(1);
-  await diff.getByRole('button', { name: '还原', exact: true }).click();
-  await expect(panels).toHaveCount(3);
-  // Terminal actions use the same layout rule and keep their handlers in the overflow menu.
-  await page.evaluate(() => window.piDesktop.invoke('settings:set', { language: 'en' }));
-  const space = (await diff.boundingBox())!.width + (await terminal.boundingBox())!.width;
-  await resize(space - 220);
-  await terminal.locator('header').getByRole('button', { name: 'Panel options' }).click();
-  await page.getByRole('menuitem', { name: 'New terminal', exact: true }).click();
-  await expect(terminal.getByRole('tab')).toHaveCount(2);
-
-  // Ctrl/Cmd+click still expands across the entire session after restoring the width.
+  await expect(toolbar.getByRole('button', { name: '显示改动文件', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
   await page.evaluate(() =>
     window.piDesktop.invoke('settings:set', { language: 'en', fontSize: 14, density: 'compact' }),
   );
   await resize(420);
-  await toolbar.getByRole('button', { name: /^Expand \(/ }).click({
-    modifiers: [process.platform === 'darwin' ? 'Meta' : 'Control'],
-  });
-  await expect(panels).toHaveCount(1);
-  await diff.getByRole('button', { name: 'Restore', exact: true }).click();
-  await expect(panels).toHaveCount(3);
-  await page.getByRole('button', { name: 'Preview', exact: true }).click();
-  const preview = panels.filter({ has: page.getByRole('textbox', { name: 'Preview URL' }) });
-  await resize(220);
+  await dock.getByRole('tab', { name: 'Terminal' }).click();
+  await terminal.getByRole('button', { name: 'New terminal' }).click();
+  await expect(terminal.getByRole('tab')).toHaveCount(2);
+  await addWorkspaceTab('Preview');
+  const preview = workspace.locator('[data-tab="preview"]');
+  await expect(preview.getByRole('button', { name: 'Back', exact: true })).toBeDisabled();
+  await expect(preview.getByRole('button', { name: 'Forward', exact: true })).toBeDisabled();
+  await resize(230);
   await preview.getByRole('button', { name: 'Panel options' }).click();
-  await expect(page.getByRole('menuitem', { name: 'Back', exact: true })).toBeDisabled();
-  await expect(page.getByRole('menuitem', { name: 'Forward', exact: true })).toBeDisabled();
   await expect(page.getByRole('menuitem', { name: 'Reload', exact: true })).toBeEnabled();
   await page.keyboard.press('Escape');
 });
@@ -538,7 +537,8 @@ test('removing a project archives its sessions and leaves the folder alone', asy
 });
 
 test('each session keeps its own workspace: no surprise Diff, layout restored on return', async () => {
-  const diff = page.getByTestId('diff');
+  const dock = page.getByRole('tablist', { name: 'Panels' });
+  const diff = dock.getByRole('tab', { name: 'Changes' });
   const changedFiles = page.getByRole('navigation', { name: 'Changed files' });
   const mod = (key: string) => page.keyboard.press(process.platform === 'darwin' ? `Meta+${key}` : `Control+${key}`);
 
@@ -551,6 +551,8 @@ test('each session keeps its own workspace: no surprise Diff, layout restored on
   await expect(diff).toHaveCount(1);
   await expect(changedFiles).toBeVisible({ timeout: 30_000 });
   const first = await page.evaluate(async () => (await window.piDesktop.invoke('sessions:list'))[0].title);
+  await addWorkspaceTab('Files');
+  await expect(dock.getByRole('tab', { name: 'Files', selected: true })).toBeVisible();
 
   // A second session starts with a clean workspace …
   await mod('n');
@@ -559,6 +561,7 @@ test('each session keeps its own workspace: no surprise Diff, layout restored on
 
   // … and the first one comes back the way it was left.
   await row(first).click();
-  await expect(diff).toHaveCount(1);
+  await expect(dock.getByRole('tab', { name: 'Files', selected: true })).toBeVisible();
+  await diff.click();
   await expect(changedFiles).toBeVisible();
 });

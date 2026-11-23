@@ -23,7 +23,7 @@ import { fmtDur, fmtTok, relPath } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { bareName, CODEMODE_TOOL, nestedCalls, toolFromArgs, toolLabel, type ToolState } from '@/lib/tools';
 import type { ViewMode } from '@/lib/constants';
-import { readArrangement, readPanels } from './layout';
+import { readPanels, readWorkspaceTab } from './layout';
 import type { Item, ItemOf, SessionChange, SessionView, ThinkStep, Todo } from './types';
 
 export interface Effects {
@@ -81,10 +81,10 @@ export function emptySession(meta: SessionMeta): SessionView {
     prHidden: false,
     files: null,
     fileTabs: [],
+    fileDetail: null,
     panels: readPanels(meta.id),
-    arrangement: readArrangement(meta.id),
-    expanded: null,
-    expandedWide: false,
+    activeTab: readWorkspaceTab(meta.id),
+    workspaceExpanded: false,
     detail: null,
     previewUrl: null,
     pendingUser: [],

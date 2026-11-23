@@ -1,4 +1,4 @@
-import { useId, useState, useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import {
   ArchiveIcon,
   BoxIcon,
@@ -78,8 +78,9 @@ import {
 } from '@/store/actions';
 import { setApp, useApp } from '@/store/app';
 import { InlineEdit } from '@/components/common/InlineEdit';
-import { TooltipHint } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipHint, TooltipTrigger } from '@/components/ui/tooltip';
 import type { MessageKey } from '@shared/i18n';
+import { projectPathKey } from '@shared/project-path';
 import { MAX_SESSION_TITLE, type SessionKind } from '@shared/protocol';
 import type { SessionView } from '@/store/types';
 
@@ -396,13 +397,12 @@ function SessionRow({
   const sort = useSortable(
     'session',
     s.meta.id,
-    s.meta.pinned ? PINNED_GROUP : s.meta.projectPath,
+    s.meta.pinned ? PINNED_GROUP : s.meta.kind === 'code' ? projectPathKey(s.meta.projectPath) : s.meta.projectPath,
     ids,
     'sessions',
     !child,
   );
   const [renaming, setRenaming] = useState(false);
-  const descriptionId = useId();
   const picked = useSelection().has(s.meta.id);
   const relativeTime = useAgo(s.meta.updatedAt || Date.now());
   const prNote = s.pr
@@ -415,9 +415,9 @@ function SessionRow({
       : s.running
         ? t('sidebar.working')
         : `${relativeTime}${prNote}`;
-  // The first prompt can be both placeholders; don't show the same line twice.
+  // The first prompt can fill both fields; don't repeat it in the tooltip.
   const description = s.meta.description === s.meta.title ? undefined : s.meta.description;
-  const title = [s.meta.title, description, status].filter(Boolean).join('\n');
+  const tooltipText = [s.meta.title, description, status].filter(Boolean).join('\n');
   const autoUpdateMetadata = s.meta.autoUpdateMetadata !== false;
   return (
     <ContextMenu>
@@ -425,8 +425,7 @@ function SessionRow({
         <div
           {...sort.props}
           className={cn(
-            'group flex items-center gap-2 rounded-lg px-2.5 text-sm',
-            description ? 'min-h-11 py-1' : 'h-7',
+            'group flex h-7 items-center gap-2 rounded-lg px-2.5 text-sm',
             sort.line,
             child && 'ml-4',
             picked
@@ -453,28 +452,26 @@ function SessionRow({
             />
           ) : (
             <>
-              <button
-                className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                title={title}
-                aria-label={s.meta.title}
-                aria-describedby={description ? descriptionId : undefined}
-                onClick={(e) => {
-                  if (pick(e, s.meta.id, visible)) return;
-                  void openSession(s.meta.id);
-                  collapseSidebarIfCompact();
-                }}
-                onDoubleClick={() => setRenaming(true)}
-              >
-                <StatusIcon s={s} />
-                <span className="min-w-0">
-                  <span className={cn('block truncate', s.unread && 'font-semibold')}>{s.meta.title}</span>
-                  {description && (
-                    <span id={descriptionId} className="block truncate text-xs text-muted-foreground">
-                      {description}
-                    </span>
-                  )}
-                </span>
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    aria-label={s.meta.title}
+                    onClick={(e) => {
+                      if (pick(e, s.meta.id, visible)) return;
+                      void openSession(s.meta.id);
+                      collapseSidebarIfCompact();
+                    }}
+                    onDoubleClick={() => setRenaming(true)}
+                  >
+                    <StatusIcon s={s} />
+                    <span className={cn('truncate', s.unread && 'font-semibold')}>{s.meta.title}</span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="text-wrap whitespace-pre-line">
+                  {tooltipText}
+                </TooltipContent>
+              </Tooltip>
               {tag && (
                 <span
                   className="max-w-[35%] shrink-0 truncate rounded bg-muted px-1.5 text-[10px] leading-4 text-muted-foreground"
@@ -759,17 +756,19 @@ const usePage = () =>
 
 function FolderHeader({
   path,
+  folderKey,
   folded,
   ids,
   onToggle,
 }: {
   path: string;
+  folderKey: string;
   folded: boolean;
   ids: string[];
   onToggle: () => void;
 }) {
   const t = useT();
-  const sort = useSortable('folder', path, 'folders', ids, 'folders');
+  const sort = useSortable('folder', folderKey, 'folders', ids, 'folders');
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -878,35 +877,46 @@ function CodeNav() {
       return n;
     });
   const saved = useOrder();
-  const found = new Map<string, SessionView[]>();
-  for (const p of projects) found.set(p.path, []);
+  const found = new Map<string, { path: string; list: SessionView[] }>();
+  const folder = (path: string) => {
+    const key = projectPathKey(path);
+    const existing = found.get(key);
+    if (existing) return existing;
+    const group = { path, list: [] as SessionView[] };
+    found.set(key, group);
+    return group;
+  };
+  for (const p of projects) folder(p.path);
   const all = Object.values(sessions)
     .filter((x) => !x.meta.archived && x.meta.kind === 'code')
     .sort((a, b) => (b.meta.updatedAt || 0) - (a.meta.updatedAt || 0));
-  for (const s of all.filter((x) => !x.meta.pinned)) {
-    if (!found.has(s.meta.projectPath)) found.set(s.meta.projectPath, []);
-    found.get(s.meta.projectPath)!.push(s);
-  }
-  const groups = arrange([...found], ([path]) => path, saved.folders);
-  const folderIds = groups.map(([path]) => path);
+  for (const s of all.filter((x) => !x.meta.pinned)) folder(s.meta.projectPath).list.push(s);
+  const groups = arrange([...found], ([key]) => key, saved.folders.map(projectPathKey));
+  const folderIds = groups.map(([key]) => key);
   return (
     <>
       <TopNav view="code" />
       <PinnedGroup list={all.filter((x) => x.meta.pinned)} page={page} current={current} className="mt-3 px-2" />
       <div className="space-y-1 mt-3 px-2">
-        {groups.map(([path, list]) => {
+        {groups.map(([key, { path, list }]) => {
           const LIMIT = 5;
           const ordered = arrange(list, (x) => x.meta.id, saved.sessions);
           const rows = nest(ordered);
           const ids = ordered.map((x) => x.meta.id);
-          const isFolded = folded.has(path);
+          const isFolded = folded.has(key);
           const collapsed =
-            rows.length > LIMIT && !expanded.has(path) && !rows.slice(LIMIT).some((r) => r.s.meta.id === current);
+            rows.length > LIMIT && !expanded.has(key) && !rows.slice(LIMIT).some((r) => r.s.meta.id === current);
           const shown = collapsed ? rows.slice(0, LIMIT) : rows;
           const visible = shown.map((r) => r.s.meta.id);
           return (
-            <Collapsible key={path} open={!isFolded}>
-              <FolderHeader path={path} folded={isFolded} ids={folderIds} onToggle={() => toggleFolded(path)} />
+            <Collapsible key={key} open={!isFolded}>
+              <FolderHeader
+                path={path}
+                folderKey={key}
+                folded={isFolded}
+                ids={folderIds}
+                onToggle={() => toggleFolded(key)}
+              />
               <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
                 {shown.map(({ s, child }) => (
                   <SessionRow
@@ -921,7 +931,7 @@ function CodeNav() {
                 {collapsed && (
                   <button
                     className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground"
-                    onClick={() => setExpanded((e) => new Set(e).add(path))}
+                    onClick={() => setExpanded((e) => new Set(e).add(key))}
                   >
                     {t('sidebar.showMore')}
                   </button>
