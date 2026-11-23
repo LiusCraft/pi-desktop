@@ -11,6 +11,14 @@ import { applyPiEvent, emptySession, replay } from '../src/renderer/src/store/tr
 import type { SessionView, Todo } from '../src/renderer/src/store/types';
 
 const { Transcript } = await import('../src/renderer/src/components/thread/Transcript');
+const { ComposerTodos } = await import('../src/renderer/src/components/composer/ComposerTodos');
+
+const conversation = (s: SessionView) => (
+  <>
+    <Transcript s={s} />
+    <ComposerTodos items={s.lastTodos} />
+  </>
+);
 const meta = { id: 's1', cwd: '/p', title: 'Main', kind: 'code' } as SessionMeta;
 const args = { session_id: 'other', message: 'Please check the dates.' };
 const received = { role: 'user', content: encodePeerMessage({ id: 'other', title: 'Beta' }, 'Dates checked.') };
@@ -68,7 +76,7 @@ describe('session traffic in the normal transcript', () => {
     },
   );
 
-  it('shows progress snapshots on either side of the intervening assistant message', () => {
+  it('shows only the latest replayed checklist outside the transcript', () => {
     const s = emptySession(meta);
     const toolName = 'pidesk_todo_write';
     const inspecting = [{ content: 'Inspect', status: 'in_progress', activeForm: 'Inspecting' }];
@@ -85,9 +93,48 @@ describe('session traffic in the normal transcript', () => {
     );
     expect(s.lastTodos).toEqual(inspected);
     expect(s.items.filter((i) => i.kind !== 'foot').map((i) => i.kind)).toEqual(['todos', 'text', 'todos']);
-    render(<Transcript s={s} />, { wrapper: TooltipProvider });
-    expect(screen.getByText('Inspecting')).toBeTruthy();
-    expect(screen.getByText('Inspect')).toBeTruthy();
+    const { container } = render(conversation(s), { wrapper: TooltipProvider });
+    expect(screen.queryByText('Inspecting')).toBeNull();
+    expect(screen.getAllByText('Inspect')).toHaveLength(1);
+    expect(
+      Array.from(container.querySelectorAll('.transcript-item'), (row) => row.getAttribute('data-item-key')),
+    ).toEqual(s.items.filter((item) => item.kind !== 'todos').map((item) => item.key));
+    expect(screen.getByText('Found the issue.').closest('.transcript-item')).toBeTruthy();
+    expect(screen.getByText('Inspect').closest('.transcript-item')).toBeNull();
+  });
+
+  it.each([
+    ['completed', true],
+    ['in_progress', false],
+    ['pending', false],
+  ] as const)('handles a new user message when the last todo is %s, live and on replay', (status, clears) => {
+    const todos: Todo[] = [
+      { content: 'Inspect', status: 'completed' },
+      { content: 'Verify', status },
+    ];
+    const toolName = 'pidesk_todo_write';
+    const update = { toolCallId: 'todos', toolName, details: { todos } };
+    const message = { role: 'user', content: 'Start a new task.' };
+    const live = emptySession(meta);
+    applyPiEvent(live, { type: 'tool_execution_end', ...update, result: { details: update.details } }, 'normal');
+    // A prompt can be queued or fail. Only delivery should clear the list.
+    live.items.push({ kind: 'user', key: 'queued', text: message.content, attachments: [], queued: true });
+    live.pendingUser = ['queued'];
+    applyPiEvent(live, { type: 'queue_update', followUp: [message.content] }, 'normal');
+    applyPiEvent(live, { type: 'message_end', message: received }, 'normal');
+    expect(live.lastTodos).toEqual(todos);
+    applyPiEvent(live, { type: 'message_end', message }, 'normal');
+    expect(live.lastTodos).toEqual(clears ? [] : todos);
+
+    const history = emptySession(meta);
+    const messages = [{ role: 'toolResult', ...update }, received];
+    replay(history, messages, 'normal');
+    expect(history.lastTodos).toEqual(todos);
+    replay(history, [...messages, message], 'normal');
+    expect(history.lastTodos).toEqual(live.lastTodos);
+    render(conversation(history), { wrapper: TooltipProvider });
+    expect(screen.getByText(message.content)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Tasks / }) === null).toBe(clears);
   });
 
   it('refreshes consecutive live todo updates in the same card without stale rows', () => {
@@ -106,8 +153,8 @@ describe('session traffic in the normal transcript', () => {
       { content: 'Old step', status: 'pending' },
     ]);
     const first = s.items[0];
-    const { container, rerender } = render(<Transcript s={s} />, { wrapper: TooltipProvider });
-    const card = container.querySelector('[data-item-key]');
+    const { container, rerender } = render(conversation(s), { wrapper: TooltipProvider });
+    const card = screen.getByRole('button', { name: 'Tasks 2 remaining' });
     expect(screen.getByText('Inspecting')).toBeTruthy();
 
     const latest: Todo[] = [
@@ -115,11 +162,11 @@ describe('session traffic in the normal transcript', () => {
       { content: 'Verify', status: 'in_progress', activeForm: 'Verifying' },
     ];
     s = update(s, 'second', latest);
-    rerender(<Transcript s={s} />);
+    rerender(conversation(s));
     expect(s.items).toEqual([{ ...first, items: latest }]);
     expect(s.lastTodos).toEqual(latest);
-    expect(container.querySelectorAll('[data-item-key]')).toHaveLength(1);
-    expect(container.querySelector('[data-item-key]')).toBe(card);
+    expect(container.querySelectorAll('[data-item-key]')).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Tasks 1 remaining' })).toBe(card);
     expect(screen.queryByText('Inspecting')).toBeNull();
     expect(screen.queryByText('Old step')).toBeNull();
     expect(screen.getByText('Inspect').parentElement?.className).toContain('line-through');
@@ -130,9 +177,9 @@ describe('session traffic in the normal transcript', () => {
       'third',
       latest.map((todo) => ({ ...todo, status: 'completed' })),
     );
-    rerender(<Transcript s={s} />);
-    expect(container.querySelector('[data-item-key]')).toBe(card);
-    expect(container.querySelectorAll('[data-item-key]')).toHaveLength(1);
+    rerender(conversation(s));
+    expect(screen.getByRole('button', { name: 'Tasks All done' })).toBe(card);
+    expect(container.querySelectorAll('[data-item-key]')).toHaveLength(0);
     expect(screen.queryByText('Verifying')).toBeNull();
     expect(screen.getByText('Verify').parentElement?.className).toContain('line-through');
   });
@@ -157,7 +204,7 @@ describe('session traffic in the normal transcript', () => {
       { kind: 'todos', key: expect.any(String), items: latest },
     ]);
     expect(s.lastTodos).toEqual(latest);
-    render(<Transcript s={s} />, { wrapper: TooltipProvider });
+    render(conversation(s), { wrapper: TooltipProvider });
     expect(screen.queryByText('Inspecting')).toBeNull();
     expect(screen.getAllByText('Inspect')).toHaveLength(1);
   });

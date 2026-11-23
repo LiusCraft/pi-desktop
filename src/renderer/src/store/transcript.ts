@@ -14,7 +14,7 @@ import type {
   TaskUpdate,
   UiRequest,
 } from '@shared/protocol';
-import { peerMessageBody, queuedPeerMessages, SEND_MESSAGE_TOOL } from '@shared/peer-message';
+import { decodePeerMessage, peerMessageBody, queuedPeerMessages, SEND_MESSAGE_TOOL } from '@shared/peer-message';
 import { TASK_NOTIFICATION_TYPE, taskNotificationText } from '@shared/task-message';
 import { decodePrEvent } from '@shared/pr-event';
 import { typedText } from '@shared/skill-message';
@@ -579,6 +579,12 @@ function assistantDelta(s: SessionView, ame: any, view: ViewMode) {
   }
 }
 
+/** Clear finished work only when a new user message is actually delivered, not when it is queued. */
+function clearCompletedTodos(s: SessionView, text: string) {
+  if (s.lastTodos.length && s.lastTodos.every((item) => item.status === 'completed') && !decodePeerMessage(text))
+    s.lastTodos = [];
+}
+
 function userFromMessage(s: SessionView, m: AgentMessage, view: ViewMode) {
   const user = decodeUserContent(m.content);
   if (user.text.startsWith('[pi-desktop]')) return;
@@ -610,7 +616,8 @@ function userFromMessage(s: SessionView, m: AgentMessage, view: ViewMode) {
       { kind: 'user', key: newKey(), ...user, entryId: m.entryId, timestamp: m.timestamp, delivered: true },
       view,
     );
-  }
+  } else return; // A duplicate delivery must not clear a newer list.
+  clearCompletedTodos(s, user.text);
 }
 
 export function applyPiEvent(s: SessionView, ev: PiEvent, view: ViewMode): Effects {
@@ -980,6 +987,7 @@ function appendMessages(s: SessionView, messages: AgentMessage[], view: ViewMode
         s.items.push({ kind: 'prEvent', key: newKey(), event, at: m.timestamp || Date.now() });
         continue;
       }
+      clearCompletedTodos(s, user.text);
       s.items.push({
         kind: 'user',
         key: newKey(),

@@ -893,42 +893,47 @@ export const HandoffItem = memo(function HandoffItem({
 });
 
 // ------------------------------------------------------------ todos
-export function TodoList({ items }: { items: ItemOf<'todos'>['items'] }) {
+export function TodoList({
+  items,
+  variant = 'checkboxes',
+}: {
+  items: ItemOf<'todos'>['items'];
+  variant?: 'checkboxes' | 'dots';
+}) {
+  const dots = variant === 'dots';
   return (
-    <div className="space-y-1">
+    <ul className={dots ? 'space-y-2' : 'space-y-1'}>
       {items.map((t, i) => (
-        <div
+        <li
           key={i}
           className={cn(
             'flex items-start gap-2 text-sm',
             t.status === 'completed' && 'text-muted-foreground line-through',
             t.status === 'in_progress' && 'font-medium',
+            dots && t.status === 'pending' && 'text-muted-foreground',
           )}
         >
           <span
+            aria-hidden
             className={cn(
-              'mt-[3px] flex size-3.5 shrink-0 items-center justify-center rounded-[4px] border',
+              'mt-[3px] flex size-3.5 shrink-0 items-center justify-center',
+              dots ? 'rounded-full' : 'rounded-[4px] border',
               t.status === 'completed' && 'border-primary bg-primary text-primary-foreground',
-              t.status === 'in_progress' && 'border-primary',
+              t.status === 'in_progress' && 'border border-primary',
             )}
           >
             {t.status === 'completed' && <CheckIcon className="size-2.5" strokeWidth={3} />}
             {t.status === 'in_progress' && <span className="size-1.5 rounded-full bg-primary" />}
+            {dots && t.status === 'pending' && <span className="size-2 rounded-full bg-muted-foreground/40" />}
           </span>
-          <span>{t.status === 'in_progress' && t.activeForm ? t.activeForm : t.content}</span>
-        </div>
+          <span className="min-w-0 wrap-anywhere">
+            {t.status === 'in_progress' && t.activeForm ? t.activeForm : t.content}
+          </span>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
-
-export const TodosItem = memo(function TodosItem({ item }: { item: ItemOf<'todos'> }) {
-  return (
-    <div className="rounded-xl surface-flat bg-card px-4 py-3">
-      <TodoList items={item.items} />
-    </div>
-  );
-});
 
 // ------------------------------------------------------------ tool groups
 
