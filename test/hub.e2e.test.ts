@@ -9,7 +9,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentSession, ProjectTrustStore } from '@earendil-works/pi-coding-agent';
 import { fauxAssistantMessage, fauxProvider, fauxToolCall, getCurrentTools } from '@earendil-works/pi-ai';
-import { applyPiEvent, emptySession, replay } from '../src/renderer/src/store/transcript';
+import { applyPiEvent, emptySession, findTool, replay } from '../src/renderer/src/store/transcript';
 import { decodeUserContent } from '@shared/attachments';
 import { TODO_ENTRY_TYPE, TODO_TOOL, type Todo } from '@shared/todo-message';
 import {
@@ -1049,6 +1049,7 @@ describe('code sessions', { timeout: 120_000 }, () => {
       expect(s.items.filter((i) => i.kind === 'todos').map((i) => i.items)).toEqual([first, scripted]);
       expect(s.items.filter((i) => i.kind === 'group').flatMap((i) => i.tools.map((tool) => tool.name))).toEqual([
         'codemode',
+        'read',
       ]);
       expect(s.lastTodos).toEqual(scripted);
     }
@@ -1058,7 +1059,7 @@ describe('code sessions', { timeout: 120_000 }, () => {
     ]);
   });
 
-  it('tracks real codemode edits live and on replay, and rewinds only the successful local writes', async () => {
+  it('shows real codemode tool rows live and on replay, and rewinds only the successful local writes', async () => {
     const project = fs.mkdtempSync(path.join(tmp, 'nested-'));
     const outside = path.join(tmp, 'published.txt');
     fs.mkdirSync(path.join(project, '.pi'));
@@ -1068,6 +1069,7 @@ describe('code sessions', { timeout: 120_000 }, () => {
     const script = [
       "await tools.read({ path: 'original.txt' });",
       "await tools.edit({ path: 'original.txt', edits: [{ oldText: 'original', newText: 'edited' }] });",
+      "await tools.bash({ command: 'echo codemode-command-output' });",
       "await Promise.all(['one', 'two'].map(content => tools.write({ path: 'overlap.txt', content })));",
       "await tools.write({ content: 'x'.repeat(10000), path: 'large.txt' });",
       `await tools.write({ path: ${JSON.stringify(outside)}, content: 'outside' });`,
@@ -1087,9 +1089,20 @@ describe('code sessions', { timeout: 120_000 }, () => {
       title: 'nested files',
     });
     const { pi, tools } = await driver.run(meta.id, 'Run the script');
-    expect(tools.find((e) => e.toolName === 'codemode')).toMatchObject({ isError: true });
+    const scriptEnd = tools.find((e) => e.toolName === 'codemode')!;
+    expect(scriptEnd).toMatchObject({ isError: true });
     const live = emptySession(meta);
-    for (const event of pi) applyPiEvent(live, event, 'normal');
+    const editProgress = [];
+    for (const event of pi) {
+      applyPiEvent(live, event, 'normal');
+      if (event.parentToolCallId !== scriptEnd.toolCallId || event.toolName !== 'edit') continue;
+      const edit = findTool(live, event.toolCallId)?.tool;
+      if (event.type === 'tool_execution_start') editProgress.push(edit?.status);
+      if (event.type === 'tool_execution_end') {
+        editProgress.push([findTool(live, scriptEnd.toolCallId)?.tool.status, edit?.preview?.type]);
+      }
+    }
+    expect(editProgress).toEqual(['running', ['running', 'diff'], 'running', ['running', 'error']]);
     const summary = (s: typeof live) => s.outputs.map(({ path, kind }) => ({ path, kind }));
     expect(summary(live)).toEqual([
       { path: 'original.txt', kind: 'edit' },
@@ -1101,12 +1114,37 @@ describe('code sessions', { timeout: 120_000 }, () => {
       before: 'original',
       after: 'edited',
     });
-    expect(live.items.flatMap((i) => (i.kind === 'group' ? i.tools.map((t) => t.name) : []))).toEqual(['codemode']);
+    const rows = (s: typeof live) =>
+      s.items.flatMap((i) =>
+        i.kind === 'group'
+          ? i.tools.map(({ name, path, status, preview, add, del, output }) => ({
+              name,
+              path,
+              status,
+              preview,
+              add,
+              del,
+              output,
+            }))
+          : [],
+      );
+    expect(rows(live)).toMatchObject([
+      { name: 'codemode', status: 'err' },
+      { name: 'read', path: 'original.txt', status: 'done', preview: { type: 'code', lines: ['original'] } },
+      { name: 'edit', path: 'original.txt', status: 'done', preview: { type: 'diff' }, add: 1, del: 1 },
+      { name: 'bash', status: 'done', output: expect.stringContaining('codemode-command-output') },
+      { name: 'write', path: 'overlap.txt', status: 'done', preview: { type: 'snapshot', lines: ['one'] } },
+      { name: 'write', path: 'overlap.txt', status: 'done', preview: { type: 'snapshot', lines: ['two'] } },
+      { name: 'write', path: 'large.txt', status: 'done', preview: { type: 'snapshot', lines: ['x'.repeat(10000)] } },
+      { name: 'write', path: outside, status: 'done', preview: { type: 'snapshot', lines: ['outside'] } },
+      { name: 'edit', path: 'missing.txt', status: 'err', preview: { type: 'error' } },
+    ]);
     await driver.hub.archive(meta.id);
     driver.hub.meta(meta.id).archived = false;
     const reopened = await driver.hub.open(meta.id);
     const view = emptySession(meta);
     replay(view, reopened.messages, 'normal');
+    expect(rows(view)).toEqual(rows(live));
     expect(summary(view)).toEqual(summary(live));
     expect(view.sessionChanges.map((c) => c.after)).toEqual(live.sessionChanges.map((c) => c.after));
     expect((await driver.hub.diff(meta.id, { kind: 'lastTurn' })).files.map((f) => f.path)).toEqual([
@@ -1128,6 +1166,7 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect(fs.existsSync(path.join(project, 'overlap.txt'))).toBe(false);
     expect(fs.readFileSync(outside, 'utf8')).toBe('outside');
     replay(view, result.session.messages, 'normal');
+    expect(rows(view)).toEqual([]);
     expect(view.outputs).toEqual([]);
   });
 
@@ -1352,36 +1391,67 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect(await driver.hub.suggest(meta.id, { model: 'fixed', modelId: 'demo/demo-coder', context: 6 })).toBeNull();
   });
 
-  it('keeps a side chat in the host without touching the session', async () => {
+  it('isolates concurrent side chats, including quotes, answers and reset, from each other and the session', async () => {
     const { meta } = await codeSession();
-    await driver.hub.open(meta.id);
-    const before = (await driver.hub.open(meta.id)).messages.length;
+    const hub = driver.hub;
+    const before = (await hub.open(meta.id)).messages.length;
     const from = driver.events.length;
-    driver.hub.side(meta.id, { text: '刚才为什么这样做？', quote: '一段回复' });
-    // The call returns as soon as the question is queued; the answer arrives as events.
-    const queued = driver.hub.sideGet(meta.id);
-    expect(queued.busy).toBe(true);
-    expect(queued.turns[0]).toEqual({ role: 'user', text: '刚才为什么这样做？', quote: '一段回复' });
-    await new Promise<void>((resolve) => {
-      const t = setInterval(() => {
-        if (!driver.hub.sideGet(meta.id).busy) {
-          clearInterval(t);
-          resolve();
-        }
-      }, 10);
-    });
-    const chat = driver.hub.sideGet(meta.id);
-    expect(chat.busy).toBe(false);
-    expect(chat.turns[0]).toEqual({ role: 'user', text: '刚才为什么这样做？', quote: '一段回复' });
-    expect(chat.turns.length === 2 ? chat.turns[1].role : 'assistant').toBe('assistant');
-    expect(chat.turns.length === 2 || !!chat.error).toBe(true);
-    const sides = driver.events.slice(from).filter((e) => e.type === 'side');
-    expect(sides.length).toBeGreaterThanOrEqual(2);
-    expect((await driver.hub.open(meta.id)).messages.length).toBe(before);
-    driver.hub.sideStage(meta.id, ' 引用 ');
-    expect(driver.hub.sideGet(meta.id).quote).toBe('引用');
-    driver.hub.sideReset(meta.id);
-    expect(driver.hub.sideGet(meta.id)).toMatchObject({ turns: [], quote: null, busy: false });
+    const a = hub.sideCreate(meta.id).id;
+    const b = hub.sideCreate(meta.id).id;
+    const first = Promise.withResolvers<ReturnType<typeof fauxAssistantMessage>>();
+    const second = Promise.withResolvers<ReturnType<typeof fauxAssistantMessage>>();
+    const complete = vi
+      .spyOn(hub.models, 'completeSimple')
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    try {
+      hub.sideStage(meta.id, a, ' first quote ');
+      hub.side(meta.id, a, { text: 'First question' });
+      hub.side(meta.id, b, { text: 'Second question' });
+      expect(hub.sideList(meta.id)).toEqual([
+        { id: a, title: 'First question' },
+        { id: b, title: 'Second question' },
+      ]);
+      expect(hub.sideList('other-session')).toEqual([]);
+      expect(() => hub.sideGet('other-session', a)).toThrow('Side chat not found');
+      expect(hub.sideGet(meta.id, a)).toMatchObject({
+        busy: true,
+        turns: [{ role: 'user', text: 'First question', quote: 'first quote' }],
+      });
+      expect(hub.sideGet(meta.id, b).turns).toEqual([{ role: 'user', text: 'Second question' }]);
+      const secondPrompt = complete.mock.calls[1]?.[1].messages.at(-1);
+      expect(secondPrompt).toMatchObject({ role: 'user', content: expect.stringContaining('Second question') });
+      expect(secondPrompt).not.toMatchObject({ content: expect.stringContaining('First question') });
+
+      hub.sideReset(meta.id, a);
+      expect(complete.mock.calls[0]?.[2]?.signal?.aborted).toBe(true);
+      expect(complete.mock.calls[1]?.[2]?.signal?.aborted).toBe(false);
+      first.resolve(fauxAssistantMessage('Stale answer'));
+      second.resolve(fauxAssistantMessage('Second answer'));
+      await vi.waitFor(() =>
+        expect(hub.sideGet(meta.id, b)).toMatchObject({
+          busy: false,
+          turns: [
+            { role: 'user', text: 'Second question' },
+            { role: 'assistant', text: 'Second answer' },
+          ],
+        }),
+      );
+      expect(hub.sideGet(meta.id, a)).toMatchObject({ turns: [], quote: null, busy: false, title: '' });
+      expect(driver.events.slice(from)).toContainEqual(
+        expect.objectContaining({
+          type: 'side',
+          sessionId: meta.id,
+          chat: expect.objectContaining({ id: b, busy: false }),
+        }),
+      );
+      expect(driver.events.slice(from)).toContainEqual({ type: 'changed', resource: 'sideChats' });
+      expect((await hub.open(meta.id)).messages.length).toBe(before);
+    } finally {
+      complete.mockRestore();
+      first.resolve(fauxAssistantMessage('First answer'));
+      second.resolve(fauxAssistantMessage('Second answer'));
+    }
   });
 
   it('runs a `!` command in the session’s own shell and keeps it in the conversation', async () => {

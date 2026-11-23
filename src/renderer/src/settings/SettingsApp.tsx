@@ -640,8 +640,8 @@ export function SettingsApp() {
                 <Segmented
                   value={settings.defaultMode ?? 'code'}
                   options={[
-                    { id: 'code', label: 'Code' },
-                    { id: 'work', label: 'Work' },
+                    { id: 'code', label: t('sidebar.tab.code') },
+                    { id: 'work', label: t('sidebar.tab.chat') },
                   ]}
                   onChange={(m) => void patch({ defaultMode: m })}
                 />

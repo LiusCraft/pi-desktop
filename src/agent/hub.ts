@@ -152,6 +152,8 @@ import {
 } from './desktop-kit';
 import { sessionGoal } from './session-goal';
 import type { ShellCommands } from './shell-session';
+import { CODEMODE_TOOL, hasScriptToolRow } from '@shared/script-tools';
+import { SCRIPT_TOOL_ENTRY, scriptToolResult, withScriptTools } from './script-tool-history';
 import { toWireEvent } from './events';
 import {
   locateSessionFile,
@@ -304,6 +306,8 @@ interface Live {
   pendingOutputPaths: Map<string, string>;
   /** File snapshots captured before a write/edit tool finishes. */
   pendingUndo: Map<string, { path: string; before: FileSnapshot }>;
+  scriptParents: Set<string>;
+  pendingScriptTools: Map<string, { parentToolCallId: string; args: Record<string, unknown> }>;
 }
 
 /** Rough token count for text the SDK does not measure for us. */
@@ -441,8 +445,8 @@ export class SessionHub {
   /** In-flight next-message predictions, so a new turn or a closed session can cancel them. */
   private suggesters = new Map<string, AbortController>();
   /** Side chats (/btw) by session, and their in-flight requests. */
-  private sideChats = new Map<string, SideChat>();
-  private sideRuns = new Map<string, AbortController>();
+  private sideChats = new Map<string, Map<string, SideChat>>();
+  private sideRuns = new Map<SideChat, AbortController>();
   /** Model catalog refreshes are serialized: a refresh reloads models.json, so two in flight can drop a provider. */
   private modelRefresh: Promise<unknown> = Promise.resolve();
   /**
@@ -875,6 +879,8 @@ export class SessionHub {
       outputPaths: new Set(),
       pendingOutputPaths: new Map(),
       pendingUndo: new Map(),
+      scriptParents: new Set(),
+      pendingScriptTools: new Map(),
     };
     const resumed = m.sessionFile && fs.existsSync(m.sessionFile);
     const sessionManager = resumed
@@ -1249,8 +1255,30 @@ export class SessionHub {
       live.pendingUndo.delete(event.toolCallId);
     }
 
+    if (event.type === 'tool_execution_start') {
+      if (event.toolName === CODEMODE_TOOL) live.scriptParents.add(event.toolCallId);
+      if (live.scriptParents.has(event.parentToolCallId) && hasScriptToolRow(event.toolName)) {
+        live.pendingScriptTools.set(event.toolCallId, {
+          parentToolCallId: event.parentToolCallId,
+          args: event.args ?? {},
+        });
+      }
+    } else if (event.type === 'tool_execution_end') {
+      live.scriptParents.delete(event.toolCallId);
+      const started = live.pendingScriptTools.get(event.toolCallId);
+      if (started) {
+        live.pendingScriptTools.delete(event.toolCallId);
+        live.runtime.session.sessionManager.appendCustomEntry(
+          SCRIPT_TOOL_ENTRY,
+          scriptToolResult(event, started.parentToolCallId, started.args),
+        );
+      }
+    }
+
     if (event.type === 'agent_start') this.setStatus(live, 'running');
     if (event.type === 'agent_settled') {
+      live.scriptParents.clear();
+      live.pendingScriptTools.clear();
       this.finishMetadataTurn(live, m, event.aborted);
       this.setStatus(live, 'idle');
       m.updatedAt = Date.now();
@@ -1725,15 +1753,18 @@ export class SessionHub {
         break;
       }
     }
-    return messages.flatMap((message) => {
-      if (message.role !== 'assistant' || !Array.isArray(message.content)) return [message];
-      const id = message.content.find((block) => block.type === 'toolCall')?.id;
-      const outputs = byMessage.get(message);
-      return [
-        outputs ? { ...message, nestedFileOutputs: outputs } : message,
-        ...(id ? (todosAfter.get(id) ?? []) : []),
-      ];
-    });
+    return withScriptTools(
+      session.sessionManager,
+      messages.flatMap((message) => {
+        if (message.role !== 'assistant' || !Array.isArray(message.content)) return [message];
+        const id = message.content.find((block) => block.type === 'toolCall')?.id;
+        const outputs = byMessage.get(message);
+        return [
+          outputs ? { ...message, nestedFileOutputs: outputs } : message,
+          ...(id ? (todosAfter.get(id) ?? []) : []),
+        ];
+      }),
+    );
   }
 
   private undoFilesForRewind(live: Live, targetId: string) {
@@ -2254,36 +2285,44 @@ export class SessionHub {
 
   // ------------------------------------------------------------ side chat (/btw)
 
-  private sideState(id: string): SideChat {
-    let chat = this.sideChats.get(id);
-    if (!chat)
-      this.sideChats.set(
-        id,
-        (chat = { sessionId: id, title: this.meta(id).title, turns: [], busy: false, quote: null }),
-      );
-    chat.title = this.meta(id).title;
+  private sideState(id: string, chatId: string): SideChat {
+    const chat = this.sideChats.get(id)?.get(chatId);
+    if (!chat) throw new Error('Side chat not found');
+    return chat;
+  }
+  sideList(id: string) {
+    return Array.from(this.sideChats.get(id)?.values() ?? [], ({ id, title }) => ({ id, title }));
+  }
+  sideCreate(id: string) {
+    this.meta(id);
+    const chats = this.sideChats.get(id) ?? new Map<string, SideChat>();
+    const chat = { id: crypto.randomUUID(), title: '' };
+    chats.set(chat.id, { ...chat, sessionId: id, turns: [], busy: false, quote: null });
+    this.sideChats.set(id, chats);
+    this.resourceChanged('sideChats');
     return chat;
   }
   private emitSide(chat: SideChat) {
     this.emit({ type: 'side', sessionId: chat.sessionId, chat: { ...chat, turns: chat.turns.slice() } });
   }
-  sideGet(id: string): SideChat {
-    const chat = this.sideState(id);
+  sideGet(id: string, chatId: string): SideChat {
+    const chat = this.sideState(id, chatId);
     return { ...chat, turns: chat.turns.slice() };
   }
-  sideStage(id: string, quote: string | null) {
-    const chat = this.sideState(id);
-    chat.quote = quote?.trim() ? quote.trim().slice(0, 20_000) : null;
+  sideStage(id: string, chatId: string, quote: string | null) {
+    const chat = this.sideState(id, chatId);
+    chat.quote = quote?.trim().slice(0, 20_000) || null;
     this.emitSide(chat);
   }
-  sideAbort(id: string) {
-    this.sideRuns.get(id)?.abort();
-    this.sideRuns.delete(id);
+  sideAbort(id: string, chatId: string) {
+    this.sideRuns.get(this.sideState(id, chatId))?.abort();
   }
-  sideReset(id: string) {
-    this.sideAbort(id);
-    this.sideChats.set(id, { sessionId: id, title: this.meta(id).title, turns: [], busy: false, quote: null });
-    this.emitSide(this.sideState(id));
+  sideReset(id: string, chatId: string) {
+    this.sideAbort(id, chatId);
+    const chat = { sessionId: id, id: chatId, title: '', turns: [], busy: false, quote: null };
+    this.sideChats.get(id)!.set(chatId, chat);
+    this.emitSide(chat);
+    this.resourceChanged('sideChats');
   }
 
   /**
@@ -2293,8 +2332,8 @@ export class SessionHub {
    * no tools; the session is never prompted, so this works mid-turn and leaves its context
    * alone. Failures land in the thread's `error`.
    */
-  side(id: string, input: { text: string; quote?: string }): void {
-    const chat = this.sideState(id);
+  side(id: string, chatId: string, input: { text: string; quote?: string }): void {
+    const chat = this.sideState(id, chatId);
     const text = String(input?.text ?? '').trim();
     const quote = (input?.quote ?? chat.quote)?.trim() || undefined;
     if (!text) throw new Error('Ask a question first');
@@ -2303,9 +2342,12 @@ export class SessionHub {
     chat.quote = null;
     chat.busy = true;
     chat.error = undefined;
+    const first = chat.turns.length === 1;
+    if (first) chat.title = text.replace(/\s+/g, ' ').slice(0, MAX_SESSION_TITLE);
     this.emitSide(chat);
+    if (first) this.resourceChanged('sideChats');
     const controller = new AbortController();
-    this.sideRuns.set(id, controller);
+    this.sideRuns.set(chat, controller);
     void this.answerSide(id, chat, controller).catch((err) => console.warn('[side] answerSide threw:', err));
   }
 
@@ -2334,18 +2376,19 @@ export class SessionHub {
         { systemPrompt: sideChat.SIDE_SYSTEM_PROMPT, messages },
         { signal: controller.signal, maxTokens: 4096, sessionId: id },
       );
-      if (this.sideChats.get(id) !== chat) return; // reset while waiting
+      if (this.sideChats.get(id)?.get(chat.id) !== chat) return; // reset or deleted while waiting
+      if (controller.signal.aborted) throw new Error(timedOut ? 'The side chat timed out' : 'Cancelled');
       if (reply.stopReason === 'aborted') throw new Error(timedOut ? 'The side chat timed out' : 'Cancelled');
       if (reply.stopReason === 'error') throw new Error(reply.errorMessage || 'The model returned an error');
       const answer = prediction.contentText(reply.content).trim();
       if (!answer) throw new Error('The model returned no text');
       chat.turns.push({ role: 'assistant', text: answer });
     } catch (err) {
-      if (this.sideChats.get(id) === chat) chat.error = err instanceof Error ? err.message : String(err);
+      if (this.sideChats.get(id)?.get(chat.id) === chat) chat.error = err instanceof Error ? err.message : String(err);
     } finally {
       clearTimeout(timer);
-      if (this.sideRuns.get(id) === controller) this.sideRuns.delete(id);
-      if (this.sideChats.get(id) === chat) {
+      this.sideRuns.delete(chat);
+      if (this.sideChats.get(id)?.get(chat.id) === chat) {
         chat.busy = false;
         this.emitSide(chat);
       }
@@ -2476,6 +2519,9 @@ export class SessionHub {
     }
     // A session imported from the pi CLI points at the user's own file.
     if (m.sessionFile && !m.imported) fs.rmSync(m.sessionFile, { force: true });
+    const sideChats = this.sideChats.get(id);
+    for (const chat of sideChats?.values() ?? []) this.sideRuns.get(chat)?.abort();
+    this.sideChats.delete(id);
     this.metas = this.metas.filter((x) => x.id !== id);
     for (const child of this.metas) if (child.parentId === id) delete child.parentId;
     this.save();
@@ -2763,13 +2809,15 @@ export class SessionHub {
   /** Messages the latest compaction left out of the context, for showing them again on demand. */
   async compactedHistory(id: string): Promise<AgentMessage[]> {
     const live = await this.ensure(id);
-    return this.compactedMessages(live.runtime.session);
+    const { session } = live.runtime;
+    return withScriptTools(session.sessionManager, this.compactedMessages(session));
   }
 
   /** Messages an idle rebuild left out of the context: the ones behind the newest handoff card. */
   async handoffHistory(id: string): Promise<AgentMessage[]> {
     const live = await this.ensure(id);
-    return this.omittedMessages(live.runtime.session);
+    const { session } = live.runtime;
+    return withScriptTools(session.sessionManager, this.omittedMessages(session));
   }
 
   private omittedMessages(session: AgentSession): AgentMessage[] {

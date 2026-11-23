@@ -639,7 +639,7 @@ function writeStored(key: string, value: unknown) {
   }
 }
 
-/** Top nav: "New" plus the entries the user pinned; the rest sit behind "More" (which opens by itself when the current page is in it). */
+/** Top nav: "New session" plus pinned entries; "More" opens automatically when it contains the current page. */
 function TopNav({ view }: { view: SessionKind }) {
   const t = useT();
   const page = usePage();
@@ -691,7 +691,7 @@ function TopNav({ view }: { view: SessionKind }) {
   return (
     <nav className="space-y-0.5 px-2">
       <NavItem icon={<PlusIcon className="size-4" />} onClick={showWelcome}>
-        {t('sidebar.new')}
+        {t('sidebar.newSession')}
       </NavItem>
       {items.filter((i) => isPinned(i.id)).map(row)}
       {pluginPages
@@ -1110,7 +1110,7 @@ export function Sidebar() {
               className="relative z-10 h-full hover:bg-background/40 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:hover:bg-transparent"
             >
               {v === 'work' ? <ListChecksIcon className="size-3.5" /> : <CodeXmlIcon className="size-3.5" />}
-              {v === 'work' ? 'Work' : 'Code'}
+              {t(v === 'work' ? 'sidebar.tab.chat' : 'sidebar.tab.code')}
             </TabsTrigger>
           ))}
         </TabsList>

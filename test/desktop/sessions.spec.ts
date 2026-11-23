@@ -97,7 +97,8 @@ async function composerCard(sendLabel: string) {
   return { input, card, send };
 }
 
-test('Code and Work use one card for the editor and its controls', async () => {
+test('Code and Chat use one card for the editor and its controls', async () => {
+  await expect(page.getByRole('button', { name: 'New session', exact: true })).toBeVisible();
   const code = await composerCard('Send (↵)');
   await expect(page.getByRole('button', { name: /^Tasks (\d+ remaining|All done)$/ })).toHaveCount(0);
   await expect(code.card.locator('[data-shortcut=mode]')).toBeVisible();
@@ -113,7 +114,8 @@ test('Code and Work use one card for the editor and its controls', async () => {
   await expect.poll(async () => (await code.input.boundingBox())!.height).toBeGreaterThan(emptyHeight);
   await code.input.clear();
 
-  await page.getByRole('tab', { name: 'Work', exact: true }).click();
+  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  await page.getByRole('button', { name: 'New session', exact: true }).click();
   await expect(page.getByPlaceholder('How can I help you today?')).toBeVisible();
   const work = await composerCard('Send');
   await expect(work.send).toBeDisabled();

@@ -1,5 +1,12 @@
 // The workspace tabs and selection belong to the session.
-import type { Panels, SessionView, WorkspaceTab } from './types';
+import type { Panels, SessionView, SideChatTab, WorkspaceTab } from './types';
+
+export function isSideChatTab(tab: WorkspaceTab | null): tab is SideChatTab {
+  return tab?.startsWith('side:') ?? false;
+}
+
+export const sideChatTab = (id: string): SideChatTab => `side:${id}`;
+export const sideChatId = (tab: SideChatTab) => tab.slice('side:'.length);
 
 /** A brand new session opens with nothing but Work's progress card. */
 export const DEFAULT_PANELS: Panels = {
@@ -56,21 +63,40 @@ export function writePanels(id: string, panels: Panels) {
 }
 
 const activeTabKey = (id: string) => `pd_workspace_tab:${id}`;
-const TAB_ORDER: readonly WorkspaceTab[] = ['progress', 'tasks', 'diff', 'preview', 'files', 'terminal', 'detail'];
+const TAB_ORDER: readonly (keyof Panels | 'detail')[] = [
+  'progress',
+  'tasks',
+  'diff',
+  'preview',
+  'files',
+  'terminal',
+  'detail',
+];
 
 export function openWorkspaceTabs(s: SessionView, canTerminal: boolean): WorkspaceTab[] {
   const work = s.meta.kind === 'work';
-  return TAB_ORDER.filter((tab) => {
+  const tabs: WorkspaceTab[] = TAB_ORDER.filter((tab) => {
     if (tab === 'detail') return !!s.detail;
     if (!s.panels[tab]) return false;
     if (tab === 'progress') return work;
     if (tab === 'tasks') return true;
     return !work && (tab !== 'terminal' || canTerminal);
   });
+  if (s.sessionInfoOpen) tabs.push('sessionInfo');
+  return tabs.concat(s.sideTabs);
 }
 
 export function selectedWorkspaceTab(s: SessionView, tabs: readonly WorkspaceTab[]): WorkspaceTab | null {
   return s.activeTab && tabs.includes(s.activeTab) ? s.activeTab : (tabs[0] ?? null);
+}
+
+export function closeWorkspaceTab(s: SessionView, tab: WorkspaceTab, canTerminal: boolean, remove: () => void) {
+  const before = openWorkspaceTabs(s, canTerminal);
+  const wasSelected = selectedWorkspaceTab(s, before) === tab;
+  remove();
+  const remaining = openWorkspaceTabs(s, canTerminal);
+  if (wasSelected) s.activeTab = remaining[before.indexOf(tab)] ?? remaining.at(-1) ?? null;
+  if (!remaining.length) s.workspaceExpanded = false;
 }
 
 export function readWorkspaceTab(id: string): WorkspaceTab | null {
@@ -83,8 +109,8 @@ export function readWorkspaceTab(id: string): WorkspaceTab | null {
 }
 
 export function writeWorkspaceTab(id: string, tab: WorkspaceTab | null) {
-  // Plan and task output tabs exist only for this visit; don't overwrite the last regular selection.
-  if (tab === 'detail') return;
+  // Transient tabs don't overwrite the last regular selection.
+  if (tab === 'detail' || tab === 'sessionInfo' || isSideChatTab(tab)) return;
   try {
     if (tab) store.setItem(activeTabKey(id), tab);
     else store.removeItem(activeTabKey(id));

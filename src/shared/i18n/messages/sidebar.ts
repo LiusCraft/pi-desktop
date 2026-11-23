@@ -8,7 +8,7 @@ export const sidebar = defineMessages({
   'sidebar.resumeSessionUpdates': { en: 'Resume title & description updates', zh: '恢复自动更新标题与描述' },
   'sidebar.archive': { en: 'Archive', zh: '归档' },
   'sidebar.delete': { en: 'Delete', zh: '删除' },
-  'sidebar.newSession': { en: 'New session', zh: '新会话' },
+  'sidebar.newSession': { en: 'New session', zh: '新建会话' },
   'sidebar.revealMac': { en: 'Reveal in Finder', zh: '在 Finder 中显示' },
   'sidebar.revealOther': { en: 'Show in File Explorer', zh: '在文件管理器中显示' },
   'sidebar.removeProject': { en: 'Remove from Pi Desktop', zh: '从 Pi Desktop 移除' },
@@ -38,7 +38,8 @@ export const sidebar = defineMessages({
   'sidebar.pinSession': { en: 'Pin', zh: '置顶' },
   'sidebar.unpinSession': { en: 'Unpin', zh: '取消置顶' },
   'sidebar.pin': { en: 'Pin to sidebar', zh: '固定到侧边栏' },
-  'sidebar.new': { en: 'New', zh: '新建' },
+  'sidebar.tab.chat': { en: 'Chat', zh: 'Chat' },
+  'sidebar.tab.code': { en: 'Code', zh: 'Code' },
   'sidebar.moreHint': {
     en: 'Right-click any item to pin it to the sidebar or move it into More',
     zh: '右键任意导航项可固定到侧边栏或收进「更多」',

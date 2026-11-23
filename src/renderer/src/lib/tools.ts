@@ -6,11 +6,12 @@ import { t } from './i18n';
 export type ToolKind = 'read' | 'edit' | 'write' | 'bash' | 'grep' | 'glob' | 'ls' | 'agent' | 'websearch' | 'other';
 export type ToolStatus = 'running' | 'done' | 'err' | 'denied';
 
-/** The tool that runs a JavaScript script calling other tools. */
-export const CODEMODE_TOOL = 'codemode';
+export { CODEMODE_TOOL } from '@shared/script-tools';
+import { CODEMODE_TOOL } from '@shared/script-tools';
 
 /** One tool a codemode script called, from the tool result's `details.calls`. */
 export interface NestedToolCall {
+  id?: string;
   name: string;
   /** Compact JSON of the arguments, already shortened by the host. */
   args: string;
@@ -32,6 +33,7 @@ export function nestedCalls(raw: unknown): NestedToolCall[] {
     if (typeof c.name !== 'string') return [];
     return [
       {
+        ...(typeof c.id === 'string' ? { id: c.id } : {}),
         name: c.name,
         args: typeof c.args === 'string' ? c.args : '',
         status: CALL_STATUSES.has(c.status as string) ? (c.status as NestedToolCall['status']) : 'ok',
@@ -45,6 +47,7 @@ export function nestedCalls(raw: unknown): NestedToolCall[] {
 
 export interface ToolState {
   id: string;
+  parentToolCallId?: string;
   name: string;
   kind: ToolKind;
   args: Record<string, any>;
@@ -196,7 +199,10 @@ export function groupSummary(tools: ToolState[]) {
     agent: 0,
     other: 0,
   };
+  const scriptParents = new Set(tools.map((tool) => tool.parentToolCallId));
   for (const t of tools) {
+    // The script is still expandable, but successful scripts with tool rows don't count twice.
+    if (t.status === 'done' && scriptParents.has(t.id)) continue;
     if (t.kind === 'bash') {
       c.cmd++;
       if (t.status === 'err') c.fail++;
