@@ -16,9 +16,7 @@ import {
   EyeIcon,
   FileDiffIcon,
   ListTreeIcon,
-  Maximize2Icon,
   MessageSquareIcon,
-  Minimize2Icon,
   PlusIcon,
   RefreshCwIcon,
   SearchIcon,
@@ -63,7 +61,6 @@ import type { ToolState } from '@/lib/tools';
 import { cn } from '@/lib/utils';
 import {
   closeDetail,
-  closeFiles,
   closeFileTab,
   diffTarget,
   fail,
@@ -76,11 +73,10 @@ import {
   openFileRef,
   pinFileTab,
   stopTask,
-  togglePanel,
 } from '@/store/actions';
 import { getApp, modelName, setPref, updateSession, useApp } from '@/store/app';
 import { findByKey, findTool } from '@/store/transcript';
-import type { CardId, ChangedFile, DiffScope, DropPlace, Item, SessionChange, SessionView } from '@/store/types';
+import type { ChangedFile, DiffScope, FileDetail, Item, SessionChange, SessionView } from '@/store/types';
 import { DiffSince } from './DiffSince';
 import { FileContextMenu } from './FileContextMenu';
 import { FindBar, SearchResults, type FindScope } from './FindBar';
@@ -88,145 +84,33 @@ import { PathTree, type PathStatus } from './PathTree';
 import { IconBtn, PanelActionButton, PanelToolbar, type PanelAction } from './PanelToolbar';
 import { useDiffComparison } from './useDiffComparison';
 
-// ------------------------------------------------------------ card chrome
+// ------------------------------------------------------------ panel chrome
 
-export interface CardProps {
-  expanded: boolean;
-  /** `wide`: cover the conversation as well (Ctrl+click, or triple-click on the header). */
-  onExpand: (wide: boolean) => void;
-  /** Drag the card by its header: set where the card can be dropped next to another one. */
-  cardId?: CardId;
-  onMove?: (dragged: CardId, place: DropPlace) => void;
-}
-
-/** dataTransfer type of a card being dragged by its header. */
-const CARD_DRAG = 'application/x-pi-card';
-
-/** Share of a card's width, at each side, that sends a dropped card to the left or right column. */
-const SIDE_ZONE = 0.25;
-
+/** Content toolbar inside the shared workspace, without a second panel frame. */
 export function Card({
   title,
   actions = [],
   menu,
   fillTitle,
   children,
-  onClose,
-  expanded,
-  onExpand,
   bodyClass,
-  cardId,
-  onMove,
-}: CardProps & {
-  title: ReactNode;
+}: {
+  title?: ReactNode;
   actions?: PanelAction[];
   menu?: ReactNode;
   fillTitle?: boolean;
   children: ReactNode;
-  onClose?: () => void;
   bodyClass?: string;
 }) {
-  const t = useT();
-  // Which edge of this card the dragged one would land on.
-  const [drop, setDrop] = useState<DropPlace | null>(null);
-  const movable = cardId && onMove;
-  const edge = (e: React.DragEvent<HTMLElement>): DropPlace => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const side = rect.width * SIDE_ZONE;
-    if (e.clientX < rect.left + side) return 'left';
-    if (e.clientX > rect.right - side) return 'right';
-    return e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
-  };
   return (
-    <section
-      data-slot="workspace-panel"
-      className={cn(
-        'relative flex h-full min-h-0 flex-col overflow-hidden rounded-lg surface-flat bg-card',
-        drop && 'after:pointer-events-none after:absolute after:bg-primary',
-        (drop === 'before' || drop === 'after') && 'after:inset-x-0 after:h-1',
-        (drop === 'left' || drop === 'right') && 'after:inset-y-0 after:w-1',
-        drop === 'before' && 'after:top-0',
-        drop === 'after' && 'after:bottom-0',
-        drop === 'left' && 'after:left-0',
-        drop === 'right' && 'after:right-0',
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
+      {(title || actions.length > 0 || menu) && (
+        <header className="panel-heading">
+          <PanelToolbar title={title} fillTitle={fillTitle} menu={menu} actions={actions} />
+        </header>
       )}
-      onDragOver={
-        movable
-          ? (e) => {
-              if (!e.dataTransfer.types.includes(CARD_DRAG)) return;
-              e.preventDefault();
-              setDrop(edge(e));
-            }
-          : undefined
-      }
-      onDragLeave={
-        movable
-          ? (e) => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrop(null);
-            }
-          : undefined
-      }
-      onDrop={
-        movable
-          ? (e) => {
-              const dragged = e.dataTransfer.getData(CARD_DRAG) as CardId;
-              setDrop(null);
-              if (!dragged) return;
-              e.preventDefault();
-              onMove(dragged, edge(e));
-            }
-          : undefined
-      }
-    >
-      {/* A drag handle for a floating panel: pointer-only by design. */}
-      {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-      <header
-        className={cn('panel-heading', movable && 'cursor-grab active:cursor-grabbing')}
-        draggable={movable ? true : undefined}
-        onDragStart={
-          movable
-            ? (e) => {
-                e.dataTransfer.setData(CARD_DRAG, cardId);
-                e.dataTransfer.effectAllowed = 'move';
-              }
-            : undefined
-        }
-        onDragEnd={movable ? () => setDrop(null) : undefined}
-        onClick={(e) => {
-          // Double-click expands the card, triple-click takes the whole session; the header's own buttons are left alone.
-          if (e.detail < 2 || (e.target as HTMLElement).closest('button, input, a')) return;
-          onExpand(e.detail >= 3);
-        }}
-      >
-        <PanelToolbar
-          title={title}
-          fillTitle={fillTitle}
-          menu={menu}
-          actions={[
-            ...actions,
-            {
-              id: 'expand',
-              priority: 'layout',
-              label: t(expanded ? 'panel.restore' : 'panel.expand'),
-              icon: expanded ? <Minimize2Icon className="size-3.5" /> : <Maximize2Icon className="size-3.5" />,
-              onSelect: onExpand,
-            },
-            ...(onClose
-              ? [
-                  {
-                    id: 'close',
-                    priority: 'close' as const,
-                    label: t('panel.close'),
-                    icon: <XIcon className="size-3.5" />,
-                    onSelect: onClose,
-                  },
-                ]
-              : []),
-          ]}
-        />
-      </header>
       <div className={cn('min-h-0 flex-1 overflow-auto', bodyClass)}>{children}</div>
-    </section>
+    </div>
   );
 }
 
@@ -309,7 +193,7 @@ type DiffFile = ChangedFile | SessionChange;
 const NO_DIFF_FILES: ChangedFile[] = [];
 const NO_COMMITS: CommitInfo[] = [];
 
-export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
+export function DiffPanel({ s }: { s: SessionView }) {
   const t = useT();
   const findHint = useShortcutHint('findFile', t('panel.findInDiff'));
   // Generated files start collapsed; `flipped` holds the user's per-file overrides.
@@ -794,7 +678,6 @@ ${c.subject}`}
   }
   return (
     <Card
-      {...card}
       title={
         <>
           <FileDiffIcon className="size-4 shrink-0 text-muted-foreground" />
@@ -804,7 +687,6 @@ ${c.subject}`}
       }
       actions={actions}
       menu={menu}
-      onClose={() => togglePanel(id, 'diff', false)}
       bodyClass="overflow-hidden"
     >
       <div className="flex h-full min-h-0 flex-col">
@@ -863,7 +745,7 @@ function tabLabel(tab: PreviewTab): string {
   }
 }
 
-export function PreviewPanel({ s, ...card }: CardProps & { s: SessionView }) {
+export function PreviewPanel({ s }: { s: SessionView }) {
   const t = useT();
   const saved = useApp((st) => st.prefs.previewUrl);
   const initialUrl = s.previewUrl || saved;
@@ -1020,7 +902,6 @@ export function PreviewPanel({ s, ...card }: CardProps & { s: SessionView }) {
 
   return (
     <Card
-      {...card}
       fillTitle
       title={
         <form onSubmit={submit} className="min-w-0 flex-1">
@@ -1055,7 +936,6 @@ export function PreviewPanel({ s, ...card }: CardProps & { s: SessionView }) {
           onSelect: () => setNonce((current) => current + 1),
         },
       ]}
-      onClose={() => togglePanel(s.meta.id, 'preview', false)}
       bodyClass="overflow-hidden"
     >
       <div className="flex h-full min-h-0 flex-col">
@@ -1110,15 +990,13 @@ export function PreviewPanel({ s, ...card }: CardProps & { s: SessionView }) {
 
 // ------------------------------------------------------------ files
 
-type FileDetail = Extract<NonNullable<SessionView['detail']>, { type: 'file' }>;
-
 /** One window for the project: the file tree on the left, the open files (as tabs) on the right. */
-export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
+export function FilesPanel({ s }: { s: SessionView }) {
   const t = useT();
   const findHint = useShortcutHint('findFile');
   const findAllHint = useShortcutHint('findAll');
   const id = s.meta.id;
-  const d = s.detail?.type === 'file' ? s.detail : null;
+  const d = s.fileDetail;
   const [source, setSource] = useSourceToggle(d?.path ?? '');
   const [showTree, setShowTree] = useState(true);
   const view = useRef<ReviewHandle>(null);
@@ -1231,12 +1109,10 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
       : `${fileHits.length ? hit + 1 : 0}/${fileHits.length}${fileHits.length >= SEARCH_MAX_MATCHES ? '+' : ''}`;
   return (
     <Card
-      {...card}
       title={
-        <>
-          <FolderIcon className="size-4 shrink-0 text-muted-foreground" />
-          <span>{t('panel.files')}</span>
-        </>
+        <span className="font-mono text-muted-foreground" title={s.meta.cwd}>
+          {s.meta.cwd}
+        </span>
       }
       actions={[
         {
@@ -1267,10 +1143,6 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
           </DropdownMenuItem>
         </>
       }
-      onClose={() => {
-        togglePanel(id, 'files', false);
-        closeFiles(id);
-      }}
       bodyClass="overflow-hidden"
     >
       <div className="flex h-full min-h-0 flex-col" {...findKeys(openFind)}>
@@ -1407,7 +1279,7 @@ function TaskMeta({ tool, onTranscript }: { tool: ToolState; onTranscript?: () =
   );
 }
 
-export function TasksPanel({ s, ...card }: CardProps & { s: SessionView }) {
+export function TasksPanel({ s }: { s: SessionView }) {
   const t = useT();
   const id = s.meta.id;
   const all = agentTools(s);
@@ -1449,8 +1321,6 @@ export function TasksPanel({ s, ...card }: CardProps & { s: SessionView }) {
   );
   return (
     <Card
-      {...card}
-      title={t('tasks.title')}
       actions={[
         {
           id: 'clear',
@@ -1460,7 +1330,6 @@ export function TasksPanel({ s, ...card }: CardProps & { s: SessionView }) {
           onSelect: () => setCleared(new Set(all.filter((task) => task.status !== 'running').map((task) => task.id))),
         },
       ]}
-      onClose={() => togglePanel(id, 'tasks', false)}
     >
       {!running.length && !done.length ? (
         <Empty>{t('tasks.empty')}</Empty>
@@ -1493,17 +1362,7 @@ const STEP_ICON: Record<string, typeof FileIcon> = {
 };
 
 /** A subagent's prompt, every tool call and message it produced, then its report. */
-function AgentTranscript({
-  s,
-  tool,
-  card,
-  close,
-}: {
-  s: SessionView;
-  tool: ToolState;
-  card: CardProps;
-  close: () => void;
-}) {
+function AgentTranscript({ s, tool, close }: { s: SessionView; tool: ToolState; close: () => void }) {
   const t = useT();
   const running = tool.status === 'running';
   useTicker(running);
@@ -1516,7 +1375,6 @@ function AgentTranscript({
   }, [running, steps.length]);
   return (
     <Card
-      {...card}
       title={
         <>
           <IconBtn title={t('tasks.back')} onClick={close}>
@@ -1540,7 +1398,6 @@ function AgentTranscript({
             ]
           : []
       }
-      onClose={close}
       bodyClass="overflow-hidden"
     >
       <div ref={body} className="h-full overflow-auto">
@@ -1611,20 +1468,16 @@ function AgentTranscript({
 
 // ------------------------------------------------------------ detail: plan, subagent, file
 
-export function DetailPanel({ s, ...card }: CardProps & { s: SessionView }) {
+export function DetailPanel({ s }: { s: SessionView }) {
   const t = useT();
   const d = s.detail!;
   const id = s.meta.id;
-  const close = () => closeDetail(id);
   const { copied, copy } = useCopy();
   if (d.type === 'plan') {
     const plan = findByKey(s, d.key);
     if (plan?.kind !== 'plan') return null;
     return (
       <Card
-        {...card}
-        title={t('plan.title')}
-        onClose={close}
         actions={[
           {
             id: 'copy',
@@ -1648,9 +1501,9 @@ export function DetailPanel({ s, ...card }: CardProps & { s: SessionView }) {
   if (d.type === 'agent') {
     const tool = findTool(s, d.toolCallId)?.tool;
     if (!tool) return null;
-    return <AgentTranscript s={s} tool={tool} card={card} close={close} />;
+    return <AgentTranscript s={s} tool={tool} close={() => closeDetail(id)} />;
   }
-  return <FileViewer s={s} {...card} />;
+  return <FileViewer s={s} />;
 }
 
 const HTML_FILE = /\.html?$/i;
@@ -1772,20 +1625,18 @@ function FileBody({
 }
 
 /** A file opened from a Work session, which has no Files card: the preview stands alone. */
-function FileViewer({ s, ...card }: CardProps & { s: SessionView }) {
+function FileViewer({ s }: { s: SessionView }) {
   const d = s.detail as FileDetail;
   const [source, setSource] = useSourceToggle(d.path);
   const actions = useFileActions(s, d, source, setSource);
   return (
     <Card
-      {...card}
       title={
         <span className="truncate font-mono text-xs" title={d.path}>
           {d.path}
         </span>
       }
       actions={actions}
-      onClose={() => closeDetail(s.meta.id)}
       bodyClass="overflow-hidden flex flex-col"
     >
       <FileBody s={s} d={d} source={source} />
@@ -1831,7 +1682,7 @@ function Dispatched({ tasks }: { tasks: ToolState[] }) {
   );
 }
 
-export function WorkPanel({ s, ...card }: CardProps & { s: SessionView }) {
+export function WorkPanel({ s }: { s: SessionView }) {
   const t = useT();
   const models = useApp((st) => st.models);
   const todos = s.lastTodos;
@@ -1841,7 +1692,7 @@ export function WorkPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const id = s.meta.id;
   const folderName = s.meta.scratch ? t('progress.tempWorkspace') : fname(s.meta.cwd);
   return (
-    <Card {...card} title={t('progress.title')} onClose={() => togglePanel(id, 'progress', false)}>
+    <Card>
       <div>
         <section className="space-y-2 p-4">
           <h3 className="flex items-center justify-between text-xs font-semibold tracking-wide text-muted-foreground uppercase">

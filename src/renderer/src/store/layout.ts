@@ -1,7 +1,5 @@
-// What the user left open in a session's workspace: which cards were visible and which
-// one was expanded. Kept next to the session id in localStorage, so reopening a
-// conversation (even after a restart) shows its own layout instead of a default one.
-import type { Arrangement, CardId, Column, Panels } from './types';
+// The workspace tabs and selection belong to the session.
+import type { Panels, SessionView, WorkspaceTab } from './types';
 
 /** A brand new session opens with nothing but Work's progress card. */
 export const DEFAULT_PANELS: Panels = {
@@ -57,42 +55,47 @@ export function writePanels(id: string, panels: Panels) {
   }
 }
 
-const arrangementKey = (id: string) => `pd_arrangement:${id}`;
+const activeTabKey = (id: string) => `pd_workspace_tab:${id}`;
+const TAB_ORDER: readonly WorkspaceTab[] = ['progress', 'tasks', 'diff', 'preview', 'files', 'terminal', 'detail'];
 
-const CARD_IDS: readonly CardId[] = ['progress', 'tasks', 'diff', 'preview', 'detail', 'files', 'terminal'];
-
-export function readArrangement(id: string): Arrangement {
-  const arrangement: Arrangement = { primary: [], secondary: [] };
-  try {
-    const saved = JSON.parse(store.getItem(arrangementKey(id)) ?? 'null');
-    const seen = new Set<CardId>();
-    for (const column of Object.keys(arrangement) as Column[]) {
-      const list = saved?.[column];
-      if (!Array.isArray(list)) continue;
-      for (const card of list) {
-        if (CARD_IDS.includes(card) && !seen.has(card)) {
-          seen.add(card);
-          arrangement[column].push(card);
-        }
-      }
-    }
-  } catch {
-    // An unreadable entry just means the default arrangement.
-  }
-  return arrangement;
+export function openWorkspaceTabs(s: SessionView, canTerminal: boolean): WorkspaceTab[] {
+  const work = s.meta.kind === 'work';
+  return TAB_ORDER.filter((tab) => {
+    if (tab === 'detail') return !!s.detail;
+    if (!s.panels[tab]) return false;
+    if (tab === 'progress') return work;
+    if (tab === 'tasks') return true;
+    return !work && (tab !== 'terminal' || canTerminal);
+  });
 }
 
-export function writeArrangement(id: string, arrangement: Arrangement) {
+export function selectedWorkspaceTab(s: SessionView, tabs: readonly WorkspaceTab[]): WorkspaceTab | null {
+  return s.activeTab && tabs.includes(s.activeTab) ? s.activeTab : (tabs[0] ?? null);
+}
+
+export function readWorkspaceTab(id: string): WorkspaceTab | null {
   try {
-    store.setItem(arrangementKey(id), JSON.stringify(arrangement));
+    const saved = store.getItem(activeTabKey(id));
+    return TAB_ORDER.find((tab) => tab !== 'detail' && tab === saved) ?? null;
   } catch {
-    // A full or blocked storage only costs the memory, never the change itself.
+    return null;
+  }
+}
+
+export function writeWorkspaceTab(id: string, tab: WorkspaceTab | null) {
+  // Plan and task output tabs exist only for this visit; don't overwrite the last regular selection.
+  if (tab === 'detail') return;
+  try {
+    if (tab) store.setItem(activeTabKey(id), tab);
+    else store.removeItem(activeTabKey(id));
+  } catch {
+    // Storage may be unavailable.
   }
 }
 
 export function forgetPanels(id: string) {
   try {
-    store.removeItem(arrangementKey(id));
+    store.removeItem(activeTabKey(id));
     store.removeItem(panelsKey(id));
   } catch {
     // Nothing to do: the entry is unreachable once the session is gone.
