@@ -19,7 +19,7 @@ let temporary: string;
 const errors: string[] = [];
 
 const composer = () => page.locator('textarea[data-composer-input]');
-const tab = (kind: 'Work' | 'Code', selected: boolean) => page.getByRole('tab', { name: kind, exact: true, selected });
+const tab = (kind: 'Chat' | 'Code', selected: boolean) => page.getByRole('tab', { name: kind, exact: true, selected });
 const settingsValue = () => page.evaluate(async () => (await window.piDesktop.invoke('settings:get')).shortcuts);
 
 async function openSettings() {

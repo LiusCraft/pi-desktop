@@ -11,7 +11,6 @@ import {
   createAgentSessionFromServices,
   createAgentSessionRuntime,
   createAgentSessionServices,
-  createCodemodeExtension,
   createMcpExtension,
   createToolSearchExtension,
   DefaultResourceLoader,
@@ -32,6 +31,8 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import { buildMessage, decodeUserContent } from '@shared/attachments';
+import { todoMessage } from '@shared/todo-message';
+import { desktopCodemode } from './desktop-codemode';
 import type {
   AgentDraft,
   AgentMessage,
@@ -991,7 +992,7 @@ export class SessionHub {
           extensionFactories: [
             createDesktopKit(this.kitHost(live)),
             sessionGoal,
-            createCodemodeExtension(),
+            desktopCodemode,
             createToolSearchExtension(),
             createMcpExtension(),
           ],
@@ -1691,8 +1692,27 @@ export class SessionHub {
 
   private messagesWithIds(session: AgentSession, meta: SessionMeta) {
     const ids = new Map<number, string[]>();
+    const todosAfter = new Map<string, AgentMessage[]>();
+    let assistantCallId: string | undefined;
     for (const projected of session.sessionManager.buildSessionProjection().entries) {
-      if (projected.sourceEntry.type !== 'message' || projected.sourceEntry.message.role !== 'user') continue;
+      const entry = projected.sourceEntry;
+      // Todo entries are written while tools run, after their assistant message and before tool results.
+      if (entry.type === 'custom' && assistantCallId) {
+        const updates = todoMessage(entry);
+        if (updates.length) {
+          const list = todosAfter.get(assistantCallId) ?? [];
+          list.push(...updates);
+          todosAfter.set(assistantCallId, list);
+        }
+      }
+      if (entry.type !== 'message') continue;
+      if (entry.message.role === 'assistant') {
+        assistantCallId = projected.messages
+          .find((message) => message.role === 'assistant')
+          ?.content.find((block) => block.type === 'toolCall')?.id;
+      }
+      if (entry.message.role !== 'user') continue;
+      assistantCallId = undefined;
       for (const message of projected.messages) {
         if (message.role !== 'user') continue;
         const list = ids.get(message.timestamp) ?? [];
@@ -1735,9 +1755,15 @@ export class SessionHub {
     }
     return withScriptTools(
       session.sessionManager,
-      messages.map((message) =>
-        byMessage.has(message) ? { ...message, nestedFileOutputs: byMessage.get(message) } : message,
-      ),
+      messages.flatMap((message) => {
+        if (message.role !== 'assistant' || !Array.isArray(message.content)) return [message];
+        const id = message.content.find((block) => block.type === 'toolCall')?.id;
+        const outputs = byMessage.get(message);
+        return [
+          outputs ? { ...message, nestedFileOutputs: outputs } : message,
+          ...(id ? (todosAfter.get(id) ?? []) : []),
+        ];
+      }),
     );
   }
 

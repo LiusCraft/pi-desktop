@@ -16,14 +16,11 @@ import type {
 } from '@shared/protocol';
 import type { PeerMessage } from '@shared/peer-message';
 import type { PrEvent } from '@shared/pr-event';
+import type { Todo } from '@shared/todo-message';
 import type { ToolState } from '@/lib/tools';
 import type { DraftSubmission } from './drafts';
 
-export interface Todo {
-  content: string;
-  status: 'pending' | 'in_progress' | 'completed';
-  activeForm?: string;
-}
+export type { Todo } from '@shared/todo-message';
 
 export interface ThinkStep {
   text: string;

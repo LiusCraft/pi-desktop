@@ -26,6 +26,7 @@ import {
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
 import { SEND_MESSAGE_TOOL } from '@shared/peer-message';
+import { TODO_ENTRY_TYPE, TODO_STATUSES, TODO_TOOL } from '@shared/todo-message';
 import { requestText } from './naming';
 import type { PeerSession } from './session-peers';
 import { TASK_NOTIFICATION_TYPE } from '@shared/task-message';
@@ -194,7 +195,7 @@ const READ_ONLY_TOOLS = new Set([
   'grep',
   'find',
   'ls',
-  'pidesk_todo_write',
+  TODO_TOOL,
   'pidesk_goal_result',
   'pidesk_exit_plan_mode',
   'pidesk_ask_question',
@@ -610,15 +611,14 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
     // ---------------------------------------------------------------- pidesk_todo_write
     const TodoItem = Type.Object({
       content: Type.String({ description: "Imperative description, e.g. 'Fix the date formatter'" }),
-      status: StringEnum(['pending', 'in_progress', 'completed'] as const),
+      status: StringEnum(TODO_STATUSES),
       activeForm: Type.Optional(
         Type.String({ description: "Present continuous form, e.g. 'Fixing the date formatter'" }),
       ),
     });
     pi.registerTool({
-      name: 'pidesk_todo_write',
-      // Tools with their own card or task lifecycle need a durable top-level call/result.
-      exposure: 'model-only',
+      name: TODO_TOOL,
+      exposure: 'direct',
       label: 'Todos',
       description:
         'Create or update the task checklist shown to the user. Send the complete list every time. ' +
@@ -626,10 +626,12 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       promptSnippet: 'Track multi-step work with a visible checklist',
       parameters: Type.Object({ todos: Type.Array(TodoItem) }),
       async execute(_id, params) {
+        // Both entry points commit the full checklist in completion order, outside the model context.
+        pi.appendEntry(TODO_ENTRY_TYPE, params.todos);
         const done = params.todos.filter((t) => t.status === 'completed').length;
         return {
-          content: [{ type: 'text', text: `Todo list updated (${done}/${params.todos.length} completed).` }],
-          details: { todos: params.todos },
+          content: [{ type: 'text', text: tr('ag.todosUpdated', { done, total: params.todos.length }) }],
+          details: undefined,
         };
       },
     });
