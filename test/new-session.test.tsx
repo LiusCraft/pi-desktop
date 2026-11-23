@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { deferred, invoke } from './renderer-dom';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { FromPrResult, OpenSessionResult, SessionMeta } from '../src/shared/protocol';
 
@@ -15,7 +15,7 @@ const { Main } = await import('../src/renderer/src/components/layout/Main');
 const { TooltipProvider } = await import('../src/renderer/src/components/ui/tooltip');
 const { getApp, setApp } = await import('../src/renderer/src/store/app');
 const { activeDraft, drafts, useDrafts } = await import('../src/renderer/src/store/drafts');
-const { selectProject, send, showWelcome, openSession, startSuggested, handleHostEvent } =
+const { selectProject, send, showWelcome, openSession, startSuggested, startFromPr, handleHostEvent } =
   await import('../src/renderer/src/store/actions');
 const { emptySession } = await import('../src/renderer/src/store/transcript');
 const { useWelcomeBranches } = await import('../src/renderer/src/store/welcome-branches');
@@ -48,6 +48,21 @@ const mount = () =>
 const prUrl = 'https://github.com/acme/app/pull/42';
 const prButton = () => screen.getByRole<HTMLButtonElement>('button', { name: 'Start from PR' });
 const prStatus = () => screen.getByRole('status').textContent;
+
+it('prevents a second import while the first PR link prompt is open', async () => {
+  const input = deferred<string | null>();
+  const prompt = vi.spyOn(dialogs, 'prompt').mockReturnValue(input.promise);
+  const first = startFromPr();
+  try {
+    await startFromPr();
+    expect(prompt).toHaveBeenCalledTimes(1);
+  } finally {
+    input.resolve(null);
+    await first;
+  }
+  expect(getApp().prImport).toBeNull();
+  expect(invoke).not.toHaveBeenCalled();
+});
 
 it('shows that folder selection is needed and clears the progress on cancel', async () => {
   const folder = deferred<string | null>();
@@ -111,6 +126,11 @@ it('follows live import stages and then switches to normal session setup', async
     projectPath: '/clones/app',
     cwd: '/clones/app-wt',
   } as SessionMeta;
+  // The host also announces newly created sessions before the import RPC returns.
+  act(() => handleHostEvent({ type: 'meta', sessionId: meta.id, meta }));
+  await waitFor(() => expect(getApp().sessions[meta.id]?.meta).toEqual(meta));
+  expect(prStatus()).toBe('Creating session…');
+  expect(getApp().current).toBeNull();
   await act(async () => creation.resolve({ kind: 'session', meta }));
   expect(prStatus()).toBe('Opening session…');
   await act(async () => registration.resolve(null));
@@ -134,6 +154,7 @@ it('follows live import stages and then switches to normal session setup', async
     }),
   );
   expect(getApp().sessions[meta.id].loaded).toBe(true);
+  act(() => handleHostEvent({ type: 'pr_import', requestId, stage: 'creating' }));
   expect(getApp().prImport).toBeNull();
 });
 
