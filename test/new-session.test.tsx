@@ -5,9 +5,9 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import type { FromPrResult, OpenSessionResult, SessionMeta } from '../src/shared/protocol';
 
 // The workspace is covered separately; these tests exercise session creation and setup.
-vi.mock('@/components/workspace/Workspace', () => ({
-  NewWorkspaceTabMenu: () => null,
-  Workspace: () => null,
+vi.mock(import('@/components/workspace/Workspace'), () => ({
+  NewWorkspaceTabButton: () => <></>,
+  Workspace: () => <></>,
 }));
 
 const { Main } = await import('../src/renderer/src/components/layout/Main');
