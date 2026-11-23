@@ -21,7 +21,7 @@ import { positiveLine } from '@shared/tool-previews';
 import { decodePeerMessage } from '@shared/peer-message';
 import { encodeTaskMessage } from '@shared/task-message';
 import { typedText } from '@shared/skill-message';
-import { call, errText, modKey } from '@/lib/api';
+import { call, canTerminal, errText, modKey } from '@/lib/api';
 import { resolveCodeProject } from '@/lib/code-project';
 import { bashCommand } from '@/lib/bash';
 import { t } from '@/lib/i18n';
@@ -44,7 +44,7 @@ import {
 } from './app';
 import { dialogs } from './dialogs';
 import { activeDraft, drafts, getDraft, sessionDraftKey, useDrafts } from './drafts';
-import { forgetPanels, writeArrangement, writePanels } from './layout';
+import { forgetPanels, openWorkspaceTabs, selectedWorkspaceTab, writePanels, writeWorkspaceTab } from './layout';
 import { primeSuggestion, resumeSuggestion } from './predict';
 import { notifyResource, subscribeResource } from './resources';
 import { notifyPluginEvent } from '@/plugin/events';
@@ -71,7 +71,7 @@ import {
   transcriptItems,
   type Effects,
 } from './transcript';
-import type { Arrangement, CardId, ChangedFile, Column, DropPlace, Item, ItemOf, Panels, SessionView } from './types';
+import type { ChangedFile, Detail, FileDetail, Item, ItemOf, Panels, SessionView, WorkspaceTab } from './types';
 
 export const fail = (err: unknown) => toast.error(errText(err));
 
@@ -218,7 +218,7 @@ function flushEvents() {
           break;
         case 'ui_request': {
           const r = addUiRequest(s, ev.request, view);
-          if (r.openPlan) s.detail = { type: 'plan', key: r.openPlan };
+          if (r.openPlan) showDetail(s, { type: 'plan', key: r.openPlan });
           effects.push([s.meta.id, { waiting: ev.request }]);
           break;
         }
@@ -601,8 +601,9 @@ export async function openSession(id: string, fresh = false) {
       st.sessions[id].setup = [{ id: 'agent', label: t('act.stepAgent'), state: 'running' }];
     st.lastByView[view] = id;
     st.sessions[id].unread = false;
-    if (st.sessions[id].detail?.type === 'file' && (st.sessions[id].detail as any).loading)
-      st.sessions[id].detail = null;
+    const v = st.sessions[id];
+    if (v.detail?.type === 'file' && v.detail.loading) closeTab(v, 'detail', () => void (v.detail = null));
+    if (v.fileDetail?.loading) v.fileDetail = null;
   });
   try {
     localStorage.setItem('cc_mode', JSON.stringify(view));
@@ -1478,55 +1479,68 @@ export async function forkSession(id: string) {
 
 // ------------------------------------------------------------ panels, files, git
 
-export function togglePanel(id: string, panel: keyof Panels, open?: boolean) {
-  updateSession(id, (v) => void (v.panels[panel] = open ?? !v.panels[panel]));
+export function selectWorkspaceTab(id: string, tab: WorkspaceTab) {
   const s = getApp().sessions[id];
-  // The layout belongs to the session: coming back to it should look the way it was left.
-  if (s) writePanels(id, s.panels);
-  if (panel === 'diff' && s?.panels.diff) {
+  if (!s || !openWorkspaceTabs(s, canTerminal).includes(tab)) return;
+  updateSession(id, (v) => void (v.activeTab = tab));
+  writeWorkspaceTab(id, tab);
+}
+
+function closeTab(s: SessionView, tab: WorkspaceTab, remove: () => void) {
+  const before = openWorkspaceTabs(s, canTerminal);
+  const wasSelected = selectedWorkspaceTab(s, before) === tab;
+  remove();
+  const remaining = openWorkspaceTabs(s, canTerminal);
+  if (wasSelected) s.activeTab = remaining[before.indexOf(tab)] ?? remaining.at(-1) ?? null;
+  if (!remaining.length) s.workspaceExpanded = false;
+}
+
+export function togglePanel(id: string, panel: keyof Panels, open?: boolean) {
+  const previous = getApp().sessions[id];
+  if (!previous) return;
+  const active = selectedWorkspaceTab(previous, openWorkspaceTabs(previous, canTerminal));
+  const show = open ?? active !== panel;
+  updateSession(id, (v) => {
+    if (show) {
+      v.panels[panel] = true;
+      v.activeTab = panel;
+    } else
+      closeTab(v, panel, () => {
+        v.panels[panel] = false;
+        if (panel === 'files') {
+          v.fileTabs = [];
+          v.fileDetail = null;
+        }
+      });
+  });
+  const s = getApp().sessions[id];
+  writePanels(id, s.panels);
+  writeWorkspaceTab(id, s.activeTab);
+  if (panel === 'diff' && show) {
     void loadChanges(id);
     void loadPrThreads(id);
   }
-  if (panel === 'files' && s?.panels.files) void loadFiles(id, true);
+  if (panel === 'files' && show) void loadFiles(id, true);
 }
 
-/**
- * Drop a dragged card next to another one, possibly in the other column. `columns` is what is on screen now,
- * so the saved arrangement starts from it and the move is kept for every later combination of open cards.
- */
-export function moveCard(id: string, card: CardId, target: CardId, place: DropPlace, columns: Arrangement) {
-  if (card === target) return;
-  const next: Arrangement = {
-    primary: columns.primary.filter((c) => c !== card),
-    secondary: columns.secondary.filter((c) => c !== card),
-  };
-  if (place === 'left' || place === 'right') {
-    // The side edge sends the card to the left or right column, at its bottom; an empty side opens a new column.
-    next[place === 'left' ? 'primary' : 'secondary'].push(card);
-  } else {
-    const column: Column = next.primary.includes(target) ? 'primary' : 'secondary';
-    next[column].splice(next[column].indexOf(target) + (place === 'after' ? 1 : 0), 0, card);
-  }
-  updateSession(id, (v) => void (v.arrangement = next));
-  writeArrangement(id, next);
-}
-
-/** Blow one card up over the whole workspace (or, `wide`, the whole session with the conversation), or put it back — remembered per session. */
-export function expandCard(id: string, card: CardId | null, wide = false) {
-  updateSession(id, (v) => {
-    v.expanded = card;
-    v.expandedWide = !!card && wide;
-  });
+export function toggleWorkspaceExpanded(id: string) {
+  updateSession(id, (v) => void (v.workspaceExpanded = !v.workspaceExpanded));
 }
 
 export function closeDetail(id: string) {
-  updateSession(id, (v) => void (v.detail = null));
+  updateSession(id, (v) => closeTab(v, 'detail', () => void (v.detail = null)));
+  writeWorkspaceTab(id, getApp().sessions[id]?.activeTab ?? null);
+}
+
+function showDetail(s: SessionView, detail: Detail) {
+  s.detail = detail;
+  s.activeTab = 'detail';
 }
 export function openPlan(id: string, key: string) {
-  updateSession(id, (v) => void (v.detail = { type: 'plan', key }));
+  updateSession(id, (v) => showDetail(v, { type: 'plan', key }));
 }
 export function openAgent(id: string, toolCallId: string) {
-  updateSession(id, (v) => void (v.detail = { type: 'agent', toolCallId }));
+  updateSession(id, (v) => showDetail(v, { type: 'agent', toolCallId }));
 }
 
 /** Stop one background subagent; the turn goes on without its report. */
@@ -1540,6 +1554,11 @@ export async function stopTask(id: string, toolCallId: string) {
 
 const IMAGE_FILE = /\.(png|jpe?g|gif|webp|bmp)$/i;
 const MEDIA_FILE = /\.(mp3|wav|m4a|aac|ogg|opus|flac|mp4|m4v|webm|mov)$/i;
+
+function setFileDetail(s: SessionView, detail: FileDetail) {
+  if (s.meta.kind === 'work') s.detail = detail;
+  else s.fileDetail = detail;
+}
 
 let fileRequest = 0;
 /**
@@ -1555,8 +1574,9 @@ export async function openFileRef(path: string, line?: number, fallbackImage?: s
   const request = ++fileRequest;
   const target = positiveLine(line);
   updateSession(id, (v) => {
-    v.detail = { type: 'file', path: rel, line: target, loading: true };
-    if (v.meta.kind === 'work') return;
+    const loading: FileDetail = { type: 'file', path: rel, line: target, loading: true };
+    if (v.meta.kind === 'work') return showDetail(v, loading);
+    v.fileDetail = loading;
     const known = v.fileTabs.find((t) => t.path === rel);
     if (known) known.pinned ||= pin;
     else {
@@ -1568,40 +1588,38 @@ export async function openFileRef(path: string, line?: number, fallbackImage?: s
   // The preview lives in the Files card (a Work session has no such card and shows it on its own).
   if (s.meta.kind !== 'work') togglePanel(id, 'files', true);
   const stillShowing = () => {
-    const d = getApp().sessions[id]?.detail;
+    const session = getApp().sessions[id];
+    const d = session?.meta.kind === 'work' ? session.detail : session?.fileDetail;
     return request === fileRequest && getApp().current === id && d?.type === 'file' && d.path === rel;
   };
   try {
     if (IMAGE_FILE.test(rel) || fallbackImage) {
       const image = (await call('sessions:readImage', id, rel).catch(() => null))?.src ?? fallbackImage ?? null;
       if (stillShowing())
-        updateSession(id, (v) => void (v.detail = { type: 'file', path: rel, line: target, loading: false, image }));
+        updateSession(id, (v) => setFileDetail(v, { type: 'file', path: rel, line: target, loading: false, image }));
       return;
     }
     if (MEDIA_FILE.test(rel)) {
       const media = (await call('sessions:readMedia', id, rel).catch(() => null)) ?? null;
       if (stillShowing())
-        updateSession(
-          id,
-          (v) =>
-            void (v.detail = {
-              type: 'file',
-              path: rel,
-              line: target,
-              loading: false,
-              media: media && { kind: media.kind, src: media.src },
-            }),
+        updateSession(id, (v) =>
+          setFileDetail(v, {
+            type: 'file',
+            path: rel,
+            line: target,
+            loading: false,
+            media: media && { kind: media.kind, src: media.src },
+          }),
         );
       return;
     }
     const text = await call('sessions:readFile', id, rel);
     if (stillShowing())
-      updateSession(id, (v) => void (v.detail = { type: 'file', path: rel, line: target, loading: false, text }));
+      updateSession(id, (v) => setFileDetail(v, { type: 'file', path: rel, line: target, loading: false, text }));
   } catch (err) {
     if (stillShowing())
-      updateSession(
-        id,
-        (v) => void (v.detail = { type: 'file', path: rel, line: target, loading: false, error: errText(err) }),
+      updateSession(id, (v) =>
+        setFileDetail(v, { type: 'file', path: rel, line: target, loading: false, error: errText(err) }),
       );
   }
 }
@@ -1619,25 +1637,12 @@ export function closeFileTab(id: string, path: string) {
   const at = s?.fileTabs.findIndex((t) => t.path === path) ?? -1;
   if (!s || at < 0) return;
   const next = s.fileTabs[at + 1] ?? s.fileTabs[at - 1];
-  const showing = s.detail?.type === 'file' && s.detail.path === path;
-  updateSession(id, (v) => void v.fileTabs.splice(at, 1));
-  if (!showing) return;
-  if (next) void openFileRef(next.path);
-  else closeDetail(id);
-}
-
-/** Closing the Files card drops its tabs. */
-export function closeFiles(id: string) {
+  const showing = s.fileDetail?.path === path;
   updateSession(id, (v) => {
-    v.fileTabs = [];
-    if (v.detail?.type === 'file') v.detail = null;
+    v.fileTabs.splice(at, 1);
+    if (showing && !next) v.fileDetail = null;
   });
-}
-
-export function setFileWindow(id: string, start: number) {
-  updateSession(id, (v) => {
-    if (v.detail?.type === 'file') v.detail.start = start;
-  });
+  if (showing && next) void openFileRef(next.path);
 }
 
 /** Ctrl/Cmd+Shift+F: the Files card opens with its find bar on this scope (a card already open is told by event). */

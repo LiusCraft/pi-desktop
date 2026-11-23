@@ -142,20 +142,19 @@ export type Item =
 
 export type ItemOf<K extends Item['kind']> = Extract<Item, { kind: K }>;
 
-export type Detail =
-  | { type: 'plan'; key: string }
-  | { type: 'agent'; toolCallId: string }
-  | {
-      type: 'file';
-      path: string;
-      line: number;
-      start?: number;
-      loading: boolean;
-      text?: string | null;
-      error?: string;
-      image?: string | null;
-      media?: { kind: 'audio' | 'video'; src: string } | null;
-    };
+export interface FileDetail {
+  type: 'file';
+  path: string;
+  line: number;
+  start?: number;
+  loading: boolean;
+  text?: string | null;
+  error?: string;
+  image?: string | null;
+  media?: { kind: 'audio' | 'video'; src: string } | null;
+}
+
+export type Detail = { type: 'plan'; key: string } | { type: 'agent'; toolCallId: string } | FileDetail;
 
 /** A file open in the Files card. A tab nobody double-clicked is a preview: the next single click replaces it. */
 export interface FileTab {
@@ -173,17 +172,8 @@ export interface SessionChange extends ChangedFile {
   after: string | null;
 }
 
-/** The cards the workspace can show beside the conversation. */
-export type CardId = 'progress' | 'tasks' | 'diff' | 'preview' | 'detail' | 'files' | 'terminal';
-
-/** The two tool columns of the workspace. */
-export type Column = 'primary' | 'secondary';
-
-/** Where a dragged card lands relative to the card it is dropped on: above/below it, or in the left/right column. */
-export type DropPlace = 'before' | 'after' | 'left' | 'right';
-
-/** Where the user dragged the cards: the order of each column. Cards not listed keep their default place. */
-export type Arrangement = Record<Column, CardId[]>;
+/** The tabs in the workspace beside the conversation. */
+export type WorkspaceTab = keyof Panels | 'detail';
 
 export interface Panels {
   diff: boolean;
@@ -254,14 +244,12 @@ export interface SessionView {
   prThreads: PrThread[];
   prHidden: boolean;
   files: string[] | null;
-  /** The Files card's tabs; `detail` is the one showing. */
+  /** The open files and selected file inside the Code Files tab. */
   fileTabs: FileTab[];
+  fileDetail: FileDetail | null;
   panels: Panels;
-  arrangement: Arrangement;
-  /** Card blown up over the whole workspace, remembered per session like the panels. */
-  expanded: CardId | null;
-  /** The expanded card covers the conversation too, not just the workspace. */
-  expandedWide: boolean;
+  activeTab: WorkspaceTab | null;
+  workspaceExpanded: boolean;
   detail: Detail | null;
   previewUrl: string | null;
   /** User items not yet confirmed by pi. */

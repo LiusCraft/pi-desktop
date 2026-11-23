@@ -1,6 +1,6 @@
 // The terminal card: a tab per shell, each a real pseudo-terminal drawn by xterm.js.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PlusIcon, SquareTerminalIcon, XIcon } from 'lucide-react';
+import { PlusIcon, XIcon } from 'lucide-react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal, type ITheme } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { fail, togglePanel } from '@/store/actions';
 import { getApp } from '@/store/app';
 import type { SessionView } from '@/store/types';
-import { Card, type CardProps } from './Panels';
+import { Card } from './Panels';
 
 const VSCODE_THEMES: Record<'light' | 'dark', ITheme> = {
   light: { background: '#ffffff', foreground: '#3b3b3b', cursor: '#3b3b3b', selectionBackground: '#add6ff' },
@@ -108,7 +108,7 @@ function TermView({ id, active }: { id: string; active: boolean }) {
   return <div ref={host} className={cn('absolute inset-0 px-2 py-1', !active && 'hidden')} />;
 }
 
-export function TerminalPanel({ s, ...card }: CardProps & { s: SessionView }) {
+export function TerminalPanel({ s }: { s: SessionView }) {
   const tx = useT();
   const sessionId = s.meta.id;
   const [tabs, setTabs] = useState<TerminalInfo[]>([]);
@@ -152,13 +152,7 @@ export function TerminalPanel({ s, ...card }: CardProps & { s: SessionView }) {
 
   return (
     <Card
-      {...card}
-      title={
-        <>
-          <SquareTerminalIcon className="size-4 shrink-0 text-muted-foreground" />
-          <span>{tx('main.terminal')}</span>
-        </>
-      }
+      title={tx('main.terminal')}
       actions={[
         {
           id: 'new',
@@ -167,7 +161,6 @@ export function TerminalPanel({ s, ...card }: CardProps & { s: SessionView }) {
           onSelect: () => void add(),
         },
       ]}
-      onClose={() => togglePanel(sessionId, 'terminal', false)}
       bodyClass="overflow-hidden"
     >
       <div className="flex h-full min-h-0 flex-col">

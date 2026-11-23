@@ -2,7 +2,16 @@
 // conversation was scrolled to when the user switched away.
 import { describe, expect, it } from 'vitest';
 import type { SessionMeta } from '../src/shared/protocol';
-import { DEFAULT_PANELS, forgetPanels, readPanels, writePanels } from '../src/renderer/src/store/layout';
+import {
+  DEFAULT_PANELS,
+  forgetPanels,
+  openWorkspaceTabs,
+  readPanels,
+  readWorkspaceTab,
+  selectedWorkspaceTab,
+  writePanels,
+  writeWorkspaceTab,
+} from '../src/renderer/src/store/layout';
 import { forgetScroll, rememberScroll, savedScroll } from '../src/renderer/src/store/scroll';
 import { emptySession } from '../src/renderer/src/store/transcript';
 
@@ -35,14 +44,21 @@ describe('panel memory', () => {
 
   it('forgets a deleted session', () => {
     writePanels('gone', { ...DEFAULT_PANELS, diff: true });
+    writeWorkspaceTab('gone', 'diff');
     forgetPanels('gone');
     expect(readPanels('gone')).toEqual(DEFAULT_PANELS);
+    expect(readWorkspaceTab('gone')).toBeNull();
   });
 
   it('hydrates a new session view from the stored layout', () => {
-    writePanels(meta.id, { ...DEFAULT_PANELS, preview: true });
-    expect(emptySession(meta).panels.preview).toBe(true);
-    expect(emptySession(meta).expanded).toBeNull();
+    writePanels(meta.id, { ...DEFAULT_PANELS, diff: true, preview: true });
+    writeWorkspaceTab(meta.id, 'preview');
+    writeWorkspaceTab(meta.id, 'detail');
+    const session = emptySession(meta);
+    const tabs = openWorkspaceTabs(session, true);
+    expect(tabs).toEqual(['diff', 'preview']);
+    expect(selectedWorkspaceTab(session, tabs)).toBe('preview');
+    expect(session.workspaceExpanded).toBe(false);
   });
 });
 

@@ -81,7 +81,7 @@ test('Diff Since switches scopes and searches branch bases without changing the 
   fs.writeFileSync(path.join(meta.cwd, 'since-working.txt'), 'working tree only\n');
 
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+d' : 'Control+d');
-  const diff = page.getByTestId('diff');
+  const diff = page.getByRole('tabpanel', { name: 'Changes' });
   const since = diff.getByRole('button', { name: 'Compare against…', exact: true });
   const paths = diff.getByRole('navigation', { name: 'Changed files' });
   const file = (name: string) => paths.locator(`[data-item-path="${name}"]`);
@@ -131,21 +131,23 @@ test('Diff Since switches scopes and searches branch bases without changing the 
   await expect(file('src/utils/date.js')).toBeVisible();
   await expect(file('since-working.txt')).toHaveCount(0);
   // Closing and reopening the card must not silently change the comparison.
-  await diff.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Close Changes', exact: true }).click();
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+d' : 'Control+d');
   await expect(since).toContainText('Last turn');
   expect(errors).toEqual([]);
 });
 
 test('file menus, preview excerpts, diff comments, send, fork and rewind', async () => {
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(2200, 1200));
   await page.getByPlaceholder('Describe a task or ask a question').fill('日期显示少了一个月，帮我修一下');
   await page.getByPlaceholder('Describe a task or ask a question').press('Enter');
   await expect(page.getByRole('button', { name: 'Rewind to here', exact: true })).toBeEnabled({ timeout: 45_000 });
   const sourceId = await page.evaluate(async () => (await window.piDesktop.invoke('sessions:list'))[0].id);
 
-  await page.getByTitle('Files', { exact: true }).click();
-  // The Files card is one window: the tree on the left, the open file on the right.
-  const files = page.getByTestId('files');
+  await page.getByRole('button', { name: 'New workspace tab' }).click();
+  await page.getByRole('menuitem', { name: 'Files', exact: true }).click();
+  // Inside the Files tab: the tree on the left, the open file on the right.
+  const files = page.getByRole('tabpanel', { name: 'Files' });
   const row = (scope: typeof files, path: string) => scope.locator(`[data-item-path="${path}"]`);
   const src = row(files, 'src/');
   await expect(src).toBeVisible();
@@ -156,11 +158,11 @@ test('file menus, preview excerpts, diff comments, send, fork and rewind', async
   await row(files, 'src/utils/').click();
   const date = row(files, 'src/utils/date.js');
   await date.click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Copy', exact: true }).hover();
+  await page.getByRole('menuitem', { name: 'Copy', exact: true }).press('ArrowRight');
   await page.getByRole('menuitem', { name: 'Relative path', exact: true }).click();
   expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe('src/utils/date.js');
   await date.click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Open in', exact: true }).hover();
+  await page.getByRole('menuitem', { name: 'Open in', exact: true }).press('ArrowRight');
   await expect(page.getByRole('menuitem', { name: 'Terminal', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
@@ -188,13 +190,13 @@ test('file menus, preview excerpts, diff comments, send, fork and rewind', async
   await row(files, 'package.json').click();
   await expect(tabs).toHaveCount(2);
   await expect(files.locator('[role=tab] span.italic')).toHaveText('package.json');
-  await files.getByTitle('Hide file tree', { exact: true }).click();
+  await files.getByRole('button', { name: 'Hide file tree', exact: true }).click();
   await expect(row(files, 'README.md')).toHaveCount(0);
-  await files.getByTitle('Show file tree', { exact: true }).click();
+  await files.getByRole('button', { name: 'Show file tree', exact: true }).click();
   await expect(row(files, 'README.md')).toBeVisible();
   // Find: in the open file (Enter steps), or in every file of the project.
   const find = files.getByRole('search');
-  await files.getByTitle(/Find in files/).click();
+  await files.getByRole('button', { name: /Find in files/ }).click();
   await page.keyboard.type('name');
   await expect(find).toContainText('1/');
   await find.getByRole('button', { name: 'All files' }).click();
@@ -210,12 +212,10 @@ test('file menus, preview excerpts, diff comments, send, fork and rewind', async
   await page.keyboard.press('Escape');
   await expect(find).toHaveCount(0);
 
-  await files.getByTitle('Close', { exact: true }).click();
+  await page.getByRole('button', { name: 'Close Files', exact: true }).click();
   // Panels stay closed until the user asks for them (Ctrl/Cmd+D or the header button).
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+d' : 'Control+d');
-  // The editor needs room for its gutters and the comment box.
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(2200, 1200));
-  const diff = page.getByTestId('diff');
+  const diff = page.getByRole('tabpanel', { name: 'Changes' });
   await expect(diff).toBeVisible();
   await diff.locator('[data-line-type="change-addition"][data-column-number]').first().click();
   await page.getByRole('button', { name: 'Add comment', exact: true }).click();
@@ -230,16 +230,18 @@ test('file menus, preview excerpts, diff comments, send, fork and rewind', async
   await expect(page.getByLabel('Attached context and comments')).toContainText('src/utils/');
 
   // Every file folds or unfolds at once, and Open in lists what can open the folder.
-  await diff.getByTitle('Collapse all', { exact: true }).click();
+  await diff.getByRole('button', { name: 'Panel options' }).click();
+  await page.getByRole('menuitem', { name: 'Collapse all', exact: true }).click();
   await expect(diff.locator('[data-line-type]')).toHaveCount(0);
-  await diff.getByTitle('Expand all', { exact: true }).click();
+  await diff.getByRole('button', { name: 'Panel options' }).click();
+  await page.getByRole('menuitem', { name: 'Expand all', exact: true }).click();
   await expect(diff.locator('[data-line-type]').first()).toBeVisible();
-  await diff.getByTitle('Open in…', { exact: true }).click();
+  await diff.getByRole('button', { name: 'Open in…', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: 'Terminal', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   // Focus goes back to the Open in button once the menu has closed; wait for that before moving on.
   await expect(page.getByRole('menuitem', { name: 'Terminal', exact: true })).toHaveCount(0);
-  await diff.getByTitle(/Find in the diff/).click();
+  await diff.getByRole('button', { name: /Find in the diff/ }).click();
   await page.keyboard.type('getMonth');
   await expect(diff.getByRole('search')).toContainText('1/');
   // The first hit follows the last keystroke; Enter steps from there.
@@ -247,7 +249,7 @@ test('file menus, preview excerpts, diff comments, send, fork and rewind', async
   await page.keyboard.press('Enter');
   await expect(diff.getByRole('search')).toContainText('2/');
 
-  await page.getByTitle('Send (↵)', { exact: true }).click();
+  await page.getByPlaceholder('Type / for commands').press('Enter');
   await expect(page.getByRole('button', { name: 'Rewind to here', exact: true })).toHaveCount(2);
   await expect(page.getByRole('button', { name: 'Rewind to here', exact: true }).last()).toBeEnabled();
   const sent = await page.evaluate(async (id) => {

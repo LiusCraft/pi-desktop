@@ -81,11 +81,12 @@ vi.mock('../src/renderer/src/components/workspace/PathTree', () => ({
   ),
 }));
 
-const { DiffPanel } = await import('../src/renderer/src/components/workspace/Panels');
+const { NewWorkspaceTabMenu, Workspace } = await import('../src/renderer/src/components/workspace/Workspace');
+const { openWorkspaceTabs, readWorkspaceTab } = await import('../src/renderer/src/store/layout');
 const { TooltipProvider } = await import('../src/renderer/src/components/ui/tooltip');
 const { emptySession } = await import('../src/renderer/src/store/transcript');
 const { getApp, setApp, updateSession, useApp } = await import('../src/renderer/src/store/app');
-const { diffTarget, togglePanel } = await import('../src/renderer/src/store/actions');
+const { diffTarget, openFileRef, openPlan, requestFind } = await import('../src/renderer/src/store/actions');
 const { useShortcuts } = await import('../src/renderer/src/lib/use-shortcuts');
 
 const change = (path: string, status: FileChange['status'] = 'M'): FileChange => ({
@@ -147,6 +148,8 @@ const host = async (channel: string, ...args: unknown[]): Promise<unknown> => {
     };
   if (channel === 'git:branchBases') return ['main', 'release'].map((name) => ({ ...commit, name }));
   if (channel === 'sessions:prThreads') return [];
+  if (channel === 'sessions:files') return ['src/app.ts'];
+  if (channel === 'sessions:readFile') return 'file contents';
   if (channel === 'app:openTargets') return [];
   throw new Error(`Unexpected host call: ${channel}`);
 };
@@ -154,14 +157,9 @@ const host = async (channel: string, ...args: unknown[]): Promise<unknown> => {
 function MountedPanel() {
   useShortcuts();
   const s = useApp((state) => state.sessions[id]);
+  const tabs = openWorkspaceTabs(s, true);
   return (
-    <TooltipProvider>
-      {s.panels.diff ? (
-        <DiffPanel s={s} expanded={false} onExpand={() => {}} />
-      ) : (
-        <button onClick={() => togglePanel(id, 'diff', true)}>Reopen Diff</button>
-      )}
-    </TooltipProvider>
+    <TooltipProvider>{tabs.length ? <Workspace s={s} tabs={tabs} /> : <NewWorkspaceTabMenu s={s} />}</TooltipProvider>
   );
 }
 const since = () => screen.getByRole('button', { name: 'Compare against…' });
@@ -211,6 +209,42 @@ beforeEach(() => {
   });
 });
 
+describe('Workspace tabs', () => {
+  it('keeps open content and search state when switching, and closes tabs without stealing the selection', async () => {
+    render(<MountedPanel />);
+    await screen.findByTestId('review');
+    const dock = screen.getByRole('tablist', { name: 'Panels' });
+    const tab = (name: string) => within(dock).getByRole('tab', { name });
+    await act(() => openFileRef('src/app.ts', 1, undefined, true));
+    const files = screen.getByRole('tabpanel', { name: 'Files' });
+    expect(within(files).getByRole('tab', { name: /app\.ts/ })).toBeTruthy();
+
+    fireEvent.keyDown(tab('Files'), { key: 'ArrowLeft' });
+    expect(document.activeElement).toBe(tab('Changes'));
+    expect(screen.queryByRole('tabpanel', { name: 'Files' })).toBeNull();
+    expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
+    expect(readWorkspaceTab(id)).toBe('diff');
+
+    act(() => requestFind('all'));
+    expect(screen.getByPlaceholderText('Search in all files')).toBe(document.activeElement);
+    expect(screen.getByRole('tabpanel', { name: 'Files' })).toBe(files);
+    expect(getApp().sessions[id].fileDetail?.text).toBe('file contents');
+
+    // Plan and task detail requests must not replace the file shown in Files.
+    act(() => openPlan(id, 'plan-key'));
+    expect(tab('Plan').getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(tab('Plan'), { key: 'Delete' });
+    expect(tab('Files').getAttribute('aria-selected')).toBe('true');
+    expect(getApp().sessions[id].fileTabs).toEqual([{ path: 'src/app.ts', pinned: true }]);
+
+    fireEvent.click(within(dock).getByRole('button', { name: 'Close Changes' }));
+    expect(screen.getByRole('tabpanel', { name: 'Files' })).toBe(files);
+    fireEvent.keyDown(tab('Files'), { key: 'Delete' });
+    expect(screen.queryByRole('tablist', { name: 'Panels' })).toBeNull();
+    expect(readWorkspaceTab(id)).toBeNull();
+  });
+});
+
 describe('Diff panel scope orchestration', () => {
   it('honors the remapped local find shortcut without opening the Files panel', async () => {
     setApp((state) => void (state.settings.shortcuts = { findFile: 'F7', findAll: null }));
@@ -244,9 +278,10 @@ describe('Diff panel scope orchestration', () => {
       invoke.mock.calls.some(([channel, , path]) => channel === 'sessions:changeContent' && path === 'turn.ts'),
     ).toBe(false);
     expect(getApp().sessions[id].meta).toMatchObject({ branch: 'topic', baseBranch: 'main', baseCommit: 'recorded' });
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close Changes' }));
     expect(getApp().sessions[id].diffScope).toBe('lastTurn');
-    fireEvent.click(screen.getByRole('button', { name: 'Reopen Diff' }));
+    fireEvent.keyDown(screen.getByRole('button', { name: 'New workspace tab' }), { key: 'Enter' });
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Changes' }));
     expect(await screen.findByText('turn before → turn after')).toBeTruthy();
     expect(since().textContent).toContain('Last turn');
   });

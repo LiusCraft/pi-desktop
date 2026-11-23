@@ -1,20 +1,13 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import {
-  BotIcon,
   ChevronDownIcon,
   CircleAlertIcon,
-  EllipsisIcon,
   EyeIcon,
-  ExternalLinkIcon,
-  FileTextIcon,
   FolderIcon,
   GitBranchIcon,
   GitForkIcon,
-  GlobeIcon,
   LaptopIcon,
   LoaderCircleIcon,
-  PanelRightIcon,
-  SquareTerminalIcon,
 } from 'lucide-react';
 import { AttachmentTiles } from '@/components/common/Attachments';
 import { ContextCards } from '@/components/composer/ContextCards';
@@ -23,10 +16,9 @@ import { CodeComposer, WorkComposer } from '@/components/composer/Composers';
 import { copyText } from '@/components/common/Copy';
 import { InlineEdit } from '@/components/common/InlineEdit';
 import { AskDock, Transcript } from '@/components/thread/Transcript';
-import { openCards, soloCard, Workspace } from '@/components/workspace/Workspace';
+import { NewWorkspaceTabMenu, Workspace } from '@/components/workspace/Workspace';
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -36,14 +28,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
-import { TooltipHint } from '@/components/ui/tooltip';
 import { useDefaultLayout } from 'react-resizable-panels';
 import { call, canTerminal, isMac } from '@/lib/api';
 import { useShortcutHint } from '@/lib/shortcut-keys';
 import { workIdeas, OUTPUT_STYLE_INFO, VIEW_MODES, type ViewMode } from '@/lib/constants';
 import { useT } from '@/lib/i18n';
 import { fname } from '@/lib/format';
-import { OpenInMenu } from '@/components/common/OpenInMenu';
+import { OpenInSubmenu } from '@/components/common/OpenInMenu';
 import { WindowControls } from '@/components/common/WindowControls';
 import { cn } from '@/lib/utils';
 import {
@@ -54,11 +45,11 @@ import {
   setOutputStyle,
   setSessionTitle,
   setViewMode,
-  togglePanel,
   welcomeDraftKey,
 } from '@/store/actions';
 import { updateSession, useApp, useCurrent, type AppState } from '@/store/app';
 import { drafts, useDrafts } from '@/store/drafts';
+import { openWorkspaceTabs } from '@/store/layout';
 import { hasThinking } from '@/store/transcript';
 import type { SessionView } from '@/store/types';
 import { MAX_SESSION_TITLE, type OutputStyle, type WorkIdea } from '@shared/protocol';
@@ -75,25 +66,8 @@ import { Inbox } from './Inbox';
 import { SideChatView } from '@/components/side/SideChat';
 import { useSide } from '@/store/side';
 
-function HeaderButton({ on, children, className, title, ...props }: React.ComponentProps<'button'> & { on?: boolean }) {
-  const button = (
-    <button
-      aria-label={title}
-      {...props}
-      className={cn(
-        'flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground',
-        on && 'bg-accent text-foreground',
-        className,
-      )}
-    >
-      {children}
-    </button>
-  );
-  return <TooltipHint title={title}>{button}</TooltipHint>;
-}
-
 /**
- * Rename, transcript view, output style, export, archive.
+ * Rename, open in an external app, transcript view, output style, export, archive.
  * Opens where the user clicked: the menu hangs off an invisible anchor placed at
  * the pointer (or under the button, for a keyboard activation).
  */
@@ -130,6 +104,7 @@ function SessionMenu({
           <DropdownMenuItem onSelect={() => void copyText(s.meta.cwd)}>
             {t(s.meta.worktree ? 'main.copyWorktreePath' : 'main.copyFolderPath')}
           </DropdownMenuItem>
+          <OpenInSubmenu id={s.meta.id} />
           <DropdownMenuItem onSelect={() => void exportHtml(s.meta.id)}>{t('main.exportHtml')}</DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="flex justify-between text-xs text-muted-foreground">
@@ -215,54 +190,11 @@ function SessionBranch({ s }: { s: SessionView }) {
   );
 }
 
-type PanelKey = 'tasks' | 'terminal' | 'diff' | 'preview' | 'files';
-
-/** The panel toggles of a narrow header, folded into one menu. */
-function PanelsMenu({ s, hasTasks }: { s: SessionView; hasTasks: boolean }) {
-  const t = useT();
-  const p = s.panels;
-  const items: { key: PanelKey; label: string }[] = [
-    ...(hasTasks ? [{ key: 'tasks' as const, label: t('main.backgroundTasks') }] : []),
-    ...(canTerminal ? [{ key: 'terminal' as const, label: t('main.terminal') }] : []),
-    { key: 'diff', label: t('main.diff') },
-    { key: 'preview', label: t('main.preview') },
-    { key: 'files', label: t('main.files') },
-  ];
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <HeaderButton
-          on={items.some((i) => p[i.key])}
-          title={t('main.panels')}
-          aria-label={t('main.panels')}
-          className="@2xl:hidden"
-        >
-          <EllipsisIcon className="size-4" />
-        </HeaderButton>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44">
-        {items.map((i) => (
-          <DropdownMenuCheckboxItem
-            key={i.key}
-            checked={p[i.key]}
-            onCheckedChange={() => togglePanel(s.meta.id, i.key)}
-          >
-            {i.label}
-          </DropdownMenuCheckboxItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 function Header({ s, title }: { s?: SessionView; title?: string }) {
   const t = useT();
-  const diffHint = useShortcutHint('panel', t('main.diff'));
   const collapsed = useApp((st) => st.sidebarCollapsed);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const work = s?.meta.kind === 'work';
-  const p = s?.panels;
-  const hasTasks = !!s?.items.some((i) => i.kind === 'group' && i.tools.some((t) => t.kind === 'agent'));
   return (
     <header
       className={cn(
@@ -319,68 +251,6 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
             <SessionBranch s={s} />
           )}
           <span className="flex-1" />
-          {work ? (
-            <HeaderButton
-              on={p!.progress}
-              title={t('main.progress')}
-              onClick={() => togglePanel(s.meta.id, 'progress')}
-            >
-              <PanelRightIcon className="size-4" />
-            </HeaderButton>
-          ) : (
-            <>
-              <PanelsMenu s={s} hasTasks={hasTasks} />
-              {hasTasks && (
-                <HeaderButton
-                  on={p!.tasks}
-                  title={t('main.backgroundTasks')}
-                  onClick={() => togglePanel(s.meta.id, 'tasks')}
-                  className="hidden @2xl:flex"
-                >
-                  <BotIcon className="size-4" />
-                </HeaderButton>
-              )}
-              {canTerminal && (
-                <HeaderButton
-                  on={p!.terminal}
-                  title={t('main.terminal')}
-                  onClick={() => togglePanel(s.meta.id, 'terminal')}
-                  className="hidden @2xl:flex"
-                >
-                  <SquareTerminalIcon className="size-4" />
-                </HeaderButton>
-              )}
-              <HeaderButton
-                on={p!.diff}
-                title={diffHint}
-                onClick={() => togglePanel(s.meta.id, 'diff')}
-                className="hidden @2xl:flex"
-              >
-                <FileTextIcon className="size-4" />
-              </HeaderButton>
-              <HeaderButton
-                on={p!.preview}
-                title={t('main.preview')}
-                onClick={() => togglePanel(s.meta.id, 'preview')}
-                className="hidden @2xl:flex"
-              >
-                <GlobeIcon className="size-4" />
-              </HeaderButton>
-              <HeaderButton
-                on={p!.files}
-                title={t('main.files')}
-                onClick={() => togglePanel(s.meta.id, 'files')}
-                className="hidden @2xl:flex"
-              >
-                <FolderIcon className="size-4" />
-              </HeaderButton>
-            </>
-          )}
-          <OpenInMenu id={s.meta.id}>
-            <HeaderButton title={t('main.openIn')}>
-              <ExternalLinkIcon className="size-4" />
-            </HeaderButton>
-          </OpenInMenu>
         </>
       ) : (
         <span className="px-2 text-sm text-muted-foreground">
@@ -532,8 +402,8 @@ function CreatingThread({ preview }: { preview: NonNullable<AppState['creating']
 }
 
 function Thread({ s }: { s: SessionView }) {
-  const { primary, secondary } = openCards(s);
-  const tools = primary.length + secondary.length > 0;
+  const tabs = openWorkspaceTabs(s, canTerminal);
+  const expanded = s.workspaceExpanded;
   // The conversation/workspace split belongs to the session, so switching back restores it.
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({ id: `${s.meta.id}:thread` });
   const sideOpen = useSide((st) => !!st.open[s.meta.id] && !st.windows[s.meta.id]);
@@ -553,26 +423,32 @@ function Thread({ s }: { s: SessionView }) {
       )}
     </div>
   );
-  if (!tools) return conversation;
-  if (s.expandedWide && soloCard(s)) return <Workspace s={s} />;
+  if (!tabs.length)
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex shrink-0 justify-end px-2">
+          <NewWorkspaceTabMenu s={s} />
+        </div>
+        <div className="min-h-0 flex-1">{conversation}</div>
+      </div>
+    );
   return (
     <ResizablePanelGroup
       orientation="horizontal"
       id={`${s.meta.id}:thread`}
       defaultLayout={defaultLayout}
       onLayoutChanged={onLayoutChanged}
+      className="relative"
     >
-      <ResizablePanel id="conversation" minSize={320}>
+      <ResizablePanel id="conversation" minSize={320} inert={expanded}>
         {conversation}
       </ResizablePanel>
-      <ResizableHandle className="bg-transparent" />
-      <ResizablePanel
-        id="tools"
-        minSize={300}
-        defaultSize={secondary.length && primary.length ? '62%' : '48%'}
-        className="pb-2"
-      >
-        <Workspace s={s} />
+      <ResizableHandle className={cn('bg-transparent', expanded && 'invisible')} disabled={expanded} />
+      <ResizablePanel id="tools" minSize={220} defaultSize="48%" style={{ overflow: 'hidden' }}>
+        {/* Full width without moving or remounting the tab contents, or changing the saved split. */}
+        <div className={cn('h-full p-1 pb-2', expanded && 'absolute inset-0 z-20 bg-background')}>
+          <Workspace s={s} tabs={tabs} />
+        </div>
       </ResizablePanel>
     </ResizablePanelGroup>
   );

@@ -1,9 +1,10 @@
 import { defineMessages } from '../define';
 
 export const workspace = defineMessages({
-  'panel.restore': { en: 'Restore', zh: '还原' },
-  'panel.expand': { en: 'Expand (Ctrl+click: whole session)', zh: '展开（Ctrl+点击：整个会话）' },
-  'panel.close': { en: 'Close', zh: '关闭' },
+  'panel.restoreWorkspace': { en: 'Restore workspace', zh: '还原工作区' },
+  'panel.expandWorkspace': { en: 'Expand workspace', zh: '展开工作区' },
+  'panel.details': { en: 'Details', zh: '详情' },
+  'panel.newWorkspaceTab': { en: 'New workspace tab', zh: '新建工作区标签' },
   'panel.more': { en: 'Panel options', zh: '面板选项' },
   'panel.changes': { en: 'Changes', zh: '变更' },
   'panel.projectFiles': { en: 'Project files', zh: '项目文件' },
