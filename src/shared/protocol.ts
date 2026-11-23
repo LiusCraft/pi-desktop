@@ -124,6 +124,7 @@ export interface PrBinding {
   headRemote: string;
 }
 export type FromPrOptions = Pick<CreateSessionOptions, 'model' | 'thinking' | 'mode' | 'outputStyle'>;
+export type FromPrStage = 'reading' | 'matching' | 'cloning' | 'fetching' | 'creating';
 export type FromPrResult = { kind: 'folder'; repo: string } | { kind: 'session'; meta: SessionMeta };
 
 export interface SessionMeta {
@@ -887,6 +888,8 @@ export type HostEvent =
       | { phase: 'created'; meta: SessionMeta }
       | { phase: 'failed'; error: string }
     ))
+  /** Progress of an in-flight import before there is a session id. */
+  | { type: 'pr_import'; requestId: string; stage: FromPrStage }
   /** Start-up progress of a session; null once it is ready. */
   | { type: 'setup'; sessionId: string; steps: SetupStep[] | null }
   | { type: 'notify'; sessionId: string; message: string; level: 'info' | 'warning' | 'error' }
@@ -1336,7 +1339,13 @@ export interface Api {
 
   // ---- forwarded to the agent host
   'sessions:list'(): SessionSummary[];
-  'sessions:fromPr'(url: string, projects: string[], parent: string | null, prefs: FromPrOptions): FromPrResult;
+  'sessions:fromPr'(
+    url: string,
+    projects: string[],
+    parent: string | null,
+    prefs: FromPrOptions,
+    requestId: string,
+  ): FromPrResult;
   'sessions:create'(opts: CreateSessionOptions): SessionMeta;
   'sessions:open'(id: string): OpenSessionResult;
   /** The session as the host holds it now, without its transcript; null when the host holds nothing more than its meta. */

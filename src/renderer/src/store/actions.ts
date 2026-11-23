@@ -30,7 +30,18 @@ import { showRequestToast } from '@/components/thread/RequestToast';
 import { playSound } from '@/lib/sounds';
 import { COMPACT_WINDOW_WIDTH, desktopCommands, MODES, VIEW_MODES, type ViewMode } from '@/lib/constants';
 import { fname, relPath } from '@/lib/format';
-import { currentSession, getApp, isWork, read, savePref, setApp, setPref, updateSession, type AppState } from './app';
+import {
+  currentSession,
+  getApp,
+  isWork,
+  read,
+  savePref,
+  setApp,
+  setPref,
+  updateSession,
+  type AppState,
+  type PrImportStage,
+} from './app';
 import { dialogs } from './dialogs';
 import { activeDraft, drafts, getDraft, sessionDraftKey, useDrafts } from './drafts';
 import { forgetPanels, writeArrangement, writePanels } from './layout';
@@ -82,7 +93,7 @@ const activateDraftFor = () => {
 // ------------------------------------------------------------ host events
 
 /** What the transcript folds in: everything but the events answered as they arrive. */
-type QueuedEvent = Exclude<HostEvent, { type: 'plugin' | 'session_launch' }>;
+type QueuedEvent = Exclude<HostEvent, { type: 'plugin' | 'session_launch' | 'pr_import' }>;
 let queue: QueuedEvent[] = [];
 let scheduled = false;
 
@@ -114,6 +125,13 @@ export function handleHostEvent(ev: HostEvent) {
     if (ev.phase === 'starting') previewTask(ev.sessionId, ev.launchId, ev.kind, ev.prompt);
     else if (ev.phase === 'created') taskCreated(ev.launchId, ev.meta);
     else if (restoreTaskSource(ev.launchId)) fail(ev.error);
+    return;
+  }
+  if (ev.type === 'pr_import') {
+    setApp((st) => {
+      const pending = st.prImport;
+      if (pending && 'id' in pending && pending.id === ev.requestId) pending.stage = ev.stage;
+    });
     return;
   }
   // An interrupted remote/host request will not necessarily get its completion event.
@@ -1851,24 +1869,35 @@ function ensureInteractiveProject(code: string) {
 
 /** The host owns git operations; folder selection stays on the machine the project will live on. */
 export async function startFromPr() {
-  const url = await dialogs.prompt(t('prstart.label'), '', {
-    placeholder: 'https://github.com/owner/repo/pull/123',
-    action: t('prstart.start'),
-  });
-  if (!url?.trim()) return;
-  const { projects, prefs, remote } = getApp();
-  const paths = projects.map((p) => p.path);
-  const options = { model: prefs.model, thinking: prefs.effort, mode: prefs.mode, outputStyle: prefs.outputStyle };
+  const previous = getApp().prImport;
+  if (previous && 'id' in previous) return;
+  const id = crypto.randomUUID();
+  const setStage = (stage: PrImportStage) => setApp((st) => void (st.prImport = { id, stage }));
+  let url = previous?.url ?? '';
+  setStage('input');
   try {
-    let result = await call('sessions:fromPr', url, paths, null, options);
+    const input = await dialogs.prompt(t('prstart.label'), url, {
+      placeholder: 'https://github.com/owner/repo/pull/123',
+      action: t('prstart.start'),
+    });
+    if (!input?.trim()) return;
+    url = input.trim();
+    const { projects, prefs, remote } = getApp();
+    const paths = projects.map((p) => p.path);
+    const options = { model: prefs.model, thinking: prefs.effort, mode: prefs.mode, outputStyle: prefs.outputStyle };
+    setStage('reading');
+    let result = await call('sessions:fromPr', url, paths, null, options, id);
     if (result.kind === 'folder') {
+      setStage('folder');
       if (!(await dialogs.confirm(t('prstart.clone'), t('prstart.cloneBody', { repo: result.repo }), t('act.choose'))))
         return;
       const parent = remote ? await pickRemoteFolder() : await call('app:pickFolder');
       if (!parent) return;
-      result = await call('sessions:fromPr', url, paths, parent, options);
+      setStage('reading');
+      result = await call('sessions:fromPr', url, paths, parent, options, id);
     }
     if (result.kind !== 'session') return;
+    setStage('opening');
     const { meta } = result;
     if (!projects.some((p) => p.path === meta.projectPath)) await call('projects:addPath', meta.projectPath);
     setApp((st) => {
@@ -1876,7 +1905,11 @@ export async function startFromPr() {
     });
     await openSession(meta.id);
   } catch (err) {
-    fail(err);
+    setApp((st) => void (st.prImport = { error: errText(err), url }));
+  } finally {
+    setApp((st) => {
+      if (st.prImport && 'id' in st.prImport && st.prImport.id === id) st.prImport = null;
+    });
   }
 }
 
