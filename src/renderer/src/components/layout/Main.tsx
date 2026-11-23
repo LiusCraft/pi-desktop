@@ -2,6 +2,7 @@ import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import {
   BotIcon,
   ChevronDownIcon,
+  CircleAlertIcon,
   EllipsisIcon,
   EyeIcon,
   ExternalLinkIcon,
@@ -11,6 +12,7 @@ import {
   GitForkIcon,
   GlobeIcon,
   LaptopIcon,
+  LoaderCircleIcon,
   PanelRightIcon,
   SquareTerminalIcon,
 } from 'lucide-react';
@@ -391,7 +393,9 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
 
 function CodeWelcome() {
   const t = useT();
-  const [importing, setImporting] = useState(false);
+  const progress = useApp((st) => st.prImport);
+  const stage = progress && 'stage' in progress ? progress.stage : null;
+  const error = progress && 'error' in progress ? progress.error : null;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-1 flex-col items-center justify-center gap-4 overflow-y-auto px-6">
@@ -399,21 +403,40 @@ function CodeWelcome() {
           <span className="spark size-6!" aria-hidden />
           {t('main.letsBuild')}
         </h1>
-        <button
-          type="button"
-          className="rounded-md surface-flat px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-60"
-          disabled={importing}
-          onClick={async () => {
-            setImporting(true);
-            try {
-              await startFromPr();
-            } finally {
-              setImporting(false);
-            }
-          }}
-        >
-          {t(importing ? 'prstart.preparing' : 'prstart.label')}
-        </button>
+        <div className="flex w-full max-w-sm flex-col items-center">
+          <button
+            type="button"
+            className="rounded-md surface-flat px-3 py-1.5 text-sm enabled:hover:bg-accent disabled:opacity-60"
+            disabled={stage !== null}
+            onClick={() => void startFromPr()}
+          >
+            {t('prstart.label')}
+          </button>
+          <div role="status" className="mt-2 flex items-center gap-2 text-sm text-muted-foreground empty:mt-0">
+            {stage && stage !== 'input' && (
+              <>
+                {stage === 'folder' ? (
+                  <FolderIcon aria-hidden className="size-4 shrink-0" />
+                ) : (
+                  <LoaderCircleIcon aria-hidden className="size-4 shrink-0 text-primary motion-safe:animate-spin" />
+                )}
+                {t(`prstart.stage.${stage}`)}
+              </>
+            )}
+          </div>
+          {error !== null && (
+            <div
+              role="alert"
+              className="mt-2 flex w-full items-start gap-2 rounded-lg surface-flat bg-card px-3 py-2 text-sm"
+            >
+              <CircleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
+              <div className="min-w-0">
+                <div className="font-medium">{t('prstart.failed')}</div>
+                <div className="break-words text-muted-foreground">{error}</div>
+              </div>
+            </div>
+          )}
+        </div>
         <Inbox />
       </div>
       <CodeComposer />

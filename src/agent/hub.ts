@@ -47,6 +47,7 @@ import type {
   CreateSessionOptions,
   FromPrOptions,
   FromPrResult,
+  FromPrStage,
   PrBinding,
   DiffBase,
   DiffComparison,
@@ -630,25 +631,50 @@ export class SessionHub {
     };
   }
 
-  private readonly importingPr = new Map<string, Promise<FromPrResult>>();
+  private readonly importingPr = new Map<
+    string,
+    { promise: Promise<FromPrResult>; progress: { stage: FromPrStage; requestIds: Set<string> } }
+  >();
 
-  async fromPr(url: string, projects: string[], parent: string | null, prefs: FromPrOptions): Promise<FromPrResult> {
+  async fromPr(
+    url: string,
+    projects: string[],
+    parent: string | null,
+    prefs: FromPrOptions,
+    requestId: string,
+  ): Promise<FromPrResult> {
     const id = parsePrUrl(url);
     const known = this.metas.find(
       (m) => !m.archived && m.kind === 'code' && (m.prBinding?.url ?? m.pr?.url)?.toLowerCase() === id.url,
     );
     if (known) return { kind: 'session', meta: known };
+    const emit = (requestId: string, stage: FromPrStage) => this.emit({ type: 'pr_import', requestId, stage });
     const pending = this.importingPr.get(id.url);
-    if (pending) return pending;
+    if (pending) {
+      // The same PR may be opened in more than one window; each request sees the shared import's progress.
+      pending.progress.requestIds.add(requestId);
+      emit(requestId, pending.progress.stage);
+      return pending.promise;
+    }
+    const progress = { stage: 'reading' as FromPrStage, requestIds: new Set([requestId]) };
+    const report = (stage: FromPrStage) => {
+      progress.stage = stage;
+      for (const id of progress.requestIds) emit(id, stage);
+    };
     const importOne = async (): Promise<FromPrResult> => {
+      report('reading');
       const { source, title, draft } = await resolvePr(id);
+      report('matching');
       let root = await findPrProject(projects, source);
       if (!root) {
         if (!parent) return { kind: 'folder', repo: source.baseRepo };
+        report('cloning');
         root = await clonePrProject(parent, source);
       }
+      report('fetching');
       const binding = await bindRemotes(root, source);
       const tips = await fetchPrTips(root, binding);
+      report('creating');
       const meta = await this.create(
         { ...prefs, kind: 'code', projectPath: root, title: `#${id.num} · ${title}` },
         { binding, draft, ...tips },
@@ -656,7 +682,7 @@ export class SessionHub {
       return { kind: 'session', meta };
     };
     const promise = importOne().finally(() => this.importingPr.delete(id.url));
-    this.importingPr.set(id.url, promise);
+    this.importingPr.set(id.url, { promise, progress });
     return promise;
   }
 

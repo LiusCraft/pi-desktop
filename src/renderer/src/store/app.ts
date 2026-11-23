@@ -3,6 +3,7 @@ import { immer } from 'zustand/middleware/immer';
 import type {
   AppInfo,
   DesktopPluginInfo,
+  FromPrStage,
   ModelInfo,
   OutputStyle,
   PermissionMode,
@@ -85,6 +86,8 @@ function loadPrefs(): Prefs {
 
 // ------------------------------------------------------------ store
 
+export type PrImportStage = FromPrStage | 'input' | 'folder' | 'opening';
+
 export interface AppState {
   info: AppInfo | null;
   settings: Partial<SettingsPayload>;
@@ -93,6 +96,8 @@ export interface AppState {
   current: string | null;
   /** The first message, shown as a conversation before the host assigns a session id. */
   creating: { kind: 'draft'; key: string } | { kind: 'task'; key: string; parentId: string; prompt: string } | null;
+  /** Request-scoped progress for Start from PR, before normal session setup takes over. */
+  prImport: { id: string; stage: PrImportStage } | { error: string; url: string } | null;
   lastByView: Record<SessionKind, string | null>;
   projects: Project[];
   workFolders: WorkProject[];
@@ -145,6 +150,7 @@ export const useApp = create<AppState>()(
     view: initialView(),
     current: null,
     creating: null,
+    prImport: null,
     lastByView: { code: null, work: null },
     projects: [],
     workFolders: [],

@@ -253,17 +253,31 @@ describe('start from a fork PR', { timeout: 120_000 }, () => {
     ];
     try {
       const options = { model: 'demo/demo-coder' };
-      expect(await hub.fromPr(url, [], null, options)).toEqual({ kind: 'folder', repo: 'acme/app' });
+      const rpc = sessionHandlers(Promise.resolve(hub), () => null);
+      const stages = (requestId: string) =>
+        events.flatMap((ev) => (ev.type === 'pr_import' && ev.requestId === requestId ? [ev.stage] : []));
+      expect(await rpc['sessions:fromPr'](url, [], null, options, 'pick-folder')).toEqual({
+        kind: 'folder',
+        repo: 'acme/app',
+      });
+      expect(stages('pick-folder')).toEqual(['reading', 'matching']);
       const match = vi.spyOn(fromPr, 'findPrProject').mockResolvedValue(checkout);
       try {
-        const result = await hub.fromPr(url, [checkout], null, options);
+        const first = hub.fromPr(url, [checkout], null, options, 'import-pr');
+        const second = hub.fromPr(url, [checkout], null, options, 'shared-pr');
+        const result = await first;
+        expect(await second).toEqual(result);
+        expect(match).toHaveBeenCalledTimes(1);
+        expect(stages('import-pr')).toEqual(['reading', 'matching', 'fetching', 'creating']);
+        expect(stages('shared-pr')).toEqual(stages('import-pr'));
         if (result.kind !== 'session') throw new Error('expected a session');
         const { meta } = result;
         await hub.open(meta.id);
         expect(run(meta.cwd, 'rev-parse', '--abbrev-ref', '@{u}').trim()).toBe('fork/feature');
         expect((await hub.changes(meta.id)).files.map((f) => f.path)).toEqual(['pr.txt']);
-        const again = await hub.fromPr(url, [], null, options);
+        const again = await hub.fromPr(url, [], null, options, 'reuse-pr');
         expect(again.kind === 'session' && again.meta.id).toBe(meta.id);
+        expect(stages('reuse-pr')).toEqual([]);
         fs.appendFileSync(path.join(meta.cwd, 'pr.txt'), ' and B');
         run(meta.cwd, 'commit', '-qam', 'continue');
         run(meta.cwd, 'push', meta.prBinding!.headRemote, 'HEAD:refs/heads/' + meta.prBinding!.headBranch);
@@ -278,6 +292,26 @@ describe('start from a fork PR', { timeout: 120_000 }, () => {
       }
     } finally {
       mocks.forEach((m) => m.mockRestore());
+    }
+  });
+
+  it('reports cloning before a clone failure and allows another attempt', async () => {
+    const url = 'https://github.com/acme/app/pull/43';
+    const source = { ...fromPr.parsePrUrl(url), headRepo: 'acme/app', headBranch: 'feature', baseBranch: 'main' };
+    const lookup = vi.spyOn(fromPr, 'resolvePr').mockResolvedValue({ source, title: 'Fix', draft: false });
+    const clone = vi.spyOn(fromPr, 'clonePrProject').mockRejectedValue(new Error('Clone failed'));
+    try {
+      for (const requestId of ['clone-pr', 'retry-clone']) {
+        await expect(hub.fromPr(url, [], tmp, {}, requestId)).rejects.toThrow('Clone failed');
+        const stages = events.flatMap((ev) =>
+          ev.type === 'pr_import' && ev.requestId === requestId ? [ev.stage] : [],
+        );
+        expect(stages).toEqual(['reading', 'matching', 'cloning']);
+      }
+      expect(clone).toHaveBeenCalledTimes(2);
+    } finally {
+      lookup.mockRestore();
+      clone.mockRestore();
     }
   });
 });
