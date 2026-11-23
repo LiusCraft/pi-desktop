@@ -10,6 +10,7 @@ import {
   XIcon,
 } from 'lucide-react';
 import type { Question, QuestionAnswer } from '@shared/protocol';
+import { CHOICE_SHORTCUTS } from '@shared/shortcuts';
 import { Markdown } from '@/components/common/Markdown';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +18,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { answerUi } from '@/store/actions';
 import { useT } from '@/lib/i18n';
+import { useShortcutHint, useShortcutTarget } from '@/lib/shortcut-keys';
+import { Kbd } from '@/components/ui/kbd';
 import type { ItemOf } from '@/store/types';
 
 const EMPTY: QuestionAnswer = { selected: [] };
@@ -48,6 +51,7 @@ function OptionRow({
   description,
   onClick,
   onPeek,
+  shortcut,
   children,
 }: {
   multi: boolean;
@@ -56,6 +60,7 @@ function OptionRow({
   description?: string;
   onClick: () => void;
   onPeek?: () => void;
+  shortcut?: (typeof CHOICE_SHORTCUTS)[number];
   children?: React.ReactNode;
 }) {
   return (
@@ -73,16 +78,23 @@ function OptionRow({
         onClick={onClick}
         onMouseEnter={onPeek}
         onFocus={onPeek}
+        data-shortcut={shortcut}
       >
         <Indicator multi={multi} on={on} />
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-medium">{label}</span>
           {description && <span className="mt-0.5 block text-xs text-muted-foreground">{description}</span>}
         </span>
+        {shortcut && <ChoiceHint action={shortcut} />}
       </button>
       {children}
     </div>
   );
+}
+
+function ChoiceHint({ action }: { action: (typeof CHOICE_SHORTCUTS)[number] }) {
+  const hint = useShortcutHint(action);
+  return hint ? <Kbd className="shrink-0">{hint}</Kbd> : null;
 }
 
 function QuestionPane({
@@ -138,6 +150,7 @@ function QuestionPane({
             on={answer.selected.includes(o.label)}
             label={o.label}
             description={o.description}
+            shortcut={CHOICE_SHORTCUTS[i]}
             onClick={() => pick(o.label)}
             onPeek={() => setPeek(i)}
           />
@@ -187,6 +200,7 @@ export const QuestionsItem = memo(function QuestionsItem({ sid, item }: { sid: s
   const [tab, setTab] = useState('0');
   const [collapsed, setCollapsed] = useState(false);
   const idx = Number(tab);
+  const nextTarget = useShortcutTarget('questionNext', t(idx === questions.length - 1 ? 'q.submit' : 'q.next'));
 
   if (item.resolved) {
     const done = item.resolved !== 'cancelled' && item.answers;
@@ -326,11 +340,16 @@ export const QuestionsItem = memo(function QuestionsItem({ sid, item }: { sid: s
                 </Button>
               )}
               {last ? (
-                <Button size="sm" disabled={!allDone} onClick={submit}>
+                <Button {...nextTarget} size="sm" disabled={!allDone} onClick={submit}>
                   {t('q.submit')}
                 </Button>
               ) : (
-                <Button size="sm" disabled={!isAnswered(answers[idx])} onClick={() => setTab(String(idx + 1))}>
+                <Button
+                  {...nextTarget}
+                  size="sm"
+                  disabled={!isAnswered(answers[idx])}
+                  onClick={() => setTab(String(idx + 1))}
+                >
                   {t('q.next')} <ArrowRightIcon />
                 </Button>
               )}

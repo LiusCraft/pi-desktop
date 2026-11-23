@@ -3,6 +3,7 @@ import { ChevronDownIcon, GitBranchIcon } from 'lucide-react';
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useT } from '@/lib/i18n';
+import { useShortcutTarget } from '@/lib/shortcut-keys';
 import { cn } from '@/lib/utils';
 
 export function WorktreeBasePicker({
@@ -18,12 +19,13 @@ export function WorktreeBasePicker({
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
+  const target = useShortcutTarget('base', t('composer.worktreeBase', { ref: base }));
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           className="flex h-full items-center gap-1.5 rounded-l-lg pr-2 pl-2.5 hover:bg-accent data-[state=open]:bg-accent"
-          title={t('composer.worktreeBase', { ref: base })}
+          {...target}
         >
           <GitBranchIcon className="size-4 shrink-0" />
           <span className="max-w-32 truncate">{base}</span>

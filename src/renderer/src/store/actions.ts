@@ -204,7 +204,7 @@ function flushEvents() {
       }
       let s = st.sessions[ev.sessionId];
       if (ev.type === 'meta') {
-        if (s) s.meta = { ...ev.meta, pr: s.meta.pr ?? ev.meta.pr };
+        if (s) s.meta = ev.meta;
         else st.sessions[ev.sessionId] = emptySession(ev.meta);
         continue;
       }
@@ -241,7 +241,8 @@ function flushEvents() {
             s.meta.pr = { num: ev.status.num, url: ev.status.url, state: ev.status.state, draft: ev.status.draft };
           } else {
             s.pr = null;
-            s.meta.pr = null;
+            // A missing forge snapshot does not undo a known merge. The host keeps that summary.
+            if (s.meta.pr?.state !== 'merged') s.meta.pr = null;
           }
           break;
         case 'git_fetched':

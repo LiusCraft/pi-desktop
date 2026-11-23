@@ -42,7 +42,7 @@ import { desktopCommands } from '@/lib/constants';
 import { fuzzyEntry, fuzzyRank, type FuzzyEntry } from '@/lib/fuzzy';
 import { t, useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import { cycleMode, loadFiles, openContextReference, send } from '@/store/actions';
+import { loadFiles, openContextReference, send } from '@/store/actions';
 import { currentSession, getApp, useApp } from '@/store/app';
 import { drafts, getDraft, useDrafts } from '@/store/drafts';
 import type { SessionView } from '@/store/types';
@@ -477,10 +477,6 @@ export const ComposerInput = forwardRef<
         return;
       }
     }
-    if (e.key === 'Tab' && e.shiftKey) {
-      e.preventDefault();
-      return cycleMode();
-    }
     // Ghost text: → at the end of an empty box and Tab have no other job here.
     if (suggestion && !e.nativeEvent.isComposing) {
       if (e.key === 'Escape') {
@@ -665,6 +661,7 @@ export const ComposerInput = forwardRef<
         <textarea
           ref={input}
           data-composer-input
+          data-shortcut="composer"
           rows={minRows}
           value={draft.text}
           readOnly={draft.sending}

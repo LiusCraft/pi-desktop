@@ -369,6 +369,7 @@ npm run typecheck   # main / agent / preload 与渲染进程两套 tsconfig
 npm test            # vitest：真实的进程内 pi 会话 + desktop-kit + 演示模型，无需 API Key
 npm run test:coverage # 同上并输出覆盖率（CI 上传到 Codecov）
 npm run test:desktop # 构建后用项目自带的 Electron 运行 Playwright 窗口交互测试
+npm run test:desktop -- shortcuts.spec.ts # 单独运行快捷键 Demo
 ```
 
 <details>
@@ -376,6 +377,7 @@ npm run test:desktop # 构建后用项目自带的 Electron 运行 Playwright �
 
 - `test/hub.e2e.test.ts`：Auto 模式在隔离 worktree 里修 bug（修复前测试真的失败，修复后真的通过，主工作区不被改动）、worktree 默认根目录与设置里的自定义根目录、Ask 模式拒绝、Plan 模式审批后自动切到 Accept edits、运行中切换模式、进程内子 agent、高风险命令仍需询问、带图片附件的会话关闭后从会话文件恢复、`/clear`、首条提示词命名与手动重命名；Work 整理收件箱时只有移动文件需要确认、拒绝后文件保持原样、生成简报文件、临时工作区。
 - `test/desktop/interactions.spec.ts`：临时配置目录（`PI_DESKTOP_HOME`）中的真实 Electron 窗口，覆盖模型元数据编辑、价格 0、token 限制校验、文件菜单、预览引用、Diff 评论、随消息发送及历史回退 / 分支；`test/context-reference.test.ts` 覆盖引用格式、草稿隔离与恢复、容量限制。
+- `test/desktop/shortcuts.spec.ts`：在离线 Demo 中用键盘选择新会话选项、回答问题、从排序后的 Work / Code 列表打开会话，并验证设置窗口的改键、冲突提示和恢复默认。手动演示可发送「快捷键演示」。
 - `test/desktop/sessions.spec.ts`：真实窗口里的会话生命周期（新建、归档、恢复、删除、移除项目），以及每个会话自己的工作区（不会自动弹出 Diff，切回来时布局还在）。
 - `test/desktop/pr-import.spec.ts`：离线演示「从 PR 开始」的读取、克隆、拉取进度和失败重试。用本地仓库创建真实 worktree，无需 GitHub 登录。macOS / Linux 可单独运行 `npm run test:desktop -- pr-import.spec.ts`，截图保存在 `test-results/desktop/`。
 - `test/session-ui-memory.test.ts` / `test/diff-fold.test.ts`：面板与滚动位置的记忆（按会话隔离、删除会话时清掉），以及大 diff 的折叠阈值和改动行数缓存。

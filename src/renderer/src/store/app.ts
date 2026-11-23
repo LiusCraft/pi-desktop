@@ -107,6 +107,7 @@ export interface AppState {
   levels: ThinkingLevel[];
   sessions: Record<string, SessionView>;
   paletteOpen: boolean;
+  sessionsOpen: boolean;
   /** A footer menu opened by a slash command (/model, /permissions, /context). */
   menu: 'model' | 'mode' | 'context' | null;
   sidebarCollapsed: boolean;
@@ -159,6 +160,7 @@ export const useApp = create<AppState>()(
     levels: [],
     sessions: {},
     paletteOpen: false,
+    sessionsOpen: false,
     menu: null,
     customize: false,
     scheduled: false,

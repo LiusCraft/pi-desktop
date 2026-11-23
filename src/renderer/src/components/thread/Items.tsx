@@ -73,6 +73,7 @@ import { QuestionsItem } from './Questions';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { call } from '@/lib/api';
 import { t as tr, useT } from '@/lib/i18n';
+import { useShortcutHint } from '@/lib/shortcut-keys';
 import { ago, fmtCost, fmtMs, fmtTok, fname, useAgo } from '@/lib/format';
 import {
   bareName,
@@ -1348,6 +1349,9 @@ export const PermItem = memo(function PermItem({ sid, item }: { sid: string; ite
   const t = useT();
   const tool = useApp((s) => findTool(s.sessions[sid], item.toolCallId)?.tool);
   const subject = tool?.kind === 'bash' ? tool.cmd : tool?.path || item.title;
+  const allow = useShortcutHint('choice1');
+  const alwaysAllow = useShortcutHint('choice2');
+  const deny = useShortcutHint('choice3');
   if (item.resolved)
     return (
       <Resolved
@@ -1395,13 +1399,13 @@ export const PermItem = memo(function PermItem({ sid, item }: { sid: string; ite
       {preview && <div className="mb-3 max-h-72 overflow-auto rounded-lg border bg-code">{preview}</div>}
       <div className="flex flex-wrap gap-2">
         <Button size="sm" onClick={() => answer('Allow')}>
-          {t('perm.allow')} <Kbd className="ml-1">1</Kbd>
+          {t('perm.allow')} {allow && <Kbd className="ml-1">{allow}</Kbd>}
         </Button>
         <Button size="sm" variant="outline" onClick={() => answer('Always allow')}>
-          {always} <Kbd className="ml-1">2</Kbd>
+          {always} {alwaysAllow && <Kbd className="ml-1">{alwaysAllow}</Kbd>}
         </Button>
         <Button size="sm" variant="outline" onClick={() => answer('Deny')}>
-          {t('perm.deny')} <Kbd className="ml-1">3</Kbd>
+          {t('perm.deny')} {deny && <Kbd className="ml-1">{deny}</Kbd>}
         </Button>
       </div>
     </div>

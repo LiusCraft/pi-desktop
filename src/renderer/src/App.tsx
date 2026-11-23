@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useDefaultLayout, usePanelRef } from 'react-resizable-panels';
-import { PERMISSION_CHOICES } from '@shared/protocol';
 import { CommandPalette } from '@/components/dialogs/CommandPalette';
+import { SessionSwitcher } from '@/components/dialogs/SessionSwitcher';
 import { DialogHost } from '@/components/dialogs/DialogHost';
 import { NativeTooltip } from '@/components/common/NativeTooltip';
 import { Main } from '@/components/layout/Main';
@@ -9,99 +9,15 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { Toaster } from '@/components/ui/sonner';
 import { TOOLTIP_DEFAULT_DELAY, TooltipProvider } from '@/components/ui/tooltip';
-import { bridge, call, isMac } from '@/lib/api';
+import { bridge } from '@/lib/api';
+import { useShortcuts } from '@/lib/use-shortcuts';
 import { useTheme } from '@/lib/theme';
-import {
-  answerUi,
-  bootstrap,
-  cycleViewMode,
-  fail,
-  handleHostEvent,
-  loadPlugins,
-  openSession,
-  requestFind,
-  showWelcome,
-  stop,
-  toggleSidebar,
-  togglePanel,
-} from '@/store/actions';
-import { currentSession, getApp, setApp, useApp } from '@/store/app';
-import { activeDraft, drafts } from '@/store/drafts';
-import { bashRunning } from '@/store/transcript';
-import { useDialogs } from '@/store/dialogs';
+import { bootstrap, fail, handleHostEvent, loadPlugins, openSession, toggleSidebar } from '@/store/actions';
+import { getApp, setApp, useApp } from '@/store/app';
+import { drafts } from '@/store/drafts';
 import { watchSideWindows } from '@/store/side';
 import { watchCodeSession } from '@/store/refresh';
 import { watchUpdates } from '@/store/update';
-
-function useShortcuts() {
-  useEffect(() => {
-    // Sidebar first, in the capture phase, so text fields never swallow it.
-    const sidebar = (e: KeyboardEvent) => {
-      const mod = isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
-      if (!mod || e.altKey || e.shiftKey || e.isComposing || !['b', '.'].includes(e.key.toLowerCase())) return;
-      e.preventDefault();
-      if (!e.repeat) toggleSidebar();
-    };
-    const keys = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey;
-      const key = e.key.toLowerCase();
-      if (mod && key === 'k') {
-        e.preventDefault();
-        return setApp((s) => void (s.paletteOpen = !s.paletteOpen));
-      }
-      if (mod && e.key === ',') {
-        e.preventDefault();
-        return void call('settings:open');
-      }
-      if (getApp().paletteOpen || useDialogs.getState().current) return;
-      if (mod && key === 'n') {
-        e.preventDefault();
-        return showWelcome();
-      }
-      const s = currentSession();
-      if (!s) return;
-      if (
-        e.key === 'Escape' &&
-        (s.running || s.compacting || bashRunning(s)) &&
-        !document.querySelector('[role=menu],[role=dialog]')
-      ) {
-        e.preventDefault();
-        return void stop(s.meta.id);
-      }
-      if (mod && key === 'o') {
-        e.preventDefault();
-        return cycleViewMode();
-      }
-      if (mod && e.shiftKey && !e.altKey && key === 'f') {
-        e.preventDefault();
-        return requestFind('all');
-      }
-      if (mod && key === 'd') {
-        e.preventDefault();
-        return togglePanel(s.meta.id, s.meta.kind === 'work' ? 'progress' : 'diff');
-      }
-      // 1 / 2 / 3 answer a waiting permission card while the composer is empty.
-      const waiting = s.waiting ? s.items.find((i) => i.key === s.waiting) : undefined;
-      if (
-        waiting?.kind === 'perm' &&
-        ['1', '2', '3'].includes(e.key) &&
-        !mod &&
-        !activeDraft()?.text.trim() &&
-        document.activeElement?.tagName !== 'INPUT'
-      ) {
-        e.preventDefault();
-        const v = PERMISSION_CHOICES[Number(e.key) - 1];
-        answerUi(s.meta.id, waiting.key, { value: v }, v);
-      }
-    };
-    window.addEventListener('keydown', sidebar, true);
-    window.addEventListener('keydown', keys);
-    return () => {
-      window.removeEventListener('keydown', sidebar, true);
-      window.removeEventListener('keydown', keys);
-    };
-  }, []);
-}
 
 export function App() {
   useTheme();
@@ -177,6 +93,7 @@ export function App() {
         </ResizablePanelGroup>
       </div>
       <CommandPalette />
+      <SessionSwitcher />
       <DialogHost />
       <NativeTooltip />
       <Toaster position="bottom-right" />

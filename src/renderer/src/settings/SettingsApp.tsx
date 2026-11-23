@@ -9,6 +9,7 @@ import {
   DatabaseIcon,
   FolderIcon,
   InfoIcon,
+  KeyboardIcon,
   MonitorSmartphoneIcon,
   MoonIcon,
   PlusIcon,
@@ -76,6 +77,7 @@ import { ModelsSection } from './ModelsSection';
 import { PrivacySection } from './PrivacySection';
 import { RemoteSection } from './RemoteSection';
 import { StorageSection } from './StorageSection';
+import { ShortcutsSection } from './ShortcutsSection';
 import { UpdateSection } from './UpdateSection';
 import { WebSearchSection } from './WebSearchSection';
 import { Group, Heading, Panel, Row, groupDomId } from './ui';
@@ -83,6 +85,7 @@ import { Group, Heading, Panel, Row, groupDomId } from './ui';
 type Section =
   | 'appearance'
   | 'general'
+  | 'shortcuts'
   | 'work'
   | 'code'
   | 'models'
@@ -113,6 +116,7 @@ const SECTIONS: { id: Section; label: MessageKey | null; icon: ReactNode; groups
       { id: 'webSearch', label: 'web.title' },
     ],
   },
+  { id: 'shortcuts', label: 'shortcuts.title', icon: <KeyboardIcon className="size-4" /> },
   { id: 'work', label: null, icon: <BriefcaseIcon className="size-4" /> },
   { id: 'code', label: null, icon: <CodeIcon className="size-4" /> },
   { id: 'models', label: 'settings.section.models', icon: <BrainIcon className="size-4" /> },
@@ -843,6 +847,8 @@ export function SettingsApp() {
         </div>
       </>
     );
+  } else if (section === 'shortcuts') {
+    body = <ShortcutsSection overrides={settings.shortcuts} onSave={(shortcuts) => patch({ shortcuts })} />;
   } else if (section === 'work') {
     body = (
       <>

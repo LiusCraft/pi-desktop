@@ -1262,12 +1262,15 @@ export class SessionHub {
       this.save();
       this.emitMeta(m);
     }
-    if (event.type === 'message_end' && event.message.role === 'assistant' && live.metadataTurn) {
+    if (event.type === 'message_end' && event.message.role === 'assistant') {
       const turn = live.metadataTurn;
       const { stopReason, content } = event.message;
-      if (stopReason === 'error' || stopReason === 'aborted') turn.progress = undefined;
-      else {
-        const progress = naming.progressText(prediction.contentText(content));
+      const text = stopReason === 'error' || stopReason === 'aborted' ? '' : prediction.contentText(content);
+      // agent_settled persists and publishes this along with the other session metadata.
+      if (text.trim()) m.lastResponseAt = Date.now();
+      if (turn && (stopReason === 'error' || stopReason === 'aborted')) turn.progress = undefined;
+      else if (turn) {
+        const progress = naming.progressText(text);
         if (progress) {
           turn.progress = progress;
           if (
@@ -1793,6 +1796,7 @@ export class SessionHub {
         sessionFile: manager.getSessionFile() ?? null,
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        lastResponseAt: undefined,
       };
       manager.appendSessionInfo(meta.title);
       this.metas.unshift(meta);

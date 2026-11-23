@@ -7,16 +7,20 @@ import {
   CommandList,
   CommandShortcut,
 } from '@/components/ui/command';
-import { call, canTerminal, modKey } from '@/lib/api';
+import { call, canTerminal } from '@/lib/api';
+import { useShortcutHint } from '@/lib/shortcut-keys';
 import { useT } from '@/lib/i18n';
 import { ago, fname } from '@/lib/format';
 import { addProject, openSession, setView, showWelcome, togglePanel } from '@/store/actions';
 import { currentSession, getApp, setApp, useApp } from '@/store/app';
 
-/** ⌘K: jump to a session or run an action. */
+/** Jump to a session or run an action. */
 export function CommandPalette() {
   const t = useT();
   const open = useApp((s) => s.paletteOpen);
+  const panelHint = useShortcutHint('panel');
+  const settingsHint = useShortcutHint('settings');
+  const sessionsHint = useShortcutHint('sessions');
   const sessions = useApp((s) => s.sessions);
   const setOpen = (o: boolean) => setApp((s) => void (s.paletteOpen = o));
   const run = (fn: () => unknown) => {
@@ -51,7 +55,7 @@ export function CommandPalette() {
       ? [
           {
             label: t('palette.toggleDiff'),
-            hint: `${modKey}D`,
+            hint: panelHint,
             run: () => {
               const s = currentSession();
               if (s) togglePanel(s.meta.id, 'diff');
@@ -75,7 +79,8 @@ export function CommandPalette() {
       label: t('palette.toggleTheme'),
       run: () => call('settings:set', { theme: getApp().settings.resolvedTheme === 'dark' ? 'light' : 'dark' }),
     },
-    { label: t('palette.settings'), hint: `${modKey},`, run: () => call('settings:open') },
+    { label: t('shortcuts.sessions'), hint: sessionsHint, run: () => setApp((s) => void (s.sessionsOpen = true)) },
+    { label: t('palette.settings'), hint: settingsHint, run: () => call('settings:open') },
   ];
   return (
     <CommandDialog open={open} onOpenChange={setOpen} title={t('palette.title')} description={t('palette.description')}>

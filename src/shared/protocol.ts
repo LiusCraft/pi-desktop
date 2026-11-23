@@ -6,6 +6,7 @@
 // forwarded unchanged to the agent host; the rest are handled by the main process.
 // Host → renderer traffic is a single stream of `HostEvent`s.
 import type { ActivityLog } from './activity';
+import type { ShortcutOverrides } from './shortcuts';
 import type { Attachment, DecodedUserContent, PromptSubmission } from './attachments';
 import type { Forge } from './forge';
 import type { PeerMessage } from './peer-message';
@@ -156,6 +157,8 @@ export interface SessionMeta {
   sessionFile: string | null;
   createdAt: number;
   updatedAt: number;
+  /** Latest assistant text response, independent of prompt or shell activity. */
+  lastResponseAt?: number;
   pr: PrSummary | null;
   prBinding?: PrBinding;
   /** The branch Pi created, even if the user later switches branches. */
@@ -1098,6 +1101,7 @@ export const AUTO_REVIEW_MAX_TIMEOUT = 120;
 export const TERMINAL_DEFAULT_LINES = 50;
 export const TERMINAL_MAX_LINES = 500;
 export interface Settings {
+  shortcuts: ShortcutOverrides;
   theme: ThemeSetting | null;
   palette: Palette;
   density: UiDensity;

@@ -66,6 +66,30 @@ export default function ThemeToggle() {
 
 const SUBAGENT_MARK = '只读、小范围探索';
 
+const keyboardDemo: Scenario = {
+  match: (p) => /^(快捷键演示|keyboard shortcut demo)$/i.test(p),
+  steps: [
+    () => [
+      call('pidesk_ask_question', {
+        questions: [
+          {
+            header: 'Format',
+            question: 'Which format should the demo use?',
+            options: [{ label: 'Markdown (Recommended)' }, { label: 'Plain text' }],
+          },
+          {
+            header: 'Sections',
+            question: 'Which sections should the demo include?',
+            multiSelect: true,
+            options: [{ label: 'Summary (Recommended)' }, { label: 'Details' }],
+          },
+        ],
+      }),
+    ],
+    (r) => [text(r.results.at(-1)?.text ?? 'No answers received.')],
+  ],
+};
+
 const scenarios: Scenario[] = [
   {
     match: (p) => /交给新会话|hand off to a new session/i.test(p),
@@ -499,6 +523,7 @@ const GREETING = `你好！我是 **离线演示模型**（demo-coder），不�
 - 「解释一下项目结构」——会启动一个子 agent
 - 「提交并创建 PR」——触发需要确认的危险命令
 - 「用 codemode 脚本统计一下」——一段脚本调用多个工具
+- 「快捷键演示」——用数字键选答案，再用 Alt+Enter 继续或提交
 
 在右下角切换到真实模型后，就由真正的 LLM 来驱动。`;
 
@@ -541,7 +566,9 @@ function respond(context: any) {
     messages.some((m) => m.role === 'system' && JSON.stringify(m).includes(WORK_MARKER)) &&
     !prompt.startsWith(SUBAGENT_MARK);
   const planMode = after.some((m) => m.role === 'user' && contentText(m).startsWith(PLAN_MODE_MARKER));
-  const sc = (work ? workScenarios : scenarios).find((s) => s.match(prompt));
+  const sc = keyboardDemo.match(prompt)
+    ? keyboardDemo
+    : (work ? workScenarios : scenarios).find((s) => s.match(prompt));
   if (!sc) return msg(work ? WORK_GREETING : GREETING);
 
   // Plan mode: insert an pidesk_exit_plan_mode call before the first editing step.

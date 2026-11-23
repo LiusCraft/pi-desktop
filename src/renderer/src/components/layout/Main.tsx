@@ -38,7 +38,8 @@ import {
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { TooltipHint } from '@/components/ui/tooltip';
 import { useDefaultLayout } from 'react-resizable-panels';
-import { call, canTerminal, isMac, modKey } from '@/lib/api';
+import { call, canTerminal, isMac } from '@/lib/api';
+import { useShortcutHint } from '@/lib/shortcut-keys';
 import { workIdeas, OUTPUT_STYLE_INFO, VIEW_MODES, type ViewMode } from '@/lib/constants';
 import { useT } from '@/lib/i18n';
 import { fname } from '@/lib/format';
@@ -107,6 +108,7 @@ function SessionMenu({
 }) {
   const t = useT();
   const view = useApp((st) => st.prefs.viewMode);
+  const viewHint = useShortcutHint('view');
   const views = VIEW_MODES.filter((m) => m.id !== 'thinking' || hasThinking(s));
   const [open, setOpen] = useState(false);
   const [at, setAt] = useState({ x: 0, y: 0 });
@@ -132,7 +134,7 @@ function SessionMenu({
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="flex justify-between text-xs text-muted-foreground">
             {t('main.transcriptView')}
-            <span>{modKey}O</span>
+            <span>{viewHint}</span>
           </DropdownMenuLabel>
           <DropdownMenuRadioGroup value={view} onValueChange={(v) => setViewMode(v as ViewMode)}>
             {views.map((m) => (
@@ -255,6 +257,7 @@ function PanelsMenu({ s, hasTasks }: { s: SessionView; hasTasks: boolean }) {
 
 function Header({ s, title }: { s?: SessionView; title?: string }) {
   const t = useT();
+  const diffHint = useShortcutHint('panel', t('main.diff'));
   const collapsed = useApp((st) => st.sidebarCollapsed);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const work = s?.meta.kind === 'work';
@@ -349,7 +352,7 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
               )}
               <HeaderButton
                 on={p!.diff}
-                title={`${t('main.diff')}  ${modKey}D`}
+                title={diffHint}
                 onClick={() => togglePanel(s.meta.id, 'diff')}
                 className="hidden @2xl:flex"
               >

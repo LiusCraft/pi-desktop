@@ -24,6 +24,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipHint, TooltipTrigger } from '@/components/ui/tooltip';
 import { modKey } from '@/lib/api';
+import { useShortcutTarget } from '@/lib/shortcut-keys';
 import { useT } from '@/lib/i18n';
 import { fmtTokPerSec, fname } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -93,6 +94,8 @@ function NewSessionChips() {
   const t = useT();
   const projects = useApp((st) => st.projects);
   const project = useApp((st) => st.prefs.project);
+  const folderTarget = useShortcutTarget('folder', project ?? t('composer.chooseProject'));
+  const worktreeTarget = useShortcutTarget('worktree', t('composer.worktreeTip'));
   const worktree = useApp((st) => st.prefs.worktree);
   const info = useWelcomeBranches((st) => (project ? st[project] : undefined));
   const branch = info?.current;
@@ -124,7 +127,7 @@ function NewSessionChips() {
       </DropdownMenu>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Chip title={project ?? t('composer.chooseProject')}>
+          <Chip {...folderTarget} data-shortcut-menu>
             <FolderIcon className="size-4 shrink-0" />
             <span className="truncate">{project ? fname(project) : t('composer.chooseProject')}</span>
           </Chip>
@@ -199,11 +202,9 @@ function NewSessionChips() {
           {branch && (
             <>
               <span className="h-3.5 w-px bg-border" />
-              <Label
-                className="h-full cursor-pointer gap-1.5 rounded-r-lg pr-2.5 pl-2 font-normal hover:bg-accent"
-                title={t('composer.worktreeTip')}
-              >
+              <Label className="h-full cursor-pointer gap-1.5 rounded-r-lg pr-2.5 pl-2 font-normal hover:bg-accent">
                 <Checkbox
+                  {...worktreeTarget}
                   checked={worktree}
                   onCheckedChange={(v) => setPref('worktree', v === true)}
                   className="size-3.5"
@@ -229,6 +230,8 @@ export function CodeComposer() {
   const levels = useApp((st) => st.levels);
   const input = useRef<ComposerHandle>(null);
   const [drag, setDrag] = useState(false);
+  const modelTarget = useShortcutTarget('model', t('shortcuts.model'));
+  const attachmentsTarget = useShortcutTarget('attachments', t('composer.addFilesRef'));
   const placeholder = s?.running
     ? t('composer.placeholderQueue', { mod: modKey })
     : s
@@ -278,7 +281,7 @@ export function CodeComposer() {
         </div>
       </div>
       <div className="mt-1.5 flex items-center gap-0.5">
-        <FootButton title={t('composer.addFilesRef')} className="w-7 justify-center px-0" onClick={pickAttachments}>
+        <FootButton {...attachmentsTarget} className="w-7 justify-center px-0" onClick={pickAttachments}>
           <PlusIcon className="size-4" />
         </FootButton>
         <ModeMenu mode={s ? s.meta.mode : prefs.mode} />
@@ -287,7 +290,7 @@ export function CodeComposer() {
         <ModelMenu
           model={s ? s.model : prefs.model}
           trigger={
-            <FootButton>
+            <FootButton {...modelTarget}>
               <ModelLabel id={s ? s.model : prefs.model} />
             </FootButton>
           }
@@ -327,6 +330,9 @@ export function WorkComposer() {
   const input = useRef<ComposerHandle>(null);
   const [drag, setDrag] = useState(false);
   const folder = prefs.workFolder;
+  const folderTarget = useShortcutTarget('folder', folder || t('composer.tempWorkspaceTip'));
+  const modelTarget = useShortcutTarget('model', t('shortcuts.model'));
+  const attachmentsTarget = useShortcutTarget('attachments', t('composer.addFiles'));
   return (
     <div className="w-full">
       {/* The composer shell handles drag and drop; the textarea and buttons inside are keyboard accessible. */}
@@ -350,7 +356,7 @@ export function WorkComposer() {
         <div className="mt-2 flex items-center gap-1">
           <button
             className="rounded-lg border p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-            title={t('composer.addFiles')}
+            {...attachmentsTarget}
             onClick={pickAttachments}
           >
             <PlusIcon className="size-4" />
@@ -359,7 +365,7 @@ export function WorkComposer() {
           <ModelMenu
             model={prefs.model}
             trigger={
-              <FootButton className="text-sm">
+              <FootButton {...modelTarget} className="text-sm">
                 <ModelLabel id={prefs.model} />
               </FootButton>
             }
@@ -378,7 +384,7 @@ export function WorkComposer() {
       <div className="mt-2 flex items-center gap-1">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <FootButton className="text-sm" title={folder || t('composer.tempWorkspaceTip')}>
+            <FootButton {...folderTarget} data-shortcut-menu className="text-sm">
               <FolderIcon className="size-4" />
               <span className="truncate">
                 {folder ? fname(folder) : folder === null ? t('composer.tempWorkspace') : t('composer.projectOrFolder')}
