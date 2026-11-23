@@ -173,7 +173,8 @@ export interface SessionChange extends ChangedFile {
 }
 
 /** The tabs in the workspace beside the conversation. */
-export type WorkspaceTab = keyof Panels | 'detail';
+export type SideChatTab = `side:${string}`;
+export type WorkspaceTab = keyof Panels | 'detail' | 'sessionInfo' | SideChatTab;
 
 export interface Panels {
   diff: boolean;
@@ -249,6 +250,8 @@ export interface SessionView {
   fileDetail: FileDetail | null;
   panels: Panels;
   activeTab: WorkspaceTab | null;
+  sessionInfoOpen: boolean;
+  sideTabs: SideChatTab[];
   workspaceExpanded: boolean;
   detail: Detail | null;
   previewUrl: string | null;

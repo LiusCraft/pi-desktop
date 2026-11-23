@@ -62,6 +62,8 @@ describe('panel memory', () => {
     writePanels(meta.id, { ...DEFAULT_PANELS, diff: true, preview: true });
     writeWorkspaceTab(meta.id, 'preview');
     writeWorkspaceTab(meta.id, 'detail');
+    writeWorkspaceTab(meta.id, 'sessionInfo');
+    writeWorkspaceTab(meta.id, 'side:in-memory');
     const session = emptySession(meta);
     const tabs = openWorkspaceTabs(session, true);
     expect(tabs).toEqual(['diff', 'preview']);

@@ -1361,36 +1361,67 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect(await driver.hub.suggest(meta.id, { model: 'fixed', modelId: 'demo/demo-coder', context: 6 })).toBeNull();
   });
 
-  it('keeps a side chat in the host without touching the session', async () => {
+  it('isolates concurrent side chats, including quotes, answers and reset, from each other and the session', async () => {
     const { meta } = await codeSession();
-    await driver.hub.open(meta.id);
-    const before = (await driver.hub.open(meta.id)).messages.length;
+    const hub = driver.hub;
+    const before = (await hub.open(meta.id)).messages.length;
     const from = driver.events.length;
-    driver.hub.side(meta.id, { text: '刚才为什么这样做？', quote: '一段回复' });
-    // The call returns as soon as the question is queued; the answer arrives as events.
-    const queued = driver.hub.sideGet(meta.id);
-    expect(queued.busy).toBe(true);
-    expect(queued.turns[0]).toEqual({ role: 'user', text: '刚才为什么这样做？', quote: '一段回复' });
-    await new Promise<void>((resolve) => {
-      const t = setInterval(() => {
-        if (!driver.hub.sideGet(meta.id).busy) {
-          clearInterval(t);
-          resolve();
-        }
-      }, 10);
-    });
-    const chat = driver.hub.sideGet(meta.id);
-    expect(chat.busy).toBe(false);
-    expect(chat.turns[0]).toEqual({ role: 'user', text: '刚才为什么这样做？', quote: '一段回复' });
-    expect(chat.turns.length === 2 ? chat.turns[1].role : 'assistant').toBe('assistant');
-    expect(chat.turns.length === 2 || !!chat.error).toBe(true);
-    const sides = driver.events.slice(from).filter((e) => e.type === 'side');
-    expect(sides.length).toBeGreaterThanOrEqual(2);
-    expect((await driver.hub.open(meta.id)).messages.length).toBe(before);
-    driver.hub.sideStage(meta.id, ' 引用 ');
-    expect(driver.hub.sideGet(meta.id).quote).toBe('引用');
-    driver.hub.sideReset(meta.id);
-    expect(driver.hub.sideGet(meta.id)).toMatchObject({ turns: [], quote: null, busy: false });
+    const a = hub.sideCreate(meta.id).id;
+    const b = hub.sideCreate(meta.id).id;
+    const first = Promise.withResolvers<ReturnType<typeof fauxAssistantMessage>>();
+    const second = Promise.withResolvers<ReturnType<typeof fauxAssistantMessage>>();
+    const complete = vi
+      .spyOn(hub.models, 'completeSimple')
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    try {
+      hub.sideStage(meta.id, a, ' first quote ');
+      hub.side(meta.id, a, { text: 'First question' });
+      hub.side(meta.id, b, { text: 'Second question' });
+      expect(hub.sideList(meta.id)).toEqual([
+        { id: a, title: 'First question' },
+        { id: b, title: 'Second question' },
+      ]);
+      expect(hub.sideList('other-session')).toEqual([]);
+      expect(() => hub.sideGet('other-session', a)).toThrow('Side chat not found');
+      expect(hub.sideGet(meta.id, a)).toMatchObject({
+        busy: true,
+        turns: [{ role: 'user', text: 'First question', quote: 'first quote' }],
+      });
+      expect(hub.sideGet(meta.id, b).turns).toEqual([{ role: 'user', text: 'Second question' }]);
+      const secondPrompt = complete.mock.calls[1]?.[1].messages.at(-1);
+      expect(secondPrompt).toMatchObject({ role: 'user', content: expect.stringContaining('Second question') });
+      expect(secondPrompt).not.toMatchObject({ content: expect.stringContaining('First question') });
+
+      hub.sideReset(meta.id, a);
+      expect(complete.mock.calls[0]?.[2]?.signal?.aborted).toBe(true);
+      expect(complete.mock.calls[1]?.[2]?.signal?.aborted).toBe(false);
+      first.resolve(fauxAssistantMessage('Stale answer'));
+      second.resolve(fauxAssistantMessage('Second answer'));
+      await vi.waitFor(() =>
+        expect(hub.sideGet(meta.id, b)).toMatchObject({
+          busy: false,
+          turns: [
+            { role: 'user', text: 'Second question' },
+            { role: 'assistant', text: 'Second answer' },
+          ],
+        }),
+      );
+      expect(hub.sideGet(meta.id, a)).toMatchObject({ turns: [], quote: null, busy: false, title: '' });
+      expect(driver.events.slice(from)).toContainEqual(
+        expect.objectContaining({
+          type: 'side',
+          sessionId: meta.id,
+          chat: expect.objectContaining({ id: b, busy: false }),
+        }),
+      );
+      expect(driver.events.slice(from)).toContainEqual({ type: 'changed', resource: 'sideChats' });
+      expect((await hub.open(meta.id)).messages.length).toBe(before);
+    } finally {
+      complete.mockRestore();
+      first.resolve(fauxAssistantMessage('First answer'));
+      second.resolve(fauxAssistantMessage('Second answer'));
+    }
   });
 
   it('runs a `!` command in the session’s own shell and keeps it in the conversation', async () => {

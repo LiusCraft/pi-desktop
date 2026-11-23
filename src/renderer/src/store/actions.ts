@@ -44,7 +44,15 @@ import {
 } from './app';
 import { dialogs } from './dialogs';
 import { activeDraft, drafts, getDraft, sessionDraftKey, useDrafts } from './drafts';
-import { forgetPanels, openWorkspaceTabs, selectedWorkspaceTab, writePanels, writeWorkspaceTab } from './layout';
+import {
+  closeWorkspaceTab,
+  forgetPanels,
+  isSideChatTab,
+  openWorkspaceTabs,
+  selectedWorkspaceTab,
+  writePanels,
+  writeWorkspaceTab,
+} from './layout';
 import { primeSuggestion, resumeSuggestion } from './predict';
 import { notifyResource, subscribeResource } from './resources';
 import { notifyPluginEvent } from '@/plugin/events';
@@ -166,6 +174,9 @@ function flushEvents() {
         for (const s of Object.values(st.sessions)) {
           if (s.running) settle(s, true, view);
           s.hostEpoch++;
+          s.sideTabs = [];
+          if (isSideChatTab(s.activeTab)) s.activeTab = openWorkspaceTabs(s, canTerminal)[0] ?? null;
+          if (!openWorkspaceTabs(s, canTerminal).length) s.workspaceExpanded = false;
           s.loaded = false;
           s.queuedPeers = [];
           s.compacting = false;
@@ -603,7 +614,8 @@ export async function openSession(id: string, fresh = false) {
     st.lastByView[view] = id;
     st.sessions[id].unread = false;
     const v = st.sessions[id];
-    if (v.detail?.type === 'file' && v.detail.loading) closeTab(v, 'detail', () => void (v.detail = null));
+    if (v.detail?.type === 'file' && v.detail.loading)
+      closeWorkspaceTab(v, 'detail', canTerminal, () => void (v.detail = null));
     if (v.fileDetail?.loading) v.fileDetail = null;
   });
   try {
@@ -784,7 +796,7 @@ async function slashCommand(s: SessionView | undefined, head: string, text: stri
     const question = text.trim().slice(head.length).trim();
     // Without a question it only opens the panel, with whatever passage is staged.
     if (question) askSide(s.meta.id, question).catch(fail);
-    else showSide(s.meta.id);
+    else showSide(s.meta.id).catch(fail);
     return true;
   }
   if (head === '/help') {
@@ -1487,13 +1499,13 @@ export function selectWorkspaceTab(id: string, tab: WorkspaceTab) {
   writeWorkspaceTab(id, tab);
 }
 
-function closeTab(s: SessionView, tab: WorkspaceTab, remove: () => void) {
-  const before = openWorkspaceTabs(s, canTerminal);
-  const wasSelected = selectedWorkspaceTab(s, before) === tab;
-  remove();
-  const remaining = openWorkspaceTabs(s, canTerminal);
-  if (wasSelected) s.activeTab = remaining[before.indexOf(tab)] ?? remaining.at(-1) ?? null;
-  if (!remaining.length) s.workspaceExpanded = false;
+export function toggleSessionInfo(id: string, open: boolean) {
+  updateSession(id, (s) => {
+    if (open) {
+      s.sessionInfoOpen = true;
+      s.activeTab = 'sessionInfo';
+    } else closeWorkspaceTab(s, 'sessionInfo', canTerminal, () => void (s.sessionInfoOpen = false));
+  });
 }
 
 export function togglePanel(id: string, panel: keyof Panels, open?: boolean) {
@@ -1506,7 +1518,7 @@ export function togglePanel(id: string, panel: keyof Panels, open?: boolean) {
       v.panels[panel] = true;
       v.activeTab = panel;
     } else
-      closeTab(v, panel, () => {
+      closeWorkspaceTab(v, panel, canTerminal, () => {
         v.panels[panel] = false;
         if (panel === 'files') {
           v.fileTabs = [];
@@ -1529,7 +1541,7 @@ export function toggleWorkspaceExpanded(id: string) {
 }
 
 export function closeDetail(id: string) {
-  updateSession(id, (v) => closeTab(v, 'detail', () => void (v.detail = null)));
+  updateSession(id, (v) => closeWorkspaceTab(v, 'detail', canTerminal, () => void (v.detail = null)));
   writeWorkspaceTab(id, getApp().sessions[id]?.activeTab ?? null);
 }
 

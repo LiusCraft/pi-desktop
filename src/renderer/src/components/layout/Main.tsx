@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import { AttachmentTiles } from '@/components/common/Attachments';
 import { ContextCards } from '@/components/composer/ContextCards';
-import { PET_BLOCK_ATTR } from '@/components/composer/Clawd';
 import { CodeComposer, WorkComposer } from '@/components/composer/Composers';
 import { copyText } from '@/components/common/Copy';
 import { InlineEdit } from '@/components/common/InlineEdit';
@@ -63,8 +62,7 @@ import { ProjectsPage } from '@/projects/ProjectsPage';
 import { PluginPage } from '@/plugin/PluginPage';
 import { SidebarToggle } from './Sidebar';
 import { Inbox } from './Inbox';
-import { SideChatView } from '@/components/side/SideChat';
-import { useSide } from '@/store/side';
+import { SessionOverview } from '@/components/workspace/SessionOverview';
 
 /**
  * Rename, open in an external app, transcript view, output style, export, archive.
@@ -251,6 +249,7 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
             <SessionBranch s={s} />
           )}
           <span className="flex-1" />
+          <SessionOverview key={s.meta.id} s={s} />
         </>
       ) : (
         <span className="px-2 text-sm text-muted-foreground">
@@ -406,21 +405,11 @@ function Thread({ s }: { s: SessionView }) {
   const expanded = s.workspaceExpanded;
   // The conversation/workspace split belongs to the session, so switching back restores it.
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({ id: `${s.meta.id}:thread` });
-  const sideOpen = useSide((st) => !!st.open[s.meta.id] && !st.windows[s.meta.id]);
   const conversation = (
     <div className="relative flex h-full min-w-0 flex-col">
       <Transcript s={s} />
       <AskDock s={s} />
       <CodeComposer />
-      {sideOpen && (
-        // Floats over the conversation; the thread underneath keeps running.
-        <div
-          {...{ [PET_BLOCK_ATTR]: '' }}
-          className="absolute top-3 right-3 bottom-auto z-20 h-[min(560px,calc(100%-1.5rem))] w-[min(400px,calc(100%-1.5rem))]"
-        >
-          <SideChatView sid={s.meta.id} mode="embedded" />
-        </div>
-      )}
     </div>
   );
   if (!tabs.length)

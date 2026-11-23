@@ -24,6 +24,7 @@ import {
 import {
   HOST_CHANNELS,
   MAIN_CHANNELS,
+  sideWindowKey,
   type ApiArgs,
   type ApiResult,
   type AttachmentSource,
@@ -647,19 +648,15 @@ function renderThumbnail(root: string, version: number): Promise<string | null> 
   return run;
 }
 
-/** Side chats (/btw) that were popped out of their session, by session id. */
-const sideWindows = new Map<string, BrowserWindow>();
+/** Each popped-out side chat has its own window. */
+const sideWindows = new Map<string, { sessionId: string; chatId: string; w: BrowserWindow }>();
 const dockingSide = new Set<string>();
-const sideState = (sessionId: string, w: BrowserWindow | undefined) => ({
-  sessionId,
-  pinned: !!w && !w.isDestroyed() && w.isAlwaysOnTop(),
-  open: !!w && !w.isDestroyed(),
-});
 
 /** A side chat opens beside the app as its own window; the window shows the same host-held thread as the embedded panel. */
-function openSide(sessionId: string) {
-  if (!/^[\w-]+$/.test(sessionId)) return;
-  const existing = sideWindows.get(sessionId);
+function openSide(sessionId: string, chatId: string) {
+  if (!/^[\w-]+$/.test(sessionId) || !/^[\w-]+$/.test(chatId)) return;
+  const key = sideWindowKey(sessionId, chatId);
+  const existing = sideWindows.get(key)?.w;
   if (existing && !existing.isDestroyed()) {
     if (existing.isMinimized()) existing.restore();
     existing.show();
@@ -678,20 +675,20 @@ function openSide(sessionId: string) {
     show: false,
     webPreferences: { preload: PRELOAD, contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
-  sideWindows.set(sessionId, w);
-  load(w, 'side', sessionId);
+  sideWindows.set(key, { sessionId, chatId, w });
+  load(w, 'side', key);
   w.once('ready-to-show', () => w.show());
   harden(w);
   w.on('closed', () => {
-    sideWindows.delete(sessionId);
-    broadcast('side:window', { sessionId, pinned: false, open: false, docked: dockingSide.delete(sessionId) });
+    sideWindows.delete(key);
+    broadcast('side:window', { sessionId, chatId, pinned: false, open: false, docked: dockingSide.delete(key) });
   });
-  broadcast('side:window', sideState(sessionId, w));
+  broadcast('side:window', { sessionId, chatId, pinned: false, open: true });
 }
 
 function applyThemeToWindows() {
   const dark = isDark();
-  for (const w of [win, settingsWin, ...sideWindows.values()]) {
+  for (const w of [win, settingsWin, ...[...sideWindows.values()].map(({ w }) => w)]) {
     if (!w || w.isDestroyed()) continue;
     if (!isMac && !isWin && (w === win || w === settingsWin)) w.setTitleBarOverlay(overlay(dark));
     w.setBackgroundColor(bgColor(dark));
@@ -717,7 +714,7 @@ const connectionInfos = (): RemoteConnectionInfo[] =>
 /** Windows drop everything they show of the old host and boot again against the new one. */
 function resetWindows() {
   terminals.closeAll();
-  for (const w of sideWindows.values()) if (!w.isDestroyed()) w.close();
+  for (const { w } of sideWindows.values()) if (!w.isDestroyed()) w.close();
   for (const w of [win, settingsWin]) if (w && !w.isDestroyed()) w.webContents.reload();
 }
 function closeRemote() {
@@ -1044,24 +1041,25 @@ const handlers: MainHandlers = {
   },
   'settings:close': () => settingsWin?.close(),
   'diagram:open': (svg) => openDiagram(svg),
-  'side:pop': (sessionId) => openSide(String(sessionId)),
-  'side:pin': (sessionId, pinned) => {
-    const w = sideWindows.get(sessionId);
+  'side:pop': (sessionId, chatId) => openSide(sessionId, chatId),
+  'side:pin': (sessionId, chatId, pinned) => {
+    const w = sideWindows.get(sideWindowKey(sessionId, chatId))?.w;
     if (!w || w.isDestroyed()) return;
     // 'floating' keeps it above full-screen apps on macOS too.
     w.setAlwaysOnTop(!!pinned, 'floating');
-    broadcast('side:window', sideState(sessionId, w));
+    broadcast('side:window', { sessionId, chatId, pinned: w.isAlwaysOnTop(), open: true });
   },
-  'side:dock': (sessionId) => {
-    const w = sideWindows.get(sessionId);
+  'side:dock': (sessionId, chatId) => {
+    const key = sideWindowKey(sessionId, chatId);
+    const w = sideWindows.get(key)?.w;
     if (!w || w.isDestroyed()) return;
-    dockingSide.add(sessionId);
+    dockingSide.add(key);
     w.close();
   },
   'side:windows': () =>
-    [...sideWindows]
-      .filter(([, w]) => !w.isDestroyed())
-      .map(([id, w]) => ({ sessionId: id, pinned: w.isAlwaysOnTop() })),
+    [...sideWindows.values()]
+      .filter(({ w }) => !w.isDestroyed())
+      .map(({ sessionId, chatId, w }) => ({ sessionId, chatId, pinned: w.isAlwaysOnTop() })),
   'diagram:get': (token) => diagrams.get(token) ?? null,
   'artifacts:preview': (id) => openArtifact(String(id)),
   'artifacts:thumbnail': (id) => artifactThumbnail(String(id)),

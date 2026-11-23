@@ -10,14 +10,13 @@ import {
   SquareIcon,
   XIcon,
 } from 'lucide-react';
-import type { SideTurn } from '@shared/protocol';
+import { sideWindowKey, type SideTurn } from '@shared/protocol';
 import { Markdown } from '@/components/common/Markdown';
 import { Button } from '@/components/ui/button';
 import { call, errText } from '@/lib/api';
-import { useDrag } from '@/lib/drag';
 import { t as tr, useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import { askSide, dockSide, hideSide, popOutSide, useSide, useSideChat } from '@/store/side';
+import { reportSideError, useSide, useSideChat } from '@/store/side';
 
 function Turn({ turn }: { turn: SideTurn }) {
   if (turn.role === 'assistant') return <Markdown text={turn.text} className="text-sm" />;
@@ -39,11 +38,20 @@ function Turn({ turn }: { turn: SideTurn }) {
  * A question about the session that never enters it (/btw). It shows inside the session
  * by default, can be popped out to a window of its own and pinned above other windows.
  */
-export function SideChatView({ sid, mode }: { sid: string; mode: 'embedded' | 'window' }) {
+export function SideChatView({
+  sid,
+  chatId,
+  mode,
+  active = true,
+}: {
+  sid: string;
+  chatId: string;
+  mode: 'embedded' | 'window';
+  active?: boolean;
+}) {
   const t = useT();
-  const chat = useSideChat(sid);
-  const drag = useDrag();
-  const pinned = useSide((s) => s.windows[sid]?.pinned ?? false);
+  const chat = useSideChat(sid, chatId);
+  const pinned = useSide((s) => s.windows[sideWindowKey(sid, chatId)]?.pinned ?? false);
   const [text, setText] = useState('');
   const [failed, setFailed] = useState<string | null>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -52,13 +60,13 @@ export function SideChatView({ sid, mode }: { sid: string; mode: 'embedded' | 'w
 
   useEffect(() => {
     const el = body.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [lastTurn, chat.busy, chat.error]);
+    if (el && active) el.scrollTop = el.scrollHeight;
+  }, [lastTurn, chat.busy, chat.error, active]);
   useEffect(() => {
-    input.current?.focus();
-  }, [sid, chat.quote]);
+    if (mode === 'window') input.current?.focus();
+  }, [mode]);
   useEffect(() => {
-    if (mode === 'window' && chat.title) document.title = `${tr('side.title')} · ${chat.title}`;
+    if (mode === 'window') document.title = chat.title ? `${tr('side.title')} · ${chat.title}` : tr('side.title');
   }, [mode, chat.title]);
 
   const send = () => {
@@ -66,7 +74,7 @@ export function SideChatView({ sid, mode }: { sid: string; mode: 'embedded' | 'w
     if (!value || chat.busy) return;
     setText('');
     setFailed(null);
-    askSide(sid, value).catch((err) => {
+    call('sessions:side', sid, chatId, { text: value }).catch((err) => {
       setText(value);
       setFailed(errText(err));
     });
@@ -76,26 +84,19 @@ export function SideChatView({ sid, mode }: { sid: string; mode: 'embedded' | 'w
 
   return (
     <div
-      className={cn(
-        'flex min-h-0 flex-col bg-card',
-        mode === 'embedded' ? 'h-full rounded-xl border shadow-xl' : 'h-screen',
-      )}
+      className={cn('flex min-h-0 flex-col bg-card', mode === 'embedded' ? 'h-full' : 'h-screen')}
       data-testid="side-chat"
       data-mode={mode}
-      style={mode === 'embedded' ? drag.style : undefined}
     >
-      <header
-        {...(mode === 'embedded' ? drag.handle : {})}
-        className={cn(
-          'flex shrink-0 items-center gap-1 border-b py-1.5 pr-1.5 pl-3',
-          mode === 'embedded' && drag.handle.className,
-        )}
-      >
+      <header className="panel-heading gap-1 py-1.5 pr-1.5 pl-3">
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium">{t('side.title')}</div>
-          <div className="truncate text-[11px] text-muted-foreground">
+          {mode === 'window' && (
+            <div className="truncate text-sm font-medium" title={chat.title}>
+              {chat.title || t('side.title')}
+            </div>
+          )}
+          <div className="truncate text-xs text-muted-foreground" title={t('side.notSaved')}>
             {t('side.notSaved')}
-            {chat.title ? ` · ${chat.title}` : ''}
           </div>
         </div>
         <Button
@@ -103,8 +104,12 @@ export function SideChatView({ sid, mode }: { sid: string; mode: 'embedded' | 'w
           size="icon"
           className={icon}
           title={t('side.reset')}
+          aria-label={t('side.reset')}
           disabled={!chat.turns.length && !chat.busy}
-          onClick={() => void call('sessions:sideReset', sid)}
+          onClick={() => {
+            setFailed(null);
+            void call('sessions:sideReset', sid, chatId).catch(reportSideError);
+          }}
         >
           <RotateCcwIcon className="size-3.5" />
         </Button>
@@ -115,30 +120,34 @@ export function SideChatView({ sid, mode }: { sid: string; mode: 'embedded' | 'w
               size="icon"
               className={cn(icon, pinned && 'bg-accent text-foreground')}
               title={t(pinned ? 'side.unpin' : 'side.pin')}
+              aria-label={t(pinned ? 'side.unpin' : 'side.pin')}
               aria-pressed={pinned}
-              onClick={() => void call('side:pin', sid, !pinned)}
+              onClick={() => void call('side:pin', sid, chatId, !pinned).catch(reportSideError)}
             >
               {pinned ? <PinOffIcon className="size-3.5" /> : <PinIcon className="size-3.5" />}
             </Button>
-            <Button variant="ghost" size="icon" className={icon} title={t('side.dock')} onClick={() => dockSide(sid)}>
-              <PanelBottomCloseIcon className="size-3.5" />
-            </Button>
-          </>
-        ) : (
-          <>
             <Button
               variant="ghost"
               size="icon"
               className={icon}
-              title={t('side.popOut')}
-              onClick={() => popOutSide(sid)}
+              title={t('side.dock')}
+              aria-label={t('side.dock')}
+              onClick={() => void call('side:dock', sid, chatId).catch(reportSideError)}
             >
-              <ExternalLinkIcon className="size-3.5" />
-            </Button>
-            <Button variant="ghost" size="icon" className={icon} title={t('side.close')} onClick={() => hideSide(sid)}>
-              <XIcon className="size-3.5" />
+              <PanelBottomCloseIcon className="size-3.5" />
             </Button>
           </>
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon"
+            className={icon}
+            title={t('side.popOut')}
+            aria-label={t('side.popOut')}
+            onClick={() => void call('side:pop', sid, chatId).catch(reportSideError)}
+          >
+            <ExternalLinkIcon className="size-3.5" />
+          </Button>
         )}
       </header>
 
@@ -159,7 +168,7 @@ export function SideChatView({ sid, mode }: { sid: string; mode: 'embedded' | 'w
             {t('side.thinking')}
             <button
               className="ml-auto flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-accent hover:text-foreground"
-              onClick={() => void call('sessions:sideAbort', sid)}
+              onClick={() => void call('sessions:sideAbort', sid, chatId).catch(reportSideError)}
             >
               <SquareIcon className="size-3" />
               {t('side.stop')}
@@ -181,13 +190,13 @@ export function SideChatView({ sid, mode }: { sid: string; mode: 'embedded' | 'w
             <button
               aria-label={t('side.removeQuote')}
               className="text-muted-foreground hover:text-foreground"
-              onClick={() => void call('sessions:sideStage', sid, null)}
+              onClick={() => void call('sessions:sideStage', sid, chatId, null).catch(reportSideError)}
             >
               <XIcon className="size-3.5" />
             </button>
           </div>
         )}
-        <div className="flex items-end gap-1.5 rounded-lg border bg-background px-2.5 py-1.5">
+        <div className="flex items-end gap-1.5 rounded-lg surface-flat bg-background px-2.5 py-1.5">
           <textarea
             ref={input}
             rows={1}

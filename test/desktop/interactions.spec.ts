@@ -450,19 +450,22 @@ test('selecting a reply offers Reply and a side chat that can pop out and pin', 
   await expect(panel.getByText('为什么这样改？')).toBeVisible();
 
   // Pop out: a second window shows the same thread; pin keeps it on top.
-  const [popup] = await Promise.all([app.waitForEvent('window'), panel.getByTitle('Pop out as a window').click()]);
+  const [popup] = await Promise.all([
+    app.waitForEvent('window'),
+    panel.getByRole('button', { name: 'Pop out as a window' }).click(),
+  ]);
   await expect(popup.getByTestId('side-chat')).toHaveAttribute('data-mode', 'window');
-  await expect(popup.getByText('为什么这样改？')).toBeVisible();
+  await expect(popup.getByText('为什么这样改？', { exact: true }).last()).toBeVisible();
   await expect(page.getByTestId('side-chat')).toHaveCount(0);
-  await popup.getByTitle('Pin window').click();
-  await expect(popup.getByTitle('Unpin')).toBeVisible();
+  await popup.getByRole('button', { name: 'Pin window' }).click();
+  await expect(popup.getByRole('button', { name: 'Unpin' })).toBeVisible();
   const pinned = await app.evaluate(
     ({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.isAlwaysOnTop()).length,
   );
   expect(pinned).toBe(1);
 
   // Dock: back inside the session.
-  await popup.getByTitle('Put back in the session').click();
+  await popup.getByRole('button', { name: 'Put back in the session' }).click();
   await expect(page.getByTestId('side-chat')).toHaveAttribute('data-mode', 'embedded');
 
   // /btw from the composer asks without sending anything to the session.
@@ -470,5 +473,28 @@ test('selecting a reply offers Reply and a side chat that can pop out and pin', 
   await composer.fill('/btw 一句话总结');
   await composer.press('Enter');
   await expect(page.getByTestId('side-chat').getByText('一句话总结')).toBeVisible();
+
+  const overview = page.getByRole('button', { name: 'Session overview', exact: true });
+  await overview.click();
+  const menu = page.getByRole('dialog', { name: 'Session overview' });
+  await menu.getByRole('button', { name: 'Summary', exact: true }).click();
+  await expect(page.getByRole('tabpanel', { name: 'Session overview' }).getByText('Working directory')).toBeVisible();
+  await overview.click();
+  const list = menu.getByRole('region', { name: 'Side chats' });
+  await expect(list.getByRole('button', { name: '为什么这样改？' })).toBeVisible();
+  await list.getByRole('button', { name: 'New side chat' }).click();
+  const second = page.getByRole('tabpanel', { name: 'Side chat 2' });
+  await expect(second).toBeVisible();
+  await second.getByRole('textbox', { name: 'Side chat message' }).fill('第二个独立问题');
+  await second.getByRole('button', { name: 'Send', exact: true }).click();
+  const named = page.getByRole('tabpanel', { name: '第二个独立问题' });
+  await expect(named.getByText('第二个独立问题')).toBeVisible();
+  await expect(named.getByText('为什么这样改？')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Close 第二个独立问题', exact: true }).click();
+  await overview.click();
+  await list.getByRole('button', { name: '第二个独立问题' }).click();
+  await expect(named.getByText('第二个独立问题')).toBeVisible();
+  await page.getByRole('tab', { name: '为什么这样改？' }).click();
+  await expect(page.getByRole('tabpanel', { name: '为什么这样改？' }).getByText('一句话总结')).toBeVisible();
   expect(errors).toEqual([]);
 });
