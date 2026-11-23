@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { TextDecoder } from 'node:util';
+import type { WorkspaceFileContent } from '../shared/protocol';
 import { findInText, SEARCH_MAX_MATCHES, type SearchResult } from '../shared/text-search';
 
 export const MAX_FILE_BYTES = 1024 * 1024;
@@ -169,6 +170,16 @@ export function readSessionMedia(
   if (!type) return null;
   const content = readSessionBytes(root, rel, MAX_MEDIA_BYTES, allowedFiles);
   return content ? { ...type, src: `data:${type.mimeType};base64,${content.toString('base64')}` } : null;
+}
+
+/** Read an exact user-entered path, without the fallback used for file mentions in chat. */
+export function readWorkspaceFile(root: string, file: string): WorkspaceFileContent {
+  const target = resolveInside(root, file);
+  if (!inside(fs.realpathSync(root), fs.realpathSync(target))) throw new Error('Path outside the session');
+  if (!fs.statSync(target).isFile()) throw new Error('Not a file');
+  if (isImagePath(file)) return { image: readSessionImage(root, file)?.src ?? null };
+  if (MEDIA_TYPES[path.extname(file).slice(1).toLowerCase()]) return { media: readSessionMedia(root, file) };
+  return { text: readSessionFile(root, file) };
 }
 
 /** A raster image inside `root` as a data URL; the bytes, not the extension, decide the type. SVG is never served. */

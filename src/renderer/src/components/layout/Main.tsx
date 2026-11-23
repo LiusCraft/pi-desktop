@@ -8,6 +8,7 @@ import {
   GitForkIcon,
   LaptopIcon,
   LoaderCircleIcon,
+  PanelRightIcon,
 } from 'lucide-react';
 import { AttachmentTiles } from '@/components/common/Attachments';
 import { ContextCards } from '@/components/composer/ContextCards';
@@ -15,7 +16,8 @@ import { CodeComposer, WorkComposer } from '@/components/composer/Composers';
 import { copyText } from '@/components/common/Copy';
 import { InlineEdit } from '@/components/common/InlineEdit';
 import { AskDock, Transcript } from '@/components/thread/Transcript';
-import { NewWorkspaceTabMenu, Workspace } from '@/components/workspace/Workspace';
+import { NewWorkspaceTabButton, Workspace } from '@/components/workspace/Workspace';
+import { IconBtn } from '@/components/workspace/PanelToolbar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,9 +43,11 @@ import {
   startFromPr,
   deleteSession,
   exportHtml,
+  openNewWorkspaceTab,
   setOutputStyle,
   setSessionTitle,
   setViewMode,
+  toggleWorkspaceVisibility,
   welcomeDraftKey,
 } from '@/store/actions';
 import { updateSession, useApp, useCurrent, type AppState } from '@/store/app';
@@ -63,6 +67,8 @@ import { PluginPage } from '@/plugin/PluginPage';
 import { SidebarToggle } from './Sidebar';
 import { Inbox } from './Inbox';
 import { SessionOverview } from '@/components/workspace/SessionOverview';
+
+const WORKSPACE_PANEL_ID = 'tools';
 
 /**
  * Rename, open in an external app, transcript view, output style, export, archive.
@@ -193,6 +199,8 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
   const collapsed = useApp((st) => st.sidebarCollapsed);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const work = s?.meta.kind === 'work';
+  const hasWorkspaceTabs = !!s && openWorkspaceTabs(s, canTerminal).length > 0;
+  const workspaceVisible = hasWorkspaceTabs && !s?.workspaceHidden;
   return (
     <header
       className={cn(
@@ -250,6 +258,15 @@ function Header({ s, title }: { s?: SessionView; title?: string }) {
           )}
           <span className="flex-1" />
           <SessionOverview key={s.meta.id} s={s} />
+          <IconBtn
+            title={t(workspaceVisible ? 'panel.hideWorkspace' : 'panel.showWorkspace')}
+            className="no-drag aria-expanded:bg-accent aria-expanded:text-foreground"
+            aria-expanded={workspaceVisible}
+            aria-controls={hasWorkspaceTabs ? WORKSPACE_PANEL_ID : undefined}
+            onClick={() => (hasWorkspaceTabs ? toggleWorkspaceVisibility(s.meta.id) : openNewWorkspaceTab(s.meta.id))}
+          >
+            <PanelRightIcon className="size-4" aria-hidden />
+          </IconBtn>
         </>
       ) : (
         <span className="px-2 text-sm text-muted-foreground">
@@ -402,7 +419,8 @@ function CreatingThread({ preview }: { preview: NonNullable<AppState['creating']
 
 function Thread({ s }: { s: SessionView }) {
   const tabs = openWorkspaceTabs(s, canTerminal);
-  const expanded = s.workspaceExpanded;
+  const hidden = s.workspaceHidden;
+  const expanded = !hidden && s.workspaceExpanded;
   // The conversation/workspace split belongs to the session, so switching back restores it.
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({ id: `${s.meta.id}:thread` });
   const conversation = (
@@ -415,9 +433,11 @@ function Thread({ s }: { s: SessionView }) {
   if (!tabs.length)
     return (
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex shrink-0 justify-end px-2">
-          <NewWorkspaceTabMenu s={s} />
-        </div>
+        {!hidden && (
+          <div className="mx-1 flex shrink-0 justify-end">
+            <NewWorkspaceTabButton sid={s.meta.id} />
+          </div>
+        )}
         <div className="min-h-0 flex-1">{conversation}</div>
       </div>
     );
@@ -432,8 +452,19 @@ function Thread({ s }: { s: SessionView }) {
       <ResizablePanel id="conversation" minSize={320} inert={expanded}>
         {conversation}
       </ResizablePanel>
-      <ResizableHandle className={cn('bg-transparent', expanded && 'invisible')} disabled={expanded} />
-      <ResizablePanel id="tools" minSize={220} defaultSize="48%" style={{ overflow: 'hidden' }}>
+      <ResizableHandle
+        className={cn('bg-transparent', expanded && 'invisible')}
+        disabled={expanded || hidden}
+        hidden={hidden}
+      />
+      {/* Hiding removes the dock from the split without unmounting its tabs or changing the split sizes. */}
+      <ResizablePanel
+        id={WORKSPACE_PANEL_ID}
+        minSize={220}
+        defaultSize="48%"
+        hidden={hidden}
+        style={{ overflow: 'hidden' }}
+      >
         {/* Full width without moving or remounting the tab contents, or changing the saved split. */}
         <div className={cn('h-full p-1 pb-2', expanded && 'absolute inset-0 z-20 bg-background')}>
           <Workspace s={s} tabs={tabs} />

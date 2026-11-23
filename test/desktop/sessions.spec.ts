@@ -1,6 +1,8 @@
 // Managing sessions and projects in the real window: start, archive, restore, delete, remove a project.
 import fs from 'node:fs';
+import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
+import { once } from 'node:events';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -60,7 +62,7 @@ function removeTemporary(dir: string) {
 
 async function addWorkspaceTab(name: string) {
   await page.getByRole('button', { name: 'New workspace tab' }).click();
-  await page.getByRole('menuitem', { name, exact: true }).click();
+  await page.getByRole('tabpanel', { name: 'New tab' }).getByRole('button', { name, exact: true }).click();
 }
 
 const sidebar = () => page.locator('aside');
@@ -129,6 +131,47 @@ test('Code and Chat use one card for the editor and its controls', async () => {
   await expect(thread.card.getByRole('button', { name: 'Context window usage' })).toBeVisible();
 });
 
+test('the workspace new tab opens a file and an HTTP page', async () => {
+  await startSession('添加深色模式');
+  await expect(page.getByRole('button', { name: 'Rewind to here', exact: true })).toBeEnabled({ timeout: 60_000 });
+  const enter = async (value: string) => {
+    await page.getByRole('button', { name: 'New workspace tab' }).click();
+    const newTab = page.getByRole('tabpanel', { name: 'New tab' });
+    const input = newTab.getByRole('textbox', { name: 'File path or URL' });
+    await expect(input).toBeFocused();
+    await input.fill(value);
+    await input.press('Enter');
+  };
+  await enter('src/App.jsx');
+  const file = page.getByRole('tabpanel', { name: 'App.jsx' });
+  await expect(file).toContainText('function App');
+  const server = createServer((_req, res) => res.end('Workspace URL test'));
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Expected an HTTP test port');
+  const host = `127.0.0.1:${address.port}`;
+  const url = `http://${host}/`;
+  try {
+    await enter(url);
+    const web = page.getByRole('tabpanel', { name: host });
+    await expect(web.locator('webview')).toBeVisible();
+    await expect
+      .poll(() =>
+        app.evaluate(
+          ({ webContents }, target) => webContents.getAllWebContents().some((contents) => contents.getURL() === target),
+          url,
+        ),
+      )
+      .toBe(true);
+    await expect(file).toBeHidden();
+    await page.getByRole('tab', { name: 'App.jsx' }).click();
+    await expect(file).toBeVisible();
+  } finally {
+    server.close();
+  }
+});
+
 test('workspace boundaries stay clear without elevation in populated layouts', async ({}, testInfo) => {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1800, 1100));
   await startSession('添加深色模式');
@@ -154,9 +197,34 @@ test('workspace boundaries stay clear without elevation in populated layouts', a
   await expect(dock.getByRole('tab')).toHaveCount(3);
   await expect(workspace.getByRole('tabpanel')).toHaveCount(1);
   await expect(diff).toBeHidden();
-  await addWorkspaceTab('Files');
+  await dock.getByRole('tab', { name: 'Files' }).click();
   await expect(dock.getByRole('tab')).toHaveCount(3);
   await expect(files.getByRole('tab')).toHaveCount(2);
+
+  const add = page.getByRole('button', { name: 'New workspace tab' });
+  const titleBar = page
+    .locator('header')
+    .filter({ has: page.getByRole('button', { name: /^(Hide|Show) right workspace$/ }) });
+  await expect(titleBar.getByRole('button', { name: 'New workspace tab' })).toHaveCount(0);
+  await expect(dock.getByRole('button', { name: 'New workspace tab' })).toBeVisible();
+  const hide = titleBar.getByRole('button', { name: 'Hide right workspace' });
+  const show = titleBar.getByRole('button', { name: 'Show right workspace' });
+  const conversation = page.locator('[id="conversation"]');
+  const splitWidth = (await workspace.boundingBox())!.width;
+  const conversationWidth = (await conversation.boundingBox())!.width;
+  await hide.click();
+  await expect(workspace).toBeHidden();
+  await expect(workspace).toHaveCount(1);
+  await expect(show).toHaveAttribute('aria-expanded', 'false');
+  await expect(add).toBeHidden();
+  expect((await conversation.boundingBox())!.width).toBeGreaterThan(conversationWidth);
+  await show.click();
+  await expect(hide).toHaveAttribute('aria-expanded', 'true');
+  await expect(add).toBeVisible();
+  await expect(dock.getByRole('tab', { name: 'Files', selected: true })).toBeVisible();
+  await expect(files.getByRole('tab')).toHaveCount(2);
+  expect((await workspace.boundingBox())!.width).toBeCloseTo(splitWidth, 0);
+
   const branch = page.getByRole('region', { name: 'Branch status' });
   await expect(branch).toBeVisible();
   await expect(branch.getByRole('button', { name: 'Commit', exact: true })).toBeVisible();

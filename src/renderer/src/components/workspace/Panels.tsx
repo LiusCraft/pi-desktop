@@ -1503,7 +1503,7 @@ export function DetailPanel({ s }: { s: SessionView }) {
     if (!tool) return null;
     return <AgentTranscript s={s} tool={tool} close={() => closeDetail(id)} />;
   }
-  return <FileViewer s={s} />;
+  return <WorkspaceFilePanel s={s} d={d} />;
 }
 
 const HTML_FILE = /\.html?$/i;
@@ -1624,9 +1624,8 @@ function FileBody({
   );
 }
 
-/** A file opened from a Work session, which has no Files card: the preview stands alone. */
-function FileViewer({ s }: { s: SessionView }) {
-  const d = s.detail as FileDetail;
+/** A standalone file preview in the workspace. */
+export function WorkspaceFilePanel({ s, d }: { s: SessionView; d: FileDetail }) {
   const [source, setSource] = useSourceToggle(d.path);
   const actions = useFileActions(s, d, source, setSource);
   return (

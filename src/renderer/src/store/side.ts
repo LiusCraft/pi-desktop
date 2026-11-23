@@ -5,7 +5,7 @@ import { create } from 'zustand';
 import { sideWindowKey, type SideChat, type SideChatSummary, type SideWindow } from '@shared/protocol';
 import { bridge, call, canTerminal, errText } from '@/lib/api';
 import { getApp, updateSession } from './app';
-import { closeWorkspaceTab, isSideChatTab, sideChatId, sideChatTab } from './layout';
+import { activateWorkspaceTab, closeWorkspaceTab, isSideChatTab, sideChatId, sideChatTab } from './layout';
 import { subscribeResource } from './resources';
 
 export const useSide = create<{ windows: Record<string, { pinned: boolean }> }>(() => ({ windows: {} }));
@@ -14,7 +14,7 @@ function openSideTab(sid: string, chatId: string) {
   const tab = sideChatTab(chatId);
   updateSession(sid, (s) => {
     if (!s.sideTabs.includes(tab)) s.sideTabs.push(tab);
-    s.activeTab = tab;
+    activateWorkspaceTab(s, tab);
   });
 }
 
@@ -71,8 +71,12 @@ export async function createSide(sid: string) {
 // Concurrent /btw and selection requests should not both create the first thread.
 const opening = new Map<string, Promise<string>>();
 export async function showSide(sid: string) {
-  const tab = getApp().sessions[sid]?.activeTab ?? null;
-  if (isSideChatTab(tab)) return sideChatId(tab);
+  const session = getApp().sessions[sid];
+  const tab = session?.activeTab ?? null;
+  if (isSideChatTab(tab)) {
+    if (session?.workspaceHidden) openSideTab(sid, sideChatId(tab));
+    return sideChatId(tab);
+  }
   const pending = opening.get(sid);
   if (pending) return pending;
   const resolving = (async () => {

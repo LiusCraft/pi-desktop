@@ -1,5 +1,9 @@
 // The workspace tabs and selection belong to the session.
-import type { Panels, SessionView, SideChatTab, WorkspaceTab } from './types';
+import type { Panels, SessionView, SideChatTab, WorkspaceResourceId, WorkspaceTab } from './types';
+
+export function isWorkspaceResource(tab: WorkspaceTab | null): tab is WorkspaceResourceId {
+  return tab?.startsWith('resource:') ?? false;
+}
 
 export function isSideChatTab(tab: WorkspaceTab | null): tab is SideChatTab {
   return tab?.startsWith('side:') ?? false;
@@ -83,11 +87,19 @@ export function openWorkspaceTabs(s: SessionView, canTerminal: boolean): Workspa
     return !work && (tab !== 'terminal' || canTerminal);
   });
   if (s.sessionInfoOpen) tabs.push('sessionInfo');
-  return tabs.concat(s.sideTabs);
+  tabs.push(...s.sideTabs, ...s.workspaceResources.map((resource) => resource.id));
+  if (s.workspaceNewOpen) tabs.push('new');
+  return tabs;
 }
 
 export function selectedWorkspaceTab(s: SessionView, tabs: readonly WorkspaceTab[]): WorkspaceTab | null {
   return s.activeTab && tabs.includes(s.activeTab) ? s.activeTab : (tabs[0] ?? null);
+}
+
+/** Explicitly opening or selecting any tab also reveals the dock. */
+export function activateWorkspaceTab(s: SessionView, tab: WorkspaceTab) {
+  s.activeTab = tab;
+  s.workspaceHidden = false;
 }
 
 export function closeWorkspaceTab(s: SessionView, tab: WorkspaceTab, canTerminal: boolean, remove: () => void) {
@@ -110,7 +122,8 @@ export function readWorkspaceTab(id: string): WorkspaceTab | null {
 
 export function writeWorkspaceTab(id: string, tab: WorkspaceTab | null) {
   // Transient tabs don't overwrite the last regular selection.
-  if (tab === 'detail' || tab === 'sessionInfo' || isSideChatTab(tab)) return;
+  if (tab === 'detail' || tab === 'sessionInfo' || tab === 'new' || isSideChatTab(tab) || isWorkspaceResource(tab))
+    return;
   try {
     if (tab) store.setItem(activeTabKey(id), tab);
     else store.removeItem(activeTabKey(id));

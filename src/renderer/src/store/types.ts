@@ -171,7 +171,11 @@ export interface SessionChange extends ChangedFile {
 
 /** The tabs in the workspace beside the conversation. */
 export type SideChatTab = `side:${string}`;
-export type WorkspaceTab = keyof Panels | 'detail' | 'sessionInfo' | SideChatTab;
+export type WorkspaceResourceId = `resource:${string}`;
+export type WorkspaceResource =
+  | { id: WorkspaceResourceId; kind: 'file'; detail: FileDetail }
+  | { id: WorkspaceResourceId; kind: 'web'; url: string };
+export type WorkspaceTab = keyof Panels | 'detail' | 'sessionInfo' | 'new' | SideChatTab | WorkspaceResourceId;
 
 export interface Panels {
   diff: boolean;
@@ -249,6 +253,9 @@ export interface SessionView {
   activeTab: WorkspaceTab | null;
   sessionInfoOpen: boolean;
   sideTabs: SideChatTab[];
+  workspaceNewOpen: boolean;
+  workspaceResources: WorkspaceResource[];
+  workspaceHidden: boolean;
   workspaceExpanded: boolean;
   detail: Detail | null;
   previewUrl: string | null;

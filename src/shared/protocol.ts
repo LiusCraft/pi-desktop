@@ -1462,6 +1462,8 @@ export interface Api {
   /** Which of `paths` (relative to the session folder, or absolute) still exist as files. */
   'sessions:existing'(id: string, paths: string[]): string[];
   'sessions:readFile'(id: string, rel: string): string | null;
+  'sessions:workspaceFile'(id: string, path: string): WorkspaceFileContent;
+  'workspace:localFile'(path: string): WorkspaceFileContent | null;
   /** Which lines of the project's text files contain `query`. */
   'sessions:search'(id: string, query: string, caseSensitive: boolean): SearchResult;
   'sessions:readImage'(id: string, rel: string): { mimeType: string; src: string } | null;
@@ -1578,6 +1580,11 @@ export interface Api {
   'models:refresh'(): ModelCatalogInfo;
 }
 
+export type WorkspaceFileContent =
+  | { text: string | null }
+  | { image: string | null }
+  | { media: { kind: 'audio' | 'video'; src: string } | null };
+
 export type ApiChannel = keyof Api;
 export type ApiArgs<K extends ApiChannel> = Parameters<Api[K]>;
 export type ApiResult<K extends ApiChannel> = Awaited<ReturnType<Api[K]>>;
@@ -1641,6 +1648,7 @@ export const HOST_CHANNELS = [
   'sessions:files',
   'sessions:existing',
   'sessions:readFile',
+  'sessions:workspaceFile',
   'sessions:search',
   'sessions:readImage',
   'sessions:readMedia',
@@ -1768,6 +1776,7 @@ export const MAIN_CHANNELS = [
   'terminal:close',
   'sessions:openIn',
   'sessions:openPath',
+  'workspace:localFile',
   'side:pop',
   'side:pin',
   'side:dock',
