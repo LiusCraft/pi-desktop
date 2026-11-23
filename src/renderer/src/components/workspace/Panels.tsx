@@ -52,6 +52,8 @@ import { Input } from '@/components/ui/input';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { bridge, call, isMac, isRemote } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { platformBinding, shortcutFor } from '@shared/shortcuts';
+import { shortcutFromEvent, useShortcutHint } from '@/lib/shortcut-keys';
 import { contentOf, onContent, wantContent } from '@/lib/change-content';
 import { fileDiffOf } from '@/lib/file-diff';
 import { modeName } from '@/lib/constants';
@@ -76,7 +78,7 @@ import {
   stopTask,
   togglePanel,
 } from '@/store/actions';
-import { modelName, setPref, updateSession, useApp } from '@/store/app';
+import { getApp, modelName, setPref, updateSession, useApp } from '@/store/app';
 import { findByKey, findTool } from '@/store/transcript';
 import type { CardId, ChangedFile, DiffScope, DropPlace, Item, SessionChange, SessionView } from '@/store/types';
 import { DiffSince } from './DiffSince';
@@ -267,21 +269,29 @@ function TreeSplit({ id, tree, children }: { id: string; tree: ReactNode | null;
   );
 }
 
-/** Ctrl/Cmd+F (and +Shift for all files) inside a card opens its find bar. */
+/** A focused card handles find locally, rather than switching to the Files card. */
 function findKeys(open: (scope: FindScope) => void) {
   return {
+    'data-panel-find': true,
     onKeyDownCapture: (event: React.KeyboardEvent) => {
-      const mod = isMac ? event.metaKey : event.ctrlKey;
-      if (!mod || event.altKey || event.key.toLowerCase() !== 'f') return;
-      event.preventDefault();
-      event.stopPropagation();
-      open(event.shiftKey ? 'all' : 'file');
+      const pressed = platformBinding(shortcutFromEvent(event.nativeEvent, isMac), isMac);
+      const overrides = getApp().settings.shortcuts;
+      for (const [action, scope] of [
+        ['findFile', 'file'],
+        ['findAll', 'all'],
+      ] as const) {
+        const key = shortcutFor(overrides, action);
+        if (!key || platformBinding(key, isMac) !== pressed) continue;
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) open(scope);
+        break;
+      }
     },
   };
 }
 
 const FIND_DEBOUNCE_MS = 250;
-const findHint = `${isMac ? '⌘' : 'Ctrl+'}F`;
 
 /** A step through `count` hits, wrapping around. */
 const wrapIndex = (index: number, direction: 1 | -1, count: number) => (index + direction + count) % count;
@@ -301,6 +311,7 @@ const NO_COMMITS: CommitInfo[] = [];
 
 export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const t = useT();
+  const findHint = useShortcutHint('findFile', t('panel.findInDiff'));
   // Generated files start collapsed; `flipped` holds the user's per-file overrides.
   const [flipped, setFlipped] = useState<Set<string>>(new Set());
   const [showTree, setShowTree] = useState(true);
@@ -578,7 +589,7 @@ export function DiffPanel({ s, ...card }: CardProps & { s: SessionView }) {
     },
     {
       id: 'find',
-      label: `${t('panel.findInDiff')}  ${findHint}`,
+      label: findHint,
       icon: <SearchIcon className="size-3.5" />,
       focusContent: true,
       onSelect: openFind,
@@ -1104,6 +1115,8 @@ type FileDetail = Extract<NonNullable<SessionView['detail']>, { type: 'file' }>;
 /** One window for the project: the file tree on the left, the open files (as tabs) on the right. */
 export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
   const t = useT();
+  const findHint = useShortcutHint('findFile');
+  const findAllHint = useShortcutHint('findAll');
   const id = s.meta.id;
   const d = s.detail?.type === 'file' ? s.detail : null;
   const [source, setSource] = useSourceToggle(d?.path ?? '');
@@ -1235,7 +1248,7 @@ export function FilesPanel({ s, ...card }: CardProps & { s: SessionView }) {
         },
         {
           id: 'find',
-          label: `${t('panel.findInFiles')}  ${findHint} · ${isMac ? '⇧⌘' : 'Ctrl+Shift+'}F`,
+          label: `${t('panel.findInFiles')}  ${[findHint, findAllHint].filter(Boolean).join(' · ')}`,
           icon: <SearchIcon className="size-3.5" />,
           focusContent: true,
           onSelect: () => openFind(d ? 'file' : 'all'),

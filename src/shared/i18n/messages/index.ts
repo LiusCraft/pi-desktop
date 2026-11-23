@@ -20,6 +20,7 @@ import { sidebar } from './sidebar';
 import { web } from './web';
 import { update } from './update';
 import { privacy } from './privacy';
+import { shortcuts } from './shortcuts';
 
 /** Every message of the app, by dotted key; each area lives in its own file next to this one. */
 export const MESSAGES = {
@@ -44,5 +45,6 @@ export const MESSAGES = {
   ...web,
   ...update,
   ...privacy,
+  ...shortcuts,
 } satisfies Record<string, Entry>;
 export type MessageKey = keyof typeof MESSAGES;

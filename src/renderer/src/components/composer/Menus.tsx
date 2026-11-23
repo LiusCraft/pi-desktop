@@ -43,6 +43,8 @@ import { setApp, useApp } from '@/store/app';
 import { watchSessionContext } from '@/lib/session-context';
 
 /** A dropdown that a slash command (/model, /permissions) can also open. */
+import { useShortcutTarget } from '@/lib/shortcut-keys';
+
 function useMenu(name: 'model' | 'mode' | 'context') {
   const open = useApp((s) => s.menu === name);
   return { open, onOpenChange: (o: boolean) => setApp((s) => void (s.menu = o ? name : null)) };
@@ -243,6 +245,7 @@ function effortThumbColor(index: number, lastIndex: number) {
 
 export function EffortMenu({ levels, effort }: { levels: ThinkingLevel[]; effort: ThinkingLevel | null }) {
   const t = useT();
+  const target = useShortcutTarget('effort', t('menu.thinkingEffort'));
   const availableLevels = useMemo(() => orderedThinkingLevels(levels), [levels]);
   const resolvedIndex = closestThinkingLevelIndex(availableLevels, effort);
   const [draftIndex, setDraftIndex] = useState(resolvedIndex);
@@ -282,7 +285,7 @@ export function EffortMenu({ levels, effort }: { levels: ThinkingLevel[]; effort
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <FootButton title={t('menu.thinkingEffort')} className={tone}>
+        <FootButton {...target} className={tone}>
           {activeLevel ? levelLabel(activeLevel) : t('menu.effort')}
         </FootButton>
       </PopoverTrigger>
@@ -349,11 +352,12 @@ const MODE_ICON: Record<PermissionMode, LucideIcon> = {
 export function ModeMenu({ mode }: { mode: PermissionMode }) {
   const t = useT();
   const menu = useMenu('mode');
+  const target = useShortcutTarget('mode', t('menu.mode'));
   const current = MODES.find((m) => m.id === mode) ?? MODES[0];
   return (
     <DropdownMenu {...menu}>
       <DropdownMenuTrigger asChild>
-        <FootButton title={`${t('menu.mode')}  Shift+Tab`} className={MODE_TONE[mode]}>
+        <FootButton {...target} data-shortcut-menu className={MODE_TONE[mode]}>
           {current.name}
         </FootButton>
       </DropdownMenuTrigger>

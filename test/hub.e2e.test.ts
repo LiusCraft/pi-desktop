@@ -610,6 +610,13 @@ describe('code sessions', { timeout: 120_000 }, () => {
     expect(read(meta.cwd, 'src/utils/date.js')).toMatch(/getMonth\(\) \+ 1/);
     expect(read(project, 'src/utils/date.js'), 'main checkout untouched').not.toMatch(/getMonth\(\) \+ 1/);
     expect(r.finalText).toMatch(/测试全部通过/);
+    expect(driver.hub.meta(meta.id).lastResponseAt).toBeGreaterThanOrEqual(meta.createdAt);
+    expect(r.events).toContainEqual(
+      expect.objectContaining({
+        type: 'meta',
+        meta: expect.objectContaining({ lastResponseAt: expect.any(Number) }),
+      }),
+    );
 
     const { files, state } = await driver.hub.changes(meta.id);
     expect(files.map((c) => c.path).sort()).toEqual(['src/utils/date.js', 'tests/date.test.js']);

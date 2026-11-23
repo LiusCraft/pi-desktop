@@ -50,7 +50,8 @@ import {
 } from '@/components/ui/context-menu';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { call, isMac, isRemote, modKey } from '@/lib/api';
+import { call, isMac, isRemote } from '@/lib/api';
+import { useShortcutHint } from '@/lib/shortcut-keys';
 import { useAgo, fname } from '@/lib/format';
 import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -85,7 +86,7 @@ import type { SessionView } from '@/store/types';
 export function SidebarToggle({ className }: { className?: string }) {
   const t = useT();
   const collapsed = useApp((s) => s.sidebarCollapsed);
-  const hint = `${t(collapsed ? 'sidebar.show' : 'sidebar.hide')}  ${modKey}B`;
+  const hint = useShortcutHint('sidebar', t(collapsed ? 'sidebar.show' : 'sidebar.hide'));
   const button = (
     <button
       onClick={() => toggleSidebar()}
@@ -988,6 +989,7 @@ function UserMenu() {
   const t = useT();
   const info = useApp((s) => s.info);
   const theme = useApp((s) => s.settings.resolvedTheme);
+  const settingsHint = useShortcutHint('settings');
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-sm hover:bg-sidebar-accent">
@@ -1019,7 +1021,7 @@ function UserMenu() {
         <DropdownMenuItem onSelect={() => call('settings:open')}>
           <SettingsIcon />
           {t('sidebar.settings')}
-          <span className="ml-auto text-xs text-muted-foreground">{modKey},</span>
+          <span className="ml-auto text-xs text-muted-foreground">{settingsHint}</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -1063,14 +1065,19 @@ function RemoteBar() {
 export function Sidebar() {
   const t = useT();
   const view = useApp((s) => s.view);
+  const sessionsHint = useShortcutHint('sessions', t('shortcuts.sessions'));
+  const paletteHint = useShortcutHint('palette', t('sidebar.search'));
+  const workHint = useShortcutHint('work', t('shortcuts.work'));
+  const codeHint = useShortcutHint('code', t('shortcuts.code'));
   return (
     <aside className="flex h-full flex-col bg-sidebar">
       <div className={cn('app-drag flex h-11 shrink-0 items-center gap-1 px-2', isMac && 'pl-[84px]')}>
         <SidebarToggle />
         <button
           className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-          title={`${t('sidebar.search')}  ${modKey}K`}
-          onClick={() => setApp((s) => void (s.paletteOpen = true))}
+          title={sessionsHint}
+          aria-label={t('shortcuts.sessions')}
+          onClick={() => setApp((s) => void (s.sessionsOpen = true))}
         >
           <SearchIcon className="size-4" />
         </button>
@@ -1089,6 +1096,7 @@ export function Sidebar() {
             <TabsTrigger
               key={v}
               value={v}
+              title={v === 'work' ? workHint : codeHint}
               className="relative z-10 h-full hover:bg-background/40 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:hover:bg-transparent"
             >
               {v === 'work' ? <ListChecksIcon className="size-3.5" /> : <CodeXmlIcon className="size-3.5" />}
@@ -1107,7 +1115,7 @@ export function Sidebar() {
         {view === 'code' && (
           <button
             className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent"
-            title={`${t('sidebar.search')}  ${modKey}K`}
+            title={paletteHint}
             onClick={() => setApp((s) => void (s.paletteOpen = true))}
           >
             <SearchIcon className="size-4" />

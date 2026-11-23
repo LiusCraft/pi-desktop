@@ -293,7 +293,11 @@ export function AskDock({ s }: { s: SessionView }) {
   const item = s.items.find((i): i is ItemOf<'ask'> => i.kind === 'ask' && !i.resolved && !!i.requestId);
   if (!item) return null;
   return (
-    <div {...PET_PERCH} className="mx-auto max-h-[65%] w-full max-w-[786px] shrink-0 overflow-y-auto px-6 pb-2">
+    <div
+      {...PET_PERCH}
+      data-shortcut-request={item.key}
+      className="mx-auto max-h-[65%] w-full max-w-[786px] shrink-0 overflow-y-auto px-6 pb-2"
+    >
       <AskCard key={item.key} sid={s.meta.id} item={item} />
     </div>
   );

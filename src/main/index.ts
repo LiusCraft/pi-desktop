@@ -45,6 +45,7 @@ import {
 } from '@shared/protocol';
 import { DEFAULT_PET_ID } from '@shared/pets';
 import { DEFAULT_SETTINGS } from '@shared/settings';
+import { normalizeShortcuts } from '@shared/shortcuts';
 import {
   ARTIFACT_ENTRY,
   ARTIFACT_ID_PATTERN,
@@ -175,6 +176,7 @@ function ensureDemoProject() {
 // Preferences live in one place so every window reads the same values.
 function settingsValue(): Settings {
   const settings = { ...DEFAULT_SETTINGS, ...store.get<Partial<Settings>>('settings', {}) };
+  settings.shortcuts = normalizeShortcuts(settings.shortcuts);
   const rawFontSize = settings.fontSize;
   settings.fontSize =
     typeof rawFontSize === 'number' && Number.isFinite(rawFontSize)
@@ -232,6 +234,7 @@ function watchPets() {
 function saveSettings(patch: Partial<Settings>) {
   const clean: Partial<Settings> = { ...patch };
   if ('worktreeDir' in patch) clean.worktreeDir = normalizeWorktreeDir(patch.worktreeDir);
+  if ('shortcuts' in patch) clean.shortcuts = normalizeShortcuts(patch.shortcuts);
   store.set('settings', { ...settingsValue(), ...clean });
   return applySettings();
 }

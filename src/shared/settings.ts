@@ -10,6 +10,7 @@ import {
 
 /** What a setting is until the user changes it; `theme: null` means "not chosen yet": follow the system. */
 export const DEFAULT_SETTINGS: Settings = {
+  shortcuts: {},
   theme: null,
   palette: 'default',
   density: 'compact',
