@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { invoke } from './renderer-dom';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import type { SessionMeta } from '@shared/protocol';
 
@@ -42,21 +42,26 @@ it('updates the open sidebar and toggles automatic updates through the host', as
     </TooltipProvider>,
   );
   handleHostEvent({ type: 'meta', sessionId: meta.id, meta });
-  await screen.findByText('Looking for the cache key');
+  const session = await screen.findByRole('button', { name: meta.title });
+  act(() => session.focus());
+  const tooltip = await screen.findByRole('tooltip');
+  expect(tooltip.textContent).toContain(meta.description);
+
   const updated = { ...meta, title: 'Repair login redirect', description: 'Cache key fixed; tests pass' };
   handleHostEvent({ type: 'meta', sessionId: meta.id, meta: updated });
-  await screen.findByText(updated.description);
-  expect(screen.queryByText('Looking for the cache key')).toBeNull();
-  expect(screen.getByRole('button', { name: updated.title })).toBeTruthy();
+  expect(await screen.findByRole('button', { name: updated.title })).toBe(session);
+  expect(tooltip.textContent).toContain(updated.description);
+  expect(tooltip.textContent).not.toContain(meta.description);
+  fireEvent.keyDown(session, { key: 'Escape' });
 
   invoke.mockImplementation(async (channel) => {
     if (channel === 'sessions:update') {
       handleHostEvent({ type: 'meta', sessionId: meta.id, meta: { ...updated, autoUpdateMetadata: false } });
     }
   });
-  fireEvent.contextMenu(screen.getByRole('button', { name: updated.title }));
+  fireEvent.contextMenu(session);
   fireEvent.click(await screen.findByRole('menuitem', { name: 'Pause title & description updates' }));
   await waitFor(() => expect(invoke).toHaveBeenCalledWith('sessions:update', meta.id, { autoUpdateMetadata: false }));
-  fireEvent.contextMenu(screen.getByRole('button', { name: updated.title }));
+  fireEvent.contextMenu(session);
   await screen.findByRole('menuitem', { name: 'Resume title & description updates' });
 });
