@@ -289,7 +289,18 @@ export interface NestedFileOutput {
   content?: FileContent;
 }
 
+/** Display data for a tool executed inside Codemode, not a model-facing tool result. */
+export interface ScriptToolResult {
+  parentToolCallId: string;
+  toolCallId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  result: { content: ContentBlock[]; details?: Record<string, unknown> };
+  isError: boolean;
+}
+
 export interface AgentMessage {
+  scriptTools?: ScriptToolResult[];
   nestedFileOutputs?: NestedFileOutput[];
   /** SDK record of calls made inside another tool. Arguments may be omitted by its size cap. */
   nestedCalls?: {
