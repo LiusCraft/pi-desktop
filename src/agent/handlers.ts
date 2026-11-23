@@ -87,6 +87,7 @@ export function sessionHandlers(
     'sessions:files': withHub((h, id) => h.files(id)),
     'sessions:existing': withHub((h, id, paths) => h.existing(id, paths)),
     'sessions:readFile': withHub((h, id, rel) => h.readFile(id, rel)),
+    'sessions:workspaceFile': withHub((h, id, file) => h.workspaceFile(id, file)),
     'sessions:search': withHub((h, id, query, caseSensitive) => h.search(id, query, caseSensitive)),
     'sessions:readImage': withHub((h, id, rel) => h.readImage(id, rel)),
     'sessions:readMedia': withHub((h, id, rel) => h.readMedia(id, rel)),

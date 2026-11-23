@@ -45,6 +45,7 @@ import {
 import { dialogs } from './dialogs';
 import { activeDraft, drafts, getDraft, sessionDraftKey, useDrafts } from './drafts';
 import {
+  activateWorkspaceTab,
   closeWorkspaceTab,
   forgetPanels,
   isSideChatTab,
@@ -80,7 +81,18 @@ import {
   transcriptItems,
   type Effects,
 } from './transcript';
-import type { ChangedFile, Detail, FileDetail, Item, ItemOf, Panels, SessionView, WorkspaceTab } from './types';
+import type {
+  ChangedFile,
+  Detail,
+  FileDetail,
+  Item,
+  ItemOf,
+  Panels,
+  SessionView,
+  WorkspaceResource,
+  WorkspaceResourceId,
+  WorkspaceTab,
+} from './types';
 
 export const fail = (err: unknown) => toast.error(errText(err));
 
@@ -1495,7 +1507,7 @@ export async function forkSession(id: string) {
 export function selectWorkspaceTab(id: string, tab: WorkspaceTab) {
   const s = getApp().sessions[id];
   if (!s || !openWorkspaceTabs(s, canTerminal).includes(tab)) return;
-  updateSession(id, (v) => void (v.activeTab = tab));
+  updateSession(id, (v) => activateWorkspaceTab(v, tab));
   writeWorkspaceTab(id, tab);
 }
 
@@ -1503,7 +1515,7 @@ export function toggleSessionInfo(id: string, open: boolean) {
   updateSession(id, (s) => {
     if (open) {
       s.sessionInfoOpen = true;
-      s.activeTab = 'sessionInfo';
+      activateWorkspaceTab(s, 'sessionInfo');
     } else closeWorkspaceTab(s, 'sessionInfo', canTerminal, () => void (s.sessionInfoOpen = false));
   });
 }
@@ -1512,11 +1524,11 @@ export function togglePanel(id: string, panel: keyof Panels, open?: boolean) {
   const previous = getApp().sessions[id];
   if (!previous) return;
   const active = selectedWorkspaceTab(previous, openWorkspaceTabs(previous, canTerminal));
-  const show = open ?? active !== panel;
+  const show = open ?? (previous.workspaceHidden || active !== panel);
   updateSession(id, (v) => {
     if (show) {
       v.panels[panel] = true;
-      v.activeTab = panel;
+      activateWorkspaceTab(v, panel);
     } else
       closeWorkspaceTab(v, panel, canTerminal, () => {
         v.panels[panel] = false;
@@ -1536,6 +1548,47 @@ export function togglePanel(id: string, panel: keyof Panels, open?: boolean) {
   if (panel === 'files' && show) void loadFiles(id, true);
 }
 
+export function openNewWorkspaceTab(id: string) {
+  updateSession(id, (s) => {
+    s.workspaceNewOpen = true;
+    activateWorkspaceTab(s, 'new');
+  });
+}
+
+export function closeNewWorkspaceTab(id: string) {
+  updateSession(id, (s) => closeWorkspaceTab(s, 'new', canTerminal, () => void (s.workspaceNewOpen = false)));
+}
+
+export function openWorkspaceResource(
+  id: string,
+  target: { kind: 'file'; detail: FileDetail } | { kind: 'web'; url: string },
+) {
+  updateSession(id, (s) => {
+    if (!s.workspaceNewOpen) return;
+    const existing = s.workspaceResources.find((resource) =>
+      target.kind === 'web'
+        ? resource.kind === 'web' && resource.url === target.url
+        : resource.kind === 'file' && resource.detail.path === target.detail.path,
+    );
+    const resource: WorkspaceResource = existing ?? { ...target, id: `resource:${crypto.randomUUID()}` };
+    if (!existing) s.workspaceResources.push(resource);
+    if (s.activeTab === 'new') s.activeTab = resource.id;
+    s.workspaceNewOpen = false;
+  });
+}
+
+export function closeWorkspaceResource(id: string, tab: WorkspaceResourceId) {
+  updateSession(id, (s) =>
+    closeWorkspaceTab(s, tab, canTerminal, () => {
+      s.workspaceResources = s.workspaceResources.filter((resource) => resource.id !== tab);
+    }),
+  );
+}
+
+export function toggleWorkspaceVisibility(id: string) {
+  updateSession(id, (v) => void (v.workspaceHidden = !v.workspaceHidden));
+}
+
 export function toggleWorkspaceExpanded(id: string) {
   updateSession(id, (v) => void (v.workspaceExpanded = !v.workspaceExpanded));
 }
@@ -1547,7 +1600,7 @@ export function closeDetail(id: string) {
 
 function showDetail(s: SessionView, detail: Detail) {
   s.detail = detail;
-  s.activeTab = 'detail';
+  activateWorkspaceTab(s, 'detail');
 }
 export function openPlan(id: string, key: string) {
   updateSession(id, (v) => showDetail(v, { type: 'plan', key }));

@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll as after, beforeAll as before, describe, it } from 'vitest';
-import { MAX_FILE_BYTES, readSessionFile, readSessionImage } from '../src/agent/files';
+import { MAX_FILE_BYTES, readSessionFile, readSessionImage, readWorkspaceFile } from '../src/agent/files';
 
 // Creating symlinks on Windows needs Developer Mode or admin rights.
 const canSymlink = (() => {
@@ -42,6 +42,13 @@ describe('session current-file reader', () => {
     fs.writeFileSync(path.join(temp, 'project', 'same.txt'), 'project version');
     fs.writeFileSync(path.join(root, 'same.txt'), 'worktree version');
     assert.equal(readSessionFile(root, 'same.txt'), 'worktree version');
+  });
+  it('opens exact workspace paths and rejects missing files, directories, and paths outside the workspace', () => {
+    assert.deepEqual(readWorkspaceFile(root, 'nested/file.txt'), { text: 'line 1\n你好\n' });
+    assert.deepEqual(readWorkspaceFile(root, path.join(root, 'nested/file.txt')), { text: 'line 1\n你好\n' });
+    assert.throws(() => readWorkspaceFile(root, 'file.txt'), /ENOENT/);
+    assert.throws(() => readWorkspaceFile(root, 'nested'), /Not a file/);
+    assert.throws(() => readWorkspaceFile(root, '../session-other/private.txt'), /outside the session/);
   });
   it('allows an exact file the session operated on without allowing its folder', () => {
     const external = path.join(sibling, 'private.txt');

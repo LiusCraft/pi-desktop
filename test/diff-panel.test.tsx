@@ -28,10 +28,22 @@ vi.mock('react-resizable-panels', () => ({
 }));
 vi.mock('../src/renderer/src/components/ui/resizable', () => ({
   ResizablePanelGroup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  ResizablePanel: ({ children, inert }: { children: ReactNode; inert?: boolean }) => (
-    <div inert={inert}>{children}</div>
+  ResizablePanel: ({
+    children,
+    hidden,
+    id,
+    inert,
+  }: {
+    children: ReactNode;
+    hidden?: boolean;
+    id?: string;
+    inert?: boolean;
+  }) => (
+    <div id={id} hidden={hidden} inert={inert}>
+      {children}
+    </div>
   ),
-  ResizableHandle: () => <hr />,
+  ResizableHandle: ({ hidden }: { hidden?: boolean }) => <hr data-slot="resizable-handle" hidden={hidden} />,
 }));
 vi.mock('../src/renderer/src/components/common/ReviewCodeView', async () => {
   const { forwardRef, useEffect, useImperativeHandle } = await import('react');
@@ -85,7 +97,7 @@ vi.mock('../src/renderer/src/components/workspace/PathTree', () => ({
 
 const { Main } = await import('../src/renderer/src/components/layout/Main');
 const { toolFromArgs } = await import('../src/renderer/src/lib/tools');
-const { NewWorkspaceTabMenu, Workspace } = await import('../src/renderer/src/components/workspace/Workspace');
+const { NewWorkspaceTabButton, Workspace } = await import('../src/renderer/src/components/workspace/Workspace');
 const { openWorkspaceTabs, readWorkspaceTab } = await import('../src/renderer/src/store/layout');
 const { TooltipProvider } = await import('../src/renderer/src/components/ui/tooltip');
 const { emptySession } = await import('../src/renderer/src/store/transcript');
@@ -164,7 +176,9 @@ function MountedPanel() {
   const s = useApp((state) => state.sessions[id]);
   const tabs = openWorkspaceTabs(s, true);
   return (
-    <TooltipProvider>{tabs.length ? <Workspace s={s} tabs={tabs} /> : <NewWorkspaceTabMenu s={s} />}</TooltipProvider>
+    <TooltipProvider>
+      {tabs.length ? <Workspace s={s} tabs={tabs} /> : <NewWorkspaceTabButton sid={id} />}
+    </TooltipProvider>
   );
 }
 const since = () => screen.getByRole('button', { name: 'Compare against…' });
@@ -172,9 +186,12 @@ const fileRow = (path: string) =>
   within(screen.getByRole('navigation', { name: 'Changed files' })).getByRole('button', {
     name: new RegExp(`^${path} `),
   });
+function newWorkspaceTab() {
+  fireEvent.click(screen.getByRole('button', { name: 'New workspace tab' }));
+  return screen.getByRole('tabpanel', { name: 'New tab' });
+}
 async function addWorkspaceTab(name: string) {
-  fireEvent.keyDown(screen.getByRole('button', { name: 'New workspace tab' }), { key: 'Enter' });
-  fireEvent.click(await screen.findByRole('menuitem', { name }));
+  fireEvent.click(await within(newWorkspaceTab()).findByRole('button', { name }));
 }
 
 async function pickScope(name: 'Last commit' | 'Last turn') {
@@ -315,7 +332,50 @@ describe('Workspace tabs', () => {
     expect(screen.getByRole('button', { name: 'New workspace tab' })).toBeTruthy();
   });
 
-  it('selects an already-open tab from the menu without reading the file again or creating a duplicate', async () => {
+  it('keeps the title bar controls available and restores hidden tabs without remounting them', async () => {
+    render(
+      <TooltipProvider>
+        <Main />
+      </TooltipProvider>,
+    );
+    await act(() => openFileRef('src/app.ts', 1, undefined, true));
+    const add = screen.getByRole('button', { name: 'New workspace tab' });
+    const header = screen.getByRole('button', { name: 'Hide right workspace' }).closest('header')!;
+    expect(add.closest('[role="tablist"]')).toBe(screen.getByRole('tablist', { name: 'Panels' }));
+    expect(header.contains(add)).toBe(false);
+    const hide = () => within(header).getByRole('button', { name: 'Hide right workspace' });
+    const show = () => within(header).getByRole('button', { name: 'Show right workspace' });
+    const files = screen.getByRole('tabpanel', { name: 'Files' });
+    expect(hide().getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(hide());
+    expect(screen.queryByRole('tablist', { name: 'Panels' })).toBeNull();
+    expect(files.closest('[hidden]')?.id).toBe(show().getAttribute('aria-controls'));
+    expect(show().getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('button', { name: 'New workspace tab' })).toBeNull();
+    fireEvent.click(show());
+    expect(screen.getByRole('tabpanel', { name: 'Files' })).toBe(files);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand workspace' }));
+    fireEvent.click(hide());
+    expect(document.querySelector('[data-slot="resizable-handle"][hidden]')).not.toBeNull();
+    expect(document.getElementById('conversation')?.hasAttribute('inert')).toBe(false);
+    fireEvent.click(show());
+    fireEvent.click(screen.getByRole('tab', { name: 'Changes' }));
+    expect(screen.getByRole('tabpanel', { name: 'Changes' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Restore workspace' })).toBeTruthy();
+    expect(screen.getAllByRole('tab', { name: 'Changes' })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('tab', { name: 'Files' }));
+    expect(screen.getByRole('tabpanel', { name: 'Files' })).toBe(files);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close Files' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close Changes' }));
+    expect(screen.queryByRole('tablist', { name: 'Panels' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'New workspace tab' })).toBeTruthy();
+    fireEvent.click(show());
+    expect(screen.getByRole('tabpanel', { name: 'New tab' })).toBeTruthy();
+  });
+
+  it('omits panels that are already open and keeps the existing file preview when returning', async () => {
     render(<MountedPanel />);
     await act(() => openFileRef('src/app.ts', 1, undefined, true));
     const tab = (name: string) => within(screen.getByRole('tablist', { name: 'Panels' })).getByRole('tab', { name });
@@ -325,10 +385,51 @@ describe('Workspace tabs', () => {
     fireEvent.keyDown(tab('Changes'), { key: 'ArrowRight' });
     expect(document.activeElement).toBe(tab('Files'));
     fireEvent.click(tab('Changes'));
-    await addWorkspaceTab('Files');
+    const page = within(newWorkspaceTab());
+    expect(page.queryByRole('button', { name: 'Files' })).toBeNull();
+    expect(page.queryByRole('button', { name: 'Changes' })).toBeNull();
+    expect(page.getByRole('button', { name: 'Preview' })).toBeTruthy();
+    fireEvent.click(tab('Files'));
     expect(screen.getByRole('tabpanel', { name: 'Files' })).toBe(files);
     expect(screen.getAllByRole('tab', { name: 'Files' })).toHaveLength(1);
     expect(invoke.mock.calls.filter(([channel]) => channel === 'sessions:readFile')).toHaveLength(1);
+  });
+
+  it('opens typed relative paths, local paths, and URLs as separate workspace tabs', async () => {
+    invoke.mockImplementation((channel, ...args) => {
+      if (channel === 'sessions:workspaceFile' || channel === 'workspace:localFile') {
+        return Promise.resolve({ text: 'file contents' });
+      }
+      return host(channel, ...args);
+    });
+    render(<MountedPanel />);
+    const enter = async (value: string) => {
+      const page = within(newWorkspaceTab());
+      const field = page.getByRole('textbox', { name: 'File path or URL' });
+      expect(document.activeElement).toBe(field);
+      fireEvent.change(field, { target: { value } });
+      fireEvent.click(page.getByRole('button', { name: 'Open' }));
+    };
+
+    await enter('src/app.ts');
+    const file = await screen.findByRole('tabpanel', { name: 'app.ts' });
+    expect(invoke).toHaveBeenCalledWith('sessions:workspaceFile', id, 'src/app.ts');
+    await enter('/local/notes.txt');
+    expect(await screen.findByRole('tabpanel', { name: 'notes.txt' })).toBeTruthy();
+    expect(invoke).toHaveBeenCalledWith('workspace:localFile', '/local/notes.txt');
+
+    await enter('https://example.com/docs');
+    const web = await screen.findByRole('tabpanel', { name: 'example.com' });
+    expect(web.querySelector('webview')?.getAttribute('src')).toBe('https://example.com/docs');
+    await enter('https://example.com/docs');
+    expect(screen.getAllByRole('tab', { name: 'example.com' })).toHaveLength(1);
+    expect(screen.getByRole('tabpanel', { name: 'example.com' })).toBe(web);
+
+    await enter('file:///somewhere');
+    expect(screen.getByRole('alert').textContent).toContain('valid file path');
+    expect(screen.getByRole('tabpanel', { name: 'New tab' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'app.ts' }));
+    expect(screen.getByRole('tabpanel', { name: 'app.ts' })).toBe(file);
   });
 
   it('selects a neighboring file or clears only the preview when closing inner file tabs', async () => {
@@ -348,14 +449,13 @@ describe('Workspace tabs', () => {
       s.meta.kind = 'work';
     });
     render(<MountedPanel />);
-    fireEvent.keyDown(screen.getByRole('button', { name: 'New workspace tab' }), { key: 'Enter' });
-    expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual([
-      'Progress',
-      'Background tasks',
-      'Session overview',
-      'New side chat',
-    ]);
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Progress' }));
+    const page = within(newWorkspaceTab());
+    expect(page.getByRole('button', { name: 'Background tasks' })).toBeTruthy();
+    expect(page.getByRole('button', { name: 'Session overview' })).toBeTruthy();
+    expect(page.getByRole('button', { name: 'New side chat' })).toBeTruthy();
+    expect(page.queryByRole('button', { name: 'Files' })).toBeNull();
+    expect(page.queryByRole('button', { name: 'Progress' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Close New tab' }));
     const progress = screen.getByRole('tabpanel', { name: 'Progress' });
     await act(() => openFileRef('notes.md'));
     expect(within(screen.getByRole('tabpanel', { name: 'Details' })).getByText('file contents')).toBeTruthy();

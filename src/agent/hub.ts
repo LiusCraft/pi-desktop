@@ -160,6 +160,7 @@ import {
   readSessionFile,
   readSessionImage,
   readSessionMedia,
+  readWorkspaceFile,
   resolveSessionPath,
   searchSessionFiles,
 } from './files';
@@ -3085,6 +3086,9 @@ export class SessionHub {
     const cwd = this.meta(id).cwd;
     const allowed = this.live.get(id)?.outputPaths ?? [];
     return readSessionFile(cwd, await locateSessionFile(cwd, rel, () => git.listFiles(cwd)), [...allowed]);
+  }
+  workspaceFile(id: string, file: string) {
+    return readWorkspaceFile(this.meta(id).cwd, file);
   }
   async search(id: string, query: string, caseSensitive: boolean) {
     const cwd = this.meta(id).cwd;

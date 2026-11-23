@@ -145,7 +145,7 @@ test('file menus, preview excerpts, diff comments, send, fork and rewind', async
   const sourceId = await page.evaluate(async () => (await window.piDesktop.invoke('sessions:list'))[0].id);
 
   await page.getByRole('button', { name: 'New workspace tab' }).click();
-  await page.getByRole('menuitem', { name: 'Files', exact: true }).click();
+  await page.getByRole('tabpanel', { name: 'New tab' }).getByRole('button', { name: 'Files', exact: true }).click();
   // Inside the Files tab: the tree on the left, the open file on the right.
   const files = page.getByRole('tabpanel', { name: 'Files' });
   const row = (scope: typeof files, path: string) => scope.locator(`[data-item-path="${path}"]`);

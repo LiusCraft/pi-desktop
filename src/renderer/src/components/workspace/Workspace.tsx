@@ -14,28 +14,28 @@ import {
   SquareTerminalIcon,
   XIcon,
 } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { WORKSPACE_WEB_PARTITION } from '@shared/workspace-web';
+import { SideChatView } from '@/components/side/SideChat';
+import { fname } from '@/lib/format';
 import { canTerminal } from '@/lib/api';
 import { useT } from '@/lib/i18n';
 import {
   closeDetail,
+  closeNewWorkspaceTab,
+  closeWorkspaceResource,
+  openNewWorkspaceTab,
   selectWorkspaceTab,
   togglePanel,
   toggleSessionInfo,
   toggleWorkspaceExpanded,
 } from '@/store/actions';
-import { isSideChatTab, selectedWorkspaceTab, sideChatId } from '@/store/layout';
+import { isSideChatTab, isWorkspaceResource, selectedWorkspaceTab, sideChatId } from '@/store/layout';
 import { createSide, hideSide, reportSideError, useSideList } from '@/store/side';
-import { SideChatView } from '@/components/side/SideChat';
 import { SessionInfo, sideChatLabel } from './SessionOverview';
 import type { SessionView, WorkspaceTab } from '@/store/types';
 import { IconBtn } from './PanelToolbar';
-import { WorkPanel, DetailPanel, DiffPanel, FilesPanel, PreviewPanel, TasksPanel } from './Panels';
+import { WorkPanel, DetailPanel, DiffPanel, FilesPanel, PreviewPanel, TasksPanel, WorkspaceFilePanel } from './Panels';
+import { NewWorkspaceTab } from './NewWorkspaceTab';
 import { TerminalPanel } from './TerminalPanel';
 
 const TABS = {
@@ -52,43 +52,62 @@ const TABS = {
 const CODE_TABS = ['tasks', 'terminal', 'diff', 'preview', 'files'] as const;
 const WORK_TABS = ['progress', 'tasks'] as const;
 
-export function NewWorkspaceTabMenu({ s }: { s: SessionView }) {
+export function NewWorkspaceTabButton({ sid }: { sid: string }) {
   const t = useT();
-  const choices = s.meta.kind === 'work' ? WORK_TABS : CODE_TABS;
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <IconBtn title={t('panel.newWorkspaceTab')}>
-          <PlusIcon className="size-4" />
-        </IconBtn>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {choices.map((tab) => {
-          if (tab === 'terminal' && !canTerminal) return null;
+    <IconBtn title={t('panel.newWorkspaceTab')} className="mx-1 self-center" onClick={() => openNewWorkspaceTab(sid)}>
+      <PlusIcon className="size-4" aria-hidden />
+    </IconBtn>
+  );
+}
+
+const CHOICE_CLASS =
+  'flex min-w-0 items-center gap-2 rounded-lg surface-flat px-3 py-2 text-left text-sm hover:bg-accent disabled:opacity-50';
+
+function WorkspaceChoices({ s, tabs }: { s: SessionView; tabs: WorkspaceTab[] }) {
+  const t = useT();
+  const sid = s.meta.id;
+  const choices = [...(s.meta.kind === 'work' ? WORK_TABS : CODE_TABS), 'sessionInfo'] as const;
+  const openingSide = useRef(false);
+  async function addSide() {
+    if (openingSide.current) return;
+    openingSide.current = true;
+    try {
+      await createSide(sid);
+      closeNewWorkspaceTab(sid);
+    } catch (error) {
+      reportSideError(error);
+    } finally {
+      openingSide.current = false;
+    }
+  }
+  return (
+    <>
+      {choices
+        .filter((tab) => !tabs.includes(tab) && (tab !== 'terminal' || canTerminal))
+        .map((tab) => {
           const { icon: Icon, label } = TABS[tab];
           return (
-            <DropdownMenuItem
+            <button
               key={tab}
-              onSelect={() => {
-                if (s.panels[tab]) selectWorkspaceTab(s.meta.id, tab);
-                else togglePanel(s.meta.id, tab, true);
+              type="button"
+              className={CHOICE_CLASS}
+              onClick={() => {
+                if (tab === 'sessionInfo') toggleSessionInfo(sid, true);
+                else togglePanel(sid, tab, true);
+                closeNewWorkspaceTab(sid);
               }}
             >
-              <Icon aria-hidden />
-              {t(label)}
-            </DropdownMenuItem>
+              <Icon className="size-4 shrink-0" aria-hidden />
+              <span className="min-w-0 break-words">{t(label)}</span>
+            </button>
           );
         })}
-        <DropdownMenuItem onSelect={() => toggleSessionInfo(s.meta.id, true)}>
-          <InfoIcon aria-hidden />
-          {t('overview.title')}
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => void createSide(s.meta.id).catch(reportSideError)}>
-          <MessageSquareIcon aria-hidden />
-          {t('side.new')}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      <button type="button" className={CHOICE_CLASS} onClick={() => void addSide()}>
+        <MessageSquareIcon className="size-4 shrink-0" aria-hidden />
+        <span className="min-w-0 break-words">{t('side.new')}</span>
+      </button>
+    </>
   );
 }
 
@@ -103,9 +122,10 @@ export function Workspace({ s, tabs }: { s: SessionView; tabs: WorkspaceTab[] })
   const buttons = useRef(new Map<WorkspaceTab, HTMLButtonElement>());
 
   useEffect(() => {
+    if (s.workspaceHidden) return;
     const selected = list.current?.querySelector('[data-state="active"]');
     selected?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-  }, [active, tabs.length, t]);
+  }, [active, s.workspaceHidden, tabs.length, t]);
 
   function close(tab: WorkspaceTab, moveFocus: boolean) {
     const index = tabs.indexOf(tab);
@@ -113,6 +133,8 @@ export function Workspace({ s, tabs }: { s: SessionView; tabs: WorkspaceTab[] })
     if (isSideChatTab(tab)) hideSide(sid, sideChatId(tab));
     else if (tab === 'detail') closeDetail(sid);
     else if (tab === 'sessionInfo') toggleSessionInfo(sid, false);
+    else if (tab === 'new') closeNewWorkspaceTab(sid);
+    else if (isWorkspaceResource(tab)) closeWorkspaceResource(sid, tab);
     else togglePanel(sid, tab, false);
     if (!moveFocus) return;
     if (target) buttons.current.get(target)?.focus();
@@ -149,11 +171,26 @@ export function Workspace({ s, tabs }: { s: SessionView; tabs: WorkspaceTab[] })
       <div className="panel-tabs">
         <div ref={list} role="tablist" aria-label={t('main.panels')} className="flex min-w-0 flex-1 overflow-x-auto">
           {tabs.map((tab) => {
-            const sideIndex = isSideChatTab(tab) ? chats.findIndex((chat) => chat.id === sideChatId(tab)) : -1;
-            const Icon = isSideChatTab(tab) ? MessageSquareIcon : TABS[tab].icon;
-            const label = isSideChatTab(tab)
-              ? sideChatLabel(t, chats[sideIndex], sideIndex)
-              : t(tab === 'detail' && s.detail?.type === 'plan' ? 'plan.title' : TABS[tab].label);
+            let Icon: typeof FileIcon;
+            let label: string;
+            let title: string | undefined;
+            if (isSideChatTab(tab)) {
+              const index = chats.findIndex((chat) => chat.id === sideChatId(tab));
+              Icon = MessageSquareIcon;
+              label = sideChatLabel(t, chats[index], index);
+            } else if (isWorkspaceResource(tab)) {
+              const resource = s.workspaceResources.find((resource) => resource.id === tab);
+              if (!resource) return null;
+              Icon = resource.kind === 'file' ? FileIcon : GlobeIcon;
+              title = resource.kind === 'file' ? resource.detail.path : resource.url;
+              label = resource.kind === 'file' ? fname(resource.detail.path) : new URL(resource.url).host;
+            } else if (tab === 'new') {
+              Icon = PlusIcon;
+              label = t('panel.newTab');
+            } else {
+              Icon = TABS[tab].icon;
+              label = t(tab === 'detail' && s.detail?.type === 'plan' ? 'plan.title' : TABS[tab].label);
+            }
             const id = `${prefix}-${tab}`;
             return (
               <div
@@ -172,7 +209,7 @@ export function Workspace({ s, tabs }: { s: SessionView; tabs: WorkspaceTab[] })
                   aria-selected={active === tab}
                   aria-controls={`${id}-panel`}
                   tabIndex={active === tab ? 0 : -1}
-                  title={label}
+                  title={title ?? label}
                   className="flex h-full min-w-0 items-center gap-1.5 rounded-sm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
                   onClick={() => selectWorkspaceTab(sid, tab)}
                   onKeyDown={(event) => onKeyDown(event, tab)}
@@ -190,6 +227,7 @@ export function Workspace({ s, tabs }: { s: SessionView; tabs: WorkspaceTab[] })
               </div>
             );
           })}
+          <NewWorkspaceTabButton sid={sid} />
         </div>
         <div className="flex shrink-0 items-center gap-0.5 px-1">
           <IconBtn
@@ -198,11 +236,40 @@ export function Workspace({ s, tabs }: { s: SessionView; tabs: WorkspaceTab[] })
           >
             {s.workspaceExpanded ? <Minimize2Icon className="size-3.5" /> : <Maximize2Icon className="size-3.5" />}
           </IconBtn>
-          <NewWorkspaceTabMenu s={s} />
         </div>
       </div>
       {tabs.map((tab) => {
-        const Panel = isSideChatTab(tab) ? null : TABS[tab].Panel;
+        const visible = !s.workspaceHidden && active === tab;
+        let content;
+        if (isSideChatTab(tab)) {
+          content = <SideChatView sid={sid} chatId={sideChatId(tab)} mode="embedded" active={visible} />;
+        } else if (tab === 'new') {
+          content = (
+            <NewWorkspaceTab
+              sid={sid}
+              cwd={s.meta.cwd}
+              active={visible}
+              choices={<WorkspaceChoices s={s} tabs={tabs} />}
+            />
+          );
+        } else if (isWorkspaceResource(tab)) {
+          const resource = s.workspaceResources.find((resource) => resource.id === tab);
+          if (!resource) return null;
+          content =
+            resource.kind === 'file' ? (
+              <WorkspaceFilePanel s={s} d={resource.detail} />
+            ) : (
+              <webview
+                src={resource.url}
+                partition={`${WORKSPACE_WEB_PARTITION}${resource.id.slice('resource:'.length)}`}
+                title={resource.url}
+                className="size-full border-0 bg-white"
+              />
+            );
+        } else {
+          const { Panel } = TABS[tab];
+          content = <Panel s={s} />;
+        }
         const id = `${prefix}-${tab}`;
         return (
           <div
@@ -215,11 +282,7 @@ export function Workspace({ s, tabs }: { s: SessionView; tabs: WorkspaceTab[] })
             hidden={active !== tab}
             className="min-h-0 min-w-0 flex-1"
           >
-            {isSideChatTab(tab) ? (
-              <SideChatView sid={sid} chatId={sideChatId(tab)} mode="embedded" active={active === tab} />
-            ) : (
-              Panel && <Panel s={s} />
-            )}
+            {content}
           </div>
         );
       })}

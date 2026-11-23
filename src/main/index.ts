@@ -88,7 +88,8 @@ import {
   piAgentDir,
   worktreeDir,
 } from '../agent/app-paths';
-import { resolveInside } from '../agent/files';
+import { readWorkspaceFile, resolveInside } from '../agent/files';
+import { WORKSPACE_WEB_PARTITION, workspaceHttpUrl } from '@shared/workspace-web';
 import { localPath } from '../agent/local-path';
 import { RemoteClient, pingRemote } from '../agent/remote/client';
 import { Tunnel } from '../agent/remote/tunnel';
@@ -400,14 +401,28 @@ function createWindow() {
   });
   const pendingPreviewPartitions: string[] = [];
   win.webContents.on('will-attach-webview', (_event, _webPreferences, params) => {
-    if (params?.partition) pendingPreviewPartitions.push(params.partition);
+    pendingPreviewPartitions.push(params?.partition ?? '');
   });
   win.webContents.on('did-attach-webview', (_event, guest) => {
     const partition = pendingPreviewPartitions.shift() ?? '';
-    guest.setWindowOpenHandler(({ url, disposition }) => {
-      win?.webContents.send('preview:open', { partition, url, disposition });
-      return { action: 'deny' };
-    });
+    if (partition.startsWith(WORKSPACE_WEB_PARTITION)) {
+      guest.on('will-frame-navigate', (event) => {
+        if (event.isMainFrame && !workspaceHttpUrl(event.url)) event.preventDefault();
+      });
+      guest.on('will-redirect', (event) => {
+        if (event.isMainFrame && !workspaceHttpUrl(event.url)) event.preventDefault();
+      });
+      guest.setWindowOpenHandler(({ url }) => {
+        const external = workspaceHttpUrl(url);
+        if (external) void shell.openExternal(external).catch(() => {});
+        return { action: 'deny' };
+      });
+    } else {
+      guest.setWindowOpenHandler(({ url, disposition }) => {
+        win?.webContents.send('preview:open', { partition, url, disposition });
+        return { action: 'deny' };
+      });
+    }
   });
   win.on('closed', () => {
     win = null;
@@ -1127,6 +1142,21 @@ const handlers: MainHandlers = {
       importAttachments,
     ),
 
+  'workspace:localFile': async (input) => {
+    if (!win) return null;
+    const file = localPath(input);
+    const real = localPath(fs.realpathSync(file));
+    const result = await dialog.showMessageBox(win, {
+      type: 'question',
+      message: tr('panel.workspaceLocalConfirm'),
+      detail: real,
+      buttons: [tr('panel.openWorkspaceTarget'), tr('dialog.cancel')],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+    });
+    return result.response === 0 ? readWorkspaceFile(path.dirname(real), real) : null;
+  },
   'app:openTargets': () => openTargets(),
   'terminal:shells': () => terminalShells(),
   'terminal:list': (sessionId) => terminals.list(sessionId),
@@ -1162,6 +1192,7 @@ const LOCAL_ONLY = new Set<string>([
   'work:addFolder',
   'sessions:openIn',
   'sessions:openPath',
+  'workspace:localFile',
   'update:install',
 ]);
 
