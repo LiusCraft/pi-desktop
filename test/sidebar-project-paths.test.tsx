@@ -194,7 +194,7 @@ it('allows manual ordering within a merge group, but not across groups', () => {
   );
 
   const row = (name: string) => screen.getByRole('button', { name }).closest('[draggable="true"]')!;
-  fireEvent.dragStart(row(first.title), { dataTransfer: { setData: vi.fn() } });
+  fireEvent.dragStart(row(first.title), { dataTransfer: { setData: vi.fn<DataTransfer['setData']>() } });
   fireEvent.drop(row(merged.title));
   expect(localStorage.getItem('pi.sidebar.order')).toBeNull();
   fireEvent.drop(row(second.title));
