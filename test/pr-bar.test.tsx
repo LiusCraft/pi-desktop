@@ -1,12 +1,17 @@
 // @vitest-environment jsdom
 import { invoke } from './renderer-dom';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it } from 'vitest';
 import type { SessionMeta } from '../src/shared/protocol';
+import { DEFAULT_PR_BAR } from '../src/shared/pr-bar-settings';
 
 const { PrBar } = await import('../src/renderer/src/components/composer/PrBar');
 const { TooltipProvider } = await import('../src/renderer/src/components/ui/tooltip');
 const { emptySession } = await import('../src/renderer/src/store/transcript');
+const { setApp } = await import('../src/renderer/src/store/app');
+const { SessionOverview } = await import('../src/renderer/src/components/workspace/SessionOverview');
+
+beforeEach(() => setApp((st) => void (st.settings = {})));
 
 function session(state = 'merged') {
   const meta: SessionMeta = {
@@ -96,6 +101,33 @@ it('hides an empty branch bar unless either automation switch is armed', () => {
   s.meta.autoMerge = true;
   view.rerender(bar(s));
   expect(screen.getByRole('button', { name: 'CI' }).title).toMatch(/Waiting for a pull request/);
+});
+
+it('moves the same PR controls into the overview and can turn them off live', async () => {
+  invoke.mockResolvedValue([]);
+  const s = session('open');
+  s.pr = { ...s.pr!, title: 'Update app', ci: 'pending', checks: [{ n: 'build', st: 'pending' }] };
+  render(
+    <TooltipProvider>
+      <PrBar s={s} />
+      <SessionOverview s={s} />
+    </TooltipProvider>,
+  );
+  expect(screen.getByRole('region', { name: 'Branch status' })).toBeTruthy();
+  act(() => setApp((st) => void (st.settings.prBar = { ...DEFAULT_PR_BAR, placement: 'overview', autoMerge: false })));
+  expect(screen.queryByRole('region', { name: 'Branch status' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Session overview' }));
+  const overview = screen.getByRole('dialog', { name: 'Session overview' });
+  const branch = within(overview).getByRole('region', { name: 'Branch status' });
+  expect(within(branch).getByText('Update app')).toBeTruthy();
+  expect(within(branch).getByRole('button', { name: 'Update PR' })).toBeTruthy();
+  expect(within(branch).getByRole('button', { name: '5 files · view diff' })).toBeTruthy();
+  fireEvent.click(within(branch).getByRole('button', { name: 'CI' }));
+  expect(await screen.findByText('build')).toBeTruthy();
+  expect(screen.queryByRole('checkbox', { name: 'Auto-merge when ready' })).toBeNull();
+  act(() => setApp((st) => void (st.settings.prBar = { ...DEFAULT_PR_BAR, enabled: false })));
+  expect(screen.queryByRole('region', { name: 'Branch status' })).toBeNull();
+  expect(within(overview).getByRole('region', { name: 'Changes' })).toBeTruthy();
 });
 
 describe('merged PR bar', () => {

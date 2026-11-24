@@ -1,3 +1,4 @@
+import { DEFAULT_PR_BAR } from './pr-bar-settings';
 import { DEFAULT_PET_ID } from './pets';
 import { IDLE_RESET_DEFAULT_MINUTES } from './idle-reset';
 import {
@@ -37,6 +38,8 @@ export const DEFAULT_SETTINGS: Settings = {
   autoReviewTimeout: AUTO_REVIEW_DEFAULT_TIMEOUT,
   defaultMode: 'code',
   sidebarCollapsed: false,
+  todosExpanded: false,
+  prBar: DEFAULT_PR_BAR,
   worktreeDir: null,
   pet: true,
   petSkin: DEFAULT_PET_ID,

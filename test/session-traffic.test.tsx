@@ -2,7 +2,7 @@
 import './renderer-dom';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { produce } from 'immer';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodePeerMessage, SEND_MESSAGE_TOOL } from '../src/shared/peer-message';
 import { TASK_NOTIFICATION_TYPE } from '../src/shared/task-message';
 import { TODO_ENTRY_TYPE, TODO_TOOL, todoMessage } from '../src/shared/todo-message';
@@ -13,6 +13,12 @@ import type { SessionView, Todo } from '../src/renderer/src/store/types';
 
 const { Transcript } = await import('../src/renderer/src/components/thread/Transcript');
 const { ComposerTodos } = await import('../src/renderer/src/components/composer/ComposerTodos');
+const { setApp } = await import('../src/renderer/src/store/app');
+
+beforeEach(() => {
+  // Exercise list contents with the saved preference set to expanded.
+  setApp((s) => void (s.settings.todosExpanded = true));
+});
 
 const conversation = (s: SessionView) => (
   <>

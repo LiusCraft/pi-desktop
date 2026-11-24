@@ -47,6 +47,7 @@ const withHub =
 
 const handlers: Record<HostMethod, Handler> = {
   'host:locale': (locale) => setActiveLocale(locale),
+  'host:prBarChanged': withHub((h) => h.refreshPrBarSettings()),
   'host:init': async (options) => {
     const { agentDir, demo, locale } = options;
     dataDir = options.dataDir;

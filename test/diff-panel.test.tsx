@@ -311,7 +311,10 @@ describe('Workspace tabs', () => {
       </TooltipProvider>,
     );
     expect(screen.queryByRole('tablist', { name: 'Panels' })).toBeNull();
-    await addWorkspaceTab('Background tasks');
+    expect(screen.queryByRole('button', { name: 'New workspace tab' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Show right workspace' }));
+    const launcher = screen.getByRole('tabpanel', { name: 'New tab' });
+    fireEvent.click(await within(launcher).findByRole('button', { name: 'Background tasks' }));
     const taskTab = screen.getByRole('tabpanel', { name: 'Background tasks' });
     fireEvent.click(within(taskTab).getByRole('button', { name: 'View output' }));
     const detail = screen.getByRole('tabpanel', { name: 'Details' });
@@ -329,7 +332,7 @@ describe('Workspace tabs', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close Background tasks' }));
     expect(screen.queryByRole('tablist', { name: 'Panels' })).toBeNull();
     expect(getApp().sessions[id].workspaceExpanded).toBe(false);
-    expect(screen.getByRole('button', { name: 'New workspace tab' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'New workspace tab' })).toBeNull();
   });
 
   it('keeps the title bar controls available and restores hidden tabs without remounting them', async () => {
@@ -370,7 +373,7 @@ describe('Workspace tabs', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close Files' }));
     fireEvent.click(screen.getByRole('button', { name: 'Close Changes' }));
     expect(screen.queryByRole('tablist', { name: 'Panels' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'New workspace tab' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'New workspace tab' })).toBeNull();
     fireEvent.click(show());
     expect(screen.getByRole('tabpanel', { name: 'New tab' })).toBeTruthy();
   });

@@ -6,6 +6,7 @@ import type { PrNote } from '../src/shared/pr-event';
 import type { PrStatus } from '../src/shared/protocol';
 import type { PrSnapshot } from '../src/agent/git';
 import { setActiveLocale } from '../src/shared/i18n/runtime';
+import { normalizePrBar } from '../src/shared/pr-bar-settings';
 
 // These assertions read the host's Chinese messages.
 setActiveLocale('zh');
@@ -34,6 +35,38 @@ const failing = {
 };
 const auto = { autoFixCi: true };
 const withMerge = { autoFixCi: true, autoMerge: true };
+
+describe('PR Bar settings', () => {
+  it('enforces CI, conflict, review comment and merge permissions independently', () => {
+    const watcher = new PrWatcher();
+    const observe = (settings: Parameters<typeof normalizePrBar>[0], state: Partial<PrStatus>, notes: PrNote[] = []) =>
+      watcher.observe(snap(state, notes), { ...withMerge, settings: normalizePrBar(settings) });
+    observe({ autoMerge: false }, {});
+    const failure = { ...failing, mergeable: 'conflicting' as const };
+    const ciOnly = observe({ resolveConflicts: false, addressComments: false }, failure, [note('new')]);
+    assert.deepEqual(ciOnly.pending?.mark, { fix: '4:abc' });
+    assert.equal(ciOnly.pending?.event.notes, undefined);
+    assert.match(ciOnly.pending!.event.instruction, /不处理评审意见/);
+    assert.deepEqual(observe({ fixCi: false }, failure).pending?.mark, { conflict: '4:abc' });
+    assert.equal(
+      observe({ fixCi: false, resolveConflicts: false }, failure, [note('new')]).pending?.event.kind,
+      'notes',
+    );
+    assert.equal(observe({ autoMerge: false }, { mergeable: 'clean' }).pending, null);
+    assert.equal(observe({ enabled: false }, failure).pending, null);
+  });
+
+  it('bounds refresh intervals and uses them during checks and failures', () => {
+    const settings = normalizePrBar({ fastSeconds: 40, slowSeconds: 1, idleSeconds: 9999, backoffSeconds: 120 });
+    assert.equal(settings.slowSeconds, 40);
+    assert.equal(settings.idleSeconds, 3600);
+    const watcher = new PrWatcher();
+    assert.equal(watcher.observe(snap({ ci: 'pending' }), { settings }).after, 40_000);
+    assert.equal(watcher.observe(null, { settings }).after, 40_000);
+    watcher.observe(null, { settings });
+    assert.equal(watcher.observe(null, { settings }).after, 120_000);
+  });
+});
 
 describe('PR watcher, CI', () => {
   it('raises a failing run once per commit', () => {

@@ -16,7 +16,7 @@ import { CodeComposer, WorkComposer } from '@/components/composer/Composers';
 import { copyText } from '@/components/common/Copy';
 import { InlineEdit } from '@/components/common/InlineEdit';
 import { AskDock, Transcript } from '@/components/thread/Transcript';
-import { NewWorkspaceTabButton, Workspace } from '@/components/workspace/Workspace';
+import { Workspace } from '@/components/workspace/Workspace';
 import { IconBtn } from '@/components/workspace/PanelToolbar';
 import {
   DropdownMenu,
@@ -430,17 +430,7 @@ function Thread({ s }: { s: SessionView }) {
       <CodeComposer />
     </div>
   );
-  if (!tabs.length)
-    return (
-      <div className="flex min-h-0 flex-1 flex-col">
-        {!hidden && (
-          <div className="mx-1 flex shrink-0 justify-end">
-            <NewWorkspaceTabButton sid={s.meta.id} />
-          </div>
-        )}
-        <div className="min-h-0 flex-1">{conversation}</div>
-      </div>
-    );
+  if (!tabs.length) return <div className="min-h-0 flex-1">{conversation}</div>;
   return (
     <ResizablePanelGroup
       orientation="horizontal"

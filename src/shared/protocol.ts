@@ -7,6 +7,7 @@
 // Host → renderer traffic is a single stream of `HostEvent`s.
 import type { ActivityLog } from './activity';
 import type { ShortcutOverrides } from './shortcuts';
+import type { PrBarSettings } from './pr-bar-settings';
 import type { Attachment, DecodedUserContent, PromptSubmission } from './attachments';
 import type { Forge } from './forge';
 import type { PeerMessage } from './peer-message';
@@ -1163,6 +1164,9 @@ export interface Settings {
   autoReviewTimeout: number;
   defaultMode: SessionKind;
   sidebarCollapsed: boolean;
+  /** Whether task checklists are expanded across sessions and windows. */
+  todosExpanded: boolean;
+  prBar: PrBarSettings;
   /** Root folder for Code-session git worktrees; null/empty uses `<dataDir>/.worktree`. */
   worktreeDir: string | null;
   /** The composer pet: shown or not, and which skin (see PET_SKINS in the renderer). */
@@ -1291,7 +1295,7 @@ export interface Api {
 
   'settings:open'(section?: string): void;
   'settings:get'(): SettingsPayload;
-  'settings:set'(patch: Partial<Settings>): SettingsPayload;
+  'settings:set'(patch: Partial<Omit<Settings, 'prBar'>> & { prBar?: Partial<PrBarSettings> }): SettingsPayload;
   /** Add or replace a custom pet skin; throws a readable message when the definition is invalid. */
   'pets:save'(pet: unknown): SettingsPayload;
   'pets:remove'(id: string): SettingsPayload;
@@ -1828,6 +1832,7 @@ export interface HostInternal {
   'host:init'(opts: HostInitOptions): void;
   /** The UI language changed: texts the host writes (errors, prompts) follow it. */
   'host:locale'(locale: Locale): void;
+  'host:prBarChanged'(): void;
   'host:cancelLogins'(): void;
   'host:meta'(id: string): SessionMeta;
   /** Resolve a session file for main-process opening, including an exact session output path. */
