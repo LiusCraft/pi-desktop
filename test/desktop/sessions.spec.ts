@@ -60,8 +60,8 @@ function removeTemporary(dir: string) {
   }
 }
 
-async function addWorkspaceTab(name: string) {
-  await page.getByRole('button', { name: 'New workspace tab' }).click();
+async function addWorkspaceTab(name: string, from: 'titlebar' | 'dock' = 'dock') {
+  await page.getByRole('button', { name: from === 'titlebar' ? 'Show right workspace' : 'New workspace tab' }).click();
   await page.getByRole('tabpanel', { name: 'New tab' }).getByRole('button', { name, exact: true }).click();
 }
 
@@ -134,15 +134,16 @@ test('Code and Chat use one card for the editor and its controls', async () => {
 test('the workspace new tab opens a file and an HTTP page', async () => {
   await startSession('添加深色模式');
   await expect(page.getByRole('button', { name: 'Rewind to here', exact: true })).toBeEnabled({ timeout: 60_000 });
-  const enter = async (value: string) => {
-    await page.getByRole('button', { name: 'New workspace tab' }).click();
+  const enter = async (value: string, button: 'Show right workspace' | 'New workspace tab') => {
+    await page.getByRole('button', { name: button }).click();
     const newTab = page.getByRole('tabpanel', { name: 'New tab' });
     const input = newTab.getByRole('textbox', { name: 'File path or URL' });
     await expect(input).toBeFocused();
     await input.fill(value);
     await input.press('Enter');
   };
-  await enter('src/App.jsx');
+  await expect(page.getByRole('button', { name: 'New workspace tab' })).toHaveCount(0);
+  await enter('src/App.jsx', 'Show right workspace');
   const file = page.getByRole('tabpanel', { name: 'App.jsx' });
   await expect(file).toContainText('function App');
   const server = createServer((_req, res) => res.end('Workspace URL test'));
@@ -153,7 +154,7 @@ test('the workspace new tab opens a file and an HTTP page', async () => {
   const host = `127.0.0.1:${address.port}`;
   const url = `http://${host}/`;
   try {
-    await enter(url);
+    await enter(url, 'New workspace tab');
     const web = page.getByRole('tabpanel', { name: host });
     await expect(web.locator('webview')).toBeVisible();
     await expect
@@ -172,12 +173,59 @@ test('the workspace new tab opens a file and an HTTP page', async () => {
   }
 });
 
+test('Code settings move and disable the PR Bar without a reload', async () => {
+  await startSession('添加深色模式');
+  await expect(page.getByRole('button', { name: 'Rewind to here', exact: true })).toBeEnabled({ timeout: 60_000 });
+  const bar = page.getByRole('region', { name: 'Branch status' });
+  await expect(bar.getByRole('button', { name: 'Commit', exact: true })).toBeVisible();
+
+  const settingsWindow = app.waitForEvent('window');
+  await page.evaluate(() => window.piDesktop.invoke('settings:open', 'code'));
+  const settings = await settingsWindow;
+  await settings.getByText('Session overview only', { exact: true }).click();
+  await expect(bar).toHaveCount(0);
+  await page.getByRole('button', { name: 'Session overview', exact: true }).click();
+  const overview = page.getByRole('dialog', { name: 'Session overview' });
+  await expect(
+    overview.getByRole('region', { name: 'Branch status' }).getByRole('button', { name: 'Commit', exact: true }),
+  ).toBeVisible();
+
+  const interval = settings.getByRole('spinbutton', { name: 'CI in progress' });
+  await interval.fill('30');
+  await interval.press('Enter');
+  await settings.getByRole('switch', { name: 'Enable PR Bar' }).click();
+  await expect(bar).toHaveCount(0);
+  const stored = await settings.evaluate(() => window.piDesktop.invoke('settings:get'));
+  expect(stored.prBar).toMatchObject({ enabled: false, placement: 'overview', fastSeconds: 30 });
+  await settings.close();
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Session overview', exact: true }).click();
+  await expect(overview.getByRole('region', { name: 'Changes', exact: true })).toBeVisible();
+  await expect(overview.getByRole('region', { name: 'Pull requests', exact: true })).toHaveCount(0);
+});
+
+test('the task checklist remembers expansion and collapse after a reload', async () => {
+  await startSession('添加深色模式');
+  const tasks = page.getByRole('button', { name: 'Tasks All done', exact: true });
+  await expect(tasks).toHaveAttribute('aria-expanded', 'false');
+  await tasks.click();
+  await expect(tasks).toHaveAttribute('aria-expanded', 'true');
+
+  await page.reload();
+  await expect(tasks).toHaveAttribute('aria-expanded', 'true');
+  await tasks.click();
+  await expect(tasks).toHaveAttribute('aria-expanded', 'false');
+
+  await page.reload();
+  await expect(tasks).toHaveAttribute('aria-expanded', 'false');
+});
+
 test('workspace boundaries stay clear without elevation in populated layouts', async ({}, testInfo) => {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1800, 1100));
   await startSession('添加深色模式');
   await expect(page.getByRole('button', { name: 'Rewind to here', exact: true })).toBeEnabled({ timeout: 60_000 });
   await expect(page.getByRole('button', { name: 'Files', exact: true })).toHaveCount(0);
-  await addWorkspaceTab('Files');
+  await addWorkspaceTab('Files', 'titlebar');
   const workspace = page.locator('[data-slot="workspace"]');
   const dock = workspace.getByRole('tablist', { name: 'Panels' });
   const files = workspace.locator('[data-tab="files"]');
@@ -231,8 +279,12 @@ test('workspace boundaries stay clear without elevation in populated layouts', a
 
   const tasks = page.getByRole('button', { name: 'Tasks All done', exact: true });
   const taskCard = page.locator('.surface-flat').filter({ has: tasks });
-  await expect(tasks).toHaveAttribute('aria-expanded', 'true');
+  await expect(tasks).toHaveAttribute('aria-expanded', 'false');
   const list = taskCard.getByRole('list');
+  await expect(list).toBeHidden();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await tasks.press('Enter');
+  await expect(tasks).toHaveAttribute('aria-expanded', 'true');
   await expect(list.getByRole('listitem')).toHaveCount(4);
   const drawer = taskCard.locator('[data-slot=collapsible-content]');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -373,7 +425,8 @@ test('workspace boundaries stay clear without elevation in populated layouts', a
   await expect(dock.getByRole('tab', { name: 'Files', selected: true })).toBeFocused();
   await dock.getByRole('button', { name: 'Close Files' }).click();
   await expect(workspace).toHaveCount(0);
-  await addWorkspaceTab('Files');
+  await expect(add).toHaveCount(0);
+  await addWorkspaceTab('Files', 'titlebar');
   await expect(dock.getByRole('tab', { name: 'Files', selected: true })).toBeVisible();
 
   const settingsWindow = app.waitForEvent('window');
@@ -388,7 +441,7 @@ test('panel actions overflow one at a time and return when the panel grows', asy
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(2200, 1100));
   await startSession('添加深色模式');
   await expect(page.getByRole('button', { name: 'Rewind to here', exact: true })).toBeEnabled({ timeout: 60_000 });
-  await addWorkspaceTab('Files');
+  await addWorkspaceTab('Files', 'titlebar');
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+d' : 'Control+d');
   await addWorkspaceTab('Terminal');
   const workspace = page.locator('[data-slot="workspace"]');

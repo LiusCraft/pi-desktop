@@ -40,6 +40,7 @@ import type { SessionView } from '@/store/types';
 import type { SyncStrategy } from '@shared/protocol';
 import { encodeCommandMessage, type BuiltinCommand } from '@shared/command-message';
 import { forgeName, forgeWords } from '@shared/forge';
+import { allowsPrRepair, DEFAULT_PR_BAR } from '@shared/pr-bar-settings';
 import { gitActions, type GitAction, type GitActionItem } from './pr-actions';
 import { fmtLines, prBadge, prCiLine, prRepo, prSize, type PrBadge, type PrLike, type PrTone } from '@shared/pr-status';
 
@@ -81,11 +82,22 @@ const STATE_COLOR: Record<string, string> = {
 const CHECK_LABEL = { pass: 'prbar.checkPass', fail: 'prbar.checkFail', pending: 'prbar.checkPending' } as const;
 
 /** Branch / PR status above the Code composer: what the branch still owes, and how to send it. */
-export function PrBar({ s }: { s: SessionView }) {
+export function PrBar({
+  s,
+  overview = false,
+  onNavigate,
+}: {
+  s: SessionView;
+  overview?: boolean;
+  onNavigate?: () => void;
+}) {
   const t = useT();
   const strategy = useApp((a) => a.prefs.syncStrategy);
-  const armed = !!(s.meta.autoFixCi || s.meta.autoMerge);
-  if (s.meta.kind === 'work' || s.prHidden || !s.meta.branch || (!s.changes.length && !armed)) return null;
+  const settings = useApp((a) => a.settings.prBar ?? DEFAULT_PR_BAR);
+  const armed = (allowsPrRepair(settings) && s.meta.autoFixCi) || (settings.autoMerge && s.meta.autoMerge);
+  if (!settings.enabled || s.meta.kind === 'work' || !s.meta.branch) return null;
+  if (!overview && (settings.placement !== 'composer' || s.prHidden || (!s.changes.length && !armed && !s.pr)))
+    return null;
   const id = s.meta.id;
   const st = s.gitState;
   const pr = s.pr;
@@ -100,10 +112,11 @@ export function PrBar({ s }: { s: SessionView }) {
   });
   // Nothing to commit, push or open: the bar would only restate the branch name.
   const available = actions.filter((a) => a.enabled);
-  if (!armed && st && !pr && !st.behind && !st.baseBehind && !available.length) return null;
+  if (!overview && !armed && st && !pr && !st.behind && !st.baseBehind && !available.length) return null;
   // With nothing else to send, a base branch that moved on is the only thing the button offers.
   const current = available.find((a) => a.act === primary) ?? available.find((a) => a.act === 'sync');
   const ask = (command: BuiltinCommand, text: string) => {
+    onNavigate?.();
     drafts.setText(sessionDraftKey(id), encodeCommandMessage(command, text));
     void send(false);
   };
@@ -115,13 +128,20 @@ export function PrBar({ s }: { s: SessionView }) {
   const dirty = st?.dirty.length ?? 0;
   // The PR's own size beats the working tree once there is one: that is the number that gets reviewed.
   const size = pr ? prSize(pr) : null;
+  const showDiff = () => {
+    onNavigate?.();
+    openDiffPanel();
+  };
+  const surface = overview
+    ? 'flex min-w-0 flex-wrap items-center gap-2 rounded-lg bg-chrome px-2 py-2 text-xs'
+    : BAR_SURFACE;
   const diffChip =
     st && dirty > 0 && pending.length > 0 && !size ? (
       <span className="flex shrink-0 items-center font-mono text-xs whitespace-nowrap">
-        <Lines add={add} del={del} title={t('prbar.viewDiff')} onClick={openDiffPanel} />
+        <Lines add={add} del={del} title={t('prbar.viewDiff')} onClick={showDiff} />
       </span>
     ) : null;
-  const hide = (
+  const hide = !overview && (
     <button
       className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       title={t('prbar.hide')}
@@ -133,7 +153,7 @@ export function PrBar({ s }: { s: SessionView }) {
   );
   if (!pr) {
     return (
-      <div data-slot="branch-bar" role="region" aria-label={t('prbar.status')} className={BAR_SURFACE}>
+      <div data-slot="branch-bar" role="region" aria-label={t('prbar.status')} className={surface}>
         <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" />
         <BranchPath branch={s.meta.branch} baseBranch={s.meta.baseBranch} />
         <span className="flex-1" />
@@ -153,8 +173,9 @@ export function PrBar({ s }: { s: SessionView }) {
       data-slot="branch-bar"
       role="region"
       aria-label={t('prbar.status')}
-      className={cn(BAR_SURFACE, 'group/pr', BAR_TONE[badge.tone])}
+      className={cn(surface, 'group/pr', BAR_TONE[badge.tone])}
     >
+      {overview && <PrCard pr={pr} repo={prRepo(pr.url, fname(s.meta.projectPath))} badge={badge} inline />}
       <div className="flex min-w-0 items-center gap-1.5">
         <Tooltip>
           <TooltipTrigger asChild>
@@ -191,14 +212,17 @@ export function PrBar({ s }: { s: SessionView }) {
           add={size.add}
           del={size.del}
           title={size.files != null ? t('prbar.filesDiff', { n: size.files }) : t('prbar.viewDiff')}
-          onClick={openDiffPanel}
+          onClick={showDiff}
         />
       )}
       {!!pr.comments && (
         <button
           className="flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           title={t('prbar.viewComments')}
-          onClick={() => void openPrComments()}
+          onClick={() => {
+            onNavigate?.();
+            void openPrComments();
+          }}
         >
           <MessageSquareIcon className="size-3.5" />
           {pr.comments}
@@ -253,11 +277,11 @@ function BranchPath({ branch, baseBranch }: { branch?: string | null; baseBranch
 }
 
 /** The card that answers "what is this PR?" without leaving the composer. */
-function PrCard({ pr, repo, badge }: { pr: PrLike; repo: string; badge: PrBadge }) {
+function PrCard({ pr, repo, badge, inline = false }: { pr: PrLike; repo: string; badge: PrBadge; inline?: boolean }) {
   const t = useT();
   const size = prSize(pr);
   return (
-    <div className="w-80 p-3">
+    <div className={inline ? 'min-w-0 basis-full px-1 pb-1' : 'w-80 p-3'}>
       <div className="flex items-center gap-2">
         <span
           className={cn(
@@ -334,6 +358,9 @@ function CiPanel({
   ask: (command: BuiltinCommand, text: string) => void;
 }) {
   const t = useT();
+  const settings = useApp((a) => a.settings.prBar ?? DEFAULT_PR_BAR);
+  const repair = allowsPrRepair(settings);
+  const fixingCi = settings.fixCi && s.meta.autoFixCi;
   const checks = pr?.checks ?? [];
   const status = pr ? prCiLine(pr) : t('prbar.waitingForPr');
   return (
@@ -397,25 +424,37 @@ function CiPanel({
             </div>
           )}
         </div>
-        <div className="space-y-1 border-t px-3 py-2">
-          <label className="flex cursor-pointer items-start gap-2 py-0.5 text-[11.5px]">
-            <Checkbox
-              className="mt-px size-3.5"
-              checked={!!s.meta.autoFixCi}
-              onCheckedChange={(v) => void setPrAuto(s.meta.id, { fixCi: v === true })}
-            />
-            <span>{t('prbar.autoFix')}</span>
-          </label>
-          <label className="flex cursor-pointer items-start gap-2 py-0.5 text-[11.5px]">
-            <Checkbox
-              className="mt-px size-3.5"
-              checked={!!s.meta.autoMerge}
-              onCheckedChange={(v) => void setPrAuto(s.meta.id, { merge: v === true })}
-            />
-            <span>{t('prbar.autoMerge')}</span>
-          </label>
-        </div>
-        {pr?.ci === 'fail' && !s.meta.autoFixCi && (
+        {(repair || settings.autoMerge) && (
+          <div className="space-y-1 border-t px-3 py-2">
+            {repair && (
+              <label className="flex cursor-pointer items-start gap-2 py-0.5 text-[11.5px]">
+                <Checkbox
+                  className="mt-px size-3.5"
+                  checked={!!s.meta.autoFixCi}
+                  onCheckedChange={(v) => void setPrAuto(s.meta.id, { fixCi: v === true })}
+                />
+                <span>
+                  {t(
+                    settings.fixCi && settings.resolveConflicts && settings.addressComments
+                      ? 'prbar.autoFix'
+                      : 'prbar.autoFixAllowed',
+                  )}
+                </span>
+              </label>
+            )}
+            {settings.autoMerge && (
+              <label className="flex cursor-pointer items-start gap-2 py-0.5 text-[11.5px]">
+                <Checkbox
+                  className="mt-px size-3.5"
+                  checked={!!s.meta.autoMerge}
+                  onCheckedChange={(v) => void setPrAuto(s.meta.id, { merge: v === true })}
+                />
+                <span>{t('prbar.autoMerge')}</span>
+              </label>
+            )}
+          </div>
+        )}
+        {pr?.ci === 'fail' && !fixingCi && (
           <>
             <div className="border-t" />
             <button
@@ -428,7 +467,7 @@ function CiPanel({
             </button>
           </>
         )}
-        {pr && (s.meta.autoFixCi || s.meta.autoMerge) && (
+        {pr && ((repair && s.meta.autoFixCi) || (settings.autoMerge && s.meta.autoMerge)) && (
           <div className="border-t px-3 py-1.5 text-[10.5px] text-muted-foreground">{t('prbar.watching')}</div>
         )}
       </PopoverContent>

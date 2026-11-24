@@ -166,6 +166,7 @@ export const git = defineMessages({
     en: 'Auto-fix CI, resolve conflicts & address comments',
     zh: '自动修复 CI、解决冲突并处理评审意见',
   },
+  'prbar.autoFixAllowed': { en: 'Run allowed PR repairs', zh: '运行已允许的 PR 修复' },
   'prbar.autoMerge': { en: 'Auto-merge when ready', zh: '就绪后自动合并' },
   'prbar.fixOnce': { en: 'Let Pi handle it now, once', zh: '让 Pi 现在处理这一次' },
   'prbar.fixCiPrompt': {

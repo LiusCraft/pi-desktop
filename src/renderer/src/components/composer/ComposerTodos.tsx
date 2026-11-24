@@ -1,6 +1,7 @@
 import { ChevronDownIcon, ListTodoIcon } from 'lucide-react';
+import { TodoDisclosure } from '@/components/common/TodoDisclosure';
 import { TodoList } from '@/components/thread/Items';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useT } from '@/lib/i18n';
 import type { SessionView } from '@/store/types';
 
@@ -11,7 +12,7 @@ export function ComposerTodos({ items }: { items: SessionView['lastTodos'] }) {
   const remaining = items.filter((item) => item.status !== 'completed').length;
   return (
     // The later, positioned composer covers this extra bottom edge; the list and header stay above it.
-    <Collapsible defaultOpen className="relative mx-4 -mb-3 rounded-2xl surface-flat bg-card pb-3">
+    <TodoDisclosure className="relative mx-4 -mb-3 rounded-2xl surface-flat bg-card pb-3">
       <CollapsibleTrigger className="group flex w-full items-center gap-2.5 rounded-2xl px-3 py-2 text-left text-sm hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring">
         <ListTodoIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
         <span className="font-medium">{t('composer.todos')}</span>{' '}
@@ -28,6 +29,6 @@ export function ComposerTodos({ items }: { items: SessionView['lastTodos'] }) {
           <TodoList items={items} variant="dots" />
         </div>
       </CollapsibleContent>
-    </Collapsible>
+    </TodoDisclosure>
   );
 }

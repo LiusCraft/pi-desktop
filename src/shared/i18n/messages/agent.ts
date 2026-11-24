@@ -242,6 +242,14 @@ export const agent = defineMessages({
     en: 'Also address unresolved review comments on {noun} #{num}. Run the relevant tests, then commit and push to the current branch. End the turn after pushing; the PR watcher will follow up.',
     zh: '一并处理 {noun} #{num} 上未解决的评审意见。运行相关测试，通过后提交并推送到当前分支。推送后结束本轮，由 PR 监听继续跟进。',
   },
+  'ag.prFinishScopedFix': {
+    en: 'Run the relevant tests, then commit and push only the requested fix to the current branch. Do not address review comments. End the turn after pushing.',
+    zh: '运行相关测试，只提交并推送本次要求的修复到当前分支，不处理评审意见。推送后结束本轮。',
+  },
+  'ag.prAutomationDisabled': {
+    en: 'This PR automation is disabled in Code settings.',
+    zh: '这项 PR 自动化已在 Code 设置中关闭。',
+  },
   'ag.prNotes': {
     en: 'Use {comments} to read each comment (inline comments: {inline}), fix them, commit and push to the current branch, reply to each resolved comment, then tell me which ones still need a human.',
     zh: '用 {comments} 读清每条意见（行内评论用 {inline}），改完提交并推送到当前分支，把已解决的评论逐条回复，再告诉我还剩哪些需要人来确认。',

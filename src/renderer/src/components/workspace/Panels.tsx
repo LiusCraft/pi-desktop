@@ -43,8 +43,10 @@ import { ZoomImage } from '@/components/common/ZoomImage';
 import { HtmlPreview } from '@/components/common/HtmlPreview';
 import { Markdown } from '@/components/common/Markdown';
 import { SelectableContent } from '@/components/common/SelectableContent';
+import { TodoDisclosure } from '@/components/common/TodoDisclosure';
 import { TodoList, PlanActions } from '@/components/thread/Items';
 import { Button } from '@/components/ui/button';
+import { CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
@@ -1694,28 +1696,40 @@ export function WorkPanel({ s }: { s: SessionView }) {
     <Card>
       <div>
         <section className="space-y-2 p-4">
-          <h3 className="flex items-center justify-between text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-            {t('progress.title')}
-            {todos.length > 0 && (
-              <span>
-                {done}/{todos.length}
-              </span>
-            )}
-          </h3>
           {todos.length ? (
-            <>
+            <TodoDisclosure className="flex flex-col gap-2">
+              <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded text-left hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+                  <span>{t('progress.title')}</span>{' '}
+                  <span className="ml-auto">
+                    {done}/{todos.length}
+                  </span>
+                  <ChevronDownIcon aria-hidden className="size-3.5 shrink-0 group-data-[state=closed]:rotate-180" />
+                </CollapsibleTrigger>
+              </h3>
               <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                 <div
                   className="h-full rounded-full bg-primary transition-all"
                   style={{ width: `${(done / todos.length) * 100}%` }}
                 />
               </div>
-              <TodoList items={todos} />
-            </>
-          ) : tasks.length ? (
-            <Dispatched tasks={tasks} />
+              <CollapsibleContent>
+                <TodoList items={todos} />
+              </CollapsibleContent>
+            </TodoDisclosure>
           ) : (
-            <p className="text-sm text-muted-foreground">{t(s.running ? 'progress.learning' : 'progress.multiStep')}</p>
+            <>
+              <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                {t('progress.title')}
+              </h3>
+              {tasks.length ? (
+                <Dispatched tasks={tasks} />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {t(s.running ? 'progress.learning' : 'progress.multiStep')}
+                </p>
+              )}
+            </>
           )}
         </section>
         <section className="space-y-1 p-4">

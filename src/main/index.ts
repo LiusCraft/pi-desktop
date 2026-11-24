@@ -46,6 +46,7 @@ import {
 } from '@shared/protocol';
 import { DEFAULT_PET_ID } from '@shared/pets';
 import { DEFAULT_SETTINGS } from '@shared/settings';
+import { normalizePrBar } from '@shared/pr-bar-settings';
 import { normalizeShortcuts } from '@shared/shortcuts';
 import {
   ARTIFACT_ENTRY,
@@ -179,6 +180,7 @@ function ensureDemoProject() {
 function settingsValue(): Settings {
   const settings = { ...DEFAULT_SETTINGS, ...store.get<Partial<Settings>>('settings', {}) };
   settings.shortcuts = normalizeShortcuts(settings.shortcuts);
+  settings.prBar = normalizePrBar(settings.prBar);
   const rawFontSize = settings.fontSize;
   settings.fontSize =
     typeof rawFontSize === 'number' && Number.isFinite(rawFontSize)
@@ -233,11 +235,12 @@ function watchPets() {
     console.error('[main] cannot watch the pets folder:', err);
   }
 }
-function saveSettings(patch: Partial<Settings>) {
-  const clean: Partial<Settings> = { ...patch };
+function saveSettings(patch: ApiArgs<'settings:set'>[0]) {
+  const current = settingsValue();
+  const { prBar, ...clean } = patch;
   if ('worktreeDir' in patch) clean.worktreeDir = normalizeWorktreeDir(patch.worktreeDir);
   if ('shortcuts' in patch) clean.shortcuts = normalizeShortcuts(patch.shortcuts);
-  store.set('settings', { ...settingsValue(), ...clean });
+  store.set('settings', { ...current, ...clean, prBar: normalizePrBar({ ...current.prBar, ...prBar }) });
   return applySettings();
 }
 /** Make the stored settings take effect and tell every window; also runs when the agent host edits them for the model. */
@@ -245,7 +248,10 @@ function applySettings() {
   const next = settingsValue();
   const locale = currentLocale();
   setActiveLocale(locale);
-  if (agent) void agent.call('host:locale', locale).catch(() => {});
+  if (agent) {
+    void agent.call('host:locale', locale).catch(() => {});
+    void agent.call('host:prBarChanged').catch(() => {});
+  }
   // Native chrome (title bar, menus, dialogs) follows the app's appearance.
   nativeTheme.themeSource = next.theme === 'light' || next.theme === 'dark' ? next.theme : 'system';
   applyThemeToWindows();

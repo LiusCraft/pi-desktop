@@ -130,6 +130,99 @@ const codeSession = async (mode: PermissionMode = 'auto', worktree = false, auto
 const read = (dir: string, rel: string) => fs.readFileSync(path.join(dir, rel), 'utf8');
 
 describe('code sessions', { timeout: 120_000 }, () => {
+  it('drops a PR read in flight after disabling the PR Bar and leaves Git available', async () => {
+    const { meta } = await codeSession();
+    const store = new Store(path.join(tmp, 'data'));
+    const saved = store.get<Partial<Settings>>('settings', {});
+    let complete!: (status: Awaited<ReturnType<typeof git.prStatus>>) => void;
+    const status = vi
+      .spyOn(git, 'prStatus')
+      .mockImplementationOnce(() => new Promise((resolve) => (complete = resolve)));
+    try {
+      const pending = driver.hub.prStatus(meta.id);
+      await vi.waitFor(() => expect(status).toHaveBeenCalledTimes(1));
+      store.set('settings', { ...saved, prBar: { enabled: false } });
+      driver.hub.refreshPrBarSettings();
+      complete({
+        num: 7,
+        url: 'https://github.com/example/project/pull/7',
+        state: 'open',
+        draft: false,
+        checks: [],
+        ci: 'pass',
+        comments: 0,
+      });
+      await expect(pending).resolves.toBeNull();
+      await expect(driver.hub.prStatus(meta.id)).resolves.toBeNull();
+      expect(status).toHaveBeenCalledTimes(1);
+      expect(driver.hub.meta(meta.id).pr).toBeFalsy();
+      expect(() => driver.hub.update(meta.id, { prAuto: { merge: true } })).toThrow(
+        '这项 PR 自动化已在 Code 设置中关闭。',
+      );
+      await expect(driver.hub.commits(meta.id)).resolves.toBeInstanceOf(Array);
+    } finally {
+      status.mockRestore();
+      store.set('settings', saved);
+      driver.hub.refreshPrBarSettings();
+    }
+  });
+  it('resumes a live PR watch without granting a globally disabled merge', async () => {
+    const store = new Store(path.join(tmp, 'data'));
+    const saved = store.get<Partial<Settings>>('settings', {});
+    const configure = (enabled: boolean, autoMerge: boolean) => {
+      store.set('settings', { ...saved, prBar: { enabled, autoMerge } });
+      driver.hub.refreshPrBarSettings();
+    };
+    const { meta } = await codeSession();
+    const snapshot: git.PrSnapshot = {
+      status: {
+        num: 7,
+        url: 'https://github.com/example/project/pull/7',
+        state: 'open',
+        draft: false,
+        checks: [{ n: 'build', st: 'pass' }],
+        ci: 'pass',
+        comments: 0,
+        mergeable: 'clean',
+        head: 'test-head',
+      },
+      notes: [],
+    };
+    const readPr = git.readPr;
+    const read = vi
+      .spyOn(git, 'readPr')
+      .mockImplementation((cwd, binding) => (cwd === meta.cwd ? Promise.resolve(snapshot) : readPr(cwd, binding)));
+    const prompt = vi.spyOn(driver.hub, 'prompt').mockResolvedValue({ disposition: 'started' });
+    try {
+      driver.hub.update(meta.id, { prAuto: { merge: true } });
+      configure(false, false);
+      await driver.hub.open(meta.id);
+      expect(read).not.toHaveBeenCalledWith(meta.cwd, undefined);
+      configure(true, false);
+      await vi.waitFor(() => expect(driver.hub.meta(meta.id).pr).toMatchObject({ num: 7 }));
+      expect(prompt).not.toHaveBeenCalled();
+      expect(driver.hub.meta(meta.id).prAutoDone).toBeUndefined();
+
+      configure(true, true);
+      await vi.waitFor(() => expect(driver.hub.meta(meta.id).prAutoDone?.merge).toBe('7:test-head'));
+      expect(prompt).toHaveBeenCalledExactlyOnceWith(
+        meta.id,
+        expect.objectContaining({ text: expect.stringContaining('<pr-event kind="merge">') }),
+        'followUp',
+        'pr',
+      );
+    } finally {
+      try {
+        await driver.hub.archive(meta.id);
+      } finally {
+        read.mockRestore();
+        prompt.mockRestore();
+        store.set('settings', saved);
+        driver.hub.refreshPrBarSettings();
+      }
+    }
+  });
+
   it('runs the keyboard demo through the question tool and records the completed reply', async () => {
     const { meta } = await codeSession();
     expect(meta.lastResponseAt).toBeUndefined();
