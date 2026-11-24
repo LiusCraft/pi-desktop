@@ -12,7 +12,8 @@ import {
 } from 'lucide-react';
 import { fmtLines, prBadge, prCiLine, prSize, type PrLike } from '@shared/pr-status';
 import { sideWindowKey, type SideChatSummary } from '@shared/protocol';
-import { TONE } from '@/components/composer/PrBar';
+import { PrBar, TONE } from '@/components/composer/PrBar';
+import { DEFAULT_PR_BAR } from '@shared/pr-bar-settings';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { call } from '@/lib/api';
 import { fname } from '@/lib/format';
@@ -59,6 +60,7 @@ export function SessionOverview({ s }: { s: SessionView }) {
   const sid = s.meta.id;
   const { chats, error } = useSideList(sid, open);
   const windows = useSide((st) => st.windows);
+  const prBar = useApp((st) => st.settings.prBar ?? DEFAULT_PR_BAR);
   const env = useEnvironmentName();
   const pr = s.pr;
   const work = s.meta.kind === 'work';
@@ -84,7 +86,7 @@ export function SessionOverview({ s }: { s: SessionView }) {
         align="end"
         sideOffset={8}
         aria-label={t('overview.title')}
-        className="w-[min(24rem,calc(100vw-1.5rem))] rounded-xl p-2"
+        className="max-h-[var(--radix-popover-content-available-height)] w-[min(24rem,calc(100vw-1.5rem))] overflow-y-auto rounded-xl p-2"
       >
         <button type="button" aria-label={t('overview.summary')} className={cn(ROW, 'items-start')} onClick={openInfo}>
           <InfoIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
@@ -124,21 +126,26 @@ export function SessionOverview({ s }: { s: SessionView }) {
                 <Lines {...lines} />
               </button>
             </section>
-            <section className="mt-1 border-t pt-1" aria-label={t('overview.pullRequests')}>
-              <h2 className={HEADING}>{t('overview.pullRequests')}</h2>
-              {pr ? (
-                <button type="button" className={ROW} onClick={openInfo}>
-                  <GitPullRequestIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                  <span className="flex-1 truncate" title={pr.title}>
-                    #{pr.num}
-                    {pr.title && ` · ${pr.title}`}
-                  </span>
-                  <PrBadge pr={pr} />
-                </button>
-              ) : (
-                <p className="px-2 py-1.5 text-xs text-muted-foreground">{t('overview.noPr')}</p>
-              )}
-            </section>
+            {prBar.enabled && (
+              <section className="mt-1 border-t pt-1" aria-label={t('overview.pullRequests')}>
+                <h2 className={HEADING}>{t('overview.pullRequests')}</h2>
+                {prBar.placement === 'overview' && s.meta.branch && (
+                  <PrBar s={s} overview onNavigate={() => setOpen(false)} />
+                )}
+                {prBar.placement === 'composer' && pr ? (
+                  <button type="button" className={ROW} onClick={openInfo}>
+                    <GitPullRequestIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                    <span className="flex-1 truncate" title={pr.title}>
+                      #{pr.num}
+                      {pr.title && ` · ${pr.title}`}
+                    </span>
+                    <PrBadge pr={pr} />
+                  </button>
+                ) : !pr ? (
+                  <p className="px-2 py-1.5 text-xs text-muted-foreground">{t('overview.noPr')}</p>
+                ) : null}
+              </section>
+            )}
           </>
         )}
         <section className="mt-1 border-t pt-1" aria-label={t('side.list')}>
@@ -201,6 +208,7 @@ export function SessionInfo({ s }: { s: SessionView }) {
   const t = useT();
   const env = useEnvironmentName();
   const { meta, gitState, pr } = s;
+  const prBar = useApp((st) => st.settings.prBar ?? DEFAULT_PR_BAR);
   const size = pr && prSize(pr);
   const model = s.model ?? meta.model;
   return (
@@ -236,7 +244,7 @@ export function SessionInfo({ s }: { s: SessionView }) {
           )}
         </dl>
       </section>
-      {meta.kind === 'code' && (
+      {meta.kind === 'code' && prBar.enabled && (
         <section className="space-y-2 border-t pt-3">
           <h2 className="text-sm font-medium">{t('overview.pullRequests')}</h2>
           {pr ? (

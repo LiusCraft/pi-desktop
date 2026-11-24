@@ -4,13 +4,13 @@ import { loadChanges, loadPrThreads } from './actions';
 
 /** Looks triggered by focus or polling skip a session refreshed this recently. */
 const MIN_GAP_MS = 10_000;
-/** While the diff is on screen, comments and PR state are re-read this often. */
+/** While the diff is on screen, re-read changes and comments. The agent polls PR status itself. */
 const DIFF_POLL_MS = 60_000;
 
 const lastLook = new Map<string, number>();
 
 /** Re-read the code session's diff, PR and review comments in the background; stale data stays on screen meanwhile. */
-function refresh(force = false) {
+function refresh(force = false, readPr = true) {
   if (document.visibilityState !== 'visible') return;
   const s = currentSession();
   if (!s || s.meta.kind !== 'code') return;
@@ -21,7 +21,7 @@ function refresh(force = false) {
   void loadChanges(id);
   // Query even when the session has no cached PR. The current branch may have a PR that was
   // created outside Pi Desktop, and the status call publishes a `pr` event that updates the bar.
-  call('sessions:pr', id).catch(() => {});
+  if (readPr && useApp.getState().settings.prBar?.enabled !== false) call('sessions:pr', id).catch(() => {});
   if (s.pr) void loadPrThreads(id);
 }
 
@@ -34,13 +34,13 @@ export function watchCodeSession(): () => void {
   let shown = '';
   const off = useApp.subscribe((st) => {
     const s = st.current ? st.sessions[st.current] : undefined;
-    const key = s ? `${s.meta.id}:${s.panels.diff}` : '';
+    const key = s ? `${s.meta.id}:${s.panels.diff}:${st.settings.prBar?.enabled !== false}` : '';
     if (key === shown) return;
     shown = key;
     if (key) refresh(true);
   });
   const poll = setInterval(() => {
-    if (currentSession()?.panels.diff) refresh();
+    if (currentSession()?.panels.diff) refresh(false, false);
   }, DIFF_POLL_MS);
 
   return () => {

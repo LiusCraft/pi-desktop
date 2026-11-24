@@ -139,6 +139,11 @@ export const models = defineMessages({
   'editor.prices': { en: 'Prices (USD per million tokens)', zh: '价格（美元 / 百万 tokens）' },
   'editor.pricePh': { en: 'Reference / default 0', zh: '参考值 / 默认 0' },
   'editor.reasoning': { en: 'Reasoning', zh: '推理能力' },
+  'editor.fast': { en: 'Supports Fast', zh: '支持 Fast' },
+  'editor.fastTip': {
+    en: 'Enable if this endpoint accepts the priority service tier for this model. This makes Fast available in the composer.',
+    zh: '如果此端点接受该模型的 priority 服务档位，请开启。开启后，输入框会显示 Fast 开关。',
+  },
   'editor.levels': { en: 'Supported levels', zh: '支持的等级' },
   'editor.levelsHint': { en: 'Unchecked levels are saved as unsupported.', zh: '未勾选的等级会保存为不支持。' },
   'editor.levelsTip': {

@@ -1410,7 +1410,8 @@ export const PermItem = memo(function PermItem({ sid, item }: { sid: string; ite
   const answer = (v: string) => answerUi(sid, item.key, { value: v }, v);
   return (
     <div className="rounded-xl border border-primary/40 bg-card p-3.5 shadow-surface">
-      <div className="mb-2 text-sm font-medium">{permissionTitle(tool, item.title)}</div>
+      <div className="mb-2 text-sm font-medium wrap-anywhere">{permissionTitle(tool, item.title)}</div>
+      {item.commandSummary && <p className="mb-3 text-sm wrap-anywhere">{item.commandSummary}</p>}
       {preview && <div className="mb-3 max-h-72 overflow-auto rounded-lg border bg-code">{preview}</div>}
       <div className="flex flex-wrap gap-2">
         <Button size="sm" onClick={() => answer('Allow')}>

@@ -8,6 +8,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { HostEvent } from '@shared/protocol';
 import { SessionHub } from '../src/agent/hub';
+import { sessionHandlers } from '../src/agent/handlers';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-desktop-model-admin-'));
 const agentDir = path.join(tmp, 'agent');
@@ -19,6 +20,7 @@ let server: http.Server;
 let baseUrl: string;
 let hub: SessionHub;
 const events: HostEvent[] = [];
+const tiers: (string | undefined)[] = [];
 
 async function waitFor<T extends HostEvent['type']>(
   type: T,
@@ -52,6 +54,19 @@ beforeAll(async () => {
     if (req.url?.endsWith('/v1/models')) {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ data: [{ id: 'test-model' }, { id: 'mystery-model' }] }));
+      return;
+    }
+    if (req.url?.endsWith('/v1/chat/completions')) {
+      let body = '';
+      req.on('data', (chunk) => (body += chunk));
+      req.on('end', () => {
+        const request = JSON.parse(body);
+        tiers.push(request.service_tier);
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        res.end(
+          `data: ${JSON.stringify({ id: 'completion', model: request.model, choices: [{ index: 0, delta: { content: 'Done' }, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`,
+        );
+      });
       return;
     }
     res.writeHead(404).end();
@@ -119,6 +134,71 @@ describe('SessionHub model admin', () => {
     expect(models.models.map((model) => `${model.provider}/${model.id}`)).toContain('local-gw/test-model');
     const configured = (await hub.admin.catalog()).providers.find((provider) => provider.id === 'local-gw')!;
     expect(configured).toMatchObject({ configured: true, authType: 'api_key', credential: true, custom: true });
+  });
+
+  it('persists custom Fast capability and sends the tier only for an opted-in session', async () => {
+    const draft = {
+      id: 'fast-gateway',
+      baseUrl,
+      api: 'openai-completions',
+      models: [
+        { id: 'gpt-99', supportsFast: true },
+        { id: 'gpt-6.1-sol', supportsFast: false },
+      ],
+    };
+    await hub.admin.saveEndpoint(draft);
+    const catalog = await hub.admin.catalog();
+    const endpoint = catalog.endpoints.find((item) => item.id === draft.id);
+    expect(endpoint?.models).toMatchObject(draft.models);
+    const models = (await hub.listModels()).models.filter((m) => m.provider === draft.id);
+    expect(models).toEqual(expect.arrayContaining(draft.models.map((m) => expect.objectContaining(m))));
+
+    const fast = 'fast-gateway/gpt-99';
+    const disabled = 'fast-gateway/gpt-6.1-sol';
+    const handlers = sessionHandlers(Promise.resolve(hub), () => null);
+    const session = await hub.create({
+      kind: 'work',
+      projectPath: null,
+      model: fast,
+      fastModel: fast,
+      autoName: false,
+    });
+    const unsupported = await hub.create({ kind: 'work', projectPath: null, model: disabled, fastModel: disabled });
+    expect(unsupported.fastModel).toBeUndefined();
+    expect(session.fastModel).toBe(fast);
+    await hub.update(session.id, { autoUpdateMetadata: false });
+    const ask = async () => {
+      events.length = 0;
+      await hub.prompt(session.id, { text: 'Hello', attachments: [] }, 'steer');
+      await expect
+        .poll(() =>
+          events.some((e) => e.type === 'pi' && e.sessionId === session.id && e.event.type === 'agent_settled'),
+        )
+        .toBe(true);
+    };
+    tiers.length = 0;
+    // A delayed toggle for a previous model must not clear the current model's Fast setting.
+    await handlers['sessions:setFast'](session.id, disabled, false);
+    expect((await hub.open(session.id)).meta.fastModel).toBe(fast);
+    await ask();
+    await handlers['sessions:setFast'](session.id, fast, false);
+    expect((await hub.open(session.id)).meta.fastModel).toBeUndefined();
+    await ask();
+    await expect(handlers['sessions:setFast'](session.id, disabled, true)).rejects.toThrow(/Fast/);
+    await handlers['sessions:setFast'](session.id, fast, true);
+    expect((await hub.open(session.id)).meta.fastModel).toBe(fast);
+    await hub.setModel(session.id, fast);
+    expect((await hub.open(session.id)).meta.fastModel).toBe(fast);
+    await ask();
+    await hub.setModel(session.id, disabled);
+    expect((await hub.open(session.id)).meta.fastModel).toBeUndefined();
+    await expect(hub.setFast(session.id, disabled, true)).rejects.toThrow(/Fast/);
+    await ask();
+    expect(tiers).toEqual(['priority', undefined, 'priority', undefined]);
+
+    await hub.admin.saveEndpoint({ ...draft, models: [{ id: 'gpt-99' }, draft.models[1]] });
+    expect(hub.admin.fastCapability(fast)).toBeUndefined();
+    expect(hub.admin.fastCapability(disabled)).toBe(false);
   });
 
   it('relogins through the pi prompt flow and removes the credential on logout', async () => {

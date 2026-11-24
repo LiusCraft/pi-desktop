@@ -20,11 +20,11 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type {
+  ApiArgs,
   AppInfo,
   CodeProjectPolicy,
   Palette,
   Project,
-  Settings,
   SettingsPayload,
   SuggestionModelMode,
   TerminalShell,
@@ -71,6 +71,14 @@ import { applyTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import { allPets, PetSprite } from '@/components/composer/Clawd';
 import { ContextSection } from './ContextSection';
+import {
+  normalizePrBar,
+  PR_BAR_CAPABILITIES,
+  PR_BAR_INTERVALS,
+  PR_BAR_PLACEMENTS,
+  type PrBarInterval,
+  type PrBarSettings,
+} from '@shared/pr-bar-settings';
 import { FontPicker } from './FontPicker';
 import { ModelPicker } from './ModelPicker';
 import { ModelsSection } from './ModelsSection';
@@ -118,7 +126,15 @@ const SECTIONS: { id: Section; label: MessageKey | null; icon: ReactNode; groups
   },
   { id: 'shortcuts', label: 'shortcuts.title', icon: <KeyboardIcon className="size-4" /> },
   { id: 'work', label: null, icon: <BriefcaseIcon className="size-4" /> },
-  { id: 'code', label: null, icon: <CodeIcon className="size-4" /> },
+  {
+    id: 'code',
+    label: null,
+    icon: <CodeIcon className="size-4" />,
+    groups: [
+      { id: 'prBar', label: 'settings.prBar' },
+      { id: 'terminal', label: 'settings.terminal' },
+    ],
+  },
   { id: 'models', label: 'settings.section.models', icon: <BrainIcon className="size-4" /> },
   {
     id: 'projects',
@@ -251,6 +267,80 @@ function CountInput({
       }}
       className="h-8 w-16 text-center"
     />
+  );
+}
+
+function PrBarSection({ value, onPatch }: { value: PrBarSettings; onPatch: (patch: Partial<PrBarSettings>) => void }) {
+  const t = useT();
+  const interval = (key: PrBarInterval, floor: number = PR_BAR_INTERVALS[key].min) => (
+    <Row key={key} title={t(`settings.prBar.${key}`)}>
+      <div className="flex shrink-0 items-center gap-2">
+        <CountInput
+          value={value[key]}
+          min={Math.max(floor, PR_BAR_INTERVALS[key].min)}
+          max={PR_BAR_INTERVALS[key].max}
+          label={t(`settings.prBar.${key}`)}
+          onCommit={(n) => onPatch({ [key]: n })}
+        />
+        <span className="text-sm text-muted-foreground">{t('settings.secondsUnit')}</span>
+      </div>
+    </Row>
+  );
+  return (
+    <Group id="prBar" title={t('settings.prBar')}>
+      <Panel>
+        <Row
+          title={t('settings.prBar.enable')}
+          hint={t(isRemote ? 'settings.prBar.remote' : 'settings.prBar.enable.hint')}
+        >
+          <Switch
+            aria-label={t('settings.prBar.enable')}
+            checked={value.enabled}
+            onCheckedChange={(enabled) => onPatch({ enabled })}
+          />
+        </Row>
+        {value.enabled && (
+          <Row title={t('settings.prBar.placement')}>
+            <Segmented
+              value={value.placement}
+              options={PR_BAR_PLACEMENTS.map((id) => ({ id, label: t(`settings.prBar.${id}`) }))}
+              onChange={(placement) => onPatch({ placement })}
+            />
+          </Row>
+        )}
+      </Panel>
+      {value.enabled && !isRemote && (
+        <>
+          <h3 className="mt-4 mb-1 text-sm font-medium">{t('settings.prBar.automation')}</h3>
+          <p className="mb-2 text-xs text-muted-foreground">{t('settings.prBar.automation.hint')}</p>
+          <Panel>
+            {PR_BAR_CAPABILITIES.map((key) => (
+              <Row key={key} title={t(`settings.prBar.${key}`)}>
+                <Switch
+                  aria-label={t(`settings.prBar.${key}`)}
+                  checked={value[key]}
+                  onCheckedChange={(enabled) => onPatch({ [key]: enabled })}
+                />
+              </Row>
+            ))}
+          </Panel>
+          <h3 className="mt-4 mb-2 text-sm font-medium">{t('settings.prBar.refresh')}</h3>
+          <Panel>
+            {interval('fastSeconds')}
+            {interval('slowSeconds', value.fastSeconds)}
+            {interval('backoffSeconds', value.slowSeconds)}
+            <Row title={t('settings.prBar.watchInactive')}>
+              <Switch
+                aria-label={t('settings.prBar.watchInactive')}
+                checked={value.watchInactive}
+                onCheckedChange={(watchInactive) => onPatch({ watchInactive })}
+              />
+            </Row>
+            {value.watchInactive && interval('idleSeconds')}
+          </Panel>
+        </>
+      )}
+    </Group>
   );
 }
 
@@ -423,7 +513,7 @@ export function SettingsApp() {
       return next;
     });
 
-  const patch = async (values: Partial<Settings>) => {
+  const patch = async (values: ApiArgs<'settings:set'>[0]) => {
     try {
       const next = await call('settings:set', values);
       setSettings(next);
@@ -896,6 +986,7 @@ export function SettingsApp() {
       <>
         <Heading title="Code" sub={t('settings.code.sub')} />
         <div>
+          <PrBarSection value={normalizePrBar(settings.prBar)} onPatch={(change) => void patch({ prBar: change })} />
           <Group id="terminal" title={t('settings.terminal')}>
             <Panel>
               <Row title={t('settings.terminal.default')} hint={t('settings.terminal.default.hint')}>

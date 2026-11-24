@@ -37,6 +37,7 @@ import { Clawd, moodOf, PET_GROUND, type Mood } from './Clawd';
 import { ComposerInput, pickAttachments, type ComposerHandle } from './ComposerInput';
 import { ComposerTodos } from './ComposerTodos';
 import { ContextRing, EffortMenu, FootButton, ModeMenu, ModelMenu } from './Menus';
+import { FastButton } from './FastButton';
 import { PrBar } from './PrBar';
 import { WorktreeBasePicker } from './WorktreeBasePicker';
 
@@ -341,6 +342,7 @@ export function CodeComposer() {
           }
         />
         <EffortMenu levels={s ? s.levels : levels} effort={s ? s.thinking : prefs.effort} />
+        <FastButton model={model} session={s?.meta} />
         {s && (
           <ContextRing
             pct={s.ctxPct ?? null}
@@ -410,6 +412,7 @@ export function WorkComposer() {
           }
         />
         <EffortMenu levels={levels} effort={prefs.effort} />
+        <FastButton model={prefs.model} />
         <ComposerAction label={t('composer.send')} disabled={!ready || busy} onClick={() => void send(false)} />
       </ComposerCard>
       <div className="mt-2 flex items-center gap-1">

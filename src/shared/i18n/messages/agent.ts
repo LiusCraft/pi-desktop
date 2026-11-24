@@ -158,7 +158,7 @@ export const agent = defineMessages({
     en: 'Run {command} (uses {path}, outside the working folder)',
     zh: '运行 {command}（用到工作目录之外的 {path}）',
   },
-  'ag.reviewAsk': { en: 'Run {command} (review: {reason})', zh: '运行 {command}（审查：{reason}）' },
+  'ag.runCommand': { en: 'Run {command}', zh: '运行 {command}' },
   'ag.stepWorktree': { en: 'Creating the git worktree ({branch})', zh: '创建 git worktree（{branch}）' },
   'ag.stepAgent': { en: 'Starting the agent, loading extensions and tools', zh: '启动 Agent，加载扩展与工具' },
   'ag.toolRead': { en: 'Read files', zh: '读取文件' },
@@ -241,6 +241,14 @@ export const agent = defineMessages({
   'ag.prFinishFix': {
     en: 'Also address unresolved review comments on {noun} #{num}. Run the relevant tests, then commit and push to the current branch. End the turn after pushing; the PR watcher will follow up.',
     zh: '一并处理 {noun} #{num} 上未解决的评审意见。运行相关测试，通过后提交并推送到当前分支。推送后结束本轮，由 PR 监听继续跟进。',
+  },
+  'ag.prFinishScopedFix': {
+    en: 'Run the relevant tests, then commit and push only the requested fix to the current branch. Do not address review comments. End the turn after pushing.',
+    zh: '运行相关测试，只提交并推送本次要求的修复到当前分支，不处理评审意见。推送后结束本轮。',
+  },
+  'ag.prAutomationDisabled': {
+    en: 'This PR automation is disabled in Code settings.',
+    zh: '这项 PR 自动化已在 Code 设置中关闭。',
   },
   'ag.prNotes': {
     en: 'Use {comments} to read each comment (inline comments: {inline}), fix them, commit and push to the current branch, reply to each resolved comment, then tell me which ones still need a human.',

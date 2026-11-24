@@ -286,6 +286,25 @@ describe('Subagent permission inheritance', () => {
   );
 });
 
+describe('Auto mode review prompts', () => {
+  const command = 'git push --force origin main';
+
+  it('passes the command summary without changing the decision', async () => {
+    const summary = 'Force-pushes the local main branch to origin.';
+    const loaded = load({ review: async () => ({ verdict: 'ask', summary }) }, { response: { value: 'Deny' } });
+    await expect(loaded.call({ command })).resolves.toMatchObject({ block: true });
+    expect(loaded.requests).toEqual([
+      { kind: 'permission', toolCallId: 'call-1', title: `Run ${command}`, commandSummary: summary },
+    ]);
+  });
+
+  it('still requires consent if the review is unavailable', async () => {
+    const loaded = load({ review: async () => null }, { response: { value: 'Deny' } });
+    await expect(loaded.call({ command })).resolves.toMatchObject({ block: true });
+    expect(loaded.requests).toEqual([{ kind: 'permission', toolCallId: 'call-1', title: `Run ${command}` }]);
+  });
+});
+
 describe('PR automation command gate', () => {
   it('accepts only git and forge CLI steps', () => {
     expect(isPrAutomationCommand('git add -A && git commit -m "a && b" && gh pr create --fill')).toBe(true);
@@ -297,7 +316,7 @@ describe('PR automation command gate', () => {
   });
 
   it('sends non-read-only auto commands to the model review', async () => {
-    const review = vi.fn<Review>(async () => ({ verdict: 'allow', reason: '' }));
+    const review = vi.fn<Review>(async () => ({ verdict: 'allow' }));
     const loaded = load({ review });
     await loaded.call({ command: 'git push --set-upstream origin HEAD' });
     expect(review).toHaveBeenCalledOnce();
@@ -305,7 +324,7 @@ describe('PR automation command gate', () => {
   });
 
   it('keeps the deterministic read-only pre-check ahead of review', async () => {
-    const review = vi.fn<Review>(async () => ({ verdict: 'allow', reason: '' }));
+    const review = vi.fn<Review>(async () => ({ verdict: 'allow' }));
     const loaded = load({ review });
     await loaded.call({ command: 'git status --short' });
     expect(review).not.toHaveBeenCalled();
@@ -314,7 +333,7 @@ describe('PR automation command gate', () => {
 
   it('lets PR watcher git/forge commands through in every permission mode', async () => {
     for (const mode of ['auto', 'default', 'acceptEdits', 'plan'] as const) {
-      const review = vi.fn<Review>(async () => ({ verdict: 'ask', reason: 'should not run' }));
+      const review = vi.fn<Review>(async () => ({ verdict: 'ask' }));
       const loaded = load({ review, prAutomation: () => true });
       loaded.state.mode = mode;
       await expect(

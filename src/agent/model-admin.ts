@@ -106,6 +106,7 @@ function wireEvent(event: {
 
 export class ModelAdmin {
   private readonly endpoints: EndpointStore;
+  private fastCapabilities: Map<string, boolean>;
   private readonly dev: ModelsDevCatalog;
   private readonly logins = new Map<string, PendingLogin>();
   private builtinIds: Set<string> | null = null;
@@ -114,7 +115,16 @@ export class ModelAdmin {
 
   constructor(private readonly opts: ModelAdminOptions) {
     this.endpoints = new EndpointStore(path.join(opts.agentDir, 'models.json'));
+    this.fastCapabilities = this.endpoints.fastCapabilities();
     this.dev = new ModelsDevCatalog(path.join(appCacheDir(opts.dataDir), 'models-dev.json'));
+  }
+
+  refreshFastCapabilities() {
+    this.fastCapabilities = this.endpoints.fastCapabilities();
+  }
+
+  fastCapability(key: string): boolean | undefined {
+    return this.fastCapabilities.get(key);
   }
 
   private run<T>(fn: () => Promise<T>): Promise<T> {

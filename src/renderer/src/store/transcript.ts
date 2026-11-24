@@ -867,7 +867,15 @@ export function addUiRequest(s: SessionView, req: UiRequest, view: ViewMode): { 
   if (req.kind === 'permission') {
     s.waiting = push(
       s,
-      { kind: 'perm', key: newKey(), requestId: req.id, toolCallId: req.toolCallId, title: req.title, resolved: null },
+      {
+        kind: 'perm',
+        key: newKey(),
+        requestId: req.id,
+        toolCallId: req.toolCallId,
+        title: req.title,
+        commandSummary: req.commandSummary,
+        resolved: null,
+      },
       view,
     ).key;
     return {};

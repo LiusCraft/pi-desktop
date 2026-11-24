@@ -84,7 +84,15 @@ export type Item =
   | { kind: 'note'; key: string; text: string; level?: 'error' }
   | { kind: 'group'; key: string; thoughts: ThinkStep[]; tools: ToolState[]; open: boolean; userToggled?: boolean }
   | { kind: 'todos'; key: string; items: Todo[] }
-  | { kind: 'perm'; key: string; requestId: string | null; toolCallId: string; title: string; resolved: string | null }
+  | {
+      kind: 'perm';
+      key: string;
+      requestId: string | null;
+      toolCallId: string;
+      title: string;
+      commandSummary?: string;
+      resolved: string | null;
+    }
   | {
       kind: 'ask';
       key: string;

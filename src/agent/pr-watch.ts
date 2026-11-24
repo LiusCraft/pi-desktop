@@ -7,21 +7,21 @@ import type { PrEvent } from '@shared/pr-event';
 import { forgeWords } from '@shared/forge';
 import { prFixKey, prHeadKey, prReady } from '@shared/pr-status';
 import type { PrAutoDone, PrStatus } from '@shared/protocol';
+import { DEFAULT_PR_BAR, type PrBarSettings } from '@shared/pr-bar-settings';
 import type { PrSnapshot } from './git';
 
 /** How often to look: quick while CI is moving, rarely once it is settled. */
-export const FAST_MS = 15_000;
-export const SLOW_MS = 60_000;
+export const FAST_MS = DEFAULT_PR_BAR.fastSeconds * 1000;
+export const SLOW_MS = DEFAULT_PR_BAR.slowSeconds * 1000;
 /** `gh` / `glab` missing or rate-limited: stop hammering it. */
-export const BACKOFF_MS = 5 * 60_000;
-/** Open PRs of sessions nobody has open: only the sidebar and inbox show them, so a slow look is enough. */
-export const IDLE_MS = 5 * 60_000;
+export const BACKOFF_MS = DEFAULT_PR_BAR.backoffSeconds * 1000;
 /** The first such look after start, once the app has settled. */
 export const IDLE_FIRST_MS = 15_000;
 
 export interface PrWatchConfig {
   autoFixCi?: boolean;
   autoMerge?: boolean;
+  settings?: PrBarSettings;
   /** What the automation already handled, from the session meta. */
   done?: PrAutoDone;
 }
@@ -52,9 +52,16 @@ export class PrWatcher {
   private misses = 0;
 
   observe(snapshot: PrSnapshot | null, cfg: PrWatchConfig): PrWatchResult {
+    const settings = cfg.settings ?? DEFAULT_PR_BAR;
+    const slow = settings.slowSeconds * 1000;
     if (!snapshot) {
       this.misses++;
-      return { status: this.last, pending: null, after: this.misses > 2 ? BACKOFF_MS : SLOW_MS, done: false };
+      return {
+        status: this.last,
+        pending: null,
+        after: this.misses > 2 ? settings.backoffSeconds * 1000 : slow,
+        done: false,
+      };
     }
     this.misses = 0;
     const pr = snapshot.status;
@@ -66,12 +73,12 @@ export class PrWatcher {
       for (const n of notes) this.seen.add(n.id);
     }
     const fresh = notes.filter((n) => !this.seen.has(n.id));
-    const pending = this.pick(pr, fresh, cfg);
+    const pending = settings.enabled ? this.pick(pr, fresh, cfg, settings) : null;
     const done = pr.state !== 'open';
     return {
       status: pr,
       pending,
-      after: done ? SLOW_MS : pr.ci === 'pending' || pending ? FAST_MS : SLOW_MS,
+      after: !done && (pr.ci === 'pending' || pending) ? settings.fastSeconds * 1000 : slow,
       done,
     };
   }
@@ -88,11 +95,13 @@ export class PrWatcher {
     this.misses = 0;
   }
 
-  private pick(pr: PrStatus, fresh: PrNote[], cfg: PrWatchConfig): PrPending | null {
+  private pick(pr: PrStatus, fresh: PrNote[], cfg: PrWatchConfig, settings: PrBarSettings): PrPending | null {
     if (pr.state !== 'open') return null;
     const w = forgeWords(pr.forge);
-    const fix = cfg.autoFixCi ? prFixKey(pr) : null;
-    const conflict = cfg.autoFixCi && pr.mergeable === 'conflicting' ? prHeadKey(pr) : null;
+    const fix = cfg.autoFixCi && settings.fixCi ? prFixKey(pr) : null;
+    const conflict =
+      cfg.autoFixCi && settings.resolveConflicts && pr.mergeable === 'conflicting' ? prHeadKey(pr) : null;
+    const notes = settings.addressComments ? fresh : [];
     // CI and conflicts can appear separately on the same head, or together in one look.
     const mark: PrAutoDone = {};
     if (conflict && cfg.done?.conflict !== conflict) mark.conflict = conflict;
@@ -114,8 +123,10 @@ export class PrWatcher {
         );
         instructions.push(tr('ag.prFixCi', { checks: w.checks(pr.num) }));
       }
-      if (fresh.length) summary.push(tr('ag.prNewComments', { n: fresh.length }));
-      instructions.push(tr('ag.prFinishFix', { noun: w.noun, num: pr.num }));
+      if (notes.length) summary.push(tr('ag.prNewComments', { n: notes.length }));
+      instructions.push(
+        settings.addressComments ? tr('ag.prFinishFix', { noun: w.noun, num: pr.num }) : tr('ag.prFinishScopedFix'),
+      );
       return {
         mark,
         event: {
@@ -125,26 +136,26 @@ export class PrWatcher {
           head: pr.head,
           summary: summary.join(' · '),
           ...(failed.length ? { failed } : {}),
-          ...(fresh.length ? { notes: fresh } : {}),
+          ...(notes.length ? { notes } : {}),
           instruction: instructions.join('\n'),
         },
       };
     }
-    if (cfg.autoFixCi && fresh.length) {
-      const who = [...new Set(fresh.map((n) => `@${n.author}`))].join(tr('ag.prNamesSep'));
+    if (cfg.autoFixCi && notes.length) {
+      const who = [...new Set(notes.map((n) => `@${n.author}`))].join(tr('ag.prNamesSep'));
       return {
         event: {
           kind: 'notes',
           num: pr.num,
           url: pr.url,
           head: pr.head,
-          summary: `${tr('ag.prNewComments', { n: fresh.length })} · ${who}`,
-          notes: fresh,
+          summary: `${tr('ag.prNewComments', { n: notes.length })} · ${who}`,
+          notes,
           instruction: tr('ag.prNotes', { comments: w.comments(pr.num), inline: w.inlineComments(pr.num) }),
         },
       };
     }
-    const merge = cfg.autoMerge && prReady(pr) ? prHeadKey(pr) : null;
+    const merge = cfg.autoMerge && settings.autoMerge && prReady(pr) ? prHeadKey(pr) : null;
     if (merge && cfg.done?.merge !== merge) {
       return {
         mark: { merge },

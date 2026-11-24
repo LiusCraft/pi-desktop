@@ -139,6 +139,7 @@ import { ArtifactService } from './artifacts';
 import { ObjectStorage } from './storage';
 import { WebSearch } from './web-search';
 import { REQUEST_ORIGIN, type RequestOrigin } from '@shared/request-log';
+import { supportsFast } from './request-hook/fast';
 import { recordRequests } from './request-hook/hook';
 import { RequestLog } from './request-hook/log';
 import { withOrigin } from './request-hook/origin';
@@ -166,7 +167,8 @@ import {
 } from './files';
 import * as git from './git';
 import { ModelAdmin } from './model-admin';
-import { IDLE_FIRST_MS, IDLE_MS, PrWatcher, type PrPending } from './pr-watch';
+import { IDLE_FIRST_MS, PrWatcher, type PrPending } from './pr-watch';
+import { allowsPrRepair, normalizePrBar, type PrBarSettings } from '@shared/pr-bar-settings';
 import * as naming from './naming';
 import { formatPeerHints } from './session-peers';
 import type { Scheduler } from './scheduler';
@@ -297,6 +299,7 @@ interface Live {
   tasks: Map<string, AbortController>;
   /** The current turn came from an enabled PR watcher, not from the composer. */
   prAutomation: boolean;
+  prTurnAllowed?: () => boolean;
   /** Model-approved commands, scoped to the task that was active when they were reviewed. */
   reviewedCommands: Set<string>;
   /** The shell behind the session's `bash` tool; the composer's `!command` runs in the same one. */
@@ -460,10 +463,15 @@ export class SessionHub {
   /** The slow look at open PRs of sessions that are not open, and the `gh` call it has in flight. */
   private idlePrTimer?: ReturnType<typeof setTimeout>;
   private idlePrRead?: { id: string; read: Promise<unknown> };
+  private idlePrBusy = false;
+  private prWatchEpoch = 0;
+  private prBar: PrBarSettings;
+  private shuttingDown = false;
 
   constructor(private readonly opts: HubOptions) {
     this.agentDir = opts.agentDir ?? getAgentDir();
     this.store = new Store(opts.dataDir);
+    this.prBar = normalizePrBar(this.storedSettings().prBar);
     this.projects = new ProjectBook(this.store, (resource) => this.resourceChanged(resource));
     this.activity = new ActivityRecorder(this.store);
     this.storage = new ObjectStorage(opts.dataDir);
@@ -499,7 +507,6 @@ export class SessionHub {
       modelsPath: path.join(this.agentDir, 'models.json'),
       signal: AbortSignal.timeout(15_000),
     });
-    recordRequests(this.models, this.requests);
     if (this.opts.demoModel) registerDemoModel(this.models);
     this.settings = SettingsManager.create(os.homedir(), this.agentDir);
     this.admin = new ModelAdmin({
@@ -510,6 +517,10 @@ export class SessionHub {
       deviceId: () => this.settings.getOrCreateDeviceId(),
       emit: (event) => this.emit(event),
     });
+    recordRequests(this.models, this.requests, undefined, {
+      modelForSession: (id) => this.metas.find((m) => m.id === id)?.fastModel,
+      capability: (key) => this.admin.fastCapability(key),
+    });
     // Model catalogs refresh in the background, like pi's RPC mode.
     void this.refreshModels({ signal: AbortSignal.timeout(15_000) }).catch(() => {});
     this.scheduleIdlePrs(IDLE_FIRST_MS);
@@ -517,7 +528,10 @@ export class SessionHub {
 
   /** Queue a catalog refresh behind any other refresh (each one reloads models.json). */
   refreshModels(options: { allowNetwork?: boolean; providers?: string[]; signal?: AbortSignal } = {}) {
-    const run = () => this.models.refresh(options);
+    const run = () => {
+      this.admin.refreshFastCapabilities();
+      return this.models.refresh(options);
+    };
     const next = this.modelRefresh.then(run, run);
     this.modelRefresh = next.catch(() => {});
     return next;
@@ -590,6 +604,7 @@ export class SessionHub {
       contextWindow: m.contextWindow,
       maxTokens: m.maxTokens,
       reasoning: m.reasoning,
+      supportsFast: supportsFast(m, this.admin.fastCapability(modelKey(m.provider, m.id))),
       input: m.input,
       cost: m.cost,
     };
@@ -702,6 +717,11 @@ export class SessionHub {
       id,
       model: opts.model ?? null,
       thinking: opts.thinking ?? null,
+      ...(opts.fastModel &&
+      opts.fastModel === opts.model &&
+      supportsFast(this.findModel(opts.model), this.admin.fastCapability(opts.fastModel))
+        ? { fastModel: opts.fastModel }
+        : {}),
       mode: opts.mode || 'auto',
       outputStyle: opts.outputStyle || 'default',
       sessionFile: null,
@@ -1045,7 +1065,7 @@ export class SessionHub {
       cwd: this.meta(live.id).cwd,
       scope: hub.workScope(live.id),
       review: (command, cwd, signal) => hub.reviewCommand(live, command, cwd, signal),
-      prAutomation: () => live.prAutomation,
+      prAutomation: () => live.prAutomation && live.prTurnAllowed?.() === true,
       setCiWatch:
         live.kit.profile === 'code'
           ? (fixCi) => {
@@ -1333,7 +1353,10 @@ export class SessionHub {
   }
 
   private setStatus(live: Live, status: 'idle' | 'running') {
-    if (status === 'idle') live.prAutomation = false;
+    if (status === 'idle') {
+      live.prAutomation = false;
+      live.prTurnAllowed = undefined;
+    }
     if (live.status === status) return;
     live.status = status;
     this.emit({ type: 'status', sessionId: live.id, status });
@@ -1918,7 +1941,10 @@ export class SessionHub {
     const message = expanded ? encodeUserCommandMessage(expanded.name, expanded.args, expanded.prompt) : raw;
     // Only the host's PR watcher may keep the automation bypass; a user/peer/task prompt that
     // arrives while that turn is starting must not inherit it, even if its text resembles an event.
-    if (origin !== 'pr') live.prAutomation = false;
+    if (origin !== 'pr') {
+      live.prAutomation = false;
+      live.prTurnAllowed = undefined;
+    }
     // Image checks yield; never submit an old, in-flight message to a session that has since ended.
     if (live.historyBusy) throw new Error(tr('ag.historyBusy'));
     if (live.disposed || live.generation !== generation)
@@ -1937,6 +1963,8 @@ export class SessionHub {
     }
     if (defaults) live.workspaceDefaults = defaults;
     const busy = session.isStreaming || live.status === 'running';
+    // Do not queue stale watcher work behind a user turn that started during preflight.
+    if (origin === 'pr' && (busy || !live.prTurnAllowed?.())) return { disposition: 'handled' };
     // A long gap means the prompt cache is gone: rebuild the context before this message instead of
     // re-sending the whole history at full price. Skipped while a turn runs and for injected messages.
     if (!busy && !slash && isPlainUserMessage(message)) await this.retireIdleContext(live, session);
@@ -2131,12 +2159,12 @@ export class SessionHub {
     const kind = this.meta(live.id).kind;
     const request = commandReview.latestRequest(session.messages);
     const cacheKey = commandReview.reviewCacheKey({ command, cwd, kind, request });
-    if (live.reviewedCommands.has(cacheKey)) return { verdict: 'allow', reason: '' };
+    if (live.reviewedCommands.has(cacheKey)) return { verdict: 'allow' };
     const current = session.model ? `${session.model.provider}/${session.model.id}` : this.meta(live.id).model;
     // The demo provider cannot review. Keep Work's destructive-file fallback safe, while letting
     // ordinary Code commands exercise the same auto-review path without a network model.
     if (current?.startsWith('demo/'))
-      return kind === 'work' && isRiskyCommand(command, kind) ? null : { verdict: 'allow', reason: '' };
+      return kind === 'work' && isRiskyCommand(command, kind) ? null : { verdict: 'allow' };
     const model = current ? this.modelFor(settings.autoReviewModel, settings.autoReviewModelId, current) : null;
     if (!model || model.provider === 'demo') return null;
     const controller = new AbortController();
@@ -2446,6 +2474,8 @@ export class SessionHub {
     if (patch.pinned !== undefined) m.pinned = patch.pinned || undefined;
     if (patch.prAuto) {
       const a = patch.prAuto;
+      if ((a.fixCi && !allowsPrRepair(this.prBar)) || (a.merge && (!this.prBar.enabled || !this.prBar.autoMerge)))
+        throw new Error(tr('ag.prAutomationDisabled'));
       if (a.fixCi !== undefined && a.fixCi !== m.autoFixCi) {
         m.autoFixCi = a.fixCi;
         m.agentArmedCi = (a.fixCi && source === 'agent') || undefined;
@@ -2953,7 +2983,10 @@ export class SessionHub {
     const m = this.meta(id);
     m.model = modelId;
     m.thinking = session.thinkingLevel as ThinkingLevel;
+    if (m.fastModel && (m.fastModel !== modelId || !supportsFast(model, this.admin.fastCapability(modelId))))
+      delete m.fastModel;
     this.save();
+    this.emitMeta(m);
     return {
       levels: session.getAvailableThinkingLevels() as ThinkingLevel[],
       thinking: session.thinkingLevel as ThinkingLevel,
@@ -2965,6 +2998,23 @@ export class SessionHub {
     const m = this.meta(id);
     m.thinking = live.runtime.session.thinkingLevel as ThinkingLevel;
     this.save();
+  }
+  async setFast(id: string, selected: string, enabled: boolean) {
+    const { runtime } = await this.ensure(id);
+    const model = runtime.session.model;
+    if (
+      enabled &&
+      (!model ||
+        modelKey(model.provider, model.id) !== selected ||
+        !supportsFast(model, this.admin.fastCapability(selected)))
+    ) {
+      throw new Error(tr('composer.fastUnavailable'));
+    }
+    const m = this.meta(id);
+    if (enabled) m.fastModel = selected;
+    else if (m.fastModel === selected) delete m.fastModel;
+    this.save();
+    this.emitMeta(m);
   }
   async commands(id: string): Promise<SlashCommand[]> {
     const live = await this.ensure(id);
@@ -3053,8 +3103,12 @@ export class SessionHub {
   }
   async prStatus(id: string) {
     const m = this.meta(id);
+    if (!this.prBar.enabled) return null;
+    const epoch = this.prWatchEpoch;
     await this.syncBranch(m);
+    if (epoch !== this.prWatchEpoch) return null;
     const pr = await git.prStatus(m.cwd, m.prBinding);
+    if (epoch !== this.prWatchEpoch) return null;
     // Publish null as well so a branch switch or a closed/deleted PR cannot leave stale metadata
     // in the renderer. A subsequent refresh can then discover a PR on the new current branch.
     this.publishPr(m, pr);
@@ -3115,6 +3169,29 @@ export class SessionHub {
 
   // ------------------------------------------------------------ PR watch
 
+  /** Re-read the host's settings after main saved them; display-only changes leave the watcher alone. */
+  refreshPrBarSettings() {
+    const next = normalizePrBar(this.storedSettings().prBar);
+    const { placement: _previousPlacement, ...previousWatch } = this.prBar;
+    const { placement: _placement, ...nextWatch } = next;
+    this.prBar = next;
+    if (JSON.stringify(previousWatch) === JSON.stringify(nextWatch)) return;
+    this.prWatchEpoch++;
+    for (const entry of this.prWatches.values()) {
+      clearTimeout(entry.timer);
+      entry.again = false;
+      if (!next.enabled) entry.watcher.reset();
+    }
+    for (const live of this.live.values()) {
+      if (live.prTurnAllowed && !live.prTurnAllowed()) {
+        live.prAutomation = false;
+        if (live.runtime.session.isStreaming) void this.abort(live.id).catch(() => {});
+      }
+      if (next.enabled) this.startPrWatch(live.id);
+    }
+    this.scheduleIdlePrs(next.enabled && !previousWatch.enabled ? IDLE_FIRST_MS : next.idleSeconds * 1000);
+  }
+
   private startPrWatch(id: string) {
     const m = this.meta(id);
     if (m.kind !== 'code' || m.archived || !m.branch || !this.live.has(id)) return;
@@ -3131,6 +3208,7 @@ export class SessionHub {
 
   /** Look sooner than the schedule says, e.g. right after a turn that may have pushed. */
   private kickPrWatch(id: string, delay = 0) {
+    if (!this.prBar.enabled || this.shuttingDown) return;
     const entry = this.prWatches.get(id);
     if (!entry) return;
     clearTimeout(entry.timer);
@@ -3139,6 +3217,7 @@ export class SessionHub {
   }
 
   private async prTick(id: string) {
+    if (!this.prBar.enabled || this.shuttingDown) return;
     const entry = this.prWatches.get(id);
     if (!entry) return;
     clearTimeout(entry.timer);
@@ -3152,7 +3231,7 @@ export class SessionHub {
       await this.prLook(id, entry);
     } finally {
       entry.busy = false;
-      if (entry.again) {
+      if (entry.again && this.prWatches.get(id) === entry && this.prBar.enabled && !this.shuttingDown) {
         entry.again = false;
         entry.timer = setTimeout(() => void this.prTick(id), 500);
         entry.timer.unref?.();
@@ -3162,13 +3241,15 @@ export class SessionHub {
 
   private async prLook(id: string, entry: PrWatchEntry) {
     const m = this.meta(id);
+    const epoch = this.prWatchEpoch;
     await this.syncBranch(m);
+    if (epoch !== this.prWatchEpoch || this.prWatches.get(id) !== entry || this.shuttingDown) return;
     if (m.kind !== 'code' || m.archived || !m.branch || !this.live.has(id)) return this.stopPrWatch(id);
     entry.read = git.readPr(m.cwd, m.prBinding).catch(() => null);
     const snapshot = (await entry.read) as Awaited<ReturnType<typeof git.readPr>>;
     entry.read = undefined;
     // A look can outlive its session, or be overtaken by a newer one: drop the result then.
-    if (this.prWatches.get(id) !== entry) return;
+    if (epoch !== this.prWatchEpoch || this.prWatches.get(id) !== entry || this.shuttingDown) return;
     // A different PR (the branch got a new one) has its own comment history: baseline it again.
     if (snapshot && snapshot.status.num !== entry.num) {
       entry.num = snapshot.status.num;
@@ -3178,6 +3259,7 @@ export class SessionHub {
       autoFixCi: m.autoFixCi,
       autoMerge: m.autoMerge,
       done: m.prAutoDone,
+      settings: this.prBar,
     });
     this.publishPr(m, result.status);
     if (result.pending) void this.deliverPrEvent(id, entry, result.pending);
@@ -3188,6 +3270,7 @@ export class SessionHub {
 
   private scheduleIdlePrs(delay: number) {
     clearTimeout(this.idlePrTimer);
+    if (!this.prBar.enabled || !this.prBar.watchInactive || this.shuttingDown || this.idlePrBusy) return;
     this.idlePrTimer = setTimeout(() => void this.lookIdlePrs(), delay);
     this.idlePrTimer.unref?.();
   }
@@ -3198,6 +3281,9 @@ export class SessionHub {
    * Live sessions are left to their own watch.
    */
   private async lookIdlePrs() {
+    if (!this.prBar.enabled || !this.prBar.watchInactive || this.shuttingDown || this.idlePrBusy) return;
+    this.idlePrBusy = true;
+    const epoch = this.prWatchEpoch;
     const idle = this.metas.filter(
       (m) => m.kind === 'code' && !m.archived && m.branch && m.pr?.state === 'open' && !this.prWatches.has(m.id),
     );
@@ -3206,10 +3292,13 @@ export class SessionHub {
         const m = this.metas.find((x) => x.id === id);
         if (!m || m.archived || this.prWatches.has(id) || !fs.existsSync(m.cwd)) continue;
         await this.syncBranch(m);
+        if (epoch !== this.prWatchEpoch || this.shuttingDown) return;
+        if (m.archived || this.prWatches.has(id) || !this.metas.includes(m)) continue;
         const read = git.readPr(m.cwd, m.prBinding).catch(() => null);
         this.idlePrRead = { id, read };
         const snapshot = await read;
         this.idlePrRead = undefined;
+        if (epoch !== this.prWatchEpoch || this.shuttingDown) return;
         // Opened, archived or removed meanwhile: its own watch, or nobody, has the say now.
         if (snapshot && this.metas.includes(m) && !m.archived && !this.prWatches.has(id))
           this.publishPr(m, snapshot.status);
@@ -3218,7 +3307,8 @@ export class SessionHub {
       // One unreadable repository must not end the looks for the rest.
     } finally {
       this.idlePrRead = undefined;
-      this.scheduleIdlePrs(IDLE_MS);
+      this.idlePrBusy = false;
+      this.scheduleIdlePrs(this.prBar.idleSeconds * 1000);
     }
   }
 
@@ -3242,14 +3332,21 @@ export class SessionHub {
     const busy =
       !live || !live.runtime.session.isIdle || live.status === 'running' || live.historyBusy || live.pending.size > 0;
     if (busy) return; // the next look tries again, so nothing is lost
-    entry.watcher.accept(pending);
     const m = this.meta(id);
-    if (pending.mark) {
-      m.prAutoDone = { ...m.prAutoDone, ...pending.mark };
-      this.save();
-    }
+    const merge = pending.event.kind === 'merge';
+    const comments = !merge && (pending.event.kind === 'notes' || this.prBar.addressComments);
+    const allowed = () =>
+      this.prBar.enabled &&
+      (merge
+        ? this.prBar.autoMerge && !!m.autoMerge
+        : !!m.autoFixCi &&
+          (!pending.mark?.fix || this.prBar.fixCi) &&
+          (!pending.mark?.conflict || this.prBar.resolveConflicts) &&
+          (!comments || this.prBar.addressComments));
+    if (!allowed()) return;
+    live.prTurnAllowed = allowed;
     // Only a manual switch grants the watcher's git/forge command approval.
-    live.prAutomation = pending.event.kind === 'merge' || !m.agentArmedCi;
+    live.prAutomation = merge || !m.agentArmedCi;
     try {
       const { disposition } = await this.prompt(
         id,
@@ -3259,9 +3356,21 @@ export class SessionHub {
       );
       // Preflight can report 'started' before agent_start updates live.status. Only that run owns
       // the manual grant; handled/queued prompts get none, and agent_settled revokes it otherwise.
-      if (disposition !== 'started') live.prAutomation = false;
+      if (disposition === 'started') {
+        entry.watcher.accept(pending);
+        if (pending.mark) {
+          m.prAutoDone = { ...m.prAutoDone, ...pending.mark };
+          this.save();
+        }
+      } else if (live.prTurnAllowed === allowed) {
+        live.prAutomation = false;
+        live.prTurnAllowed = undefined;
+      }
     } catch (err) {
-      live.prAutomation = false;
+      if (live.prTurnAllowed === allowed) {
+        live.prAutomation = false;
+        live.prTurnAllowed = undefined;
+      }
       this.emit({
         type: 'notify',
         sessionId: id,
@@ -3335,6 +3444,7 @@ export class SessionHub {
   }
 
   async shutdown() {
+    this.shuttingDown = true;
     clearTimeout(this.idlePrTimer);
     for (const c of this.namers) c.abort();
     this.namers.clear();

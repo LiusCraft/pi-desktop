@@ -7,6 +7,7 @@
 // Host → renderer traffic is a single stream of `HostEvent`s.
 import type { ActivityLog } from './activity';
 import type { ShortcutOverrides } from './shortcuts';
+import type { PrBarSettings } from './pr-bar-settings';
 import type { Attachment, DecodedUserContent, PromptSubmission } from './attachments';
 import type { Forge } from './forge';
 import type { PeerMessage } from './peer-message';
@@ -124,7 +125,7 @@ export interface PrBinding {
   headBranch: string;
   headRemote: string;
 }
-export type FromPrOptions = Pick<CreateSessionOptions, 'model' | 'thinking' | 'mode' | 'outputStyle'>;
+export type FromPrOptions = Pick<CreateSessionOptions, 'model' | 'thinking' | 'fastModel' | 'mode' | 'outputStyle'>;
 export type FromPrStage = 'reading' | 'matching' | 'cloning' | 'fetching' | 'creating';
 export type FromPrResult = { kind: 'folder'; repo: string } | { kind: 'session'; meta: SessionMeta };
 
@@ -152,6 +153,8 @@ export interface SessionMeta {
   worktree: boolean;
   model?: string | null;
   thinking?: ThinkingLevel | null;
+  /** Opt-in is tied to the exact provider/model, never inherited by another model. */
+  fastModel?: string;
   mode: PermissionMode;
   outputStyle: OutputStyle;
   sessionFile: string | null;
@@ -195,6 +198,7 @@ export interface CreateSessionOptions {
   autoName?: boolean;
   model?: string | null;
   thinking?: ThinkingLevel | null;
+  fastModel?: string;
   mode?: PermissionMode;
   outputStyle?: OutputStyle;
   /** Code: use this existing worktree of the project instead of creating one. */
@@ -264,6 +268,7 @@ export interface ModelInfo {
   contextWindow?: number;
   maxTokens?: number;
   reasoning?: boolean;
+  supportsFast?: boolean;
   input?: string[];
   cost?: { input?: number; output?: number };
 }
@@ -849,7 +854,14 @@ export interface QuestionAnswer {
 
 /** Questions the agent asks the user. Permission, plan and questions prompts come from desktop-kit. */
 export type UiRequest =
-  | { id: string; kind: 'permission'; toolCallId: string; title: string }
+  | {
+      id: string;
+      kind: 'permission';
+      toolCallId: string;
+      title: string;
+      /** One plain-language sentence describing the command's effect. */
+      commandSummary?: string;
+    }
   | { id: string; kind: 'plan'; toolCallId: string; title: string }
   | { id: string; kind: 'questions'; toolCallId: string; title: string; questions: Question[] }
   | { id: string; kind: 'select'; title: string; options: string[] }
@@ -998,6 +1010,8 @@ export interface ProviderInfo {
 
 export interface EndpointModel extends ModelMeta {
   id: string;
+  /** Overrides model-ID detection for this endpoint. */
+  supportsFast?: boolean;
 }
 
 /** A models.json provider, as the settings UI edits it. */
@@ -1163,6 +1177,9 @@ export interface Settings {
   autoReviewTimeout: number;
   defaultMode: SessionKind;
   sidebarCollapsed: boolean;
+  /** Whether task checklists are expanded across sessions and windows. */
+  todosExpanded: boolean;
+  prBar: PrBarSettings;
   /** Root folder for Code-session git worktrees; null/empty uses `<dataDir>/.worktree`. */
   worktreeDir: string | null;
   /** The composer pet: shown or not, and which skin (see PET_SKINS in the renderer). */
@@ -1291,7 +1308,7 @@ export interface Api {
 
   'settings:open'(section?: string): void;
   'settings:get'(): SettingsPayload;
-  'settings:set'(patch: Partial<Settings>): SettingsPayload;
+  'settings:set'(patch: Partial<Omit<Settings, 'prBar'>> & { prBar?: Partial<PrBarSettings> }): SettingsPayload;
   /** Add or replace a custom pet skin; throws a readable message when the definition is invalid. */
   'pets:save'(pet: unknown): SettingsPayload;
   'pets:remove'(id: string): SettingsPayload;
@@ -1428,6 +1445,7 @@ export interface Api {
   ): { session: OpenSessionResult; draft: DecodedUserContent };
   'sessions:setModel'(id: string, model: string): { levels: ThinkingLevel[]; thinking: ThinkingLevel };
   'sessions:setThinking'(id: string, level: ThinkingLevel): void;
+  'sessions:setFast'(id: string, model: string, enabled: boolean): void;
   'sessions:commands'(id: string): SlashCommand[];
   /** One tool-less request that guesses the user's next message; null when unavailable. */
   'sessions:suggest'(id: string, options: SuggestionOptions): { text: string } | null;
@@ -1625,6 +1643,7 @@ export const HOST_CHANNELS = [
   'sessions:messageAction',
   'sessions:setModel',
   'sessions:setThinking',
+  'sessions:setFast',
   'sessions:commands',
   'sessions:suggest',
   'sessions:side',
@@ -1828,6 +1847,7 @@ export interface HostInternal {
   'host:init'(opts: HostInitOptions): void;
   /** The UI language changed: texts the host writes (errors, prompts) follow it. */
   'host:locale'(locale: Locale): void;
+  'host:prBarChanged'(): void;
   'host:cancelLogins'(): void;
   'host:meta'(id: string): SessionMeta;
   /** Resolve a session file for main-process opening, including an exact session output path. */

@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HostEvent, SessionMeta, UiRequest } from '../src/shared/protocol';
 
 const { Toaster } = await import('../src/renderer/src/components/ui/sonner');
+const { PermItem } = await import('../src/renderer/src/components/thread/Items');
+const { toolFromArgs } = await import('../src/renderer/src/lib/tools');
 const { handleHostEvent } = await import('../src/renderer/src/store/actions');
 const { getApp, setApp } = await import('../src/renderer/src/store/app');
 const { emptySession } = await import('../src/renderer/src/store/transcript');
@@ -36,6 +38,40 @@ beforeEach(() => {
 });
 
 describe('in-window request shortcuts', () => {
+  it('shows one unlabelled summary and the raw command in the permission card', async () => {
+    const command = 'git push --force origin main';
+    const id = 'review';
+    const commandSummary = 'Force-pushes main to origin.';
+    const tool = toolFromArgs(id, 'bash', { command });
+    setApp((st) => {
+      st.current = sid;
+      st.sessions[sid].items.push({ kind: 'group', key: 'tools', thoughts: [], tools: [tool], open: false });
+    });
+    await frame(request({ id, kind: 'permission', title: `Run ${command}`, toolCallId: id, commandSummary }));
+    const item = getApp().sessions[sid].items.find((item) => item.kind === 'perm');
+    if (!item) throw new Error('Expected a permission item');
+    render(<PermItem sid={sid} item={item} />);
+    expect(screen.getByText('Allow Pi Desktop to run this command?')).toBeTruthy();
+    expect(screen.getByText(commandSummary)).toBeTruthy();
+    expect(screen.getByText(command)).toBeTruthy();
+  });
+
+  it('shows the AI summary in a background toast but requires opening the session for a long command', async () => {
+    const command = `git config --global test.value ${'x'.repeat(200)}`;
+    await frame(
+      request({
+        id: 'review',
+        kind: 'permission',
+        title: `Run ${command}`,
+        toolCallId: 'review',
+        commandSummary: 'Changes a global Git setting.',
+      }),
+    );
+    expect(await screen.findByText(/^Changes a global Git setting\./)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Open session' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Allow' })).toBeNull();
+  });
+
   it('answers the indicated permission even after another request arrives in the same frame', async () => {
     await frame(request(permission('first', 'Run npm test')), request(permission('second', 'Edit README')));
     const first = (await screen.findByText('Run npm test')).closest('[data-sonner-toast]')!;

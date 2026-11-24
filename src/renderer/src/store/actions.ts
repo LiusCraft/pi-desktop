@@ -35,6 +35,7 @@ import {
   getApp,
   isWork,
   read,
+  rememberFast,
   savePref,
   setApp,
   setPref,
@@ -1004,6 +1005,13 @@ export async function exportHtml(id: string) {
   }
 }
 
+function newSessionModelOptions({ prefs, models }: AppState) {
+  const { model, effort, fastModels } = prefs;
+  const fast =
+    model && fastModels.includes(model) && models.some((m) => m.supportsFast && `${m.provider}/${m.id}` === model);
+  return { model, thinking: effort, ...(fast ? { fastModel: model } : {}) };
+}
+
 async function createSession(firstPrompt: string, draftKey: string) {
   const st = getApp();
   const work = st.view === 'work';
@@ -1016,8 +1024,7 @@ async function createSession(firstPrompt: string, draftKey: string) {
     ...(!work && project && sessionWorkspace(project, workspaceDefaults([project]))),
     title: firstPrompt.replace(/@\S+/g, '').trim().slice(0, 60) || 'New session',
     autoName: true,
-    model: st.prefs.model,
-    thinking: st.prefs.effort,
+    ...newSessionModelOptions(st),
     mode: st.prefs.mode,
     outputStyle: st.prefs.outputStyle,
   });
@@ -1307,6 +1314,16 @@ export async function chooseModel(id: string) {
   setPref('model', id);
   const levels = await call('models:levels', id).catch(() => []);
   setApp((st) => void (st.levels = levels));
+}
+
+export async function setSessionFast(id: string, model: string, enabled: boolean) {
+  try {
+    // The host broadcasts session metadata so all open windows see the same setting.
+    await call('sessions:setFast', id, model, enabled);
+    rememberFast(model, enabled);
+  } catch (err) {
+    fail(err);
+  }
 }
 
 export async function chooseEffort(level: ThinkingLevel) {
@@ -1954,9 +1971,10 @@ export async function startFromPr() {
     });
     if (!input?.trim()) return;
     url = input.trim();
-    const { projects, prefs, remote } = getApp();
+    const st = getApp();
+    const { projects, prefs, remote } = st;
     const paths = projects.map((p) => p.path);
-    const options = { model: prefs.model, thinking: prefs.effort, mode: prefs.mode, outputStyle: prefs.outputStyle };
+    const options = { ...newSessionModelOptions(st), mode: prefs.mode, outputStyle: prefs.outputStyle };
     setStage('reading');
     let result = await call('sessions:fromPr', url, paths, null, options, id);
     if (result.kind === 'folder') {
