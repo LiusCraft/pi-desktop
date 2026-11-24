@@ -896,6 +896,8 @@ export class SessionHub {
     this.restoreOutputPaths(live);
     live.runtime.setRebindSession(() => this.bind(live));
     await this.bind(live);
+    // A mode change during startup updates the metadata before this kit is reachable.
+    live.kit.mode = m.mode;
     this.live.set(id, live);
     // Archived or deleted while it was starting: do not leave an agent behind.
     if (m.archived || !this.metas.includes(m)) {
@@ -1557,11 +1559,12 @@ export class SessionHub {
         cwd,
         agentDir: this.agentDir,
         settingsManager,
-        // Questions and permission prompts go to the parent session. With no setMode, the kit
-        // enforces read-only permissions without offering plan approval or asking the model to use it.
+        // Read the parent's approval settings live. Capability stays read-only, new grants stay
+        // local, and questions and permission prompts go to the parent session.
         extensionFactories: [
           createDesktopKit({
             state: kit,
+            parentPermissions: live.kit,
             scope: this.workScope(live.id),
             ask: (request, signal) => this.ask(live, request, signal),
           }),

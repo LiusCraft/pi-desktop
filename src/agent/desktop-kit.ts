@@ -77,7 +77,7 @@ export interface KitState {
   mode: PermissionMode;
   profile: SessionKind;
   outputStyle: OutputStyle;
-  /** "Always allow" command prefixes for this session. */
+  /** "Always allow" rules granted to this session. */
   allowed: Set<string>;
 }
 
@@ -107,6 +107,8 @@ export interface SubagentRun {
 
 export interface KitHost {
   state: KitState;
+  /** For read-only subagents: the caller's live approval settings, never mutated by this kit. */
+  parentPermissions?: { readonly mode: PermissionMode; readonly allowed: ReadonlySet<string> };
   /** The folder this session runs in (a worktree folder for worktree sessions); the shell's default. */
   cwd?: string;
   /** Work only: where the session may write and read; anything else is asked first. */
@@ -127,7 +129,7 @@ export interface KitHost {
   registerShell?(shell: ShellCommands | null): void;
   /** Ask the user. Resolves `{ cancelled: true }` when nobody can answer. */
   ask(request: KitRequest, signal?: AbortSignal): Promise<UiResponse>;
-  /** Changes the mode from inside the kit; omit for fixed read-only subagents with no plan approval. */
+  /** Changes this session's mode from inside the kit; omitted for subagents with no plan approval. */
   setMode?(mode: PermissionMode): void;
   /** Runs a subagent and returns its report; omit it to leave out the `task` tool. */
   runSubagent?(run: SubagentRun): Promise<string>;
@@ -464,7 +466,7 @@ function describeAnswer(a: QuestionAnswer | undefined): string {
 
 export function createDesktopKit(host: KitHost): ExtensionFactory {
   return (pi: ExtensionAPI) => {
-    const { state, setMode } = host;
+    const { state, setMode, parentPermissions } = host;
 
     // ---------------------------------------------------------------- permissions
     const ask = async (ctx: ExtensionContext, toolCallId: string, title: string, key?: string) => {
@@ -481,8 +483,8 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
     };
 
     pi.on('tool_call', async (event, ctx) => {
-      const mode = state.mode;
-      if (mode === 'bypass') return undefined;
+      const mode = parentPermissions?.mode ?? state.mode;
+      if (mode === 'bypass' && !parentPermissions) return undefined;
       const name = event.toolName;
       const input = event.input as Record<string, unknown>;
 
@@ -492,38 +494,57 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
       const command = isShell ? String(input.command ?? '') : '';
       const readOnlyCommand = isShell && isReadOnlyCommand(command);
       // PR watcher git/forge steps are explicitly authorized by the PR bar, even in plan mode.
-      const prAutomation = isShell && host.prAutomation?.() && isPrAutomationCommand(command);
+      const prAutomation = !parentPermissions && isShell && host.prAutomation?.() && isPrAutomationCommand(command);
       // MCP and other extension tools: trust their annotations.
       const hints =
         !readOnlyTool && !isEdit && !isShell ? pi.getAllTools().find((t) => t.name === name)?.annotations : undefined;
 
-      // A WorkScope approval changes where a call may run, not what plan mode allows it to do.
-      if (mode === 'plan' && !readOnlyTool) {
+      // A subagent's read-only limit is independent of the parent's approval mode or grants.
+      if ((parentPermissions || mode === 'plan') && !readOnlyTool) {
         if (isEdit)
           return {
             block: true,
-            reason: setMode
-              ? 'Plan mode is read-only. Present your plan with pidesk_exit_plan_mode.'
-              : 'Subagents are read-only. Return your findings in your final text response.',
+            reason: parentPermissions
+              ? 'Subagents are read-only. Return your findings in your final text response.'
+              : 'Plan mode is read-only. Present your plan with pidesk_exit_plan_mode.',
           };
         if (isShell) {
           if (!readOnlyCommand && !prAutomation)
-            return { block: true, reason: 'Plan mode only allows read-only commands.' };
+            return {
+              block: true,
+              reason: parentPermissions
+                ? 'Subagents only allow read-only commands.'
+                : 'Plan mode only allows read-only commands.',
+            };
         } else if (!hints?.readOnlyHint) {
-          return { block: true, reason: `Plan mode blocks ${name}.` };
+          return {
+            block: true,
+            reason: parentPermissions ? `Subagents cannot use ${name}.` : `Plan mode blocks ${name}.`,
+          };
         }
       }
+      if (mode === 'bypass') return undefined;
 
-      // Work stays in its own folder: other places need the user's say-so, whatever the tool.
+      // Work stays in its own folder. A subagent can use its parent's scope grants, but `ask`
+      // only records new grants in the subagent's own state.
       const scope =
         host.scope &&
-        checkScope(host.scope, state.allowed, name, input, ctx.cwd, readOnlyCommand, {
-          read: (path) => tr('ag.scopeRead', { path }),
-          write: (path) => tr('ag.scopeWrite', { path }),
-          run: (command, path) => tr('ag.scopeRun', { command, path }),
-        });
+        checkScope(
+          host.scope,
+          parentPermissions ? new Set([...state.allowed, ...parentPermissions.allowed]) : state.allowed,
+          name,
+          input,
+          ctx.cwd,
+          readOnlyCommand,
+          {
+            read: (path) => tr('ag.scopeRead', { path }),
+            write: (path) => tr('ag.scopeWrite', { path }),
+            run: (command, path) => tr('ag.scopeRun', { command, path }),
+          },
+        );
       if (scope?.kind === 'ask') return ask(ctx, event.toolCallId, scope.title, scope.key);
-      if (mode === 'plan' || readOnlyTool || (scope?.kind === 'granted' && !isShell)) return undefined;
+      if (parentPermissions || mode === 'plan' || readOnlyTool || (scope?.kind === 'granted' && !isShell))
+        return undefined;
 
       if (isEdit) {
         const abs = resolve(ctx.cwd, String(input.path ?? ''));

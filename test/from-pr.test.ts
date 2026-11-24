@@ -44,6 +44,9 @@ describe('GitHub PR import', () => {
   it('matches repository identity, protects occupied destinations and does not reuse a mismatched push URL', async () => {
     const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-pr-match-'));
     try {
+      // Keep the HTTPS assertion independent of local URL rewrites such as url.*.insteadOf.
+      vi.stubEnv('GIT_CONFIG_GLOBAL', os.devNull);
+      vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');
       const dest = path.join(parent, 'app');
       fs.mkdirSync(dest);
       await git.git(dest, 'init', '-q');
@@ -62,6 +65,7 @@ describe('GitHub PR import', () => {
         'https://github.com/alice/app.git',
       );
     } finally {
+      vi.unstubAllEnvs();
       fs.rmSync(parent, { recursive: true, force: true });
     }
   }, 30000);
