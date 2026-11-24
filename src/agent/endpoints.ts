@@ -6,6 +6,7 @@ import { tr } from '@shared/i18n/runtime';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { EndpointDiscovery, EndpointDraft, EndpointInfo, EndpointModel, ModelMeta } from '@shared/protocol';
+import { isGptModel, modelKey } from '@shared/fast-mode';
 import {
   alignModel,
   cleanThinkingLevelMap,
@@ -17,6 +18,8 @@ import {
 /** pi's documented placeholder for endpoints that ignore the key (Ollama, llama.cpp, vLLM…). */
 export const LOCAL_KEY = 'local';
 const SCHEMA = 'https://pi.dev/schemas/models.schema.json';
+// Desktop metadata; Pi ignores this extra model field.
+const FAST_FIELD = 'piDesktopSupportsFast';
 
 type Json = Record<string, unknown>;
 interface ModelsFile extends Json {
@@ -134,6 +137,8 @@ function modelEntry(model: EndpointModel, previous: Json | undefined): Json {
     if (value !== undefined) out[key] = value;
     else delete out[key];
   }
+  if (isGptModel(model.id) && typeof model.supportsFast === 'boolean') out[FAST_FIELD] = model.supportsFast;
+  else delete out[FAST_FIELD];
   const cost = costEntry(model.cost);
   if (cost) out.cost = { ...(previous?.cost as Json | undefined), ...cost };
   else delete out.cost;
@@ -153,6 +158,7 @@ function cleanModels(list: unknown): EndpointModel[] {
       contextWindow: num(model.contextWindow),
       maxTokens: num(model.maxTokens),
       reasoning: typeof model.reasoning === 'boolean' ? model.reasoning : undefined,
+      supportsFast: typeof model[FAST_FIELD] === 'boolean' ? model[FAST_FIELD] : undefined,
       thinkingLevelMap: cleanThinkingLevelMap(model.thinkingLevelMap),
       input: Array.isArray(model.input) ? model.input.filter((v): v is string => typeof v === 'string') : undefined,
       cost:
@@ -194,6 +200,16 @@ export class EndpointStore {
     } catch (error) {
       return { data: { providers: {} }, error: tr('ag.modelsFormat', { error: (error as Error).message }) };
     }
+  }
+
+  fastCapabilities(): Map<string, boolean> {
+    const overrides = new Map<string, boolean>();
+    for (const [provider, raw] of Object.entries(this.read().data.providers ?? {})) {
+      for (const { id, supportsFast } of cleanModels(raw?.models)) {
+        if (supportsFast !== undefined && isGptModel(id)) overrides.set(modelKey({ provider, id }), supportsFast);
+      }
+    }
+    return overrides;
   }
 
   /** Provider ids this file declares (custom endpoints plus built-in overrides). */

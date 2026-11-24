@@ -64,6 +64,7 @@ export function sessionHandlers(
     'sessions:messageAction': withHub((h, id, entryId, action) => h.messageAction(id, entryId, action)),
     'sessions:setModel': withHub((h, id, model) => h.setModel(id, model)),
     'sessions:setThinking': withHub((h, id, level) => h.setThinking(id, level)),
+    'sessions:setFast': withHub((h, id, model, enabled) => h.setFast(id, model, enabled)),
     'sessions:commands': withHub((h, id) => h.commands(id)),
     'sessions:suggest': withHub((h, id, options) => h.suggest(id, options)),
     'sessions:side': withHub((h, id, chatId, input) => h.side(id, chatId, input)),

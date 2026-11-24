@@ -124,7 +124,7 @@ export interface PrBinding {
   headBranch: string;
   headRemote: string;
 }
-export type FromPrOptions = Pick<CreateSessionOptions, 'model' | 'thinking' | 'mode' | 'outputStyle'>;
+export type FromPrOptions = Pick<CreateSessionOptions, 'model' | 'thinking' | 'fastModel' | 'mode' | 'outputStyle'>;
 export type FromPrStage = 'reading' | 'matching' | 'cloning' | 'fetching' | 'creating';
 export type FromPrResult = { kind: 'folder'; repo: string } | { kind: 'session'; meta: SessionMeta };
 
@@ -152,6 +152,8 @@ export interface SessionMeta {
   worktree: boolean;
   model?: string | null;
   thinking?: ThinkingLevel | null;
+  /** Opt-in is tied to the exact provider/model, never inherited by another model. */
+  fastModel?: string;
   mode: PermissionMode;
   outputStyle: OutputStyle;
   sessionFile: string | null;
@@ -195,6 +197,7 @@ export interface CreateSessionOptions {
   autoName?: boolean;
   model?: string | null;
   thinking?: ThinkingLevel | null;
+  fastModel?: string;
   mode?: PermissionMode;
   outputStyle?: OutputStyle;
   /** Code: use this existing worktree of the project instead of creating one. */
@@ -264,6 +267,7 @@ export interface ModelInfo {
   contextWindow?: number;
   maxTokens?: number;
   reasoning?: boolean;
+  supportsFast?: boolean;
   input?: string[];
   cost?: { input?: number; output?: number };
 }
@@ -998,6 +1002,8 @@ export interface ProviderInfo {
 
 export interface EndpointModel extends ModelMeta {
   id: string;
+  /** Overrides model-ID detection for this endpoint. */
+  supportsFast?: boolean;
 }
 
 /** A models.json provider, as the settings UI edits it. */
@@ -1428,6 +1434,7 @@ export interface Api {
   ): { session: OpenSessionResult; draft: DecodedUserContent };
   'sessions:setModel'(id: string, model: string): { levels: ThinkingLevel[]; thinking: ThinkingLevel };
   'sessions:setThinking'(id: string, level: ThinkingLevel): void;
+  'sessions:setFast'(id: string, model: string, enabled: boolean): void;
   'sessions:commands'(id: string): SlashCommand[];
   /** One tool-less request that guesses the user's next message; null when unavailable. */
   'sessions:suggest'(id: string, options: SuggestionOptions): { text: string } | null;
@@ -1625,6 +1632,7 @@ export const HOST_CHANNELS = [
   'sessions:messageAction',
   'sessions:setModel',
   'sessions:setThinking',
+  'sessions:setFast',
   'sessions:commands',
   'sessions:suggest',
   'sessions:side',

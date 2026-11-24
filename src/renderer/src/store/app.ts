@@ -34,7 +34,9 @@ export const read = <T>(key: string, fallback: T): T => {
 export const savePref = (key: string, value: unknown) => {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch {}
+  } catch {
+    // The in-memory preference still applies if storage is unavailable.
+  }
 };
 
 export interface Prefs {
@@ -44,6 +46,8 @@ export interface Prefs {
   mode: PermissionMode;
   model: string | null;
   effort: ThinkingLevel;
+  /** Models opted into Fast by default when starting a new session in this profile. */
+  fastModels: string[];
   viewMode: ViewMode;
   outputStyle: OutputStyle;
   /** Work: undefined = not chosen yet, null = temporary workspace. */
@@ -59,6 +63,7 @@ const PREF_KEYS: Record<keyof Prefs, string> = {
   mode: 'pd_mode',
   model: 'pd_model',
   effort: 'pd_effort',
+  fastModels: 'pd_fast_models',
   viewMode: 'pd_view_mode',
   outputStyle: 'pd_output_style',
   workFolder: 'pd_work_folder',
@@ -73,6 +78,7 @@ function loadPrefs(): Prefs {
     mode: read('pd_mode', 'auto'),
     model: read('pd_model', null),
     effort: read('pd_effort', 'high'),
+    fastModels: read(PREF_KEYS.fastModels, []),
     viewMode: read('pd_view_mode', 'normal'),
     outputStyle: read('pd_output_style', 'default'),
     workFolder: read<string | null | undefined>('pd_work_folder', undefined),
@@ -186,6 +192,12 @@ export function setPref<K extends keyof Prefs>(key: K, value: Prefs[K]) {
     s.prefs[key] = value;
   });
   savePref(PREF_KEYS[key], value);
+}
+
+export function rememberFast(model: string, enabled: boolean) {
+  const { fastModels } = getApp().prefs;
+  if (fastModels.includes(model) === enabled) return;
+  setPref('fastModels', enabled ? [...fastModels, model] : fastModels.filter((id) => id !== model));
 }
 
 /** Mutate one session (no-op when it is unknown). */

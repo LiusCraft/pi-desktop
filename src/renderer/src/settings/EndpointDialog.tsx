@@ -48,6 +48,7 @@ export function mergeModels(current: EndpointModel[], fetched: EndpointModel[]):
             contextWindow: existing.contextWindow ?? model.contextWindow,
             maxTokens: existing.maxTokens ?? model.maxTokens,
             reasoning: existing.reasoning ?? model.reasoning,
+            supportsFast: existing.supportsFast ?? model.supportsFast,
             thinkingLevelMap: existing.thinkingLevelMap ?? model.thinkingLevelMap,
             input: existing.input ?? model.input,
             cost: alignModel(existing, model).cost,
@@ -420,6 +421,7 @@ export function EndpointDialog({
                     {editingModel === model.id && (
                       <ModelEditor
                         model={model}
+                        api={api}
                         onCancel={() => setEditingModel(null)}
                         onApply={(updated) => {
                           setModels((previous) => previous.map((item) => (item.id === updated.id ? updated : item)));
