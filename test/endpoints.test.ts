@@ -127,6 +127,12 @@ describe('discoveryUrls', () => {
 });
 
 describe('EndpointStore', () => {
+  it('has no Fast overrides when models.json has no providers', () => {
+    const store = storeAt('no-providers');
+    fs.writeFileSync(store.file, '{}');
+    expect(store.fastCapabilities().size).toBe(0);
+  });
+
   it('writes a new endpoint and keeps everything else in the file', () => {
     const store = storeAt('new');
     fs.writeFileSync(

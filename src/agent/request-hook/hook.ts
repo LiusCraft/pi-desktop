@@ -5,7 +5,15 @@
 import { randomUUID } from 'node:crypto';
 import type { AssistantMessage } from '@earendil-works/pi-ai';
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent';
-import { REQUEST_BODY_LIMIT, REQUEST_STATUS, type RequestRecord, type RequestStatus } from '@shared/request-log';
+import {
+  REQUEST_BODY_LIMIT,
+  REQUEST_ORIGIN,
+  REQUEST_STATUS,
+  type RequestRecord,
+  type RequestStatus,
+} from '@shared/request-log';
+import { modelKey } from '@shared/fast-mode';
+import { fastPayload } from './fast';
 import type { RequestLog } from './log';
 import { Redactor, redactionWanted, type MaskPass } from './redact';
 import { currentOrigin } from './origin';
@@ -32,7 +40,12 @@ function bodyOf(payload: unknown): string | undefined {
 }
 
 /** Patches `models` in place so each streamSimple request is masked as asked and ends up in `log`. */
-export function recordRequests(models: ModelRuntime, log: RequestLog, redactor = new Redactor()) {
+export function recordRequests(
+  models: ModelRuntime,
+  log: RequestLog,
+  redactor = new Redactor(),
+  fast?: { modelForSession: (id: string) => string | undefined; capability?: (key: string) => boolean | undefined },
+) {
   const original: StreamSimple = models.streamSimple.bind(models);
   // A virtual model's request is routed through streamSimple again; both ends see the same message.
   const recorded = new WeakSet<AssistantMessage>();
@@ -44,19 +57,29 @@ export function recordRequests(models: ModelRuntime, log: RequestLog, redactor =
     let pass: MaskPass | undefined;
     let firstTokenMs: number | undefined;
     const origin = currentOrigin() ?? log.originOf(options?.sessionId);
+    // Pi's cache warmer replays a request with a one-token cap and continuation disabled.
+    const cacheWarm = options?.maxTokens === 1 && options.disableContinuation && options.maxRetries === 0;
+    const fastModel =
+      !cacheWarm && origin?.session && (origin.origin === REQUEST_ORIGIN.code || origin.origin === REQUEST_ORIGIN.work)
+        ? fast?.modelForSession(origin.session)
+        : undefined;
     const settings = log.getSettings();
     const masking = redactionWanted(settings.redact);
     const wrapped: typeof options = {
       ...options,
       onPayload: async (payload, m) => {
         const changed = await options?.onPayload?.(payload, m);
-        let sent = changed === undefined ? payload : changed;
+        const tierPayload = fastModel
+          ? fastPayload(changed === undefined ? payload : changed, m, fastModel, fast?.capability?.(modelKey(m)))
+          : undefined;
+        const replacement = tierPayload ?? changed;
+        let sent = replacement === undefined ? payload : replacement;
         if (masking) {
           pass = redactor.begin(settings.redact);
           sent = pass.maskPayload(sent);
         }
         if (settings.logBody) body = bodyOf(sent);
-        return masking ? sent : changed;
+        return masking ? sent : replacement;
       },
       onResponse: async (response, m) => {
         httpStatus = response.status;

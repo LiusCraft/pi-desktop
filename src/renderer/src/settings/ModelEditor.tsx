@@ -1,10 +1,12 @@
 import { useId, useState } from 'react';
 import { THINKING_LEVELS, type EndpointModel, type ThinkingLevel, type ThinkingLevelMap } from '@shared/protocol';
 import { cleanThinkingLevelMap, COST_FIELDS, levelSupported } from '@shared/model-metadata';
+import { canSendFast, isGptModel, knownFastModel } from '@shared/fast-mode';
 import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Toggle } from '@/components/ui/toggle';
+import { Switch } from '@/components/ui/switch';
 import { Tip } from '@/components/common/Tip';
 import { levelLabel } from '@/lib/constants';
 import { useT } from '@/lib/i18n';
@@ -19,10 +21,12 @@ const PRICE_LABELS = {
 
 export function ModelEditor({
   model,
+  api,
   onApply,
   onCancel,
 }: {
   model: EndpointModel;
+  api: string;
   onApply: (model: EndpointModel) => void;
   onCancel: () => void;
 }) {
@@ -35,6 +39,8 @@ export function ModelEditor({
     Object.fromEntries(COST_FIELDS.map((key) => [key, String(model.cost?.[key] ?? '')])),
   );
   const [reasoning, setReasoning] = useState(model.reasoning === undefined ? 'auto' : String(model.reasoning));
+  const showFast = isGptModel(model.id) && (!api || canSendFast(api));
+  const [supportsFast, setSupportsFast] = useState(model.supportsFast);
   const [levels, setLevels] = useState<ThinkingLevelMap>(() => ({ ...model.thinkingLevelMap }));
   const [input, setInput] = useState(
     model.input === undefined ? 'auto' : model.input.includes('image') ? 'image' : 'text',
@@ -72,6 +78,7 @@ export function ModelEditor({
           maxTokens: optionalNumber(output),
           cost: Object.keys(cost).length ? cost : undefined,
           reasoning: reasoning === 'auto' ? undefined : reasoning === 'true',
+          supportsFast,
           thinkingLevelMap:
             reasoning === 'true'
               ? cleanThinkingLevelMap(levels)
@@ -191,6 +198,19 @@ export function ModelEditor({
               ))}
             </div>
             <FieldDescription>{t('editor.levelsHint')}</FieldDescription>
+          </Field>
+        )}
+        {showFast && (
+          <Field orientation="horizontal">
+            <FieldLabel htmlFor={`${prefix}-fast`}>
+              {t('editor.fast')}
+              <Tip>{t('editor.fastTip')}</Tip>
+            </FieldLabel>
+            <Switch
+              id={`${prefix}-fast`}
+              checked={supportsFast ?? knownFastModel(model.id)}
+              onCheckedChange={setSupportsFast}
+            />
           </Field>
         )}
         <FieldDescription>{t('editor.hint')}</FieldDescription>

@@ -28,6 +28,8 @@ beforeEach(() => {
     st.prefs.project = '/project';
     st.prImport = null;
     st.prefs.model = 'vendor/known-model';
+    st.prefs.fastModels = [];
+    st.models = [];
     st.adopt = null;
     st.projects = [];
     st.workFolders = [];
@@ -238,6 +240,27 @@ it.each(['code', 'work'] as const)(
     expect(activeDraft()?.sending).toBe(false);
   },
 );
+
+it.each([true, false])('sends remembered Fast only for a supported model (%s)', async (supportsFast) => {
+  const provider = 'gateway';
+  const id = 'gpt-6.1-sol';
+  const model = `${provider}/${id}`;
+  setApp((st) => {
+    st.prefs.model = model;
+    st.prefs.fastModels = [model];
+    st.models = [{ provider, id, supportsFast }];
+  });
+  invoke.mockImplementation(async (channel) => {
+    if (channel === 'sessions:create') throw new Error('No session needed for this test');
+    return null;
+  });
+  drafts.setText(activeDraft()!.key, 'Start with the remembered speed');
+  await send();
+  const opts = invoke.mock.calls.find(([channel]) => channel === 'sessions:create')?.[1];
+  expect(opts).toMatchObject({ model });
+  expect(Object.hasOwn(opts as object, 'fastModel')).toBe(supportsFast);
+  expect((opts as { fastModel?: string }).fastModel).toBe(supportsFast ? model : undefined);
+});
 
 it('sends to the real session exactly once without taking the user back after navigation', async () => {
   const creation = deferred<SessionMeta>();

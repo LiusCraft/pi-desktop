@@ -78,6 +78,12 @@ export const composer = defineMessages({
   'composer.stop': { en: 'Stop (Esc)', zh: '停止（Esc）' },
   'composer.sendEnter': { en: 'Send (↵)', zh: '发送（↵）' },
   'composer.send': { en: 'Send', zh: '发送' },
+  'composer.fast': { en: 'Fast', zh: 'Fast' },
+  'composer.fastTip': {
+    en: 'Faster responses, at a higher cost. New sessions remember your choice for this model.',
+    zh: '加快回复速度，可能消耗更多额度或费用。用此模型新建会话时会沿用这个选择。',
+  },
+  'composer.fastUnavailable': { en: 'Fast is unavailable for the current model.', zh: '当前模型不支持 Fast。' },
   'composer.addFilesRef': {
     en: 'Add files (type @ for a file, a terminal, the changes or another session)',
     zh: '添加文件（输入 @ 引用文件、终端、变更或其它会话）',

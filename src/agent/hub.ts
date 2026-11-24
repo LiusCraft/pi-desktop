@@ -139,6 +139,7 @@ import { ArtifactService } from './artifacts';
 import { ObjectStorage } from './storage';
 import { WebSearch } from './web-search';
 import { REQUEST_ORIGIN, type RequestOrigin } from '@shared/request-log';
+import { supportsFast } from './request-hook/fast';
 import { recordRequests } from './request-hook/hook';
 import { RequestLog } from './request-hook/log';
 import { withOrigin } from './request-hook/origin';
@@ -506,7 +507,6 @@ export class SessionHub {
       modelsPath: path.join(this.agentDir, 'models.json'),
       signal: AbortSignal.timeout(15_000),
     });
-    recordRequests(this.models, this.requests);
     if (this.opts.demoModel) registerDemoModel(this.models);
     this.settings = SettingsManager.create(os.homedir(), this.agentDir);
     this.admin = new ModelAdmin({
@@ -517,6 +517,10 @@ export class SessionHub {
       deviceId: () => this.settings.getOrCreateDeviceId(),
       emit: (event) => this.emit(event),
     });
+    recordRequests(this.models, this.requests, undefined, {
+      modelForSession: (id) => this.metas.find((m) => m.id === id)?.fastModel,
+      capability: (key) => this.admin.fastCapability(key),
+    });
     // Model catalogs refresh in the background, like pi's RPC mode.
     void this.refreshModels({ signal: AbortSignal.timeout(15_000) }).catch(() => {});
     this.scheduleIdlePrs(IDLE_FIRST_MS);
@@ -524,7 +528,10 @@ export class SessionHub {
 
   /** Queue a catalog refresh behind any other refresh (each one reloads models.json). */
   refreshModels(options: { allowNetwork?: boolean; providers?: string[]; signal?: AbortSignal } = {}) {
-    const run = () => this.models.refresh(options);
+    const run = () => {
+      this.admin.refreshFastCapabilities();
+      return this.models.refresh(options);
+    };
     const next = this.modelRefresh.then(run, run);
     this.modelRefresh = next.catch(() => {});
     return next;
@@ -597,6 +604,7 @@ export class SessionHub {
       contextWindow: m.contextWindow,
       maxTokens: m.maxTokens,
       reasoning: m.reasoning,
+      supportsFast: supportsFast(m, this.admin.fastCapability(modelKey(m.provider, m.id))),
       input: m.input,
       cost: m.cost,
     };
@@ -709,6 +717,11 @@ export class SessionHub {
       id,
       model: opts.model ?? null,
       thinking: opts.thinking ?? null,
+      ...(opts.fastModel &&
+      opts.fastModel === opts.model &&
+      supportsFast(this.findModel(opts.model), this.admin.fastCapability(opts.fastModel))
+        ? { fastModel: opts.fastModel }
+        : {}),
       mode: opts.mode || 'auto',
       outputStyle: opts.outputStyle || 'default',
       sessionFile: null,
@@ -2967,7 +2980,10 @@ export class SessionHub {
     const m = this.meta(id);
     m.model = modelId;
     m.thinking = session.thinkingLevel as ThinkingLevel;
+    if (m.fastModel && (m.fastModel !== modelId || !supportsFast(model, this.admin.fastCapability(modelId))))
+      delete m.fastModel;
     this.save();
+    this.emitMeta(m);
     return {
       levels: session.getAvailableThinkingLevels() as ThinkingLevel[],
       thinking: session.thinkingLevel as ThinkingLevel,
@@ -2979,6 +2995,23 @@ export class SessionHub {
     const m = this.meta(id);
     m.thinking = live.runtime.session.thinkingLevel as ThinkingLevel;
     this.save();
+  }
+  async setFast(id: string, selected: string, enabled: boolean) {
+    const { runtime } = await this.ensure(id);
+    const model = runtime.session.model;
+    if (
+      enabled &&
+      (!model ||
+        modelKey(model.provider, model.id) !== selected ||
+        !supportsFast(model, this.admin.fastCapability(selected)))
+    ) {
+      throw new Error(tr('composer.fastUnavailable'));
+    }
+    const m = this.meta(id);
+    if (enabled) m.fastModel = selected;
+    else if (m.fastModel === selected) delete m.fastModel;
+    this.save();
+    this.emitMeta(m);
   }
   async commands(id: string): Promise<SlashCommand[]> {
     const live = await this.ensure(id);
