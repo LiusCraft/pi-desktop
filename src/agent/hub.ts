@@ -2156,12 +2156,12 @@ export class SessionHub {
     const kind = this.meta(live.id).kind;
     const request = commandReview.latestRequest(session.messages);
     const cacheKey = commandReview.reviewCacheKey({ command, cwd, kind, request });
-    if (live.reviewedCommands.has(cacheKey)) return { verdict: 'allow', reason: '' };
+    if (live.reviewedCommands.has(cacheKey)) return { verdict: 'allow' };
     const current = session.model ? `${session.model.provider}/${session.model.id}` : this.meta(live.id).model;
     // The demo provider cannot review. Keep Work's destructive-file fallback safe, while letting
     // ordinary Code commands exercise the same auto-review path without a network model.
     if (current?.startsWith('demo/'))
-      return kind === 'work' && isRiskyCommand(command, kind) ? null : { verdict: 'allow', reason: '' };
+      return kind === 'work' && isRiskyCommand(command, kind) ? null : { verdict: 'allow' };
     const model = current ? this.modelFor(settings.autoReviewModel, settings.autoReviewModelId, current) : null;
     if (!model || model.provider === 'demo') return null;
     const controller = new AbortController();

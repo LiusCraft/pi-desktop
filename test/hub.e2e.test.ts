@@ -432,7 +432,7 @@ describe('code sessions', { timeout: 120_000 }, () => {
         fauxAssistantMessage('Done'),
       ]);
       const userTurn = await driver.run(id, 'Check the git version');
-      expect(userTurn.ui).toContainEqual(expect.objectContaining({ kind: 'permission', title: 'Run git --version' }));
+      expect(userTurn.ui).toContainEqual(expect.objectContaining({ kind: 'permission', title: '运行 git --version' }));
     } finally {
       lookup.mockRestore();
       await driver.hub.archive(id);
@@ -773,11 +773,12 @@ describe('code sessions', { timeout: 120_000 }, () => {
 
   it('ask mode: edits and commands ask; deny stops the run', async () => {
     const { meta } = await codeSession('default');
-    const r = await driver.run(meta.id, '日期显示少了一个月，帮我修一下', (req) =>
-      req.title.includes('Run npm test') ? { value: 'Allow' } : { value: 'Deny' },
-    );
+    const testCommandTitle = '运行 npm test';
+    const r = await driver.run(meta.id, '日期显示少了一个月，帮我修一下', (req) => ({
+      value: req.kind === 'permission' && req.title === testCommandTitle ? 'Allow' : 'Deny',
+    }));
     const perms = r.ui.filter((u) => u.kind === 'permission');
-    expect(perms.some((u) => /Run npm test/.test(u.title))).toBe(true);
+    expect(perms.some((u) => u.title === testCommandTitle)).toBe(true);
     const edit = perms.find((u) => /Edit src\/utils\/date.js/.test(u.title)) as Extract<
       UiRequest,
       { kind: 'permission' }
@@ -806,10 +807,7 @@ describe('code sessions', { timeout: 120_000 }, () => {
       perms.some((t) => /Create|Edit/.test(t)),
       'no edit prompts after approval',
     ).toBe(false);
-    expect(
-      perms.some((t) => /Run npm run build/.test(t)),
-      'commands still ask in acceptEdits',
-    ).toBe(true);
+    expect(perms.includes('运行 npm run build'), 'commands still ask in acceptEdits').toBe(true);
     expect(r.finalText).toMatch(/深色模式已加好/);
   });
 

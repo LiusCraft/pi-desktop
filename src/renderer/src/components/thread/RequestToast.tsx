@@ -29,12 +29,14 @@ function RequestActions({
   }, [pending, toastId]);
   if (!pending) return null;
 
-  const prompt =
-    request.kind === 'confirm' ? [request.title, request.message].filter(Boolean).join('\n') : request.title;
-  // Never offer one-click approval for a prompt shown only in part.
-  const compact = prompt.trim() !== '' && prompt.length <= 180 && prompt.split('\n').length <= 3;
   const permission = request.kind === 'permission';
   const confirm = request.kind === 'confirm';
+  const prompt = [permission ? request.commandSummary : undefined, request.title, confirm ? request.message : undefined]
+    .filter(Boolean)
+    .join('\n');
+  // Never offer one-click approval for a prompt shown only in part, even with a short summary.
+  const compact =
+    (permission ? request.title : prompt).trim() !== '' && prompt.length <= 180 && prompt.split('\n').length <= 3;
   const answer = (yes: boolean) => {
     const value = yes ? 'Allow' : 'Deny';
     if (permission) actions.answer({ value }, value);

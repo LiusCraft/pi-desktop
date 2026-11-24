@@ -467,8 +467,17 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
     const { state, setMode } = host;
 
     // ---------------------------------------------------------------- permissions
-    const ask = async (ctx: ExtensionContext, toolCallId: string, title: string, key?: string) => {
-      const answer = await host.ask({ kind: 'permission', toolCallId, title }, ctx.signal);
+    const ask = async (
+      ctx: ExtensionContext,
+      toolCallId: string,
+      title: string,
+      key?: string,
+      commandSummary?: string,
+    ) => {
+      const answer = await host.ask(
+        { kind: 'permission', toolCallId, title, ...(commandSummary ? { commandSummary } : {}) },
+        ctx.signal,
+      );
       if (answer.cancelled && !answer.value)
         return { block: true, reason: 'Approval required but nobody answered the prompt.' };
       if (answer.value === 'Always allow') {
@@ -547,10 +556,9 @@ export function createDesktopKit(host: KitHost): ExtensionFactory {
           // (review off, failed, timed out or doubtful) the user decides.
           const review = (await host.review?.(command, ctx.cwd, ctx.signal)) ?? null;
           if (review?.verdict === 'allow') return undefined;
-          const title = review?.reason ? tr('ag.reviewAsk', { command, reason: review.reason }) : `Run ${command}`;
-          return ask(ctx, event.toolCallId, title, commandKey(command));
+          return ask(ctx, event.toolCallId, tr('ag.runCommand', { command }), commandKey(command), review?.summary);
         }
-        return ask(ctx, event.toolCallId, `Run ${command}`, commandKey(command));
+        return ask(ctx, event.toolCallId, tr('ag.runCommand', { command }), commandKey(command));
       }
 
       if (hints?.readOnlyHint) return undefined;

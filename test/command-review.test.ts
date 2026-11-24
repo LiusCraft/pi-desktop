@@ -12,25 +12,31 @@ import {
 
 describe('parseVerdict', () => {
   it('reads a plain answer', () => {
-    expect(parseVerdict('{"verdict":"allow","reason":"Runs the tests the user asked for."}')).toEqual({
-      verdict: 'allow',
-      reason: 'Runs the tests the user asked for.',
+    expect(parseVerdict('{"verdict":"allow","summary":""}')).toEqual({ verdict: 'allow' });
+    expect(parseVerdict('{"verdict":"ask","summary":"Deletes local build files."}')).toEqual({
+      verdict: 'ask',
+      summary: 'Deletes local build files.',
     });
-    expect(parseVerdict('{"verdict":"ask","reason":"Deletes files"}')?.verdict).toBe('ask');
   });
 
   it('finds the object inside a fence or chatter', () => {
-    expect(parseVerdict('```json\n{"verdict": "ask", "reason": "Uploads data"}\n```')).toEqual({
+    expect(parseVerdict('```json\n{"verdict": "ask", "summary": "Uploads a file."}\n```')).toEqual({
       verdict: 'ask',
-      reason: 'Uploads data',
+      summary: 'Uploads a file.',
     });
-    expect(parseVerdict('Sure. {"verdict":"allow","reason":""} Done.')?.verdict).toBe('allow');
+    expect(parseVerdict('Sure. {"verdict":"allow","summary":""} Done.')?.verdict).toBe('allow');
   });
 
-  it('keeps the reason short and on one line', () => {
-    const reason = parseVerdict(`{"verdict":"ask","reason":"${'a\\n'.repeat(200)}"}`)?.reason ?? '';
-    expect(reason).not.toContain('\n');
-    expect(reason.length).toBeLessThanOrEqual(160);
+  it('keeps the summary short and on one line', () => {
+    const text = 'a\n'.repeat(200);
+    const review = parseVerdict(JSON.stringify({ verdict: 'ask', summary: text }));
+    expect(review?.summary).not.toContain('\n');
+    expect(review?.summary).toHaveLength(120);
+  });
+
+  it('keeps the decision when the summary is missing or malformed', () => {
+    expect(parseVerdict('{"verdict":"ask","summary":["Deletes files"]}')).toEqual({ verdict: 'ask' });
+    expect(parseVerdict('{"verdict":"ask"}')).toEqual({ verdict: 'ask' });
   });
 
   it('gives nothing for an answer it cannot trust', () => {
@@ -38,7 +44,7 @@ describe('parseVerdict', () => {
     expect(parseVerdict('allow')).toBeNull();
     expect(parseVerdict('{"verdict":"maybe"}')).toBeNull();
     expect(parseVerdict('{"verdict": allow}')).toBeNull();
-    expect(parseVerdict('{"reason":"no verdict"}')).toBeNull();
+    expect(parseVerdict('{"summary":"no verdict"}')).toBeNull();
   });
 });
 
