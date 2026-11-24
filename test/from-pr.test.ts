@@ -44,8 +44,10 @@ describe('GitHub PR import', () => {
   it('matches repository identity, protects occupied destinations and does not reuse a mismatched push URL', async () => {
     const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-pr-match-'));
     try {
-      // Keep the HTTPS assertion independent of local URL rewrites such as url.*.insteadOf.
-      vi.stubEnv('GIT_CONFIG_GLOBAL', os.devNull);
+      // Isolate URL rewrites using a real file: Git for Windows rejects os.devNull here.
+      const gitConfig = path.join(parent, 'gitconfig');
+      fs.writeFileSync(gitConfig, '');
+      vi.stubEnv('GIT_CONFIG_GLOBAL', gitConfig);
       vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');
       const dest = path.join(parent, 'app');
       fs.mkdirSync(dest);
