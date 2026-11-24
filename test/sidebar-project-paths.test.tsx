@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { invoke } from './renderer-dom';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { SessionMeta } from '@shared/protocol';
 
 const { Sidebar } = await import('../src/renderer/src/components/layout/Sidebar');
 const { TooltipProvider } = await import('../src/renderer/src/components/ui/tooltip');
-const { removeProject, startFromPr } = await import('../src/renderer/src/store/actions');
+const { handleHostEvent, removeProject, startFromPr } = await import('../src/renderer/src/store/actions');
 const { getApp, setApp } = await import('../src/renderer/src/store/app');
 const { dialogs } = await import('../src/renderer/src/store/dialogs');
 const { emptySession } = await import('../src/renderer/src/store/transcript');
@@ -108,6 +108,102 @@ it('expands the combined session list and keeps an older active session visible'
   fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
   expect(screen.getByRole('button', { name: hidden.title })).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+});
+
+it('moves a newly merged session below unfinished sessions before applying the folder limit', async () => {
+  const pr = { num: 42, url: 'https://github.com/acme/app/pull/42', state: 'open', draft: false };
+  const merging = { ...imported, parentId: undefined, pr, updatedAt: 10 };
+  const older = Array.from({ length: 4 }, (_, i) => ({
+    ...regular,
+    id: `unfinished-${i}`,
+    title: `Unfinished session ${i}`,
+    updatedAt: -i,
+  }));
+  const last = older[3];
+  setApp((st) => {
+    st.sessions[merging.id] = emptySession(merging);
+    for (const meta of older) st.sessions[meta.id] = emptySession(meta);
+  });
+  render(
+    <TooltipProvider>
+      <Sidebar />
+    </TooltipProvider>,
+  );
+
+  expect(screen.getByRole('button', { name: merging.title })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: last.title })).toBeNull();
+
+  act(() => {
+    handleHostEvent({
+      type: 'pr',
+      sessionId: merging.id,
+      status: { ...pr, state: 'merged', ci: 'pass', checks: [], comments: 0 },
+    });
+  });
+  expect(await screen.findByRole('button', { name: last.title })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: merging.title })).toBeNull();
+
+  act(() => handleHostEvent({ type: 'pr', sessionId: merging.id, status: null }));
+  await waitFor(() => expect(getApp().sessions[merging.id].pr).toBeNull());
+  expect(screen.queryByRole('button', { name: merging.title })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+  const rows = screen.getAllByRole('button', {
+    name: (name) => [regular, ...older, merging].some((meta) => meta.title === name),
+  });
+  expect(rows.map((row) => row.getAttribute('aria-label'))).toEqual(
+    [regular, ...older, merging].map((meta) => meta.title),
+  );
+});
+
+it('keeps pinned sessions on top and separates forks with a different merge state', () => {
+  const mergedPr = { num: 42, url: 'https://github.com/acme/app/pull/42', state: 'merged', draft: false };
+  const parent = { ...regular, pr: mergedPr, updatedAt: 10 };
+  const pinned = { ...unrelated, pinned: true, pr: mergedPr };
+  setApp((st) => {
+    st.sessions[parent.id] = emptySession(parent);
+    st.sessions[pinned.id] = emptySession(pinned);
+  });
+  render(
+    <TooltipProvider>
+      <Sidebar />
+    </TooltipProvider>,
+  );
+
+  const titles = [pinned.title, imported.title, parent.title];
+  const rows = screen.getAllByRole('button', { name: (name) => titles.includes(name) });
+  expect(rows.map((row) => row.getAttribute('aria-label'))).toEqual(titles);
+  expect(rows[1].closest('[draggable="true"]')).not.toBeNull();
+});
+
+it('allows manual ordering within a merge group, but not across groups', () => {
+  const first = { ...regular, id: 'drag-first', title: 'First unfinished', updatedAt: 2 };
+  const second = { ...regular, id: 'drag-second', title: 'Second unfinished' };
+  const merged = {
+    ...regular,
+    id: 'drag-merged',
+    title: 'Merged session',
+    pr: { num: 42, url: 'https://github.com/acme/app/pull/42', state: 'merged', draft: false },
+  };
+  setApp((st) => {
+    st.sessions = Object.fromEntries([first, second, merged].map((meta) => [meta.id, emptySession(meta)]));
+  });
+  render(
+    <TooltipProvider>
+      <Sidebar />
+    </TooltipProvider>,
+  );
+
+  const row = (name: string) => screen.getByRole('button', { name }).closest('[draggable="true"]')!;
+  fireEvent.dragStart(row(first.title), { dataTransfer: { setData: vi.fn<DataTransfer['setData']>() } });
+  fireEvent.drop(row(merged.title));
+  expect(localStorage.getItem('pi.sidebar.order')).toBeNull();
+  fireEvent.drop(row(second.title));
+  const titles = [second.title, first.title, merged.title];
+  expect(
+    screen
+      .getAllByRole('button', { name: (name) => titles.includes(name) })
+      .map((row) => row.getAttribute('aria-label')),
+  ).toEqual(titles);
 });
 
 it('reopens an existing PR session without registering its legacy project path again', async () => {
