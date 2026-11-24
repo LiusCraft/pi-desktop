@@ -3,6 +3,7 @@ import type { ExtensionAPI, ToolDefinition } from '@earendil-works/pi-coding-age
 import { describe, expect, it, vi } from 'vitest';
 import { createDesktopKit, type KitHost, isPrAutomationCommand } from '../src/agent/desktop-kit';
 import { SCOPE_KEY } from '../src/agent/work-scope';
+import { tr } from '../src/shared/i18n/runtime';
 import { PLAN_CHOICES, type UiResponse } from '../src/shared/protocol';
 
 type Review = NonNullable<KitHost['review']>;
@@ -94,17 +95,7 @@ describe('Work session handoffs', () => {
   });
 });
 
-describe('Plan mode and subagent permissions', () => {
-  it('blocks edits and tells a subagent to report instead of asking for plan approval', async () => {
-    const loaded = load({ setMode: undefined });
-    loaded.state.mode = 'plan';
-    await expect(loaded.call({ path: 'date.ts' }, 'write')).resolves.toEqual({
-      block: true,
-      reason: 'Subagents are read-only. Return your findings in your final text response.',
-    });
-    expect(loaded.requests).toHaveLength(0);
-  });
-
+describe('Plan mode', () => {
   it('directs a normal plan-mode session to submit its plan instead of editing', async () => {
     const loaded = load();
     loaded.state.mode = 'plan';
@@ -155,7 +146,6 @@ describe('Plan mode and Work scope', () => {
   const path = resolve(outside, 'notes.md');
   const key = `${SCOPE_KEY}${outside}`;
 
-  // Work subagents use this same gate with their own plan-mode state and no PR automation.
   const loadScoped = (options?: Parameters<typeof load>[1]) =>
     load(
       {
@@ -218,6 +208,15 @@ describe('Plan mode and Work scope', () => {
     expect(loaded.requests).toHaveLength(0);
   });
 
+  it('asks for folder approval before writing outside the Work scope', async () => {
+    const loaded = loadScoped({ response: { value: 'Deny' } });
+    loaded.state.mode = 'acceptEdits';
+    await expect(loaded.call({ path, content: 'notes' }, 'write')).resolves.toMatchObject({ block: true });
+    expect(loaded.requests).toEqual([
+      { kind: 'permission', toolCallId: 'call-1', title: tr('ag.scopeWrite', { path }) },
+    ]);
+  });
+
   it('honors a Work directory grant for edits outside Plan Mode without authorizing shell commands', async () => {
     const loaded = loadScoped({ response: { value: 'Deny' } });
     loaded.state.mode = 'default';
@@ -227,6 +226,74 @@ describe('Plan mode and Work scope', () => {
     await expect(loaded.call({ command: 'npm test', workdir: outside })).resolves.toMatchObject({ block: true });
     expect(loaded.requests).toEqual([expect.objectContaining({ kind: 'permission', title: 'Run npm test' })]);
   });
+});
+
+describe('Subagent permission inheritance', () => {
+  const cwd = resolve('work-scope-fixture', 'work');
+  const outside = resolve(cwd, '..', 'outside');
+  const path = resolve(outside, 'notes.md');
+  const key = `${SCOPE_KEY}${outside}`;
+  const subagent = (options?: Parameters<typeof load>[1], overrides: Partial<KitHost> = {}) => {
+    const parentPermissions = {
+      mode: 'default' as KitHost['state']['mode'],
+      allowed: new Set<string>(),
+    };
+    const kit = load(
+      { cwd, scope: { cwd, readable: () => [] }, parentPermissions, setMode: undefined, ...overrides },
+      options,
+    );
+    return { ...kit, parentPermissions };
+  };
+
+  it('checks the current mode on each call and bypasses directory approval for read-only commands', async () => {
+    const kit = subagent({ response: { value: 'Deny' } });
+    const input = { command: "git blame -L '/if asrEnableAutoLang(/,+4' -- file.go", workdir: outside };
+    await expect(kit.call(input)).resolves.toMatchObject({ block: true });
+    kit.parentPermissions.mode = 'bypass';
+    await expect(kit.call(input)).resolves.toBeUndefined();
+    kit.parentPermissions.mode = 'plan';
+    await expect(kit.call(input)).resolves.toMatchObject({ block: true });
+    expect(kit.requests).toHaveLength(2);
+  });
+
+  it('picks up new parent directory grants without copying them to the subagent', async () => {
+    const kit = subagent({ response: { value: 'Deny' } });
+    await expect(kit.call({ path }, 'read')).resolves.toMatchObject({ block: true });
+    kit.parentPermissions.allowed.add(key);
+    await expect(kit.call({ path }, 'read')).resolves.toBeUndefined();
+    await expect(kit.call({ command: 'ls', workdir: outside })).resolves.toBeUndefined();
+    expect(kit.state.allowed.size).toBe(0);
+    expect(kit.requests).toHaveLength(1);
+  });
+
+  it('remembers a new directory grant only in the subagent that received it', async () => {
+    const kit = subagent({ response: { value: 'Always allow' } });
+    await expect(kit.call({ path }, 'read')).resolves.toBeUndefined();
+    await expect(kit.call({ path }, 'read')).resolves.toBeUndefined();
+    expect(kit.requests).toHaveLength(1);
+    expect(kit.state.allowed.has(key)).toBe(true);
+    expect(kit.parentPermissions.allowed.size).toBe(0);
+  });
+
+  it.each(['bypass', 'acceptEdits', 'auto', 'default', 'plan'] as const)(
+    'keeps writes and non-read-only commands blocked with parent mode %s',
+    async (mode) => {
+      const kit = subagent(
+        { tools: [{ name: 'update', annotations: { readOnlyHint: false } }] },
+        { prAutomation: () => true },
+      );
+      kit.parentPermissions.mode = mode;
+      for (const grant of [key, 'git push', 'tool:update']) kit.parentPermissions.allowed.add(grant);
+
+      await expect(kit.call({ path }, 'write')).resolves.toEqual({
+        block: true,
+        reason: 'Subagents are read-only. Return your findings in your final text response.',
+      });
+      await expect(kit.call({ command: 'git push', workdir: outside })).resolves.toMatchObject({ block: true });
+      await expect(kit.call({}, 'update')).resolves.toMatchObject({ block: true });
+      expect(kit.requests).toHaveLength(0);
+    },
+  );
 });
 
 describe('Auto mode review prompts', () => {

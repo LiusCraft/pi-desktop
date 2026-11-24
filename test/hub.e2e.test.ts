@@ -833,6 +833,72 @@ describe('code sessions', { timeout: 120_000 }, () => {
     ).toBe(true);
   });
 
+  it('subagent: reuses parent grants and observes mode changes between reads', async () => {
+    const workDir = fs.mkdtempSync(path.join(tmp, 'approval-work-'));
+    const sharedDir = fs.mkdtempSync(path.join(tmp, 'approval-shared-'));
+    const otherDir = fs.mkdtempSync(path.join(tmp, 'approval-other-'));
+    const shared = path.join(sharedDir, 'shared.txt');
+    const other = path.join(otherDir, 'other.txt');
+    fs.writeFileSync(shared, 'Parent approved this directory.');
+    fs.writeFileSync(other, 'Read under bypass only.');
+    const parent = fauxProvider({ provider: 'approval-parent', models: [{ id: 'm' }] });
+    const child = fauxProvider({ provider: 'approval-child', models: [{ id: 'm' }] });
+    driver.hub.models.registerNativeProvider(parent.provider);
+    driver.hub.models.registerNativeProvider(child.provider);
+    driver.hub.saveAgent({
+      name: 'approval-reader',
+      description: 'Read-only approval test',
+      body: 'Read the requested files and report.',
+      model: 'approval-child/m',
+    });
+    const { id } = await driver.hub.create({
+      kind: 'work',
+      projectPath: workDir,
+      model: 'approval-parent/m',
+      mode: 'bypass',
+      title: 'Subagent approvals',
+      autoName: false,
+    });
+    // Change the mode before waiting for the newly created session to finish warming up.
+    driver.hub.setMode(id, 'default');
+    const read = (file: string) =>
+      fauxAssistantMessage(fauxToolCall('read', { path: file }), { stopReason: 'toolUse' });
+    parent.setResponses([
+      read(shared),
+      fauxAssistantMessage(
+        fauxToolCall('pidesk_task', {
+          description: 'Check inherited read permissions',
+          prompt: 'Read two external files.',
+          subagent_type: 'approval-reader',
+        }),
+        { stopReason: 'toolUse' },
+      ),
+      fauxAssistantMessage('Done.'),
+    ]);
+    child.setResponses([
+      read(shared),
+      () => {
+        driver.hub.setMode(id, 'bypass');
+        return read(other);
+      },
+      () => {
+        driver.hub.setMode(id, 'default');
+        return read(other);
+      },
+      fauxAssistantMessage('Finished the read checks.'),
+    ]);
+
+    const answer = vi.fn<Answer>().mockReturnValueOnce({ value: 'Always allow' }).mockReturnValue({ value: 'Deny' });
+    const result = await driver.run(id, 'Read the files.', answer);
+    const task = result.tools.find((tool) => tool.toolName === 'pidesk_task');
+    expect(task?.isError).toBe(false);
+    expect(task?.result?.details?.stats).toMatchObject({ reads: 3, failed: 1 });
+    expect(result.ui.map((request) => request.title)).toEqual([
+      expect.stringContaining('shared.txt'),
+      expect.stringContaining('other.txt'),
+    ]);
+  });
+
   it('subagent: a background planner returns its report without entering plan approval', async () => {
     const parent = fauxProvider({ provider: 'delegate-test', models: [{ id: 'm' }] });
     const child = fauxProvider({ provider: 'planner-test', models: [{ id: 'm' }] });
