@@ -849,7 +849,14 @@ export interface QuestionAnswer {
 
 /** Questions the agent asks the user. Permission, plan and questions prompts come from desktop-kit. */
 export type UiRequest =
-  | { id: string; kind: 'permission'; toolCallId: string; title: string }
+  | {
+      id: string;
+      kind: 'permission';
+      toolCallId: string;
+      title: string;
+      /** One plain-language sentence describing the command's effect. */
+      commandSummary?: string;
+    }
   | { id: string; kind: 'plan'; toolCallId: string; title: string }
   | { id: string; kind: 'questions'; toolCallId: string; title: string; questions: Question[] }
   | { id: string; kind: 'select'; title: string; options: string[] }

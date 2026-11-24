@@ -158,7 +158,7 @@ export const agent = defineMessages({
     en: 'Run {command} (uses {path}, outside the working folder)',
     zh: '运行 {command}（用到工作目录之外的 {path}）',
   },
-  'ag.reviewAsk': { en: 'Run {command} (review: {reason})', zh: '运行 {command}（审查：{reason}）' },
+  'ag.runCommand': { en: 'Run {command}', zh: '运行 {command}' },
   'ag.stepWorktree': { en: 'Creating the git worktree ({branch})', zh: '创建 git worktree（{branch}）' },
   'ag.stepAgent': { en: 'Starting the agent, loading extensions and tools', zh: '启动 Agent，加载扩展与工具' },
   'ag.toolRead': { en: 'Read files', zh: '读取文件' },
