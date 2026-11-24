@@ -104,16 +104,26 @@ describe('OpenAI Fast requests', () => {
         },
       );
     const fast = await ask();
+    const native = await ask({ onPayload: undefined });
+    const explicit = await ask({ onPayload: (payload) => ({ ...(payload as object), service_tier: 'flex' }) });
     const other = await ask({ sessionId: 'another-sdk-id' });
     const side = await withOrigin({ origin: 'sideChat', session: 'desktop-id' }, () => ask());
     const warm = await ask({ maxTokens: 1, disableContinuation: true, maxRetries: 0 });
     selected = undefined;
     const standard = await ask();
 
-    for (const result of [fast, other, side, warm, standard]) {
+    for (const result of [fast, native, explicit, other, side, warm, standard]) {
       expect(result).toMatchObject({ stopReason: 'stop' });
     }
-    expect(sent.map((body) => body.service_tier)).toEqual(['priority', undefined, undefined, undefined, undefined]);
+    expect(sent.map((body) => body.service_tier)).toEqual([
+      'priority',
+      'priority',
+      'flex',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ]);
     expect(sent[0]).toMatchObject({ reasoning: { effort: 'high' }, marker: true });
     expect(fast.usage.cost.total).toBeCloseTo(2 * standard.usage.cost.total, 10);
     expect(standard.usage.cost.total).toBeGreaterThan(0);

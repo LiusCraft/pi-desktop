@@ -8,6 +8,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { HostEvent } from '@shared/protocol';
 import { SessionHub } from '../src/agent/hub';
+import { sessionHandlers } from '../src/agent/handlers';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-desktop-model-admin-'));
 const agentDir = path.join(tmp, 'agent');
@@ -154,7 +155,17 @@ describe('SessionHub model admin', () => {
 
     const fast = 'fast-gateway/gpt-99';
     const disabled = 'fast-gateway/gpt-6.1-sol';
-    const session = await hub.create({ kind: 'work', projectPath: null, model: fast, autoName: false });
+    const handlers = sessionHandlers(Promise.resolve(hub), () => null);
+    const session = await hub.create({
+      kind: 'work',
+      projectPath: null,
+      model: fast,
+      fastModel: fast,
+      autoName: false,
+    });
+    const unsupported = await hub.create({ kind: 'work', projectPath: null, model: disabled, fastModel: disabled });
+    expect(unsupported.fastModel).toBeUndefined();
+    expect(session.fastModel).toBe(fast);
     await hub.update(session.id, { autoUpdateMetadata: false });
     const ask = async () => {
       events.length = 0;
@@ -166,15 +177,28 @@ describe('SessionHub model admin', () => {
         .toBe(true);
     };
     tiers.length = 0;
+    // A delayed toggle for a previous model must not clear the current model's Fast setting.
+    await handlers['sessions:setFast'](session.id, disabled, false);
+    expect((await hub.open(session.id)).meta.fastModel).toBe(fast);
     await ask();
-    await hub.setFast(session.id, fast, true);
+    await handlers['sessions:setFast'](session.id, fast, false);
+    expect((await hub.open(session.id)).meta.fastModel).toBeUndefined();
+    await ask();
+    await expect(handlers['sessions:setFast'](session.id, disabled, true)).rejects.toThrow(/Fast/);
+    await handlers['sessions:setFast'](session.id, fast, true);
+    expect((await hub.open(session.id)).meta.fastModel).toBe(fast);
+    await hub.setModel(session.id, fast);
     expect((await hub.open(session.id)).meta.fastModel).toBe(fast);
     await ask();
     await hub.setModel(session.id, disabled);
     expect((await hub.open(session.id)).meta.fastModel).toBeUndefined();
     await expect(hub.setFast(session.id, disabled, true)).rejects.toThrow(/Fast/);
     await ask();
-    expect(tiers).toEqual([undefined, 'priority', undefined]);
+    expect(tiers).toEqual(['priority', undefined, 'priority', undefined]);
+
+    await hub.admin.saveEndpoint({ ...draft, models: [{ id: 'gpt-99' }, draft.models[1]] });
+    expect(hub.admin.fastCapability(fast)).toBeUndefined();
+    expect(hub.admin.fastCapability(disabled)).toBe(false);
   });
 
   it('relogins through the pi prompt flow and removes the credential on logout', async () => {
