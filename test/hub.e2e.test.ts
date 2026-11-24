@@ -156,7 +156,9 @@ describe('code sessions', { timeout: 120_000 }, () => {
       await expect(driver.hub.prStatus(meta.id)).resolves.toBeNull();
       expect(status).toHaveBeenCalledTimes(1);
       expect(driver.hub.meta(meta.id).pr).toBeFalsy();
-      expect(() => driver.hub.update(meta.id, { prAuto: { merge: true } })).toThrow();
+      expect(() => driver.hub.update(meta.id, { prAuto: { merge: true } })).toThrow(
+        '这项 PR 自动化已在 Code 设置中关闭。',
+      );
       await expect(driver.hub.commits(meta.id)).resolves.toBeInstanceOf(Array);
     } finally {
       status.mockRestore();
