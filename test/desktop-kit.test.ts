@@ -3,6 +3,7 @@ import type { ExtensionAPI, ToolDefinition } from '@earendil-works/pi-coding-age
 import { describe, expect, it, vi } from 'vitest';
 import { createDesktopKit, type KitHost, isPrAutomationCommand } from '../src/agent/desktop-kit';
 import { SCOPE_KEY } from '../src/agent/work-scope';
+import { tr } from '../src/shared/i18n/runtime';
 import { PLAN_CHOICES, type UiResponse } from '../src/shared/protocol';
 
 type Review = NonNullable<KitHost['review']>;
@@ -205,6 +206,15 @@ describe('Plan mode and Work scope', () => {
       reason: 'Plan mode blocks unannotated.',
     });
     expect(loaded.requests).toHaveLength(0);
+  });
+
+  it('asks for folder approval before writing outside the Work scope', async () => {
+    const loaded = loadScoped({ response: { value: 'Deny' } });
+    loaded.state.mode = 'acceptEdits';
+    await expect(loaded.call({ path, content: 'notes' }, 'write')).resolves.toMatchObject({ block: true });
+    expect(loaded.requests).toEqual([
+      { kind: 'permission', toolCallId: 'call-1', title: tr('ag.scopeWrite', { path }) },
+    ]);
   });
 
   it('honors a Work directory grant for edits outside Plan Mode without authorizing shell commands', async () => {
