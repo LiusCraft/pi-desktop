@@ -166,6 +166,63 @@ describe('code sessions', { timeout: 120_000 }, () => {
       driver.hub.refreshPrBarSettings();
     }
   });
+  it('resumes a live PR watch without granting a globally disabled merge', async () => {
+    const store = new Store(path.join(tmp, 'data'));
+    const saved = store.get<Partial<Settings>>('settings', {});
+    const configure = (enabled: boolean, autoMerge: boolean) => {
+      store.set('settings', { ...saved, prBar: { enabled, autoMerge } });
+      driver.hub.refreshPrBarSettings();
+    };
+    const { meta } = await codeSession();
+    const snapshot: git.PrSnapshot = {
+      status: {
+        num: 7,
+        url: 'https://github.com/example/project/pull/7',
+        state: 'open',
+        draft: false,
+        checks: [{ n: 'build', st: 'pass' }],
+        ci: 'pass',
+        comments: 0,
+        mergeable: 'clean',
+        head: 'test-head',
+      },
+      notes: [],
+    };
+    const readPr = git.readPr;
+    const read = vi
+      .spyOn(git, 'readPr')
+      .mockImplementation((cwd, binding) => (cwd === meta.cwd ? Promise.resolve(snapshot) : readPr(cwd, binding)));
+    const prompt = vi.spyOn(driver.hub, 'prompt').mockResolvedValue({ disposition: 'started' });
+    try {
+      driver.hub.update(meta.id, { prAuto: { merge: true } });
+      configure(false, false);
+      await driver.hub.open(meta.id);
+      expect(read).not.toHaveBeenCalledWith(meta.cwd, undefined);
+      configure(true, false);
+      await vi.waitFor(() => expect(driver.hub.meta(meta.id).pr).toMatchObject({ num: 7 }));
+      expect(prompt).not.toHaveBeenCalled();
+      expect(driver.hub.meta(meta.id).prAutoDone).toBeUndefined();
+
+      configure(true, true);
+      await vi.waitFor(() => expect(driver.hub.meta(meta.id).prAutoDone?.merge).toBe('7:test-head'));
+      expect(prompt).toHaveBeenCalledExactlyOnceWith(
+        meta.id,
+        expect.objectContaining({ text: expect.stringContaining('<pr-event kind="merge">') }),
+        'followUp',
+        'pr',
+      );
+    } finally {
+      try {
+        await driver.hub.archive(meta.id);
+      } finally {
+        read.mockRestore();
+        prompt.mockRestore();
+        store.set('settings', saved);
+        driver.hub.refreshPrBarSettings();
+      }
+    }
+  });
+
   it('runs the keyboard demo through the question tool and records the completed reply', async () => {
     const { meta } = await codeSession();
     expect(meta.lastResponseAt).toBeUndefined();
