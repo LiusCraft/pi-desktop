@@ -77,6 +77,7 @@ import {
   toggleSidebar,
 } from '@/store/actions';
 import { setApp, useApp } from '@/store/app';
+import { isSessionMerged } from '@/store/session-switcher';
 import { InlineEdit } from '@/components/common/InlineEdit';
 import { Tooltip, TooltipContent, TooltipHint, TooltipTrigger } from '@/components/ui/tooltip';
 import type { MessageKey } from '@shared/i18n';
@@ -143,7 +144,7 @@ function arrange<T>(items: T[], idOf: (x: T) => string, saved: string[]): T[] {
 
 type DragKind = 'session' | 'folder';
 type Edge = 'before' | 'after';
-/** What is being dragged. `group` limits drops to siblings: the same folder and pin state, or the folder list. */
+/** What is being dragged. `group` and the target's ids limit drops to siblings. */
 const PINNED_GROUP = 'pinned';
 let dragging: { kind: DragKind; id: string; group: string } | null = null;
 
@@ -167,7 +168,8 @@ function useSortable(
   enabled = true,
 ) {
   const [edge, setEdge] = useState<Edge | null>(null);
-  const sibling = () => dragging?.kind === kind && dragging.group === group && dragging.id !== id;
+  const sibling = () =>
+    dragging?.kind === kind && dragging.group === group && dragging.id !== id && ids.includes(dragging.id);
   const side = (e: React.DragEvent): Edge => {
     const r = e.currentTarget.getBoundingClientRect();
     return e.clientY < r.top + r.height / 2 ? 'before' : 'after';
@@ -901,8 +903,14 @@ function CodeNav() {
         {groups.map(([key, { path, list }]) => {
           const LIMIT = 5;
           const ordered = arrange(list, (x) => x.meta.id, saved.sessions);
-          const rows = nest(ordered);
-          const ids = ordered.map((x) => x.meta.id);
+          // Split before nesting so an unfinished fork still appears above its merged parent.
+          const unfinished: SessionView[] = [];
+          const merged: SessionView[] = [];
+          for (const s of ordered) (isSessionMerged(s) ? merged : unfinished).push(s);
+          const rows = [unfinished, merged].flatMap((group) => {
+            const ids = group.map((s) => s.meta.id);
+            return nest(group).map((row) => ({ ...row, ids }));
+          });
           const isFolded = folded.has(key);
           const collapsed =
             rows.length > LIMIT && !expanded.has(key) && !rows.slice(LIMIT).some((r) => r.s.meta.id === current);
@@ -918,7 +926,7 @@ function CodeNav() {
                 onToggle={() => toggleFolded(key)}
               />
               <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
-                {shown.map(({ s, child }) => (
+                {shown.map(({ s, child, ids }) => (
                   <SessionRow
                     key={s.meta.id}
                     s={s}

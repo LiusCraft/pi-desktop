@@ -2,8 +2,12 @@ import type { SessionView } from './types';
 
 export const SESSION_GROUPS = ['attention', 'recent', 'merged'] as const;
 
+export function isSessionMerged(s: SessionView): boolean {
+  return (s.pr ?? s.meta.pr)?.state === 'merged';
+}
+
 export function sessionGroup(s: SessionView): (typeof SESSION_GROUPS)[number] {
-  if ((s.pr ?? s.meta.pr)?.state === 'merged') return 'merged';
+  if (isSessionMerged(s)) return 'merged';
   if (s.waiting || s.unread || s.pr?.ci === 'fail' || s.pr?.review === 'changes' || s.pr?.mergeable === 'conflicting') {
     return 'attention';
   }
