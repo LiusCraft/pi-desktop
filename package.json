@@ -41,8 +41,8 @@
     "@pierre/theming": "1.0.2"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "1.5.2",
-    "@earendil-works/pi-coding-agent": "1.5.2",
+    "@earendil-works/pi-ai": "1.6.0",
+    "@earendil-works/pi-coding-agent": "1.6.0",
     "@lobehub/icons-static-svg": "1.102.0",
     "cross-spawn": "7.0.6",
     "node-pty": "^1.1.0",
