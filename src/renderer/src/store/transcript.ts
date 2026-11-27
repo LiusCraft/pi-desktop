@@ -615,7 +615,7 @@ function userFromMessage(s: SessionView, m: AgentMessage, view: ViewMode) {
   }
   const pending = s.pendingUser.map((key) => findByKey(s, key)).filter((i): i is ItemOf<'user'> => i?.kind === 'user');
   // pi expands `/skill:name args` into a <skill> block, so compare against what the user typed.
-  const typed = typedText(user.text);
+  const typed = typedText(user.text).trim();
   const match = user.clientId
     ? pending.find((p) => p.clientId === user.clientId)
     : pending.find((p) => !p.attachments.length && p.text.trim() === typed);
